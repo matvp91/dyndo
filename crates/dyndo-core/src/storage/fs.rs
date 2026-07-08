@@ -62,4 +62,12 @@ mod tests {
         assert_eq!(src.size().await.unwrap(), 5);
         assert_eq!(src.read_at(1, 3).await.unwrap(), vec![11, 12, 13]);
     }
+
+    #[tokio::test]
+    async fn read_at_past_eof_returns_empty_not_an_error() {
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(&[10, 11, 12, 13, 14]).unwrap();
+        let src = LocalFile::new(f.path());
+        assert_eq!(src.read_at(5, 3).await.unwrap(), Vec::<u8>::new());
+    }
 }

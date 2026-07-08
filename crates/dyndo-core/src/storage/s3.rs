@@ -17,3 +17,26 @@ impl Source for S3Source {
         Err(Error::Backend("s3 unimplemented".into()))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn stub_returns_backend_error() {
+        let src = S3Source {
+            bucket: "some-bucket".into(),
+            key: "some/key".into(),
+        };
+
+        match src.size().await {
+            Err(Error::Backend(_)) => {}
+            other => panic!("expected Err(Error::Backend(_)), got {other:?}"),
+        }
+
+        match src.read_at(0, 1).await {
+            Err(Error::Backend(_)) => {}
+            other => panic!("expected Err(Error::Backend(_)), got {other:?}"),
+        }
+    }
+}
