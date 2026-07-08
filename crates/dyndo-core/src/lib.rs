@@ -7,4 +7,4 @@ mod test_support;
 
 pub use error::{Error, Result};
 pub use model::{Asset, AudioTrack, Track, VideoTrack};
-pub use storage::{S3Source, Source};
+pub use storage::{LocalFile, S3Source, Source};
