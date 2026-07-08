@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Asset {
-    pub version: u32,
     pub tracks: Vec<Track>,
 }
 
@@ -58,7 +57,6 @@ mod tests {
     #[test]
     fn video_track_serialises_with_type_tag_and_snake_case() {
         let asset = Asset {
-            version: 1,
             tracks: vec![Track::Video(VideoTrack {
                 id: "video_avc_1080_4807".into(),
                 source: "index_video_avc_1080.mp4".into(),

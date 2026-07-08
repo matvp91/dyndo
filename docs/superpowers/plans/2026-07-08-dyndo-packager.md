@@ -276,7 +276,6 @@ mod tests {
     #[test]
     fn video_track_serialises_with_type_tag_and_snake_case() {
         let asset = Asset {
-            version: 1,
             tracks: vec![Track::Video(VideoTrack {
                 id: "video_avc_1080_4807".into(),
                 source: "index_video_avc_1080.mp4".into(),
@@ -334,7 +333,6 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Asset {
-    pub version: u32,
     pub tracks: Vec<Track>,
 }
 
@@ -1368,7 +1366,7 @@ pub async fn build_asset(inputs: &[PathBuf]) -> Result<Asset> {
         }
     }
 
-    Ok(Asset { version: 1, tracks })
+    Ok(Asset { tracks })
 }
 ```
 
@@ -1436,7 +1434,6 @@ fn writes_asset_json_for_video_and_audio() {
 
     let json: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&out).unwrap()).unwrap();
-    assert_eq!(json["version"], 1);
     assert_eq!(json["tracks"].as_array().unwrap().len(), 2);
     assert_eq!(json["tracks"][0]["type"], "video");
     assert_eq!(json["tracks"][0]["codec"], "avc1.640028");

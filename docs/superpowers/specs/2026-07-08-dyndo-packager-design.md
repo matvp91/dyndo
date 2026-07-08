@@ -67,7 +67,7 @@ summarise + validate) and the server (to build the runtime index).
 Top level:
 
 ```json
-{ "version": 1, "tracks": [ … ] }
+{ "tracks": [ … ] }
 ```
 
 Discriminated union via serde internally-tagged enum (`#[serde(tag = "type")]`).
