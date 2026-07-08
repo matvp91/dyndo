@@ -181,7 +181,8 @@ src/
 │   ├── mod.rs       # exports only
 │   ├── source.rs    # async `Source` trait (size, read_at)
 │   ├── fs.rs        # LocalFile: Source via `tokio::fs`
-│   └── s3.rs        # S3Source: Source — stubbed (unimplemented) for now
+│   ├── s3.rs        # S3Source: Source — stubbed (unimplemented) for now
+│   └── memory.rs    # BytesSource: in-memory Source (test-only)
 └── cmaf/
     ├── mod.rs       # exports only
     ├── header.rs    # async read_header(&impl Source) -> CmafHeader { track, init_range, segments }

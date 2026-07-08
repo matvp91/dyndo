@@ -1,4 +1,6 @@
 mod fs;
+#[cfg(test)]
+pub(crate) mod memory;
 mod s3;
 mod source;
 

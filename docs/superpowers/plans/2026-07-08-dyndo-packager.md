@@ -937,7 +937,7 @@ Append to `crates/dyndo-core/src/cmaf/header.rs`:
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::BytesSource;
+    use crate::storage::memory::BytesSource;
 
     fn fixture(name: &str) -> BytesSource {
         let bytes = std::fs::read(format!(
@@ -1239,7 +1239,7 @@ In `crates/dyndo-core/src/asset.rs`:
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::BytesSource;
+    use crate::storage::memory::BytesSource;
 
     fn fixture(name: &str) -> BytesSource {
         let bytes = std::fs::read(format!(
@@ -1378,9 +1378,6 @@ mod cmaf;
 mod error;
 mod model;
 mod storage;
-
-#[cfg(test)]
-mod test_support;
 
 pub use asset::{build_asset, describe_track};
 pub use error::{Error, Result};

@@ -1,4 +1,4 @@
-//! Shared test helpers (compiled only under `cfg(test)`).
+//! In-memory `Source` used by crate tests.
 
 use crate::error::Result;
 use crate::storage::Source;
@@ -53,5 +53,14 @@ mod tests {
     async fn read_at_exactly_at_size_returns_empty() {
         let s = BytesSource::new(vec![0, 1, 2, 3, 4, 5]);
         assert_eq!(s.read_at(6, 0).await.unwrap(), Vec::<u8>::new());
+    }
+
+    #[tokio::test]
+    async fn read_at_strictly_past_end_returns_empty_without_panicking() {
+        // offset (100) is strictly greater than len (6): without the
+        // `.min(self.bytes.len())` clamp on `start`, indexing
+        // `self.bytes[start..end]` would panic here.
+        let s = BytesSource::new(vec![0, 1, 2, 3, 4, 5]);
+        assert_eq!(s.read_at(100, 3).await.unwrap(), Vec::<u8>::new());
     }
 }
