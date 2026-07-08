@@ -1,3 +1,4 @@
+mod cmaf;
 mod error;
 mod model;
 mod storage;
