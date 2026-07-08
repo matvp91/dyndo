@@ -150,8 +150,20 @@ pub async fn read_header<S: Source>(source: &S, path: &str) -> Result<CmafHeader
         let body_len = header
             .size
             .ok_or_else(|| malformed(path, "box", "unbounded box size"))?;
-        let body_start = offset + header_len;
-        let box_end = body_start + body_len as u64;
+        let body_start = offset.checked_add(header_len).ok_or_else(|| {
+            Error::MalformedBox {
+                box_type: "box".into(),
+                path: path.into(),
+                reason: "box size overflow".into(),
+            }
+        })?;
+        let box_end = body_start
+            .checked_add(body_len as u64)
+            .ok_or_else(|| Error::MalformedBox {
+                box_type: "box".into(),
+                path: path.into(),
+                reason: "box size overflow".into(),
+            })?;
 
         if header.kind == Moov::KIND {
             let body = source.read_at(body_start, body_len).await?;
@@ -167,7 +179,7 @@ pub async fn read_header<S: Source>(source: &S, path: &str) -> Result<CmafHeader
                     .map_err(|e| malformed(path, "sidx", e.to_string()))?,
             );
             sidx_end = box_end;
-        } else if header.kind == Moof::KIND {
+        } else if header.kind == Moof::KIND && first_moof.is_none() {
             let body = source.read_at(body_start, body_len).await?;
             first_moof = Some(
                 Moof::read_atom(&header, &mut Cursor::new(&body[..]))
@@ -276,6 +288,10 @@ mod tests {
         assert_eq!(h.duration, 123328800);
         assert_eq!(h.segments.len(), 715);
         assert_eq!(h.init_range.start, 0);
+        assert_eq!(h.init_range.end, 766);
+        assert_eq!(h.segments[0].offset, 9386);
+        assert_eq!(h.segments[0].size, 1495550);
+        assert_eq!(h.segments[0].duration, 172800);
         match h.track {
             TrackMeta::Video {
                 codec,
@@ -298,6 +314,10 @@ mod tests {
         assert_eq!(h.timescale, 48000);
         assert_eq!(h.duration, 65775616);
         assert_eq!(h.segments.len(), 715);
+        assert_eq!(h.init_range.end, 662);
+        assert_eq!(h.segments[0].offset, 9282);
+        assert_eq!(h.segments[0].size, 48530);
+        assert!(h.segments[0].duration > 0);
         match h.track {
             TrackMeta::Audio {
                 codec,
