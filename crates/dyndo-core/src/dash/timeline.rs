@@ -33,7 +33,11 @@ mod tests {
     use super::*;
 
     fn seg(duration: u64) -> Segment {
-        Segment { offset: 0, size: 0, duration }
+        Segment {
+            offset: 0,
+            size: 0,
+            duration,
+        }
     }
 
     #[test]

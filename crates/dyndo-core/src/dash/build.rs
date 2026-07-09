@@ -194,9 +194,9 @@ pub(crate) fn build_mpd(tracks: &[(String, CmafHeader)]) -> MPD {
         mpdtype: Some("static".to_string()),
         profiles: Some("urn:mpeg:dash:profile:isoff-live:2011".to_string()),
         minBufferTime: Some(Duration::from_secs_f64(max_segment_duration_secs(tracks))),
-        mediaPresentationDuration: Some(Duration::from_secs_f64(
-            media_presentation_duration_secs(tracks),
-        )),
+        mediaPresentationDuration: Some(Duration::from_secs_f64(media_presentation_duration_secs(
+            tracks,
+        ))),
         periods: vec![period],
         ..Default::default()
     }
@@ -205,7 +205,9 @@ pub(crate) fn build_mpd(tracks: &[(String, CmafHeader)]) -> MPD {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cmaf::{AudioCodec, AudioCmafHeader, ByteRange, Segment, VideoCmafHeader, VideoCodec};
+    use crate::cmaf::{
+        AudioCmafHeader, AudioCodec, ByteRange, Segment, VideoCmafHeader, VideoCodec,
+    };
 
     fn video(id: &str) -> (String, CmafHeader) {
         (
@@ -227,7 +229,7 @@ mod tests {
                 codec: VideoCodec::Avc {
                     profile: 0x64,
                     constraints: 0,
-                    level: 0x28
+                    level: 0x28,
                 },
                 width: 1920,
                 height: 1080,
@@ -254,7 +256,7 @@ mod tests {
                     5
                 ],
                 codec: AudioCodec::Aac {
-                    audio_object_type: 2
+                    audio_object_type: 2,
                 },
                 sample_rate: 48000,
                 channels: 2,

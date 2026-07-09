@@ -40,11 +40,7 @@ async fn main() -> anyhow::Result<()> {
             let asset = dyndo_core::build_asset(&input).await?;
             let json = serde_json::to_string_pretty(&asset)?;
             tokio::fs::write(&output, json).await?;
-            println!(
-                "wrote {} ({} tracks)",
-                output.display(),
-                asset.tracks.len()
-            );
+            println!("wrote {} ({} tracks)", output.display(), asset.tracks.len());
         }
         Command::Dash { input, output } => {
             let bytes = tokio::fs::read(&input).await?;
