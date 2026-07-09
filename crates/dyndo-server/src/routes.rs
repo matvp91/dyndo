@@ -1,4 +1,5 @@
 use std::path::{Path as StdPath, PathBuf};
+use std::sync::Arc;
 use axum::{
     extract::{Path, State},
     http::header,
@@ -11,16 +12,16 @@ use dyndo_core::{
     find_segment_by_time, generate_mpd, read_header, Asset, LocalFile, Source, Stream, Track,
 };
 
+use crate::config::Config;
 use crate::error::ServerError;
 use crate::path::resolve_within;
-use crate::state::AppState;
 
-pub(crate) fn build_router(state: AppState) -> Router {
+pub(crate) fn build_router(config: Arc<Config>) -> Router {
     let cors = CorsLayer::new().allow_origin(Any).allow_methods(Any);
     Router::new()
         .route("/{asset}/dash/index.mpd", get(manifest))
         .route("/{asset}/dash/{repr}/{seg}", get(segment))
-        .with_state(state)
+        .with_state(config)
         .layer(cors)
 }
 
@@ -43,10 +44,10 @@ async fn load_asset(base: &StdPath, asset_id: &str) -> Result<(PathBuf, Asset), 
 }
 
 async fn manifest(
-    State(state): State<AppState>,
+    State(config): State<Arc<Config>>,
     Path(asset_id): Path<String>,
 ) -> Result<Response, ServerError> {
-    let (asset_dir, mut asset) = load_asset(&state.assets_base_path, &asset_id).await?;
+    let (asset_dir, mut asset) = load_asset(&config.assets_base_path, &asset_id).await?;
     // Rewrite each track's source to an absolute path inside the asset dir, so
     // generate_mpd (which opens the sources itself) resolves them correctly.
     for track in &mut asset.tracks {
@@ -64,10 +65,10 @@ async fn manifest(
 }
 
 async fn segment(
-    State(state): State<AppState>,
+    State(config): State<Arc<Config>>,
     Path((asset_id, repr, seg)): Path<(String, String, String)>,
 ) -> Result<Response, ServerError> {
-    let (asset_dir, asset) = load_asset(&state.assets_base_path, &asset_id).await?;
+    let (asset_dir, asset) = load_asset(&config.assets_base_path, &asset_id).await?;
     let track = asset
         .tracks
         .iter()
