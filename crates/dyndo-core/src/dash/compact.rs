@@ -14,7 +14,7 @@
 //!    move each field common to all reps up to the set, leaving only differing fields
 //!    (typically `SegmentTimeline`) per `Representation`.
 
-use dash_mpd::{AdaptationSet, MPD};
+use dash_mpd::{AdaptationSet, SegmentTemplate, MPD};
 
 /// Hoist shared `SegmentTemplate` content up to the `AdaptationSet` level across the
 /// whole MPD, in place. Idempotent: applying it twice equals applying it once.
@@ -22,6 +22,7 @@ pub(crate) fn compact(mpd: &mut MPD) {
     for period in &mut mpd.periods {
         for set in &mut period.adaptations {
             hoist_shared_template(set);
+            hoist_shared_attributes(set);
         }
     }
 }
@@ -47,6 +48,82 @@ fn hoist_shared_template(set: &mut AdaptationSet) {
     set.SegmentTemplate = Some(first);
     for rep in &mut set.representations {
         rep.SegmentTemplate = None;
+    }
+}
+
+/// Method 2: for an `AdaptationSet` whose `Representation`s still carry differing
+/// `SegmentTemplate`s, hoist every field common to all of them up to the set, leaving
+/// only differing fields (typically `SegmentTimeline`) per `Representation`. A field is
+/// hoisted only when all reps set it to the same `Some(value)`. If a rep's template is
+/// emptied by this, it is dropped to `None`.
+///
+/// No-op if the set already has a template (method 1 hoisted the identical case), if
+/// there are fewer than two reps, or if any rep lacks a template. The field list mirrors
+/// `dash_mpd::SegmentTemplate`.
+fn hoist_shared_attributes(set: &mut AdaptationSet) {
+    if set.SegmentTemplate.is_some() || set.representations.len() < 2 {
+        return;
+    }
+    if !set.representations.iter().all(|r| r.SegmentTemplate.is_some()) {
+        return;
+    }
+
+    let mut shared = SegmentTemplate::default();
+    let mut hoisted_any = false;
+
+    // Hoist one field: if every rep has it set to the same value, copy it to `shared`
+    // and clear it on each rep. `first` is cloned so no borrow is held while mutating.
+    macro_rules! hoist_field {
+        ($field:ident) => {{
+            let first = set.representations[0]
+                .SegmentTemplate
+                .as_ref()
+                .unwrap()
+                .$field
+                .clone();
+            if first.is_some()
+                && set
+                    .representations
+                    .iter()
+                    .all(|r| r.SegmentTemplate.as_ref().unwrap().$field == first)
+            {
+                shared.$field = first;
+                for rep in &mut set.representations {
+                    rep.SegmentTemplate.as_mut().unwrap().$field = None;
+                }
+                hoisted_any = true;
+            }
+        }};
+    }
+
+    hoist_field!(media);
+    hoist_field!(index);
+    hoist_field!(initialization);
+    hoist_field!(bitstreamSwitching);
+    hoist_field!(indexRange);
+    hoist_field!(indexRangeExact);
+    hoist_field!(startNumber);
+    hoist_field!(duration);
+    hoist_field!(timescale);
+    hoist_field!(eptDelta);
+    hoist_field!(pbDelta);
+    hoist_field!(presentationTimeOffset);
+    hoist_field!(availabilityTimeOffset);
+    hoist_field!(availabilityTimeComplete);
+    hoist_field!(Initialization);
+    hoist_field!(representation_index);
+    hoist_field!(failover_content);
+    hoist_field!(SegmentTimeline);
+    hoist_field!(BitstreamSwitching);
+
+    if hoisted_any {
+        set.SegmentTemplate = Some(shared);
+        // Drop per-Representation templates that hoisting has emptied.
+        for rep in &mut set.representations {
+            if rep.SegmentTemplate.as_ref() == Some(&SegmentTemplate::default()) {
+                rep.SegmentTemplate = None;
+            }
+        }
     }
 }
 
@@ -146,5 +223,91 @@ mod tests {
             mpd.periods[0].adaptations[0].SegmentTemplate.as_ref(),
             Some(&t)
         );
+    }
+
+    #[test]
+    fn common_attributes_hoist_leaving_differing_timeline() {
+        // Same timescale/media/init/PTO, different SegmentTimeline durations.
+        let a = tmpl(90000, vec![s(Some(0), 180000, Some(4))]);
+        let b = tmpl(90000, vec![s(Some(0), 150000, Some(4))]);
+        let mut set = set_with(vec![rep("v0", a), rep("v1", b)]);
+        hoist_shared_attributes(&mut set);
+
+        let shared = set.SegmentTemplate.as_ref().unwrap();
+        assert_eq!(shared.timescale, Some(90000));
+        assert_eq!(shared.media.as_deref(), Some("$RepresentationID$/$Time$.m4s"));
+        assert_eq!(
+            shared.initialization.as_deref(),
+            Some("$RepresentationID$/init.mp4")
+        );
+        assert_eq!(shared.presentationTimeOffset, Some(0));
+        // The differing element stays per-rep; the common ones are cleared at set level.
+        assert!(shared.SegmentTimeline.is_none());
+
+        let r0 = set.representations[0].SegmentTemplate.as_ref().unwrap();
+        assert_eq!(r0.timescale, None);
+        assert_eq!(r0.media, None);
+        assert_eq!(r0.SegmentTimeline.as_ref().unwrap().segments[0].d, 180000);
+        let r1 = set.representations[1].SegmentTemplate.as_ref().unwrap();
+        assert_eq!(r1.SegmentTimeline.as_ref().unwrap().segments[0].d, 150000);
+    }
+
+    #[test]
+    fn attribute_hoist_empties_and_drops_identical_rep_templates() {
+        // Called on identical reps, method 2 alone subsumes method 1: every field is
+        // common, so reps empty out and are dropped to None.
+        let t = tmpl(90000, vec![s(Some(0), 180000, Some(4))]);
+        let mut set = set_with(vec![rep("v0", t.clone()), rep("v1", t.clone())]);
+        hoist_shared_attributes(&mut set);
+        assert_eq!(set.SegmentTemplate.as_ref(), Some(&t));
+        assert!(set.representations.iter().all(|r| r.SegmentTemplate.is_none()));
+    }
+
+    #[test]
+    fn compact_hoists_common_attributes_when_timelines_differ() {
+        let a = tmpl(90000, vec![s(Some(0), 180000, Some(4))]);
+        let b = tmpl(90000, vec![s(Some(0), 150000, Some(4))]);
+        let mut mpd = mpd_with(vec![set_with(vec![rep("v0", a), rep("v1", b)])]);
+        compact(&mut mpd);
+        let set = &mpd.periods[0].adaptations[0];
+        let shared = set.SegmentTemplate.as_ref().unwrap();
+        assert_eq!(shared.media.as_deref(), Some("$RepresentationID$/$Time$.m4s"));
+        assert!(shared.SegmentTimeline.is_none());
+        assert!(set.representations[0]
+            .SegmentTemplate
+            .as_ref()
+            .unwrap()
+            .SegmentTimeline
+            .is_some());
+    }
+
+    #[test]
+    fn compact_handles_each_set_independently() {
+        let v = tmpl(90000, vec![s(Some(0), 180000, Some(4))]);
+        let a = tmpl(48000, vec![s(Some(0), 96000, Some(4))]);
+        let mut mpd = mpd_with(vec![
+            set_with(vec![rep("v0", v.clone()), rep("v1", v.clone())]),
+            set_with(vec![rep("a0", a.clone())]),
+        ]);
+        compact(&mut mpd);
+        assert_eq!(
+            mpd.periods[0].adaptations[0].SegmentTemplate.as_ref(),
+            Some(&v)
+        );
+        assert_eq!(
+            mpd.periods[0].adaptations[1].SegmentTemplate.as_ref(),
+            Some(&a)
+        );
+    }
+
+    #[test]
+    fn compact_is_idempotent() {
+        let a = tmpl(90000, vec![s(Some(0), 180000, Some(4))]);
+        let b = tmpl(90000, vec![s(Some(0), 150000, Some(4))]);
+        let mut once = mpd_with(vec![set_with(vec![rep("v0", a), rep("v1", b)])]);
+        compact(&mut once);
+        let mut twice = once.clone();
+        compact(&mut twice);
+        assert_eq!(once, twice);
     }
 }
