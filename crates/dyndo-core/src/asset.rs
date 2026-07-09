@@ -12,7 +12,7 @@ use crate::storage::{LocalFile, Source};
 
 /// Average bitrate in bits/s from the segment sizes and duration.
 fn average_bandwidth(total_bytes: u64, duration: u64, timescale: u32) -> u32 {
-    if duration == 0 {
+    if duration == 0 || timescale == 0 {
         return 0;
     }
     let seconds = duration as f64 / timescale as f64;
@@ -63,17 +63,15 @@ pub async fn describe_track<S: Source>(source: &S, key: String) -> Result<Track>
 
 pub async fn build_asset(inputs: &[PathBuf]) -> Result<Asset> {
     let mut tracks = Vec::with_capacity(inputs.len());
+    let mut seen = HashSet::new();
     for path in inputs {
         let key = path.to_string_lossy().into_owned();
         let source = LocalFile::new(path);
-        tracks.push(describe_track(&source, key).await?);
-    }
-
-    let mut seen = HashSet::new();
-    for track in &tracks {
+        let track = describe_track(&source, key).await?;
         if !seen.insert(track.id().to_string()) {
             return Err(Error::DuplicateTrackId(track.id().to_string()));
         }
+        tracks.push(track);
     }
 
     Ok(Asset { tracks })
@@ -108,6 +106,24 @@ mod tests {
                 assert_eq!(v.source, "index_video_avc_1080.mp4");
             }
             _ => panic!("expected video"),
+        }
+    }
+
+    #[tokio::test]
+    async fn describes_audio_track_with_computed_bandwidth_and_id() {
+        let src = fixture("index_audio_aac_nl_2.mp4");
+        let track = describe_track(&src, "index_audio_aac_nl_2.mp4".into())
+            .await
+            .unwrap();
+        match track {
+            Track::Audio(a) => {
+                assert_eq!(a.id, "audio_aac_nld_2_197");
+                assert_eq!(a.bandwidth, 196918);
+                assert_eq!(a.codec, "mp4a.40.2");
+                assert_eq!(a.source, "index_audio_aac_nl_2.mp4");
+                assert_eq!(a.language.as_deref(), Some("nld"));
+            }
+            _ => panic!("expected audio"),
         }
     }
 
