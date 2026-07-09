@@ -1,5 +1,6 @@
 mod asset;
 pub mod cmaf;
+mod dash;
 mod error;
 mod model;
 mod storage;
