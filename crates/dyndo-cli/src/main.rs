@@ -29,6 +29,10 @@ enum Command {
         /// Output manifest path.
         #[arg(short, long = "output", default_value = "stream.mpd")]
         output: PathBuf,
+        /// Hoist SegmentTemplate content shared by all Representations up to the
+        /// AdaptationSet level.
+        #[arg(short = 'c', long = "compact")]
+        compact: bool,
     },
 }
 
@@ -42,10 +46,14 @@ async fn main() -> anyhow::Result<()> {
             tokio::fs::write(&output, json).await?;
             println!("wrote {} ({} tracks)", output.display(), asset.tracks.len());
         }
-        Command::Dash { input, output } => {
+        Command::Dash {
+            input,
+            output,
+            compact,
+        } => {
             let bytes = tokio::fs::read(&input).await?;
             let asset: dyndo_core::Asset = serde_json::from_slice(&bytes)?;
-            let mpd = dyndo_core::generate_mpd(&asset).await?;
+            let mpd = dyndo_core::generate_mpd(&asset, compact).await?;
             tokio::fs::write(&output, mpd).await?;
             println!("wrote {}", output.display());
         }
