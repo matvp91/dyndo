@@ -1,4 +1,5 @@
 mod build;
+mod compact;
 mod timeline;
 
 pub(crate) use build::build_mpd;
