@@ -53,7 +53,7 @@ pub struct AudioCmafHeader {
     pub language: Option<String>,
 }
 
-fn malformed(path: &str, box_type: &str, reason: impl Into<String>) -> Error {
+pub(crate) fn malformed(path: &str, box_type: &str, reason: impl Into<String>) -> Error {
     Error::MalformedBox {
         box_type: box_type.into(),
         path: path.into(),

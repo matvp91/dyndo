@@ -1,6 +1,11 @@
 //! Codec identity: the parsed codec-param enums, their fourcc, and RFC 6381
 //! codec-string assembly. mp4-atom sample entries are projected into these enums
-//! by `video_codec`/`audio_codec` (added in a later task); nothing here escapes cmaf.
+//! by `video_codec`/`audio_codec`; nothing here escapes cmaf.
+
+use mp4_atom::{Audio, Codec, Visual};
+
+use super::header::malformed;
+use crate::error::Result;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VideoCodec {
@@ -83,9 +88,121 @@ impl AudioCodec {
     }
 }
 
+/// Project the first supported video sample entry into `(VideoCodec, &Visual)`.
+pub(crate) fn video_codec<'a>(codecs: &'a [Codec], path: &str) -> Result<(VideoCodec, &'a Visual)> {
+    codecs
+        .iter()
+        .find_map(|c| match c {
+            Codec::Avc1(a) => Some((
+                VideoCodec::Avc {
+                    profile: a.avcc.avc_profile_indication,
+                    constraints: a.avcc.profile_compatibility,
+                    level: a.avcc.avc_level_indication,
+                },
+                &a.visual,
+            )),
+            Codec::Av01(a) => Some((
+                VideoCodec::Av1 {
+                    seq_profile: a.av1c.seq_profile,
+                    seq_level_idx: a.av1c.seq_level_idx_0,
+                    tier: a.av1c.seq_tier_0,
+                    high_bitdepth: a.av1c.high_bitdepth,
+                    twelve_bit: a.av1c.twelve_bit,
+                },
+                &a.visual,
+            )),
+            _ => None,
+        })
+        .ok_or_else(|| malformed(path, "stsd", "no supported video sample entry"))
+}
+
+/// Project the first supported audio sample entry into `(AudioCodec, &Audio)`.
+pub(crate) fn audio_codec<'a>(codecs: &'a [Codec], path: &str) -> Result<(AudioCodec, &'a Audio)> {
+    codecs
+        .iter()
+        .find_map(|c| match c {
+            Codec::Mp4a(a) => Some((
+                AudioCodec::Aac {
+                    audio_object_type: a.esds.es_desc.dec_config.dec_specific.profile,
+                },
+                &a.audio,
+            )),
+            Codec::Ac3(a) => Some((AudioCodec::Ac3, &a.audio)),
+            Codec::Eac3(a) => Some((AudioCodec::Ec3, &a.audio)),
+            _ => None,
+        })
+        .ok_or_else(|| malformed(path, "stsd", "no supported audio sample entry"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use mp4_atom::{Av01, Av1c, Codec, Visual};
+
+    #[test]
+    fn extracts_avc_params_and_visual() {
+        let mut avc1 = mp4_atom::Avc1::default();
+        avc1.visual = Visual {
+            width: 1920,
+            height: 1080,
+            ..Default::default()
+        };
+        avc1.avcc.avc_profile_indication = 0x64;
+        avc1.avcc.profile_compatibility = 0x00;
+        avc1.avcc.avc_level_indication = 0x28;
+        let codecs = [Codec::Avc1(avc1)];
+        let (codec, visual) = video_codec(&codecs, "t.mp4").unwrap();
+        assert_eq!(
+            codec,
+            VideoCodec::Avc {
+                profile: 0x64,
+                constraints: 0,
+                level: 0x28
+            }
+        );
+        assert_eq!((visual.width, visual.height), (1920, 1080));
+    }
+
+    #[test]
+    fn extracts_av1_params() {
+        let av01 = Av01 {
+            visual: Visual {
+                width: 320,
+                height: 240,
+                ..Default::default()
+            },
+            av1c: Av1c {
+                seq_profile: 0,
+                seq_level_idx_0: 5,
+                seq_tier_0: false,
+                high_bitdepth: false,
+                twelve_bit: false,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let (codec, _visual) = video_codec(&[Codec::Av01(av01)], "t.mp4").unwrap();
+        assert_eq!(
+            codec,
+            VideoCodec::Av1 {
+                seq_profile: 0,
+                seq_level_idx: 5,
+                tier: false,
+                high_bitdepth: false,
+                twelve_bit: false
+            }
+        );
+    }
+
+    #[test]
+    fn video_extraction_errors_when_no_supported_entry() {
+        assert!(video_codec(&[], "t.mp4").is_err());
+    }
+
+    #[test]
+    fn audio_extraction_errors_when_no_supported_entry() {
+        assert!(audio_codec(&[], "t.mp4").is_err());
+    }
 
     #[test]
     fn video_fourcc() {
