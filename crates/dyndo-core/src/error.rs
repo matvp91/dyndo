@@ -33,6 +33,9 @@ pub enum Error {
 
     #[error("duplicate track id {0} — inputs are not uniquely distinguishable")]
     DuplicateTrackId(String),
+
+    #[error("MPD serialization failed: {0}")]
+    MpdSerialization(String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

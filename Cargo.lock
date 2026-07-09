@@ -337,6 +337,7 @@ version = "0.1.0"
 dependencies = [
  "dash-mpd",
  "mp4-atom",
+ "quick-xml",
  "serde",
  "serde_json",
  "tempfile",
