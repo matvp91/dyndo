@@ -3,6 +3,7 @@
 mod config;
 mod error;
 mod path;
+mod segment;
 
 use config::Config;
 
