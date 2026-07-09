@@ -33,7 +33,9 @@ pub enum CmafHeader {
 pub struct VideoCmafHeader {
     pub timescale: u32,
     pub duration: u64,
+    /// Average bitrate in bits/s, derived from the segment sizes and duration.
     pub bandwidth: u32,
+    pub earliest_presentation_time: u64,
     pub init_range: ByteRange,
     pub segments: Vec<Segment>,
     pub codec: VideoCodec,
@@ -45,7 +47,9 @@ pub struct VideoCmafHeader {
 pub struct AudioCmafHeader {
     pub timescale: u32,
     pub duration: u64,
+    /// Average bitrate in bits/s, derived from the segment sizes and duration.
     pub bandwidth: u32,
+    pub earliest_presentation_time: u64,
     pub init_range: ByteRange,
     pub segments: Vec<Segment>,
     pub codec: AudioCodec,
@@ -218,6 +222,7 @@ pub async fn read_header<S: Source>(source: &S, path: &str) -> Result<CmafHeader
             timescale: scanned.sidx.timescale,
             duration,
             bandwidth,
+            earliest_presentation_time: scanned.sidx.earliest_presentation_time,
             init_range,
             segments,
             codec,
@@ -230,6 +235,7 @@ pub async fn read_header<S: Source>(source: &S, path: &str) -> Result<CmafHeader
             timescale: scanned.sidx.timescale,
             duration,
             bandwidth,
+            earliest_presentation_time: scanned.sidx.earliest_presentation_time,
             init_range,
             segments,
             codec,
@@ -267,6 +273,7 @@ mod tests {
                 assert_eq!(v.timescale, 90000);
                 assert_eq!(v.duration, 123328800);
                 assert_eq!(v.bandwidth, 4807228);
+                assert_eq!(v.earliest_presentation_time, 0);
                 assert_eq!(v.segments.len(), 715);
                 assert_eq!(v.init_range.start, 0);
                 assert_eq!(v.init_range.end, 766);
@@ -290,6 +297,7 @@ mod tests {
                 assert_eq!(a.timescale, 48000);
                 assert_eq!(a.duration, 65775616);
                 assert_eq!(a.bandwidth, 196918);
+                assert_eq!(a.earliest_presentation_time, 0);
                 assert_eq!(a.segments.len(), 715);
                 assert_eq!(a.init_range.end, 662);
                 assert_eq!(a.segments[0].offset, 9282);
