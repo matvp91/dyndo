@@ -16,7 +16,8 @@ pub async fn generate_mpd(asset: &Asset) -> Result<String> {
         let header = read_header(&source, track.source()).await?;
         headers.push((track.id().to_string(), header));
     }
-    Ok(build_mpd(&headers).to_string())
+    let xml = build_mpd(&headers).to_string();
+    Ok(format!("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n{xml}"))
 }
 
 #[cfg(test)]
@@ -40,6 +41,7 @@ mod tests {
         .unwrap();
 
         let xml = generate_mpd(&asset).await.unwrap();
+        assert!(xml.starts_with("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<MPD"));
         assert!(xml.contains("type=\"static\""));
         assert!(xml.contains("<SegmentTimeline>"));
         assert!(xml.contains("codecs=\"avc1.640028\""));
