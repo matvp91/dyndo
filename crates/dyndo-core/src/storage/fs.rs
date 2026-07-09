@@ -83,4 +83,28 @@ mod tests {
         let src = LocalFile::new(f.path());
         assert_eq!(src.read_at(5, 3).await.unwrap(), Vec::<u8>::new());
     }
+
+    #[tokio::test]
+    async fn read_at_overhanging_end_returns_partial_bytes() {
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(&[0, 1, 2, 3, 4, 5]).unwrap();
+        let src = LocalFile::new(f.path());
+        assert_eq!(src.read_at(4, 10).await.unwrap(), vec![4, 5]);
+    }
+
+    #[tokio::test]
+    async fn read_at_exactly_at_size_returns_empty() {
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(&[0, 1, 2, 3, 4, 5]).unwrap();
+        let src = LocalFile::new(f.path());
+        assert_eq!(src.read_at(6, 0).await.unwrap(), Vec::<u8>::new());
+    }
+
+    #[tokio::test]
+    async fn read_at_strictly_past_end_returns_empty() {
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(&[0, 1, 2, 3, 4, 5]).unwrap();
+        let src = LocalFile::new(f.path());
+        assert_eq!(src.read_at(100, 3).await.unwrap(), Vec::<u8>::new());
+    }
 }

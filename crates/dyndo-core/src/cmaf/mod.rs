@@ -1,4 +1,3 @@
-mod codec;
 mod header;
 
-pub use header::{read_header, ByteRange, CmafHeader, Segment, TrackMeta};
+pub use header::{read_header, AudioMeta, ByteRange, CmafHeader, Segment, TrackMeta, VideoMeta};

@@ -27,23 +27,18 @@ impl Track {
 pub struct VideoTrack {
     pub id: String,
     pub source: String,
-    pub codec: String,
+    pub fourcc: String,
     pub timescale: u32,
-    pub duration: u64,
-    pub bandwidth: u32,
     pub width: u32,
     pub height: u32,
-    pub frame_rate: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AudioTrack {
     pub id: String,
     pub source: String,
-    pub codec: String,
+    pub fourcc: String,
     pub timescale: u32,
-    pub duration: u64,
-    pub bandwidth: u32,
     pub sample_rate: u32,
     pub channels: u16,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -59,20 +54,17 @@ mod tests {
         let asset = Asset {
             tracks: vec![Track::Video(VideoTrack {
                 id: "video_avc_1080_4807".into(),
-                source: "index_video_avc_1080.mp4".into(),
-                codec: "avc1.640028".into(),
+                source: "video_avc_1080.mp4".into(),
+                fourcc: "avc1".into(),
                 timescale: 90000,
-                duration: 123328800,
-                bandwidth: 4807228,
                 width: 1920,
                 height: 1080,
-                frame_rate: "25/1".into(),
             })],
         };
         let json = serde_json::to_value(&asset).unwrap();
         let t = &json["tracks"][0];
         assert_eq!(t["type"], "video");
-        assert_eq!(t["frame_rate"], "25/1");
+        assert_eq!(t["fourcc"], "avc1");
         assert_eq!(t["width"], 1920);
     }
 
@@ -81,10 +73,8 @@ mod tests {
         let track = Track::Audio(AudioTrack {
             id: "audio_aac_und_2_197".into(),
             source: "a.mp4".into(),
-            codec: "mp4a.40.2".into(),
+            fourcc: "mp4a".into(),
             timescale: 48000,
-            duration: 65775616,
-            bandwidth: 196918,
             sample_rate: 48000,
             channels: 2,
             language: None,
