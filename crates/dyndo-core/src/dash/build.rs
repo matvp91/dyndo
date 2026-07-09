@@ -104,7 +104,7 @@ fn representation(id: &str, h: &CmafHeader) -> Representation {
             codecs: Some(v.codec.rfc6381()),
             width: Some(v.width as u64),
             height: Some(v.height as u64),
-            frameRate: Some(frame_rate_str(v.frame_rate)),
+            frameRate: (v.frame_rate.0 != 0).then(|| frame_rate_str(v.frame_rate)),
             SegmentTemplate: Some(segment_template(
                 v.timescale,
                 v.earliest_presentation_time,

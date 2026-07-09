@@ -263,6 +263,8 @@ pub async fn read_header<S: Source>(source: &S, path: &str) -> Result<CmafHeader
     if handler == FourCC::new(b"vide") {
         let (codec, visual) = codec::video_codec(codecs, path)?;
         let sample_duration = first_sample_duration(&scanned.first_moof, &scanned.moov);
+        // frame_rate divides the moof sample duration by the sidx timescale; conformant
+        // CMAF has sidx.timescale == mdhd (media) timescale, so this is exact.
         let frame_rate = frame_rate(sample_duration, scanned.sidx.timescale);
         Ok(CmafHeader::Video(VideoCmafHeader {
             timescale: scanned.sidx.timescale,
