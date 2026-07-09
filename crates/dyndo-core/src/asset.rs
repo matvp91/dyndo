@@ -20,7 +20,7 @@ pub async fn describe_track<S: Source>(source: &S, key: String) -> Result<Track>
         CmafHeader::Video(v) => Track::Video(VideoTrack {
             id,
             source: key,
-            fourcc: v.fourcc.to_string(),
+            fourcc: v.codec.fourcc().to_string(),
             timescale: v.timescale,
             width: v.width,
             height: v.height,
@@ -28,7 +28,7 @@ pub async fn describe_track<S: Source>(source: &S, key: String) -> Result<Track>
         CmafHeader::Audio(a) => Track::Audio(AudioTrack {
             id,
             source: key,
-            fourcc: a.fourcc.to_string(),
+            fourcc: a.codec.fourcc().to_string(),
             timescale: a.timescale,
             sample_rate: a.sample_rate,
             channels: a.channels,

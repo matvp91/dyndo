@@ -4,8 +4,9 @@
 
 use std::io::Cursor;
 
-use mp4_atom::{Atom, Audio, Codec, FourCC, Header, Mdhd, Moov, ReadAtom, ReadFrom, Sidx, Visual};
+use mp4_atom::{Atom, FourCC, Header, Mdhd, Moov, ReadAtom, ReadFrom, Sidx};
 
+use crate::cmaf::codec::{self, AudioCodec, VideoCodec};
 use crate::error::{Error, Result};
 use crate::storage::Source;
 
@@ -35,7 +36,7 @@ pub struct VideoCmafHeader {
     pub bandwidth: u32,
     pub init_range: ByteRange,
     pub segments: Vec<Segment>,
-    pub fourcc: &'static str,
+    pub codec: VideoCodec,
     pub width: u32,
     pub height: u32,
 }
@@ -47,7 +48,7 @@ pub struct AudioCmafHeader {
     pub bandwidth: u32,
     pub init_range: ByteRange,
     pub segments: Vec<Segment>,
-    pub fourcc: &'static str,
+    pub codec: AudioCodec,
     pub sample_rate: u32,
     pub channels: u16,
     pub language: Option<String>,
@@ -186,40 +187,6 @@ fn build_segments(sidx: &Sidx, sidx_end: u64) -> Vec<Segment> {
     segments
 }
 
-/// The sample-entry fourcc and shared visual box for the first supported video
-/// codec in the `stsd`. The fourcc is the codec identity; assembling the RFC6381
-/// codec string (profile/level/…) is a downstream manifest concern.
-fn video_fourcc_and_visual<'a>(
-    codecs: &'a [Codec],
-    path: &str,
-) -> Result<(&'static str, &'a Visual)> {
-    codecs
-        .iter()
-        .find_map(|c| match c {
-            Codec::Avc1(avc1) => Some(("avc1", &avc1.visual)),
-            Codec::Av01(av01) => Some(("av01", &av01.visual)),
-            _ => None,
-        })
-        .ok_or_else(|| malformed(path, "stsd", "no supported video sample entry"))
-}
-
-/// The sample-entry fourcc and shared audio box for the first supported audio
-/// codec in the `stsd`.
-fn audio_fourcc_and_audio<'a>(
-    codecs: &'a [Codec],
-    path: &str,
-) -> Result<(&'static str, &'a Audio)> {
-    codecs
-        .iter()
-        .find_map(|c| match c {
-            Codec::Mp4a(mp4a) => Some(("mp4a", &mp4a.audio)),
-            Codec::Ac3(ac3) => Some(("ac-3", &ac3.audio)),
-            Codec::Eac3(eac3) => Some(("ec-3", &eac3.audio)),
-            _ => None,
-        })
-        .ok_or_else(|| malformed(path, "stsd", "no supported audio sample entry"))
-}
-
 pub async fn read_header<S: Source>(source: &S, path: &str) -> Result<CmafHeader> {
     let scanned = scan_header_boxes(source, path).await?;
 
@@ -246,26 +213,26 @@ pub async fn read_header<S: Source>(source: &S, path: &str) -> Result<CmafHeader
     };
 
     if handler == FourCC::new(b"vide") {
-        let (fourcc, visual) = video_fourcc_and_visual(codecs, path)?;
+        let (codec, visual) = codec::video_codec(codecs, path)?;
         Ok(CmafHeader::Video(VideoCmafHeader {
             timescale: scanned.sidx.timescale,
             duration,
             bandwidth,
             init_range,
             segments,
-            fourcc,
+            codec,
             width: visual.width as u32,
             height: visual.height as u32,
         }))
     } else if handler == FourCC::new(b"soun") {
-        let (fourcc, audio) = audio_fourcc_and_audio(codecs, path)?;
+        let (codec, audio) = codec::audio_codec(codecs, path)?;
         Ok(CmafHeader::Audio(AudioCmafHeader {
             timescale: scanned.sidx.timescale,
             duration,
             bandwidth,
             init_range,
             segments,
-            fourcc,
+            codec,
             sample_rate: audio.sample_rate.integer() as u32,
             channels: audio.channel_count,
             language: language_string(&mdia.mdhd),
@@ -282,7 +249,6 @@ pub async fn read_header<S: Source>(source: &S, path: &str) -> Result<CmafHeader
 mod tests {
     use super::*;
     use crate::storage::LocalFile;
-    use mp4_atom::{Ac3, Ac3SpecificBox, Av01, Eac3, Ec3IndependentSubstream, Ec3SpecificBox};
 
     fn fixture(name: &str) -> LocalFile {
         LocalFile::new(format!(
@@ -307,7 +273,8 @@ mod tests {
                 assert_eq!(v.segments[0].offset, 9386);
                 assert_eq!(v.segments[0].size, 1495550);
                 assert_eq!(v.segments[0].duration, 172800);
-                assert_eq!(v.fourcc, "avc1");
+                assert_eq!(v.codec.fourcc(), "avc1");
+                assert_eq!(v.codec.rfc6381(), "avc1.640028");
                 assert_eq!((v.width, v.height), (1920, 1080));
             }
             _ => panic!("expected video"),
@@ -328,7 +295,8 @@ mod tests {
                 assert_eq!(a.segments[0].offset, 9282);
                 assert_eq!(a.segments[0].size, 48530);
                 assert!(a.segments[0].duration > 0);
-                assert_eq!(a.fourcc, "mp4a");
+                assert_eq!(a.codec.fourcc(), "mp4a");
+                assert_eq!(a.codec.rfc6381(), "mp4a.40.2");
                 assert_eq!(a.sample_rate, 48000);
                 assert_eq!(a.channels, 2);
                 assert_eq!(a.language.as_deref(), Some("nld"));
@@ -354,7 +322,7 @@ mod tests {
                 assert_eq!(v.segments[0].offset, 847);
                 assert_eq!(v.segments[0].size, 8342);
                 assert_eq!(v.segments[0].duration, 12800);
-                assert_eq!(v.fourcc, "av01");
+                assert_eq!(v.codec.fourcc(), "av01");
                 assert_eq!((v.width, v.height), (320, 240));
             }
             _ => panic!("expected video"),
@@ -372,7 +340,7 @@ mod tests {
                 assert_eq!(a.init_range.end, 725);
                 assert_eq!(a.segments[0].offset, 801);
                 assert_eq!(a.segments[0].size, 24684);
-                assert_eq!(a.fourcc, "ac-3");
+                assert_eq!(a.codec.fourcc(), "ac-3");
                 assert_eq!(a.sample_rate, 48000);
                 assert_eq!(a.channels, 1);
             }
@@ -391,94 +359,11 @@ mod tests {
                 assert_eq!(a.init_range.end, 727);
                 assert_eq!(a.segments[0].offset, 803);
                 assert_eq!(a.segments[0].size, 24684);
-                assert_eq!(a.fourcc, "ec-3");
+                assert_eq!(a.codec.fourcc(), "ec-3");
                 assert_eq!(a.sample_rate, 48000);
                 assert_eq!(a.channels, 1);
             }
             _ => panic!("expected audio"),
         }
-    }
-
-    // Dispatch-level tests for the newer codecs. They exercise the real
-    // sample-entry extraction without needing binary fixtures.
-
-    #[test]
-    fn video_dispatch_maps_av01_to_fourcc_and_visual() {
-        let av01 = Av01 {
-            visual: Visual {
-                width: 1920,
-                height: 800,
-                ..Default::default()
-            },
-            ..Default::default()
-        };
-        let codecs = vec![Codec::Av01(av01)];
-        let (fourcc, visual) = video_fourcc_and_visual(&codecs, "test.mp4").unwrap();
-        assert_eq!(fourcc, "av01");
-        assert_eq!((visual.width, visual.height), (1920, 800));
-    }
-
-    #[test]
-    fn audio_dispatch_maps_ac3_to_fourcc_and_audio() {
-        let ac3 = Ac3 {
-            audio: Audio {
-                data_reference_index: 1,
-                channel_count: 6,
-                sample_size: 16,
-                sample_rate: 48000.into(),
-            },
-            dac3: Ac3SpecificBox {
-                fscod: 0,
-                bsid: 8,
-                bsmod: 0,
-                acmod: 7,
-                lfeon: true,
-                bit_rate_code: 0,
-            },
-        };
-        let codecs = vec![Codec::Ac3(ac3)];
-        let (fourcc, audio) = audio_fourcc_and_audio(&codecs, "test.mp4").unwrap();
-        assert_eq!(fourcc, "ac-3");
-        assert_eq!(audio.channel_count, 6);
-        assert_eq!(audio.sample_rate.integer() as u32, 48000);
-    }
-
-    #[test]
-    fn audio_dispatch_maps_eac3_to_fourcc_and_audio() {
-        let eac3 = Eac3 {
-            audio: Audio {
-                data_reference_index: 1,
-                channel_count: 8,
-                sample_size: 16,
-                sample_rate: 48000.into(),
-            },
-            dec3: Ec3SpecificBox {
-                data_rate: 768,
-                substreams: vec![Ec3IndependentSubstream {
-                    fscod: 0,
-                    bsid: 16,
-                    asvc: false,
-                    bsmod: 0,
-                    acmod: 7,
-                    lfeon: true,
-                    num_dep_sub: 0,
-                    chan_loc: None,
-                }],
-            },
-        };
-        let codecs = vec![Codec::Eac3(eac3)];
-        let (fourcc, audio) = audio_fourcc_and_audio(&codecs, "test.mp4").unwrap();
-        assert_eq!(fourcc, "ec-3");
-        assert_eq!(audio.channel_count, 8);
-    }
-
-    #[test]
-    fn video_dispatch_errors_when_no_supported_entry() {
-        assert!(video_fourcc_and_visual(&[], "test.mp4").is_err());
-    }
-
-    #[test]
-    fn audio_dispatch_errors_when_no_supported_entry() {
-        assert!(audio_fourcc_and_audio(&[], "test.mp4").is_err());
     }
 }
