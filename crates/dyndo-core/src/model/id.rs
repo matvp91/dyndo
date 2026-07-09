@@ -65,6 +65,7 @@ mod tests {
             codec,
             width: 0,
             height,
+            frame_rate: (0, 1),
         })
     }
 

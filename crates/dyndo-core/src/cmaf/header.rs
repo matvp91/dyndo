@@ -1,10 +1,11 @@
-//! Async, header-first CMAF parsing. Reads moov + sidx, then stops (never touches
-//! a moof or mdat). Returns an internal `CmafHeader`; mapping to the serde model
-//! lives in `asset.rs`.
+//! Async, header-first CMAF parsing. Reads moov + sidx + the first moof, then
+//! stops (never touches mdat). The first moof supplies the video sample duration
+//! used to derive frame rate. Returns an internal `CmafHeader`; mapping to the
+//! serde model lives in `asset.rs`.
 
 use std::io::Cursor;
 
-use mp4_atom::{Atom, FourCC, Header, Mdhd, Moov, ReadAtom, ReadFrom, Sidx};
+use mp4_atom::{Atom, FourCC, Header, Mdhd, Moof, Moov, ReadAtom, ReadFrom, Sidx};
 
 use crate::cmaf::codec::{self, AudioCodec, VideoCodec};
 use crate::error::{Error, Result};
@@ -41,6 +42,7 @@ pub struct VideoCmafHeader {
     pub codec: VideoCodec,
     pub width: u32,
     pub height: u32,
+    pub frame_rate: (u32, u32),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -81,6 +83,42 @@ fn average_bandwidth(total_bytes: u64, duration: u64, timescale: u32) -> u32 {
     }
     let seconds = duration as f64 / timescale as f64;
     (total_bytes as f64 * 8.0 / seconds).round() as u32
+}
+
+fn gcd(a: u32, b: u32) -> u32 {
+    if b == 0 {
+        a
+    } else {
+        gcd(b, a % b)
+    }
+}
+
+/// `(num, den)` frame rate = `timescale / sample_duration`, reduced.
+fn frame_rate(sample_duration: u32, timescale: u32) -> (u32, u32) {
+    if sample_duration == 0 || timescale == 0 {
+        return (0, 1);
+    }
+    let g = gcd(timescale, sample_duration);
+    (timescale / g, sample_duration / g)
+}
+
+/// First sample's duration from the first moof, falling back to tfhd then trex defaults.
+fn first_sample_duration(moof: &Moof, moov: &Moov) -> u32 {
+    let from_traf = moof.traf.first().and_then(|traf| {
+        traf.trun
+            .iter()
+            .flat_map(|t| &t.entries)
+            .find_map(|e| e.duration)
+            .or(traf.tfhd.default_sample_duration)
+    });
+    from_traf
+        .or_else(|| {
+            moov.mvex
+                .as_ref()
+                .and_then(|m| m.trex.first())
+                .map(|t| t.default_sample_duration)
+        })
+        .unwrap_or(0)
 }
 
 /// A single box's parsed header plus the absolute byte range of its body.
@@ -141,20 +179,23 @@ async fn read_atom_body<A: ReadAtom, S: Source>(
 struct ScannedBoxes {
     moov: Moov,
     sidx: Sidx,
+    first_moof: Moof,
     moov_end: u64,
     sidx_end: u64,
 }
 
-/// Header-first scan: read moov and sidx; skip everything else (notably moof and
-/// mdat, which we never fetch). Stops as soon as both are seen.
+/// Header-first scan: read moov, sidx and the first moof; skip everything else
+/// (notably mdat, which we never fetch). Stops as soon as all three are seen.
+/// The first moof supplies the video sample duration used to derive frame rate.
 async fn scan_header_boxes<S: Source>(source: &S, path: &str) -> Result<ScannedBoxes> {
     let mut offset = 0u64;
     let mut moov: Option<Moov> = None;
     let mut sidx: Option<Sidx> = None;
+    let mut first_moof: Option<Moof> = None;
     let mut moov_end = 0u64;
     let mut sidx_end = 0u64;
 
-    while moov.is_none() || sidx.is_none() {
+    while moov.is_none() || sidx.is_none() || first_moof.is_none() {
         let Some(frame) = next_box(source, offset, path).await? else {
             break; // reached end without the boxes we need
         };
@@ -164,6 +205,8 @@ async fn scan_header_boxes<S: Source>(source: &S, path: &str) -> Result<ScannedB
         } else if frame.header.kind == Sidx::KIND {
             sidx = Some(read_atom_body(source, &frame, "sidx", path).await?);
             sidx_end = frame.box_end;
+        } else if frame.header.kind == Moof::KIND && first_moof.is_none() {
+            first_moof = Some(read_atom_body(source, &frame, "moof", path).await?);
         }
         offset = frame.box_end;
     }
@@ -171,6 +214,7 @@ async fn scan_header_boxes<S: Source>(source: &S, path: &str) -> Result<ScannedB
     Ok(ScannedBoxes {
         moov: moov.ok_or_else(|| Error::MissingMoov(path.into()))?,
         sidx: sidx.ok_or_else(|| Error::MissingSidx(path.into()))?,
+        first_moof: first_moof.ok_or_else(|| malformed(path, "moof", "missing first moof"))?,
         moov_end,
         sidx_end,
     })
@@ -218,6 +262,8 @@ pub async fn read_header<S: Source>(source: &S, path: &str) -> Result<CmafHeader
 
     if handler == FourCC::new(b"vide") {
         let (codec, visual) = codec::video_codec(codecs, path)?;
+        let sample_duration = first_sample_duration(&scanned.first_moof, &scanned.moov);
+        let frame_rate = frame_rate(sample_duration, scanned.sidx.timescale);
         Ok(CmafHeader::Video(VideoCmafHeader {
             timescale: scanned.sidx.timescale,
             duration,
@@ -228,6 +274,7 @@ pub async fn read_header<S: Source>(source: &S, path: &str) -> Result<CmafHeader
             codec,
             width: visual.width as u32,
             height: visual.height as u32,
+            frame_rate,
         }))
     } else if handler == FourCC::new(b"soun") {
         let (codec, audio) = codec::audio_codec(codecs, path)?;
@@ -264,6 +311,13 @@ mod tests {
         ))
     }
 
+    #[test]
+    fn frame_rate_reduces_to_lowest_terms() {
+        assert_eq!(frame_rate(3600, 90000), (25, 1));
+        assert_eq!(frame_rate(1001, 30000), (30000, 1001));
+        assert_eq!(frame_rate(0, 90000), (0, 1));
+    }
+
     #[tokio::test]
     async fn reads_video_header() {
         let src = fixture("video_avc_1080.mp4");
@@ -283,6 +337,7 @@ mod tests {
                 assert_eq!(v.codec.fourcc(), "avc1");
                 assert_eq!(v.codec.rfc6381(), "avc1.640028");
                 assert_eq!((v.width, v.height), (1920, 1080));
+                assert_eq!(v.frame_rate, (25, 1));
             }
             _ => panic!("expected video"),
         }
