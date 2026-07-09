@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use clap::{Parser, Subcommand};
 
 /// dyndo — CMAF indexer and DASH manifest generator.
@@ -20,7 +20,8 @@ enum Command {
         #[arg(short, long = "output", default_value = "asset.json")]
         output: PathBuf,
     },
-    /// Generate a DASH MPD from an asset.json (sources resolved in the CWD).
+    /// Generate a DASH MPD from an asset.json (sources resolved relative to the
+    /// asset.json's own directory).
     Dash {
         /// Input asset.json path.
         #[arg(short, long = "input", default_value = "asset.json")]
@@ -52,7 +53,9 @@ async fn main() -> anyhow::Result<()> {
         } => {
             let bytes = tokio::fs::read(&input).await?;
             let asset: dyndo_core::Asset = serde_json::from_slice(&bytes)?;
-            let mpd = dyndo_core::generate_mpd(&asset, compact).await?;
+            // Sources in asset.json are relative to the descriptor's own directory.
+            let base = input.parent().unwrap_or_else(|| Path::new(""));
+            let mpd = dyndo_core::generate_mpd(&asset, base, compact).await?;
             tokio::fs::write(&output, mpd).await?;
             println!("wrote {}", output.display());
         }

@@ -10,7 +10,7 @@ use axum::{
 use tower_http::cors::{Any, CorsLayer};
 use url::Url;
 use dyndo_core::{
-    find_segment_by_time, generate_mpd, read_header, Asset, LocalFile, Source, Stream, Track,
+    find_segment_by_time, generate_mpd, read_header, Asset, LocalFile, Source, Stream,
 };
 
 use crate::config::Config;
@@ -67,20 +67,9 @@ async fn manifest(
     State(config): State<Arc<Config>>,
     Path(asset_id): Path<String>,
 ) -> Result<Response, ServerError> {
-    let (asset_dir, mut asset) = load_asset(&config.assets_base_path, &asset_id).await?;
-    // Rewrite each track's source to an absolute path inside the asset dir, so
-    // generate_mpd (which opens the sources itself) resolves them correctly.
-    for track in &mut asset.tracks {
-        let rel = track.source().to_string();
-        let abs = resolve_within(&asset_dir, &rel)?
-            .to_string_lossy()
-            .into_owned();
-        match track {
-            Track::Video(v) => v.source = abs,
-            Track::Audio(a) => a.source = abs,
-        }
-    }
-    let xml = generate_mpd(&asset, true).await?;
+    let (asset_dir, asset) = load_asset(&config.assets_base_path, &asset_id).await?;
+    // generate_mpd resolves each track's source against the asset dir at read time.
+    let xml = generate_mpd(&asset, &asset_dir, true).await?;
     Ok(([(header::CONTENT_TYPE, "application/dash+xml")], xml).into_response())
 }
 

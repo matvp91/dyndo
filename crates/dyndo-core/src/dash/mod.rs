@@ -4,6 +4,8 @@ mod timeline;
 
 pub(crate) use build::build_mpd;
 
+use std::path::Path;
+
 use serde::Serialize;
 
 use crate::cmaf::read_header;
@@ -11,14 +13,19 @@ use crate::error::{Error, Result};
 use crate::model::Asset;
 use crate::storage::LocalFile;
 
-/// Read every track's source in the CWD, then build + serialize a static DASH MPD,
-/// pretty-printed with two-space indentation. When `compact` is set, `SegmentTemplate`
-/// content shared by all Representations is hoisted to the `AdaptationSet` level.
-pub async fn generate_mpd(asset: &Asset, compact: bool) -> Result<String> {
+/// Read every track's source (joined onto `base`), then build + serialize a static
+/// DASH MPD, pretty-printed with two-space indentation. Each `track.source()` is
+/// resolved against `base` at read time; `base` is normally the directory that
+/// contains the `asset.json`, so sources stay relative to the descriptor. When
+/// `compact` is set, `SegmentTemplate` content shared by all Representations is
+/// hoisted to the `AdaptationSet` level.
+pub async fn generate_mpd(asset: &Asset, base: &Path, compact: bool) -> Result<String> {
     let mut headers = Vec::with_capacity(asset.tracks.len());
     for track in &asset.tracks {
-        let source = LocalFile::new(track.source());
-        let header = read_header(&source, track.source()).await?;
+        let path = base.join(track.source());
+        let key = path.to_string_lossy().into_owned();
+        let source = LocalFile::new(&path);
+        let header = read_header(&source, &key).await?;
         headers.push((track.id().to_string(), header));
     }
 
@@ -52,7 +59,7 @@ mod tests {
         }))
         .unwrap();
 
-        let xml = generate_mpd(&asset, false).await.unwrap();
+        let xml = generate_mpd(&asset, Path::new("."), false).await.unwrap();
         assert!(xml.starts_with("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<MPD"));
         // pretty-printed: nested elements are indented on their own lines
         assert!(xml.contains("\n  <Period"));
@@ -77,8 +84,8 @@ mod tests {
         }))
         .unwrap();
 
-        let verbose = generate_mpd(&asset, false).await.unwrap();
-        let compact = generate_mpd(&asset, true).await.unwrap();
+        let verbose = generate_mpd(&asset, Path::new("."), false).await.unwrap();
+        let compact = generate_mpd(&asset, Path::new("."), true).await.unwrap();
 
         // Verbose: each Representation carries its own SegmentTemplate.
         assert_eq!(verbose.matches("<SegmentTemplate").count(), 2);
