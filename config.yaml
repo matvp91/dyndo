@@ -1,0 +1,4 @@
+# dyndo-server runtime config (local). Each asset lives at {assets_base_path}/{asset-id}/.
+# Here the base is the repo root and the asset id is "assets" (assets/asset.json + its .mp4 sources).
+assets_base_path: .
+port: 8080
