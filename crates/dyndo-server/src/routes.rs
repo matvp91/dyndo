@@ -16,10 +16,6 @@ use dyndo_core::{
 use crate::config::Config;
 use crate::error::ServerError;
 
-// Join `untrusted` onto `base` via URL path resolution and reject anything that
-// resolves outside `base` — traversal (`..`), absolute paths, and foreign
-// schemes all fail the containment check. `base` must be an absolute path; its
-// URL form keeps the trailing slash so a sibling like `assets-evil` can't pass.
 fn resolve_within(base: &StdPath, untrusted: &str) -> Result<PathBuf, ServerError> {
     let base_url = Url::from_directory_path(base)
         .map_err(|_| ServerError::Internal(format!("base is not absolute: {}", base.display())))?;
@@ -45,10 +41,7 @@ pub(crate) fn build_router(config: Arc<Config>) -> Router {
         .layer(cors)
 }
 
-/// Load `{base}/{asset}/asset.json` into an owned `Asset`, returning the resolved
-/// asset directory alongside it. Missing file -> 404; malformed JSON -> 500.
-async fn load_asset(base: &StdPath, asset_id: &str) -> Result<(PathBuf, Asset), ServerError> {
-    let asset_dir = resolve_within(base, asset_id)?;
+async fn load_asset(asset_dir: &StdPath, asset_id: &str) -> Result<Asset, ServerError> {
     let json_path = asset_dir.join("asset.json");
     let bytes = tokio::fs::read(&json_path)
         .await
@@ -60,14 +53,15 @@ async fn load_asset(base: &StdPath, asset_id: &str) -> Result<(PathBuf, Asset), 
         })?;
     let asset: Asset = serde_json::from_slice(&bytes)
         .map_err(|e| ServerError::Internal(format!("invalid asset.json for {asset_id}: {e}")))?;
-    Ok((asset_dir, asset))
+    Ok(asset)
 }
 
 async fn manifest(
     State(config): State<Arc<Config>>,
     Path(asset_id): Path<String>,
 ) -> Result<Response, ServerError> {
-    let (asset_dir, asset) = load_asset(&config.assets_base_path, &asset_id).await?;
+    let asset_dir = resolve_within(&config.assets_base_path, &asset_id)?;
+    let asset = load_asset(&asset_dir, &asset_id).await?;
     // generate_mpd resolves each track's source against the asset dir at read time.
     let xml = generate_mpd(&asset, &asset_dir, true).await?;
     Ok(([(header::CONTENT_TYPE, "application/dash+xml")], xml).into_response())
@@ -77,7 +71,8 @@ async fn segment(
     State(config): State<Arc<Config>>,
     Path((asset_id, repr, seg)): Path<(String, String, String)>,
 ) -> Result<Response, ServerError> {
-    let (asset_dir, asset) = load_asset(&config.assets_base_path, &asset_id).await?;
+    let asset_dir = resolve_within(&config.assets_base_path, &asset_id)?;
+    let asset = load_asset(&asset_dir, &asset_id).await?;
     let track = asset
         .tracks
         .iter()
