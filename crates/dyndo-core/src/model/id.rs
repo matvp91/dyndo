@@ -23,10 +23,20 @@ fn kbps(bandwidth: u32) -> u32 {
 }
 
 pub fn video_track_id(codec: &str, height: u32, bandwidth: u32) -> String {
-    format!("video_{}_{}_{}", codec_token(codec), height, kbps(bandwidth))
+    format!(
+        "video_{}_{}_{}",
+        codec_token(codec),
+        height,
+        kbps(bandwidth)
+    )
 }
 
-pub fn audio_track_id(codec: &str, language: Option<&str>, channels: u16, bandwidth: u32) -> String {
+pub fn audio_track_id(
+    codec: &str,
+    language: Option<&str>,
+    channels: u16,
+    bandwidth: u32,
+) -> String {
     format!(
         "audio_{}_{}_{}_{}",
         codec_token(codec),
@@ -42,7 +52,10 @@ mod tests {
 
     #[test]
     fn video_id_uses_codec_token_height_and_kbps() {
-        assert_eq!(video_track_id("avc1.640028", 1080, 4807228), "video_avc_1080_4807");
+        assert_eq!(
+            video_track_id("avc1.640028", 1080, 4807228),
+            "video_avc_1080_4807"
+        );
     }
 
     #[test]

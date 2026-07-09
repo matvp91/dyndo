@@ -157,6 +157,7 @@ dependencies = [
  "clap",
  "dyndo-core",
  "serde_json",
+ "tempfile",
  "tokio",
 ]
 

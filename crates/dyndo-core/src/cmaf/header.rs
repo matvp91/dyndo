@@ -150,20 +150,21 @@ pub async fn read_header<S: Source>(source: &S, path: &str) -> Result<CmafHeader
         let body_len = header
             .size
             .ok_or_else(|| malformed(path, "box", "unbounded box size"))?;
-        let body_start = offset.checked_add(header_len).ok_or_else(|| {
-            Error::MalformedBox {
-                box_type: "box".into(),
-                path: path.into(),
-                reason: "box size overflow".into(),
-            }
-        })?;
-        let box_end = body_start
-            .checked_add(body_len as u64)
+        let body_start = offset
+            .checked_add(header_len)
             .ok_or_else(|| Error::MalformedBox {
                 box_type: "box".into(),
                 path: path.into(),
                 reason: "box size overflow".into(),
             })?;
+        let box_end =
+            body_start
+                .checked_add(body_len as u64)
+                .ok_or_else(|| Error::MalformedBox {
+                    box_type: "box".into(),
+                    path: path.into(),
+                    reason: "box size overflow".into(),
+                })?;
 
         if header.kind == Moov::KIND {
             let body = source.read_at(body_start, body_len).await?;

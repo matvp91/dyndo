@@ -130,8 +130,13 @@ mod tests {
     #[tokio::test]
     async fn build_asset_rejects_duplicate_ids() {
         // Two paths to the same fixture -> identical ids -> error.
-        let base = format!("{}/tests/fixtures/index_audio_aac_nl_2.mp4", env!("CARGO_MANIFEST_DIR"));
-        let err = build_asset(&[base.clone().into(), base.into()]).await.unwrap_err();
+        let base = format!(
+            "{}/tests/fixtures/index_audio_aac_nl_2.mp4",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        let err = build_asset(&[base.clone().into(), base.into()])
+            .await
+            .unwrap_err();
         assert!(matches!(err, Error::DuplicateTrackId(_)));
     }
 }
