@@ -6,8 +6,6 @@ use crate::cmaf::Segment;
 
 /// Compact `segments` into `<S t d r>` runs. Only the first run carries `t`
 /// (= `first_t`, the earliest presentation time); the rest are contiguous.
-// used by build.rs (Task 8)
-#[allow(dead_code)]
 pub(crate) fn build_timeline(segments: &[Segment], first_t: u64) -> Vec<S> {
     let mut out: Vec<S> = Vec::new();
     let mut first = true;
