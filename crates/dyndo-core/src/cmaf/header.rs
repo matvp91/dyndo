@@ -24,14 +24,10 @@ pub struct Segment {
     pub duration: u64,
 }
 
+/// A parsed CMAF header: the fields common to every track, plus a `stream`
+/// discriminant carrying the video- or audio-specific fields.
 #[derive(Debug, Clone, PartialEq)]
-pub enum CmafHeader {
-    Video(VideoCmafHeader),
-    Audio(AudioCmafHeader),
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct VideoCmafHeader {
+pub struct CmafHeader {
     pub timescale: u32,
     pub duration: u64,
     /// Average bitrate in bits/s, derived from the segment sizes and duration.
@@ -39,6 +35,44 @@ pub struct VideoCmafHeader {
     pub earliest_presentation_time: u64,
     pub init_range: ByteRange,
     pub segments: Vec<Segment>,
+    pub stream: Stream,
+}
+
+/// The media-type-specific half of a [`CmafHeader`].
+#[derive(Debug, Clone, PartialEq)]
+pub enum Stream {
+    Video(VideoStream),
+    Audio(AudioStream),
+}
+
+impl Stream {
+    /// Sample-entry fourcc (e.g. `"avc1"`, `"mp4a"`), regardless of media type.
+    pub fn fourcc(&self) -> &'static str {
+        match self {
+            Stream::Video(v) => v.codec.fourcc(),
+            Stream::Audio(a) => a.codec.fourcc(),
+        }
+    }
+
+    /// RFC 6381 `codecs` string, regardless of media type.
+    pub fn rfc6381(&self) -> String {
+        match self {
+            Stream::Video(v) => v.codec.rfc6381(),
+            Stream::Audio(a) => a.codec.rfc6381(),
+        }
+    }
+
+    /// ISO-639-2 language, if the track carries one (audio only).
+    pub fn language(&self) -> Option<&str> {
+        match self {
+            Stream::Audio(a) => a.language.as_deref(),
+            Stream::Video(_) => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct VideoStream {
     pub codec: VideoCodec,
     pub width: u32,
     pub height: u32,
@@ -46,14 +80,7 @@ pub struct VideoCmafHeader {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AudioCmafHeader {
-    pub timescale: u32,
-    pub duration: u64,
-    /// Average bitrate in bits/s, derived from the segment sizes and duration.
-    pub bandwidth: u32,
-    pub earliest_presentation_time: u64,
-    pub init_range: ByteRange,
-    pub segments: Vec<Segment>,
+pub struct AudioStream {
     pub codec: AudioCodec,
     pub sample_rate: u32,
     pub channels: u16,
@@ -260,44 +287,42 @@ pub async fn read_header<S: Source>(source: &S, path: &str) -> Result<CmafHeader
         end: scanned.moov_end,
     };
 
-    if handler == FourCC::new(b"vide") {
+    let stream = if handler == FourCC::new(b"vide") {
         let (codec, visual) = codec::video_codec(codecs, path)?;
         let sample_duration = first_sample_duration(&scanned.first_moof, &scanned.moov);
         // frame_rate divides the moof sample duration by the sidx timescale; conformant
         // CMAF has sidx.timescale == mdhd (media) timescale, so this is exact.
         let frame_rate = frame_rate(sample_duration, scanned.sidx.timescale);
-        Ok(CmafHeader::Video(VideoCmafHeader {
-            timescale: scanned.sidx.timescale,
-            duration,
-            bandwidth,
-            earliest_presentation_time: scanned.sidx.earliest_presentation_time,
-            init_range,
-            segments,
+        Stream::Video(VideoStream {
             codec,
             width: visual.width as u32,
             height: visual.height as u32,
             frame_rate,
-        }))
+        })
     } else if handler == FourCC::new(b"soun") {
         let (codec, audio) = codec::audio_codec(codecs, path)?;
-        Ok(CmafHeader::Audio(AudioCmafHeader {
-            timescale: scanned.sidx.timescale,
-            duration,
-            bandwidth,
-            earliest_presentation_time: scanned.sidx.earliest_presentation_time,
-            init_range,
-            segments,
+        Stream::Audio(AudioStream {
             codec,
             sample_rate: audio.sample_rate.integer() as u32,
             channels: audio.channel_count,
             language: language_string(&mdia.mdhd),
-        }))
+        })
     } else {
-        Err(Error::UnsupportedCodec {
+        return Err(Error::UnsupportedCodec {
             path: path.into(),
             codec: format!("{:?}", handler),
-        })
-    }
+        });
+    };
+
+    Ok(CmafHeader {
+        timescale: scanned.sidx.timescale,
+        duration,
+        bandwidth,
+        earliest_presentation_time: scanned.sidx.earliest_presentation_time,
+        init_range,
+        segments,
+        stream,
+    })
 }
 
 #[cfg(test)]
@@ -324,50 +349,47 @@ mod tests {
     async fn reads_video_header() {
         let src = fixture("video_avc_1080.mp4");
         let h = read_header(&src, "video_avc_1080.mp4").await.unwrap();
-        match h {
-            CmafHeader::Video(v) => {
-                assert_eq!(v.timescale, 90000);
-                assert_eq!(v.duration, 123328800);
-                assert_eq!(v.bandwidth, 4807228);
-                assert_eq!(v.earliest_presentation_time, 0);
-                assert_eq!(v.segments.len(), 715);
-                assert_eq!(v.init_range.start, 0);
-                assert_eq!(v.init_range.end, 766);
-                assert_eq!(v.segments[0].offset, 9386);
-                assert_eq!(v.segments[0].size, 1495550);
-                assert_eq!(v.segments[0].duration, 172800);
-                assert_eq!(v.codec.fourcc(), "avc1");
-                assert_eq!(v.codec.rfc6381(), "avc1.640028");
-                assert_eq!((v.width, v.height), (1920, 1080));
-                assert_eq!(v.frame_rate, (25, 1));
-            }
-            _ => panic!("expected video"),
-        }
+        assert_eq!(h.timescale, 90000);
+        assert_eq!(h.duration, 123328800);
+        assert_eq!(h.bandwidth, 4807228);
+        assert_eq!(h.earliest_presentation_time, 0);
+        assert_eq!(h.segments.len(), 715);
+        assert_eq!(h.init_range.start, 0);
+        assert_eq!(h.init_range.end, 766);
+        assert_eq!(h.segments[0].offset, 9386);
+        assert_eq!(h.segments[0].size, 1495550);
+        assert_eq!(h.segments[0].duration, 172800);
+        assert_eq!(h.stream.fourcc(), "avc1");
+        assert_eq!(h.stream.rfc6381(), "avc1.640028");
+        assert_eq!(h.stream.language(), None);
+        let Stream::Video(v) = h.stream else {
+            panic!("expected video");
+        };
+        assert_eq!((v.width, v.height), (1920, 1080));
+        assert_eq!(v.frame_rate, (25, 1));
     }
 
     #[tokio::test]
     async fn reads_audio_header() {
         let src = fixture("audio_aac_nl_2.mp4");
         let h = read_header(&src, "audio_aac_nl_2.mp4").await.unwrap();
-        match h {
-            CmafHeader::Audio(a) => {
-                assert_eq!(a.timescale, 48000);
-                assert_eq!(a.duration, 65775616);
-                assert_eq!(a.bandwidth, 196918);
-                assert_eq!(a.earliest_presentation_time, 0);
-                assert_eq!(a.segments.len(), 715);
-                assert_eq!(a.init_range.end, 662);
-                assert_eq!(a.segments[0].offset, 9282);
-                assert_eq!(a.segments[0].size, 48530);
-                assert!(a.segments[0].duration > 0);
-                assert_eq!(a.codec.fourcc(), "mp4a");
-                assert_eq!(a.codec.rfc6381(), "mp4a.40.2");
-                assert_eq!(a.sample_rate, 48000);
-                assert_eq!(a.channels, 2);
-                assert_eq!(a.language.as_deref(), Some("nld"));
-            }
-            _ => panic!("expected audio"),
-        }
+        assert_eq!(h.timescale, 48000);
+        assert_eq!(h.duration, 65775616);
+        assert_eq!(h.bandwidth, 196918);
+        assert_eq!(h.earliest_presentation_time, 0);
+        assert_eq!(h.segments.len(), 715);
+        assert_eq!(h.init_range.end, 662);
+        assert_eq!(h.segments[0].offset, 9282);
+        assert_eq!(h.segments[0].size, 48530);
+        assert!(h.segments[0].duration > 0);
+        assert_eq!(h.stream.fourcc(), "mp4a");
+        assert_eq!(h.stream.rfc6381(), "mp4a.40.2");
+        assert_eq!(h.stream.language(), Some("nld"));
+        let Stream::Audio(a) = h.stream else {
+            panic!("expected audio");
+        };
+        assert_eq!(a.sample_rate, 48000);
+        assert_eq!(a.channels, 2);
     }
 
     // End-to-end fixtures for the newer codecs. Each is a real ffmpeg-muxed CMAF
@@ -378,57 +400,51 @@ mod tests {
     async fn reads_av1_video_header() {
         let src = fixture("video_av1_240.mp4");
         let h = read_header(&src, "video_av1_240.mp4").await.unwrap();
-        match h {
-            CmafHeader::Video(v) => {
-                assert_eq!(v.timescale, 12800);
-                assert_eq!(v.duration, 25600);
-                assert_eq!(v.segments.len(), 2);
-                assert_eq!(v.init_range.end, 783);
-                assert_eq!(v.segments[0].offset, 847);
-                assert_eq!(v.segments[0].size, 8342);
-                assert_eq!(v.segments[0].duration, 12800);
-                assert_eq!(v.codec.fourcc(), "av01");
-                assert_eq!((v.width, v.height), (320, 240));
-            }
-            _ => panic!("expected video"),
-        }
+        assert_eq!(h.timescale, 12800);
+        assert_eq!(h.duration, 25600);
+        assert_eq!(h.segments.len(), 2);
+        assert_eq!(h.init_range.end, 783);
+        assert_eq!(h.segments[0].offset, 847);
+        assert_eq!(h.segments[0].size, 8342);
+        assert_eq!(h.segments[0].duration, 12800);
+        assert_eq!(h.stream.fourcc(), "av01");
+        let Stream::Video(v) = h.stream else {
+            panic!("expected video");
+        };
+        assert_eq!((v.width, v.height), (320, 240));
     }
 
     #[tokio::test]
     async fn reads_ac3_audio_header() {
         let src = fixture("audio_ac3_1.mp4");
         let h = read_header(&src, "audio_ac3_1.mp4").await.unwrap();
-        match h {
-            CmafHeader::Audio(a) => {
-                assert_eq!(a.timescale, 48000);
-                assert_eq!(a.segments.len(), 3);
-                assert_eq!(a.init_range.end, 725);
-                assert_eq!(a.segments[0].offset, 801);
-                assert_eq!(a.segments[0].size, 24684);
-                assert_eq!(a.codec.fourcc(), "ac-3");
-                assert_eq!(a.sample_rate, 48000);
-                assert_eq!(a.channels, 1);
-            }
-            _ => panic!("expected audio"),
-        }
+        assert_eq!(h.timescale, 48000);
+        assert_eq!(h.segments.len(), 3);
+        assert_eq!(h.init_range.end, 725);
+        assert_eq!(h.segments[0].offset, 801);
+        assert_eq!(h.segments[0].size, 24684);
+        assert_eq!(h.stream.fourcc(), "ac-3");
+        let Stream::Audio(a) = h.stream else {
+            panic!("expected audio");
+        };
+        assert_eq!(a.sample_rate, 48000);
+        assert_eq!(a.channels, 1);
     }
 
     #[tokio::test]
     async fn reads_ec3_audio_header() {
         let src = fixture("audio_ec3_1.mp4");
         let h = read_header(&src, "audio_ec3_1.mp4").await.unwrap();
-        match h {
-            CmafHeader::Audio(a) => {
-                assert_eq!(a.timescale, 48000);
-                assert_eq!(a.segments.len(), 3);
-                assert_eq!(a.init_range.end, 727);
-                assert_eq!(a.segments[0].offset, 803);
-                assert_eq!(a.segments[0].size, 24684);
-                assert_eq!(a.codec.fourcc(), "ec-3");
-                assert_eq!(a.sample_rate, 48000);
-                assert_eq!(a.channels, 1);
-            }
-            _ => panic!("expected audio"),
-        }
+        assert_eq!(h.timescale, 48000);
+        assert_eq!(h.segments.len(), 3);
+        assert_eq!(h.init_range.end, 727);
+        assert_eq!(h.segments[0].offset, 803);
+        assert_eq!(h.segments[0].size, 24684);
+        assert_eq!(h.stream.fourcc(), "ec-3");
+        let Stream::Audio(a) = h.stream else {
+            panic!("expected audio");
+        };
+        assert_eq!(a.sample_rate, 48000);
+        assert_eq!(a.channels, 1);
     }
 }

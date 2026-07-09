@@ -1,6 +1,6 @@
 //! Deterministic, collision-proof track ids, derived from parsed fields only.
 
-use crate::cmaf::CmafHeader;
+use crate::cmaf::{CmafHeader, Stream};
 
 /// Short codec family token derived from the sample-entry fourcc (also matches a
 /// full RFC6381 codec string by prefix).
@@ -30,21 +30,16 @@ fn kbps(bandwidth: u32) -> u32 {
 /// The track's routing id, built from its whole `CmafHeader`:
 /// `video_<codec>_<height>_<kbps>` or `audio_<codec>_<lang>_<channels>_<kbps>`.
 pub fn track_id(header: &CmafHeader) -> String {
-    match header {
-        CmafHeader::Video(v) => {
-            format!(
-                "video_{}_{}_{}",
-                codec_token(v.codec.fourcc()),
-                v.height,
-                kbps(v.bandwidth)
-            )
-        }
-        CmafHeader::Audio(a) => format!(
+    let codec = codec_token(header.stream.fourcc());
+    let bitrate = kbps(header.bandwidth);
+    match &header.stream {
+        Stream::Video(v) => format!("video_{}_{}_{}", codec, v.height, bitrate),
+        Stream::Audio(a) => format!(
             "audio_{}_{}_{}_{}",
-            codec_token(a.codec.fourcc()),
+            codec,
             a.language.as_deref().unwrap_or("und"),
             a.channels,
-            kbps(a.bandwidth)
+            bitrate
         ),
     }
 }
@@ -52,21 +47,23 @@ pub fn track_id(header: &CmafHeader) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cmaf::{AudioCmafHeader, AudioCodec, ByteRange, VideoCmafHeader, VideoCodec};
+    use crate::cmaf::{AudioCodec, AudioStream, ByteRange, VideoCodec, VideoStream};
 
     fn video_header(codec: VideoCodec, height: u32, bandwidth: u32) -> CmafHeader {
-        CmafHeader::Video(VideoCmafHeader {
+        CmafHeader {
             timescale: 0,
             duration: 0,
             bandwidth,
             earliest_presentation_time: 0,
             init_range: ByteRange { start: 0, end: 0 },
             segments: Vec::new(),
-            codec,
-            width: 0,
-            height,
-            frame_rate: (0, 1),
-        })
+            stream: Stream::Video(VideoStream {
+                codec,
+                width: 0,
+                height,
+                frame_rate: (0, 1),
+            }),
+        }
     }
 
     fn audio_header(
@@ -75,18 +72,20 @@ mod tests {
         channels: u16,
         bandwidth: u32,
     ) -> CmafHeader {
-        CmafHeader::Audio(AudioCmafHeader {
+        CmafHeader {
             timescale: 0,
             duration: 0,
             bandwidth,
             earliest_presentation_time: 0,
             init_range: ByteRange { start: 0, end: 0 },
             segments: Vec::new(),
-            codec,
-            sample_rate: 0,
-            channels,
-            language: language.map(str::to_string),
-        })
+            stream: Stream::Audio(AudioStream {
+                codec,
+                sample_rate: 0,
+                channels,
+                language: language.map(str::to_string),
+            }),
+        }
     }
 
     fn avc() -> VideoCodec {

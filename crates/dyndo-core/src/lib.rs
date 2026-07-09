@@ -4,11 +4,12 @@ mod dash;
 mod error;
 mod model;
 mod storage;
+mod util;
 
 pub use asset::{build_asset, describe_track};
 pub use cmaf::{
-    read_header, AudioCmafHeader, AudioCodec, ByteRange, CmafHeader, Segment, VideoCmafHeader,
-    VideoCodec,
+    read_header, AudioCodec, AudioStream, ByteRange, CmafHeader, Segment, Stream, VideoCodec,
+    VideoStream,
 };
 pub use dash::generate_mpd;
 pub use error::{Error, Result};

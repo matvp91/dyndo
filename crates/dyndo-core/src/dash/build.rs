@@ -7,37 +7,15 @@ use dash_mpd::{
     SegmentTimeline, MPD,
 };
 
-use crate::cmaf::CmafHeader;
+use crate::cmaf::{CmafHeader, Stream};
 use crate::dash::timeline::build_timeline;
+use crate::util::group_by_key;
 
 const INIT_TEMPLATE: &str = "$RepresentationID$/init.mp4";
 const MEDIA_TEMPLATE: &str = "$RepresentationID$/$Time$.m4s";
-
-enum Kind {
-    Video,
-    Audio,
-}
-
-fn header_kind(h: &CmafHeader) -> Kind {
-    match h {
-        CmafHeader::Video(_) => Kind::Video,
-        CmafHeader::Audio(_) => Kind::Audio,
-    }
-}
-
-fn fourcc(h: &CmafHeader) -> &'static str {
-    match h {
-        CmafHeader::Video(v) => v.codec.fourcc(),
-        CmafHeader::Audio(a) => a.codec.fourcc(),
-    }
-}
-
-fn language(h: &CmafHeader) -> Option<&str> {
-    match h {
-        CmafHeader::Audio(a) => a.language.as_deref(),
-        CmafHeader::Video(_) => None,
-    }
-}
+const MPD_XMLNS: &str = "urn:mpeg:dash:schema:mpd:2011";
+const MPD_PROFILE: &str = "urn:mpeg:dash:profile:isoff-live:2011";
+const AUDIO_CHANNEL_CONFIG_SCHEME: &str = "urn:mpeg:dash:23003:3:audio_channel_configuration:2011";
 
 fn secs(units: u64, timescale: u32) -> f64 {
     if timescale == 0 {
@@ -59,11 +37,9 @@ fn max_segment_duration_secs(tracks: &[(String, CmafHeader)]) -> f64 {
     tracks
         .iter()
         .flat_map(|(_, h)| {
-            let (ts, segs) = match h {
-                CmafHeader::Video(v) => (v.timescale, &v.segments),
-                CmafHeader::Audio(a) => (a.timescale, &a.segments),
-            };
-            segs.iter().map(move |s| secs(s.duration, ts))
+            h.segments
+                .iter()
+                .map(move |s| secs(s.duration, h.timescale))
         })
         .fold(0.0_f64, f64::max)
 }
@@ -71,18 +47,17 @@ fn max_segment_duration_secs(tracks: &[(String, CmafHeader)]) -> f64 {
 fn media_presentation_duration_secs(tracks: &[(String, CmafHeader)]) -> f64 {
     tracks
         .iter()
-        .map(|(_, h)| match h {
-            CmafHeader::Video(v) => secs(v.duration, v.timescale),
-            CmafHeader::Audio(a) => secs(a.duration, a.timescale),
-        })
+        .map(|(_, h)| secs(h.duration, h.timescale))
         .fold(0.0_f64, f64::max)
 }
 
+/// In static VOD the SegmentTimeline's first `t` equals the presentation time
+/// offset (both are the earliest presentation time); a live/rolling window would
+/// need them tracked separately.
 fn segment_template(
     timescale: u32,
     pto: u64,
     segments: &[crate::cmaf::Segment],
-    first_t: u64,
 ) -> SegmentTemplate {
     SegmentTemplate {
         timescale: Some(timescale as u64),
@@ -90,78 +65,59 @@ fn segment_template(
         initialization: Some(INIT_TEMPLATE.to_string()),
         media: Some(MEDIA_TEMPLATE.to_string()),
         SegmentTimeline: Some(SegmentTimeline {
-            segments: build_timeline(segments, first_t),
+            segments: build_timeline(segments, pto),
         }),
         ..Default::default()
     }
 }
 
 fn representation(id: &str, h: &CmafHeader) -> Representation {
-    match h {
-        CmafHeader::Video(v) => Representation {
-            id: Some(id.to_string()),
-            bandwidth: Some(v.bandwidth as u64),
-            codecs: Some(v.codec.rfc6381()),
+    let base = Representation {
+        id: Some(id.to_string()),
+        bandwidth: Some(h.bandwidth as u64),
+        codecs: Some(h.stream.rfc6381()),
+        SegmentTemplate: Some(segment_template(
+            h.timescale,
+            h.earliest_presentation_time,
+            &h.segments,
+        )),
+        ..Default::default()
+    };
+    match &h.stream {
+        Stream::Video(v) => Representation {
             width: Some(v.width as u64),
             height: Some(v.height as u64),
             frameRate: (v.frame_rate.0 != 0).then(|| frame_rate_str(v.frame_rate)),
-            SegmentTemplate: Some(segment_template(
-                v.timescale,
-                v.earliest_presentation_time,
-                &v.segments,
-                v.earliest_presentation_time,
-            )),
-            ..Default::default()
+            ..base
         },
-        CmafHeader::Audio(a) => Representation {
-            id: Some(id.to_string()),
-            bandwidth: Some(a.bandwidth as u64),
-            codecs: Some(a.codec.rfc6381()),
+        Stream::Audio(a) => Representation {
             audioSamplingRate: Some(a.sample_rate.to_string()),
             AudioChannelConfiguration: vec![AudioChannelConfiguration {
-                schemeIdUri: "urn:mpeg:dash:23003:3:audio_channel_configuration:2011".to_string(),
+                schemeIdUri: AUDIO_CHANNEL_CONFIG_SCHEME.to_string(),
                 value: Some(a.channels.to_string()),
                 ..Default::default()
             }],
-            SegmentTemplate: Some(segment_template(
-                a.timescale,
-                a.earliest_presentation_time,
-                &a.segments,
-                a.earliest_presentation_time,
-            )),
-            ..Default::default()
+            ..base
         },
     }
 }
 
-/// `(is_video, fourcc, language)` grouping key for `AdaptationSet` assignment.
-type GroupKey = (bool, &'static str, Option<String>);
-
 /// Build a static VOD `MPD` from `(representation_id, CmafHeader)` tracks. Pure:
-/// no I/O. Tracks are grouped into one `AdaptationSet` per `(is_video, fourcc,
-/// language)` key, videos before audios, each track becoming one `Representation`
-/// with its own `SegmentTemplate`.
+/// no I/O. Tracks are grouped into one `AdaptationSet` per `(fourcc, language)`
+/// key, each track becoming one `Representation` with its own `SegmentTemplate`.
+/// `AdaptationSet` order follows the order groups first appear in `tracks`.
 pub(crate) fn build_mpd(tracks: &[(String, CmafHeader)]) -> MPD {
-    // Group by (is_video, fourcc, language), preserving first-seen order per group,
-    // videos before audios.
-    let mut groups: Vec<(GroupKey, Vec<usize>)> = Vec::new();
-    for (i, (_, h)) in tracks.iter().enumerate() {
-        let key = (
-            matches!(header_kind(h), Kind::Video),
-            fourcc(h),
-            language(h).map(str::to_string),
-        );
-        match groups.iter_mut().find(|(k, _)| *k == key) {
-            Some((_, idxs)) => idxs.push(i),
-            None => groups.push((key, vec![i])),
-        }
-    }
-    groups.sort_by(|(a, _), (b, _)| b.0.cmp(&a.0)); // videos (true) first
+    // Group by (fourcc, language), preserving the order each group's first track
+    // appears in the input. `fourcc` alone already separates video from audio, so
+    // the media kind need not be part of the key.
+    let groups = group_by_key(tracks, |(_, h)| {
+        (h.stream.fourcc(), h.stream.language().map(str::to_string))
+    });
 
     let adaptations = groups
         .iter()
         .enumerate()
-        .map(|(set_id, ((is_video, _fourcc, lang), idxs))| {
+        .map(|(set_id, ((_fourcc, lang), idxs))| {
             let representations = idxs
                 .iter()
                 .map(|&i| {
@@ -169,10 +125,16 @@ pub(crate) fn build_mpd(tracks: &[(String, CmafHeader)]) -> MPD {
                     representation(id, h)
                 })
                 .collect();
+            // Every track in a group shares a media kind (they share a fourcc), so a
+            // representative track determines the set's content and mime type.
+            let (content_type, mime_type) = match &tracks[idxs[0]].1.stream {
+                Stream::Video(_) => ("video", "video/mp4"),
+                Stream::Audio(_) => ("audio", "audio/mp4"),
+            };
             AdaptationSet {
                 id: Some(set_id.to_string()),
-                contentType: Some(if *is_video { "video" } else { "audio" }.to_string()),
-                mimeType: Some(if *is_video { "video/mp4" } else { "audio/mp4" }.to_string()),
+                contentType: Some(content_type.to_string()),
+                mimeType: Some(mime_type.to_string()),
                 lang: lang.clone(),
                 segmentAlignment: Some(true),
                 startWithSAP: Some(1),
@@ -190,9 +152,9 @@ pub(crate) fn build_mpd(tracks: &[(String, CmafHeader)]) -> MPD {
     };
 
     MPD {
-        xmlns: Some("urn:mpeg:dash:schema:mpd:2011".to_string()),
+        xmlns: Some(MPD_XMLNS.to_string()),
         mpdtype: Some("static".to_string()),
-        profiles: Some("urn:mpeg:dash:profile:isoff-live:2011".to_string()),
+        profiles: Some(MPD_PROFILE.to_string()),
         minBufferTime: Some(Duration::from_secs_f64(max_segment_duration_secs(tracks))),
         mediaPresentationDuration: Some(Duration::from_secs_f64(media_presentation_duration_secs(
             tracks,
@@ -205,14 +167,12 @@ pub(crate) fn build_mpd(tracks: &[(String, CmafHeader)]) -> MPD {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cmaf::{
-        AudioCmafHeader, AudioCodec, ByteRange, Segment, VideoCmafHeader, VideoCodec,
-    };
+    use crate::cmaf::{AudioCodec, AudioStream, ByteRange, Segment, VideoCodec, VideoStream};
 
     fn video(id: &str) -> (String, CmafHeader) {
         (
             id.to_string(),
-            CmafHeader::Video(VideoCmafHeader {
+            CmafHeader {
                 timescale: 90000,
                 duration: 900000,
                 bandwidth: 4_800_000,
@@ -226,22 +186,24 @@ mod tests {
                     };
                     5
                 ],
-                codec: VideoCodec::Avc {
-                    profile: 0x64,
-                    constraints: 0,
-                    level: 0x28,
-                },
-                width: 1920,
-                height: 1080,
-                frame_rate: (25, 1),
-            }),
+                stream: Stream::Video(VideoStream {
+                    codec: VideoCodec::Avc {
+                        profile: 0x64,
+                        constraints: 0,
+                        level: 0x28,
+                    },
+                    width: 1920,
+                    height: 1080,
+                    frame_rate: (25, 1),
+                }),
+            },
         )
     }
 
     fn audio(id: &str, lang: Option<&str>) -> (String, CmafHeader) {
         (
             id.to_string(),
-            CmafHeader::Audio(AudioCmafHeader {
+            CmafHeader {
                 timescale: 48000,
                 duration: 480000,
                 bandwidth: 128_000,
@@ -255,13 +217,15 @@ mod tests {
                     };
                     5
                 ],
-                codec: AudioCodec::Aac {
-                    audio_object_type: 2,
-                },
-                sample_rate: 48000,
-                channels: 2,
-                language: lang.map(str::to_string),
-            }),
+                stream: Stream::Audio(AudioStream {
+                    codec: AudioCodec::Aac {
+                        audio_object_type: 2,
+                    },
+                    sample_rate: 48000,
+                    channels: 2,
+                    language: lang.map(str::to_string),
+                }),
+            },
         )
     }
 
@@ -271,6 +235,15 @@ mod tests {
         let period = &mpd.periods[0];
         assert_eq!(period.adaptations.len(), 2);
         assert_eq!(mpd.mpdtype.as_deref(), Some("static"));
+    }
+
+    #[test]
+    fn adaptation_sets_follow_input_track_order() {
+        // Audio listed before video in the input -> audio AdaptationSet comes first.
+        let mpd = build_mpd(&[audio("a0", Some("nld")), video("v0")]);
+        let sets = &mpd.periods[0].adaptations;
+        assert_eq!(sets[0].contentType.as_deref(), Some("audio"));
+        assert_eq!(sets[1].contentType.as_deref(), Some("video"));
     }
 
     #[test]
