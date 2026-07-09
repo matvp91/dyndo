@@ -4,7 +4,7 @@
 use std::collections::HashSet;
 use std::path::PathBuf;
 
-use crate::cmaf::{read_header, TrackMeta};
+use crate::cmaf::{read_header, CmafHeader};
 use crate::error::{Error, Result};
 use crate::model::id::track_id;
 use crate::model::{Asset, AudioTrack, Track, VideoTrack};
@@ -16,23 +16,23 @@ pub async fn describe_track<S: Source>(source: &S, key: String) -> Result<Track>
 
     // `bandwidth` fed the id (via its kbps) but is not serialized — a manifest
     // generator re-derives it from the source.
-    let track = match header.track {
-        TrackMeta::Video(m) => Track::Video(VideoTrack {
+    let track = match header {
+        CmafHeader::Video(v) => Track::Video(VideoTrack {
             id,
             source: key,
-            fourcc: m.fourcc.to_string(),
-            timescale: header.timescale,
-            width: m.width,
-            height: m.height,
+            fourcc: v.fourcc.to_string(),
+            timescale: v.timescale,
+            width: v.width,
+            height: v.height,
         }),
-        TrackMeta::Audio(m) => Track::Audio(AudioTrack {
+        CmafHeader::Audio(a) => Track::Audio(AudioTrack {
             id,
             source: key,
-            fourcc: m.fourcc.to_string(),
-            timescale: header.timescale,
-            sample_rate: m.sample_rate,
-            channels: m.channels,
-            language: m.language,
+            fourcc: a.fourcc.to_string(),
+            timescale: a.timescale,
+            sample_rate: a.sample_rate,
+            channels: a.channels,
+            language: a.language,
         }),
     };
     Ok(track)

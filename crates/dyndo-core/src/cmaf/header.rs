@@ -4,9 +4,7 @@
 
 use std::io::Cursor;
 
-use mp4_atom::{
-    Atom, Audio, Codec, FourCC, Header, Mdhd, Moov, ReadAtom, ReadFrom, Sidx, Trak, Visual,
-};
+use mp4_atom::{Atom, Audio, Codec, FourCC, Header, Mdhd, Moov, ReadAtom, ReadFrom, Sidx, Visual};
 
 use crate::error::{Error, Result};
 use crate::storage::Source;
@@ -25,35 +23,34 @@ pub struct Segment {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct VideoMeta {
+pub enum CmafHeader {
+    Video(VideoCmafHeader),
+    Audio(AudioCmafHeader),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct VideoCmafHeader {
+    pub timescale: u32,
+    pub duration: u64,
+    pub bandwidth: u32,
+    pub init_range: ByteRange,
+    pub segments: Vec<Segment>,
     pub fourcc: &'static str,
     pub width: u32,
     pub height: u32,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AudioMeta {
+pub struct AudioCmafHeader {
+    pub timescale: u32,
+    pub duration: u64,
+    pub bandwidth: u32,
+    pub init_range: ByteRange,
+    pub segments: Vec<Segment>,
     pub fourcc: &'static str,
     pub sample_rate: u32,
     pub channels: u16,
     pub language: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum TrackMeta {
-    Video(VideoMeta),
-    Audio(AudioMeta),
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct CmafHeader {
-    pub timescale: u32,
-    pub duration: u64,
-    /// Average bitrate in bits/s, derived from the segment sizes and duration.
-    pub bandwidth: u32,
-    pub init_range: ByteRange,
-    pub segments: Vec<Segment>,
-    pub track: TrackMeta,
 }
 
 fn malformed(path: &str, box_type: &str, reason: impl Into<String>) -> Error {
@@ -223,36 +220,6 @@ fn audio_fourcc_and_audio<'a>(
         .ok_or_else(|| malformed(path, "stsd", "no supported audio sample entry"))
 }
 
-/// Project the single track's boxes into a codec-agnostic `TrackMeta`. The codec is
-/// identified by the sample-entry variant, not the handler (which only says video/audio).
-fn extract_track_meta(trak: &Trak, path: &str) -> Result<TrackMeta> {
-    let mdia = &trak.mdia;
-    let handler = mdia.hdlr.handler;
-    let codecs = &mdia.minf.stbl.stsd.codecs;
-
-    if handler == FourCC::new(b"vide") {
-        let (fourcc, visual) = video_fourcc_and_visual(codecs, path)?;
-        Ok(TrackMeta::Video(VideoMeta {
-            fourcc,
-            width: visual.width as u32,
-            height: visual.height as u32,
-        }))
-    } else if handler == FourCC::new(b"soun") {
-        let (fourcc, audio) = audio_fourcc_and_audio(codecs, path)?;
-        Ok(TrackMeta::Audio(AudioMeta {
-            fourcc,
-            sample_rate: audio.sample_rate.integer() as u32,
-            channels: audio.channel_count,
-            language: language_string(&mdia.mdhd),
-        }))
-    } else {
-        Err(Error::UnsupportedCodec {
-            path: path.into(),
-            codec: format!("{:?}", handler),
-        })
-    }
-}
-
 pub async fn read_header<S: Source>(source: &S, path: &str) -> Result<CmafHeader> {
     let scanned = scan_header_boxes(source, path).await?;
 
@@ -269,19 +236,46 @@ pub async fn read_header<S: Source>(source: &S, path: &str) -> Result<CmafHeader
     let duration: u64 = segments.iter().map(|s| s.duration).sum();
     let total_bytes: u64 = segments.iter().map(|s| s.size).sum();
     let bandwidth = average_bandwidth(total_bytes, duration, scanned.sidx.timescale);
-    let track = extract_track_meta(trak, path)?;
 
-    Ok(CmafHeader {
-        timescale: scanned.sidx.timescale,
-        duration,
-        bandwidth,
-        init_range: ByteRange {
-            start: 0,
-            end: scanned.moov_end,
-        },
-        segments,
-        track,
-    })
+    let mdia = &trak.mdia;
+    let handler = mdia.hdlr.handler;
+    let codecs = &mdia.minf.stbl.stsd.codecs;
+    let init_range = ByteRange {
+        start: 0,
+        end: scanned.moov_end,
+    };
+
+    if handler == FourCC::new(b"vide") {
+        let (fourcc, visual) = video_fourcc_and_visual(codecs, path)?;
+        Ok(CmafHeader::Video(VideoCmafHeader {
+            timescale: scanned.sidx.timescale,
+            duration,
+            bandwidth,
+            init_range,
+            segments,
+            fourcc,
+            width: visual.width as u32,
+            height: visual.height as u32,
+        }))
+    } else if handler == FourCC::new(b"soun") {
+        let (fourcc, audio) = audio_fourcc_and_audio(codecs, path)?;
+        Ok(CmafHeader::Audio(AudioCmafHeader {
+            timescale: scanned.sidx.timescale,
+            duration,
+            bandwidth,
+            init_range,
+            segments,
+            fourcc,
+            sample_rate: audio.sample_rate.integer() as u32,
+            channels: audio.channel_count,
+            language: language_string(&mdia.mdhd),
+        }))
+    } else {
+        Err(Error::UnsupportedCodec {
+            path: path.into(),
+            codec: format!("{:?}", handler),
+        })
+    }
 }
 
 #[cfg(test)]
@@ -302,23 +296,19 @@ mod tests {
     async fn reads_video_header() {
         let src = fixture("video_avc_1080.mp4");
         let h = read_header(&src, "video_avc_1080.mp4").await.unwrap();
-        assert_eq!(h.timescale, 90000);
-        assert_eq!(h.duration, 123328800);
-        assert_eq!(h.bandwidth, 4807228);
-        assert_eq!(h.segments.len(), 715);
-        assert_eq!(h.init_range.start, 0);
-        assert_eq!(h.init_range.end, 766);
-        assert_eq!(h.segments[0].offset, 9386);
-        assert_eq!(h.segments[0].size, 1495550);
-        assert_eq!(h.segments[0].duration, 172800);
-        match h.track {
-            TrackMeta::Video(VideoMeta {
-                fourcc,
-                width,
-                height,
-            }) => {
-                assert_eq!(fourcc, "avc1");
-                assert_eq!((width, height), (1920, 1080));
+        match h {
+            CmafHeader::Video(v) => {
+                assert_eq!(v.timescale, 90000);
+                assert_eq!(v.duration, 123328800);
+                assert_eq!(v.bandwidth, 4807228);
+                assert_eq!(v.segments.len(), 715);
+                assert_eq!(v.init_range.start, 0);
+                assert_eq!(v.init_range.end, 766);
+                assert_eq!(v.segments[0].offset, 9386);
+                assert_eq!(v.segments[0].size, 1495550);
+                assert_eq!(v.segments[0].duration, 172800);
+                assert_eq!(v.fourcc, "avc1");
+                assert_eq!((v.width, v.height), (1920, 1080));
             }
             _ => panic!("expected video"),
         }
@@ -328,25 +318,20 @@ mod tests {
     async fn reads_audio_header() {
         let src = fixture("audio_aac_nl_2.mp4");
         let h = read_header(&src, "audio_aac_nl_2.mp4").await.unwrap();
-        assert_eq!(h.timescale, 48000);
-        assert_eq!(h.duration, 65775616);
-        assert_eq!(h.bandwidth, 196918);
-        assert_eq!(h.segments.len(), 715);
-        assert_eq!(h.init_range.end, 662);
-        assert_eq!(h.segments[0].offset, 9282);
-        assert_eq!(h.segments[0].size, 48530);
-        assert!(h.segments[0].duration > 0);
-        match h.track {
-            TrackMeta::Audio(AudioMeta {
-                fourcc,
-                sample_rate,
-                channels,
-                language,
-            }) => {
-                assert_eq!(fourcc, "mp4a");
-                assert_eq!(sample_rate, 48000);
-                assert_eq!(channels, 2);
-                assert_eq!(language.as_deref(), Some("nld"));
+        match h {
+            CmafHeader::Audio(a) => {
+                assert_eq!(a.timescale, 48000);
+                assert_eq!(a.duration, 65775616);
+                assert_eq!(a.bandwidth, 196918);
+                assert_eq!(a.segments.len(), 715);
+                assert_eq!(a.init_range.end, 662);
+                assert_eq!(a.segments[0].offset, 9282);
+                assert_eq!(a.segments[0].size, 48530);
+                assert!(a.segments[0].duration > 0);
+                assert_eq!(a.fourcc, "mp4a");
+                assert_eq!(a.sample_rate, 48000);
+                assert_eq!(a.channels, 2);
+                assert_eq!(a.language.as_deref(), Some("nld"));
             }
             _ => panic!("expected audio"),
         }
@@ -360,21 +345,17 @@ mod tests {
     async fn reads_av1_video_header() {
         let src = fixture("video_av1_240.mp4");
         let h = read_header(&src, "video_av1_240.mp4").await.unwrap();
-        assert_eq!(h.timescale, 12800);
-        assert_eq!(h.duration, 25600);
-        assert_eq!(h.segments.len(), 2);
-        assert_eq!(h.init_range.end, 783);
-        assert_eq!(h.segments[0].offset, 847);
-        assert_eq!(h.segments[0].size, 8342);
-        assert_eq!(h.segments[0].duration, 12800);
-        match h.track {
-            TrackMeta::Video(VideoMeta {
-                fourcc,
-                width,
-                height,
-            }) => {
-                assert_eq!(fourcc, "av01");
-                assert_eq!((width, height), (320, 240));
+        match h {
+            CmafHeader::Video(v) => {
+                assert_eq!(v.timescale, 12800);
+                assert_eq!(v.duration, 25600);
+                assert_eq!(v.segments.len(), 2);
+                assert_eq!(v.init_range.end, 783);
+                assert_eq!(v.segments[0].offset, 847);
+                assert_eq!(v.segments[0].size, 8342);
+                assert_eq!(v.segments[0].duration, 12800);
+                assert_eq!(v.fourcc, "av01");
+                assert_eq!((v.width, v.height), (320, 240));
             }
             _ => panic!("expected video"),
         }
@@ -384,21 +365,16 @@ mod tests {
     async fn reads_ac3_audio_header() {
         let src = fixture("audio_ac3_1.mp4");
         let h = read_header(&src, "audio_ac3_1.mp4").await.unwrap();
-        assert_eq!(h.timescale, 48000);
-        assert_eq!(h.segments.len(), 3);
-        assert_eq!(h.init_range.end, 725);
-        assert_eq!(h.segments[0].offset, 801);
-        assert_eq!(h.segments[0].size, 24684);
-        match h.track {
-            TrackMeta::Audio(AudioMeta {
-                fourcc,
-                sample_rate,
-                channels,
-                ..
-            }) => {
-                assert_eq!(fourcc, "ac-3");
-                assert_eq!(sample_rate, 48000);
-                assert_eq!(channels, 1);
+        match h {
+            CmafHeader::Audio(a) => {
+                assert_eq!(a.timescale, 48000);
+                assert_eq!(a.segments.len(), 3);
+                assert_eq!(a.init_range.end, 725);
+                assert_eq!(a.segments[0].offset, 801);
+                assert_eq!(a.segments[0].size, 24684);
+                assert_eq!(a.fourcc, "ac-3");
+                assert_eq!(a.sample_rate, 48000);
+                assert_eq!(a.channels, 1);
             }
             _ => panic!("expected audio"),
         }
@@ -408,21 +384,16 @@ mod tests {
     async fn reads_ec3_audio_header() {
         let src = fixture("audio_ec3_1.mp4");
         let h = read_header(&src, "audio_ec3_1.mp4").await.unwrap();
-        assert_eq!(h.timescale, 48000);
-        assert_eq!(h.segments.len(), 3);
-        assert_eq!(h.init_range.end, 727);
-        assert_eq!(h.segments[0].offset, 803);
-        assert_eq!(h.segments[0].size, 24684);
-        match h.track {
-            TrackMeta::Audio(AudioMeta {
-                fourcc,
-                sample_rate,
-                channels,
-                ..
-            }) => {
-                assert_eq!(fourcc, "ec-3");
-                assert_eq!(sample_rate, 48000);
-                assert_eq!(channels, 1);
+        match h {
+            CmafHeader::Audio(a) => {
+                assert_eq!(a.timescale, 48000);
+                assert_eq!(a.segments.len(), 3);
+                assert_eq!(a.init_range.end, 727);
+                assert_eq!(a.segments[0].offset, 803);
+                assert_eq!(a.segments[0].size, 24684);
+                assert_eq!(a.fourcc, "ec-3");
+                assert_eq!(a.sample_rate, 48000);
+                assert_eq!(a.channels, 1);
             }
             _ => panic!("expected audio"),
         }
