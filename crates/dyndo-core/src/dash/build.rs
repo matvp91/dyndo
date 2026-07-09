@@ -102,11 +102,12 @@ fn representation(id: &str, h: &CmafHeader) -> Representation {
     }
 }
 
-/// Build a static VOD `MPD` from `(representation_id, CmafHeader)` tracks. Pure:
-/// no I/O. Tracks are grouped into one `AdaptationSet` per `(fourcc, language)`
-/// key, each track becoming one `Representation` with its own `SegmentTemplate`.
-/// `AdaptationSet` order follows the order groups first appear in `tracks`.
-pub(crate) fn build_mpd(tracks: &[(String, CmafHeader)]) -> MPD {
+/// Build the raw static VOD `MPD` from `(representation_id, CmafHeader)` tracks.
+/// Pure: no I/O, no compaction. Tracks are grouped into one `AdaptationSet` per
+/// `(fourcc, language)` key, each track becoming one `Representation` with its own
+/// `SegmentTemplate`. `AdaptationSet` order follows the order groups first appear in
+/// `tracks`.
+fn mpd(tracks: &[(String, CmafHeader)]) -> MPD {
     // Group by (fourcc, language), preserving the order each group's first track
     // appears in the input. `fourcc` alone already separates video from audio, so
     // the media kind need not be part of the key.
@@ -162,6 +163,19 @@ pub(crate) fn build_mpd(tracks: &[(String, CmafHeader)]) -> MPD {
         periods: vec![period],
         ..Default::default()
     }
+}
+
+/// Assemble the final `MPD`: build it from `tracks`, then — when `compact` is set —
+/// hoist `SegmentTemplate` content shared across each `AdaptationSet`'s
+/// `Representation`s up to the set level (see [`super::compact`]). Compaction is a
+/// pure size optimization that preserves the effective per-Representation template
+/// under DASH multi-level inheritance (ISO/IEC 23009-1 §5.3.9.1).
+pub(crate) fn build_mpd(tracks: &[(String, CmafHeader)], compact: bool) -> MPD {
+    let mut m = mpd(tracks);
+    if compact {
+        super::compact::compact(&mut m);
+    }
+    m
 }
 
 #[cfg(test)]
@@ -231,7 +245,7 @@ mod tests {
 
     #[test]
     fn groups_video_and_audio_into_separate_adaptation_sets() {
-        let mpd = build_mpd(&[video("v0"), audio("a0", Some("nld"))]);
+        let mpd = mpd(&[video("v0"), audio("a0", Some("nld"))]);
         let period = &mpd.periods[0];
         assert_eq!(period.adaptations.len(), 2);
         assert_eq!(mpd.mpdtype.as_deref(), Some("static"));
@@ -240,7 +254,7 @@ mod tests {
     #[test]
     fn adaptation_sets_follow_input_track_order() {
         // Audio listed before video in the input -> audio AdaptationSet comes first.
-        let mpd = build_mpd(&[audio("a0", Some("nld")), video("v0")]);
+        let mpd = mpd(&[audio("a0", Some("nld")), video("v0")]);
         let sets = &mpd.periods[0].adaptations;
         assert_eq!(sets[0].contentType.as_deref(), Some("audio"));
         assert_eq!(sets[1].contentType.as_deref(), Some("video"));
@@ -248,7 +262,7 @@ mod tests {
 
     #[test]
     fn video_representation_carries_codec_dims_and_framerate() {
-        let mpd = build_mpd(&[video("v0")]);
+        let mpd = mpd(&[video("v0")]);
         let rep = &mpd.periods[0].adaptations[0].representations[0];
         assert_eq!(rep.id.as_deref(), Some("v0"));
         assert_eq!(rep.codecs.as_deref(), Some("avc1.640028"));
@@ -264,8 +278,25 @@ mod tests {
 
     #[test]
     fn same_codec_videos_share_one_adaptation_set() {
-        let mpd = build_mpd(&[video("v0"), video("v1")]);
+        let mpd = mpd(&[video("v0"), video("v1")]);
         assert_eq!(mpd.periods[0].adaptations.len(), 1);
         assert_eq!(mpd.periods[0].adaptations[0].representations.len(), 2);
+    }
+
+    #[test]
+    fn build_mpd_compacts_only_when_requested() {
+        let tracks = [video("v0"), video("v1")];
+
+        // compact = false: each Representation keeps its own SegmentTemplate.
+        let plain = build_mpd(&tracks, false);
+        let set = &plain.periods[0].adaptations[0];
+        assert!(set.SegmentTemplate.is_none());
+        assert!(set.representations.iter().all(|r| r.SegmentTemplate.is_some()));
+
+        // compact = true: the shared template is hoisted to the AdaptationSet.
+        let compacted = build_mpd(&tracks, true);
+        let set = &compacted.periods[0].adaptations[0];
+        assert!(set.SegmentTemplate.is_some());
+        assert!(set.representations.iter().all(|r| r.SegmentTemplate.is_none()));
     }
 }
