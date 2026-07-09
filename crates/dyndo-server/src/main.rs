@@ -1,6 +1,5 @@
 mod config;
 mod error;
-mod path;
 mod routes;
 
 use std::sync::Arc;

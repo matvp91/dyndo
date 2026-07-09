@@ -8,13 +8,33 @@ use axum::{
     Router,
 };
 use tower_http::cors::{Any, CorsLayer};
+use url::Url;
 use dyndo_core::{
     find_segment_by_time, generate_mpd, read_header, Asset, LocalFile, Source, Stream, Track,
 };
 
 use crate::config::Config;
 use crate::error::ServerError;
-use crate::path::resolve_within;
+
+// Join `untrusted` onto `base` via URL path resolution and reject anything that
+// resolves outside `base` — traversal (`..`), absolute paths, and foreign
+// schemes all fail the containment check. `base` must be an absolute path; its
+// URL form keeps the trailing slash so a sibling like `assets-evil` can't pass.
+fn resolve_within(base: &StdPath, untrusted: &str) -> Result<PathBuf, ServerError> {
+    let base_url = Url::from_directory_path(base)
+        .map_err(|_| ServerError::Internal(format!("base is not absolute: {}", base.display())))?;
+    let joined = base_url
+        .join(untrusted)
+        .map_err(|e| ServerError::BadRequest(format!("invalid path {untrusted}: {e}")))?;
+    if !joined.as_str().starts_with(base_url.as_str()) {
+        return Err(ServerError::BadRequest(format!(
+            "path escapes base: {untrusted}"
+        )));
+    }
+    joined
+        .to_file_path()
+        .map_err(|_| ServerError::BadRequest(format!("not a file path: {untrusted}")))
+}
 
 pub(crate) fn build_router(config: Arc<Config>) -> Router {
     let cors = CorsLayer::new().allow_origin(Any).allow_methods(Any);
@@ -102,4 +122,44 @@ async fn segment(
 
     let bytes = source.read_at(start, len).await?;
     Ok(([(header::CONTENT_TYPE, content_type)], bytes).into_response())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn joins_normal_components() {
+        let base = StdPath::new("/srv/assets");
+        assert_eq!(
+            resolve_within(base, "bbb").unwrap(),
+            PathBuf::from("/srv/assets/bbb")
+        );
+        assert_eq!(
+            resolve_within(base, "bbb/video.mp4").unwrap(),
+            PathBuf::from("/srv/assets/bbb/video.mp4")
+        );
+    }
+
+    #[test]
+    fn rejects_parent_and_absolute() {
+        let base = StdPath::new("/srv/assets");
+        assert!(matches!(
+            resolve_within(base, "../etc/passwd"),
+            Err(ServerError::BadRequest(_))
+        ));
+        assert!(matches!(
+            resolve_within(base, "/etc/passwd"),
+            Err(ServerError::BadRequest(_))
+        ));
+        assert!(matches!(
+            resolve_within(base, "a/../../b"),
+            Err(ServerError::BadRequest(_))
+        ));
+        // A sibling directory that shares the base as a string prefix must not pass.
+        assert!(matches!(
+            resolve_within(base, "../assets-evil/x"),
+            Err(ServerError::BadRequest(_))
+        ));
+    }
 }
