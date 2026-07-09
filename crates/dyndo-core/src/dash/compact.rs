@@ -1,23 +1,5 @@
-//! Post-process a built MPD in place, hoisting `SegmentTemplate` content shared by
-//! every `Representation` in an `AdaptationSet` up to the set level. This is purely a
-//! size optimization: under DASH multi-level inheritance (ISO/IEC 23009-1 §5.3.9.1) a
-//! `SegmentTemplate` at a higher level is inherited — per attribute and per element —
-//! by all child `Representation`s unless overridden, so the effective per-Representation
-//! template is unchanged. `$RepresentationID$` still resolves to each Representation's
-//! `@id` at the higher level (§5.3.9.4), which is what makes `@media`/`@initialization`
-//! hoistable.
-//!
-//! Two passes run per `AdaptationSet`:
-//! 1. [`hoist_shared_template`] — when every `Representation` carries an identical
-//!    `SegmentTemplate`, move one copy to the set and clear the reps.
-//! 2. [`hoist_shared_attributes`] — for the residual (reps whose templates differ),
-//!    move each field common to all reps up to the set, leaving only differing fields
-//!    (typically `SegmentTimeline`) per `Representation`.
-
 use dash_mpd::{AdaptationSet, SegmentTemplate, MPD};
 
-/// Hoist shared `SegmentTemplate` content up to the `AdaptationSet` level across the
-/// whole MPD, in place. Idempotent: applying it twice equals applying it once.
 pub(crate) fn compact(mpd: &mut MPD) {
     for period in &mut mpd.periods {
         for set in &mut period.adaptations {
@@ -27,10 +9,6 @@ pub(crate) fn compact(mpd: &mut MPD) {
     }
 }
 
-/// Method 1: when every `Representation` has an identical `SegmentTemplate`, move one
-/// copy to the `AdaptationSet` and clear the per-Representation copies. A no-op if the
-/// set already has a template, has no representations, or any rep's template differs
-/// (or is absent).
 fn hoist_shared_template(set: &mut AdaptationSet) {
     if set.SegmentTemplate.is_some() || set.representations.is_empty() {
         return;
@@ -51,15 +29,6 @@ fn hoist_shared_template(set: &mut AdaptationSet) {
     }
 }
 
-/// Method 2: for an `AdaptationSet` whose `Representation`s still carry differing
-/// `SegmentTemplate`s, hoist every field common to all of them up to the set, leaving
-/// only differing fields (typically `SegmentTimeline`) per `Representation`. A field is
-/// hoisted only when all reps set it to the same `Some(value)`. If a rep's template is
-/// emptied by this, it is dropped to `None`.
-///
-/// No-op if the set already has a template (method 1 hoisted the identical case), if
-/// there are fewer than two reps, or if any rep lacks a template. The field list mirrors
-/// `dash_mpd::SegmentTemplate`.
 fn hoist_shared_attributes(set: &mut AdaptationSet) {
     if set.SegmentTemplate.is_some() || set.representations.len() < 2 {
         return;
