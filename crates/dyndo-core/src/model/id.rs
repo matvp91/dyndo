@@ -1,5 +1,3 @@
-//! Deterministic, collision-proof track ids, derived from parsed fields only.
-
 use crate::cmaf::{CmafHeader, Stream};
 
 /// Short codec family token derived from the sample-entry fourcc (also matches a
@@ -27,8 +25,6 @@ fn kbps(bandwidth: u32) -> u32 {
     (bandwidth + 500) / 1000
 }
 
-/// The track's routing id, built from its whole `CmafHeader`:
-/// `video_<codec>_<height>_<kbps>` or `audio_<codec>_<lang>_<channels>_<kbps>`.
 pub fn track_id(header: &CmafHeader) -> String {
     let codec = codec_token(header.stream.fourcc());
     let bitrate = kbps(header.bandwidth);

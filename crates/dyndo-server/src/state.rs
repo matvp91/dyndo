@@ -1,5 +1,3 @@
-//! Shared, cheaply-cloneable server state.
-
 use std::path::PathBuf;
 use std::sync::Arc;
 

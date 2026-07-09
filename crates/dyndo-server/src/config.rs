@@ -1,7 +1,4 @@
-//! Server configuration, loaded via figment from `config.yaml` (+ `DYNDO_` env override).
-
 use std::path::PathBuf;
-
 use serde::Deserialize;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -11,8 +8,6 @@ pub struct Config {
 }
 
 impl Config {
-    /// Load from `config.yaml` in the working directory, with `DYNDO_`-prefixed
-    /// environment variables overriding file values.
     pub fn load() -> anyhow::Result<Self> {
         use figment::{
             providers::{Env, Format, Yaml},

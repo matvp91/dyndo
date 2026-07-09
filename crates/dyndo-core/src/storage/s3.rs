@@ -1,5 +1,3 @@
-//! S3-backed source. Stubbed until the S3 SDK is wired in.
-
 use crate::error::{Error, Result};
 use crate::storage::Source;
 

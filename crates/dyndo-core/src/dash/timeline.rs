@@ -1,11 +1,6 @@
-//! SegmentTimeline construction: run-length compaction of equal-duration segments.
-
 use dash_mpd::S;
-
 use crate::cmaf::Segment;
 
-/// Compact `segments` into `<S t d r>` runs. Only the first run carries `t`
-/// (= `first_t`, the earliest presentation time); the rest are contiguous.
 pub(crate) fn build_timeline(segments: &[Segment], first_t: u64) -> Vec<S> {
     let mut out: Vec<S> = Vec::new();
     let mut first = true;

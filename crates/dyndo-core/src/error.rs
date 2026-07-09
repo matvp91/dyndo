@@ -1,5 +1,3 @@
-//! Crate-wide error type. Every input-contract violation is a typed error.
-
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("i/o error on {path}: {source}")]

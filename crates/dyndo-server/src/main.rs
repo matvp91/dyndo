@@ -1,14 +1,8 @@
-//! dyndo-server binary: load config, build the DASH router, and serve.
-
 mod config;
 mod error;
 mod path;
 mod routes;
-mod segment;
 mod state;
-
-#[cfg(test)]
-mod tests;
 
 use config::Config;
 use routes::build_router;

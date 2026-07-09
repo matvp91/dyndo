@@ -1,9 +1,5 @@
-//! Orchestration: parse a source's header, compute derived fields, build the
-//! serde `Track`/`Asset`.
-
 use std::collections::HashSet;
 use std::path::PathBuf;
-
 use crate::cmaf::{read_header, Stream};
 use crate::error::{Error, Result};
 use crate::model::id::track_id;

@@ -1,11 +1,3 @@
-//! Small generic helpers shared across the crate (no I/O, no domain logic).
-
-/// Bucket `items` by `key`, preserving first-seen order of both the keys and
-/// the members within each bucket. Returns `(key, indices-into-items)` pairs.
-///
-/// Order-preserving, unlike a `HashMap`-based group-by, and works on arbitrary
-/// keys (unlike consecutive-run grouping). Linear scan per item, so intended for
-/// small key counts.
 pub(crate) fn group_by_key<T, K: PartialEq>(
     items: &[T],
     key: impl Fn(&T) -> K,

@@ -1,12 +1,5 @@
-//! Async, header-first CMAF parsing. Reads moov + sidx + the first moof, then
-//! stops (never touches mdat). The first moof supplies the video sample duration
-//! used to derive frame rate. Returns an internal `CmafHeader`; mapping to the
-//! serde model lives in `asset.rs`.
-
 use std::io::Cursor;
-
 use mp4_atom::{Atom, FourCC, Header, Mdhd, Moof, Moov, ReadAtom, ReadFrom, Sidx};
-
 use crate::cmaf::codec::{self, AudioCodec, VideoCodec};
 use crate::error::{Error, Result};
 use crate::storage::Source;

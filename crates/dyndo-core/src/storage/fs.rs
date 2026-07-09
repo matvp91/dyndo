@@ -1,10 +1,6 @@
-//! Local filesystem source, backed by `tokio::fs`.
-
 use std::io::SeekFrom;
 use std::path::{Path, PathBuf};
-
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
-
 use crate::error::{Error, Result};
 use crate::storage::Source;
 

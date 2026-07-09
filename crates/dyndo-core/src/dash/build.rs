@@ -1,12 +1,8 @@
-//! Pure `(id, CmafHeader)` -> `dash_mpd::MPD` construction (no I/O).
-
 use std::time::Duration;
-
 use dash_mpd::{
     AdaptationSet, AudioChannelConfiguration, Period, Representation, SegmentTemplate,
     SegmentTimeline, MPD,
 };
-
 use crate::cmaf::{CmafHeader, Stream};
 use crate::dash::timeline::build_timeline;
 use crate::util::group_by_key;

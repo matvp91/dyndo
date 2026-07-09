@@ -1,5 +1,3 @@
-//! The backend-agnostic byte source. Its primitive is a ranged read.
-
 use crate::error::Result;
 
 /// A range-addressable blob of bytes: a local file, an S3 object, …

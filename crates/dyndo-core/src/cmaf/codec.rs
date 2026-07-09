@@ -1,9 +1,4 @@
-//! Codec identity: the parsed codec-param enums, their fourcc, and RFC 6381
-//! codec-string assembly. mp4-atom sample entries are projected into these enums
-//! by `video_codec`/`audio_codec`; nothing here escapes cmaf.
-
 use mp4_atom::{Audio, Codec, Visual};
-
 use super::header::malformed;
 use crate::error::Result;
 

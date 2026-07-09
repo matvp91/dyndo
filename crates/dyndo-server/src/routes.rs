@@ -1,7 +1,4 @@
-//! Route table and handlers. All DASH routes live under `/{asset}/dash/`.
-
 use std::path::{Path as StdPath, PathBuf};
-
 use axum::{
     extract::{Path, State},
     http::header,
@@ -11,11 +8,12 @@ use axum::{
 };
 use tower_http::cors::{Any, CorsLayer};
 
-use dyndo_core::{generate_mpd, read_header, Asset, LocalFile, Source, Stream, Track};
+use dyndo_core::{
+    find_segment_by_time, generate_mpd, read_header, Asset, LocalFile, Source, Stream, Track,
+};
 
 use crate::error::ServerError;
 use crate::path::resolve_within;
-use crate::segment::segment_range;
 use crate::state::AppState;
 
 pub(crate) fn build_router(state: AppState) -> Router {
@@ -95,7 +93,7 @@ async fn segment(
         let time: u64 = time_str
             .parse()
             .map_err(|_| ServerError::BadRequest(format!("invalid segment time: {seg}")))?;
-        let range = segment_range(&header, time)
+        let range = find_segment_by_time(&header, time)
             .ok_or_else(|| ServerError::NotFound(format!("no segment at time {time}")))?;
         (range.start, (range.end - range.start) as usize)
     } else {

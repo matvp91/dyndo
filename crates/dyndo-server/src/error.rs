@@ -1,5 +1,3 @@
-//! Request-outcome error type and its mapping to HTTP status codes.
-
 use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
