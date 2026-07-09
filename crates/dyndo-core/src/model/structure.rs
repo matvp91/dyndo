@@ -21,6 +21,13 @@ impl Track {
             Track::Audio(t) => &t.id,
         }
     }
+
+    pub fn source(&self) -> &str {
+        match self {
+            Track::Video(t) => &t.source,
+            Track::Audio(t) => &t.source,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

@@ -10,6 +10,7 @@ pub use cmaf::{
     read_header, AudioCmafHeader, AudioCodec, ByteRange, CmafHeader, Segment, VideoCmafHeader,
     VideoCodec,
 };
+pub use dash::generate_mpd;
 pub use error::{Error, Result};
 pub use model::{Asset, AudioTrack, Track, VideoTrack};
 pub use storage::{LocalFile, S3Source, Source};

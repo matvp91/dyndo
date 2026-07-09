@@ -141,8 +141,6 @@ type GroupKey = (bool, &'static str, Option<String>);
 /// no I/O. Tracks are grouped into one `AdaptationSet` per `(is_video, fourcc,
 /// language)` key, videos before audios, each track becoming one `Representation`
 /// with its own `SegmentTemplate`.
-// used by generate_mpd (Task 9)
-#[allow(dead_code)]
 pub(crate) fn build_mpd(tracks: &[(String, CmafHeader)]) -> MPD {
     // Group by (is_video, fourcc, language), preserving first-seen order per group,
     // videos before audios.
