@@ -3,7 +3,12 @@
 mod config;
 mod error;
 mod path;
+mod routes;
 mod segment;
+mod state;
+
+#[cfg(test)]
+mod tests;
 
 use config::Config;
 
