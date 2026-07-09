@@ -64,7 +64,11 @@ fn hoist_shared_attributes(set: &mut AdaptationSet) {
     if set.SegmentTemplate.is_some() || set.representations.len() < 2 {
         return;
     }
-    if !set.representations.iter().all(|r| r.SegmentTemplate.is_some()) {
+    if !set
+        .representations
+        .iter()
+        .all(|r| r.SegmentTemplate.is_some())
+    {
         return;
     }
 
@@ -235,7 +239,10 @@ mod tests {
 
         let shared = set.SegmentTemplate.as_ref().unwrap();
         assert_eq!(shared.timescale, Some(90000));
-        assert_eq!(shared.media.as_deref(), Some("$RepresentationID$/$Time$.m4s"));
+        assert_eq!(
+            shared.media.as_deref(),
+            Some("$RepresentationID$/$Time$.m4s")
+        );
         assert_eq!(
             shared.initialization.as_deref(),
             Some("$RepresentationID$/init.mp4")
@@ -260,7 +267,10 @@ mod tests {
         let mut set = set_with(vec![rep("v0", t.clone()), rep("v1", t.clone())]);
         hoist_shared_attributes(&mut set);
         assert_eq!(set.SegmentTemplate.as_ref(), Some(&t));
-        assert!(set.representations.iter().all(|r| r.SegmentTemplate.is_none()));
+        assert!(set
+            .representations
+            .iter()
+            .all(|r| r.SegmentTemplate.is_none()));
     }
 
     #[test]
@@ -271,7 +281,10 @@ mod tests {
         compact(&mut mpd);
         let set = &mpd.periods[0].adaptations[0];
         let shared = set.SegmentTemplate.as_ref().unwrap();
-        assert_eq!(shared.media.as_deref(), Some("$RepresentationID$/$Time$.m4s"));
+        assert_eq!(
+            shared.media.as_deref(),
+            Some("$RepresentationID$/$Time$.m4s")
+        );
         assert!(shared.SegmentTimeline.is_none());
         assert!(set.representations[0]
             .SegmentTemplate

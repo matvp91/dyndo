@@ -291,12 +291,18 @@ mod tests {
         let plain = build_mpd(&tracks, false);
         let set = &plain.periods[0].adaptations[0];
         assert!(set.SegmentTemplate.is_none());
-        assert!(set.representations.iter().all(|r| r.SegmentTemplate.is_some()));
+        assert!(set
+            .representations
+            .iter()
+            .all(|r| r.SegmentTemplate.is_some()));
 
         // compact = true: the shared template is hoisted to the AdaptationSet.
         let compacted = build_mpd(&tracks, true);
         let set = &compacted.periods[0].adaptations[0];
         assert!(set.SegmentTemplate.is_some());
-        assert!(set.representations.iter().all(|r| r.SegmentTemplate.is_none()));
+        assert!(set
+            .representations
+            .iter()
+            .all(|r| r.SegmentTemplate.is_none()));
     }
 }
