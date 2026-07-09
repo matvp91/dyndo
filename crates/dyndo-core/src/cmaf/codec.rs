@@ -141,15 +141,20 @@ mod tests {
 
     #[test]
     fn extracts_avc_params_and_visual() {
-        let mut avc1 = mp4_atom::Avc1::default();
-        avc1.visual = Visual {
-            width: 1920,
-            height: 1080,
+        let avc1 = mp4_atom::Avc1 {
+            visual: Visual {
+                width: 1920,
+                height: 1080,
+                ..Default::default()
+            },
+            avcc: mp4_atom::Avcc {
+                avc_profile_indication: 0x64,
+                profile_compatibility: 0x00,
+                avc_level_indication: 0x28,
+                ..Default::default()
+            },
             ..Default::default()
         };
-        avc1.avcc.avc_profile_indication = 0x64;
-        avc1.avcc.profile_compatibility = 0x00;
-        avc1.avcc.avc_level_indication = 0x28;
         let codecs = [Codec::Avc1(avc1)];
         let (codec, visual) = video_codec(&codecs, "t.mp4").unwrap();
         assert_eq!(
