@@ -43,8 +43,21 @@ impl Source for LocalFile {
             .await
             .map_err(|e| self.io_err(e))?;
         let mut buf = vec![0u8; len];
-        let n = file.read(&mut buf).await.map_err(|e| self.io_err(e))?;
-        buf.truncate(n);
+        let mut filled = 0;
+        loop {
+            let n = file
+                .read(&mut buf[filled..])
+                .await
+                .map_err(|e| self.io_err(e))?;
+            if n == 0 {
+                break;
+            }
+            filled += n;
+            if filled == len {
+                break;
+            }
+        }
+        buf.truncate(filled);
         Ok(buf)
     }
 }
