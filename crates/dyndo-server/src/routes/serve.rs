@@ -13,30 +13,29 @@ use dyndo_core::{
 };
 use url::Url;
 
-use crate::config::Config;
 use crate::error::ServerError;
 
 /// `{repr}/init.mp4` — the representation's init segment.
 pub(super) async fn init_segment(
-    config: &Config,
+    assets_base: &StdPath,
     asset_path: &str,
     repr: &str,
 ) -> Result<Response, ServerError> {
-    let (source, header) = locate(config, asset_path, repr).await?;
+    let (source, header) = locate(assets_base, asset_path, repr).await?;
     let bytes = read_init_segment(&source, &header).await?;
     Ok(([(CONTENT_TYPE, header.stream.mime_type())], bytes).into_response())
 }
 
 /// `{repr}/{seg}` — the media segment named `{time}.m4s`.
 pub(super) async fn media_segment(
-    config: &Config,
+    assets_base: &StdPath,
     asset_path: &str,
     repr: &str,
     seg: &str,
 ) -> Result<Response, ServerError> {
     // Resolve the representation first so an unknown asset/repr is a 404 even when
     // the segment name is also malformed.
-    let (source, header) = locate(config, asset_path, repr).await?;
+    let (source, header) = locate(assets_base, asset_path, repr).await?;
     let time: u64 = seg
         .strip_suffix(".m4s")
         .ok_or_else(|| ServerError::NotFound(format!("unknown segment: {seg}")))?
@@ -52,10 +51,10 @@ pub(super) async fn media_segment(
 /// nested) to the loaded [`Asset`] and the directory its track sources resolve
 /// against — the descriptor's own parent directory.
 pub(super) async fn load(
-    config: &Config,
+    assets_base: &StdPath,
     asset_path: &str,
 ) -> Result<(Asset, PathBuf), ServerError> {
-    let asset_file = resolve_within(&config.assets_base_path, asset_path)?;
+    let asset_file = resolve_within(assets_base, asset_path)?;
     let asset_dir = asset_file
         .parent()
         .ok_or_else(|| ServerError::BadRequest(format!("asset path has no parent: {asset_path}")))?
@@ -68,11 +67,11 @@ pub(super) async fn load(
 /// parsed CMAF header, which carries both the segment map and the media (MIME)
 /// type.
 async fn locate(
-    config: &Config,
+    assets_base: &StdPath,
     asset_path: &str,
     repr: &str,
 ) -> Result<(LocalFile, CmafHeader), ServerError> {
-    let (asset, asset_dir) = load(config, asset_path).await?;
+    let (asset, asset_dir) = load(assets_base, asset_path).await?;
     let track = asset
         .track(repr)
         .ok_or_else(|| ServerError::NotFound(format!("no representation {repr}")))?;

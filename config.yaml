@@ -1,7 +1,0 @@
-# dyndo-server runtime config (local). assets_base_path holds the descriptor
-# JSONs; a request names one by its (possibly nested) path, e.g.
-# GET /asset.json/dash/index.mpd or /movies/clip/asset.json/dash/index.mpd loads
-# {assets_base_path}/{that path} and resolves its track sources relative to the
-# descriptor's own directory (here ./assets, alongside the .mp4 sources).
-assets_base_path: ./assets
-port: 8080

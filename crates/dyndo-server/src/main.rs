@@ -1,26 +1,23 @@
-mod config;
 mod error;
 mod routes;
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
-use config::Config;
 use routes::build_router;
+
+const PORT: u16 = 8080;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let mut config = Config::load()?;
     // Canonicalise the base once; fall back to the raw path if it doesn't exist yet.
-    config.assets_base_path = config
-        .assets_base_path
-        .canonicalize()
-        .unwrap_or_else(|_| config.assets_base_path.clone());
-    let config = Arc::new(config);
+    let assets_base = PathBuf::from("./assets");
+    let assets_base = Arc::new(assets_base.canonicalize().unwrap_or(assets_base));
 
-    let app = build_router(config.clone());
-    let addr = ("0.0.0.0", config.port);
+    let app = build_router(assets_base);
+    let addr = ("0.0.0.0", PORT);
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    println!("dyndo-server listening on http://0.0.0.0:{}", config.port);
+    println!("dyndo-server listening on http://0.0.0.0:{PORT}");
     axum::serve(listener, app).await?;
     Ok(())
 }

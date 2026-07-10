@@ -8,6 +8,7 @@
 mod dash;
 mod serve;
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::{
@@ -18,7 +19,6 @@ use axum::{
 };
 use tower_http::cors::{Any, CorsLayer};
 
-use crate::config::Config;
 use crate::error::ServerError;
 
 /// Streaming protocols we recognise. The manifest resource differs per protocol
@@ -26,17 +26,17 @@ use crate::error::ServerError;
 /// HLS, add `"hls"` here and a sibling manifest arm in [`dispatch`].
 const PROTOCOLS: &[&str] = &["dash"];
 
-pub(crate) fn build_router(config: Arc<Config>) -> Router {
+pub(crate) fn build_router(assets_base: Arc<PathBuf>) -> Router {
     let cors = CorsLayer::new().allow_origin(Any).allow_methods(Any);
     Router::new()
         .route("/{*path}", get(dispatch))
-        .with_state(config)
+        .with_state(assets_base)
         .layer(cors)
 }
 
 /// Route the catch-all tail to the right handler.
 async fn dispatch(
-    State(config): State<Arc<Config>>,
+    State(assets_base): State<Arc<PathBuf>>,
     Path(path): Path<String>,
 ) -> Result<Response, ServerError> {
     let path = path.strip_prefix('/').unwrap_or(path.as_str());
@@ -47,10 +47,10 @@ async fn dispatch(
     // from CMAF and identical for every protocol. A bare resource is the
     // manifest, which each protocol renders its own way.
     match resource.split_once('/') {
-        Some((repr, "init.mp4")) => serve::init_segment(&config, asset_path, repr).await,
-        Some((repr, seg)) => serve::media_segment(&config, asset_path, repr, seg).await,
+        Some((repr, "init.mp4")) => serve::init_segment(&assets_base, asset_path, repr).await,
+        Some((repr, seg)) => serve::media_segment(&assets_base, asset_path, repr, seg).await,
         None => match (protocol, resource) {
-            ("dash", "index.mpd") => dash::manifest(&config, asset_path).await,
+            ("dash", "index.mpd") => dash::manifest(&assets_base, asset_path).await,
             _ => Err(ServerError::NotFound(format!(
                 "no {protocol} resource {resource}"
             ))),
@@ -83,7 +83,6 @@ mod tests {
     use tower::ServiceExt;
 
     use super::*;
-    use crate::config::Config;
 
     const FIXTURE: &str = concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -102,11 +101,8 @@ mod tests {
         let nested = base.path().join("movies/clip");
         std::fs::create_dir_all(&nested).unwrap();
         write_asset(&nested);
-        let config = Arc::new(Config {
-            assets_base_path: base.path().to_path_buf(),
-            port: 0,
-        });
-        (base, build_router(config))
+        let assets_base = Arc::new(base.path().to_path_buf());
+        (base, build_router(assets_base))
     }
 
     fn write_asset(dir: &StdPath) {
