@@ -2,7 +2,7 @@
 CARGO ?= cargo
 BIN   := dyndo
 
-.PHONY: build build-debug run test lint fmt fmt-check check install clean
+.PHONY: build build-debug create-index run test lint fmt fmt-check check install clean
 
 ## build: release build of the CLI -> target/release/dyndo
 build:
@@ -12,13 +12,17 @@ build:
 build-debug:
 	$(CARGO) build -p dyndo-cli
 
-## run: build, then package the sample assets -> assets/asset.json
-run: build
+## create-index: build, then package the sample assets -> assets/asset.json
+create-index: build
 	./target/release/$(BIN) \
 		-i assets/index_video_avc_1080.mp4 \
 		-i assets/index_video_avc_720.mp4 \
 		-i assets/index_audio_aac_nl_2.mp4 \
 		-o assets/asset.json
+
+## run: run the dyndo-server
+run:
+	$(CARGO) run -p dyndo-server
 
 ## test: run the whole workspace test suite
 test:
