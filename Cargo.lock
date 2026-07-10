@@ -466,11 +466,15 @@ dependencies = [
 name = "dyndo-core"
 version = "0.1.0"
 dependencies = [
+ "bytes",
  "mp4-atom",
  "opendal",
  "relative-path",
  "serde",
  "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
 ]
 
 [[package]]

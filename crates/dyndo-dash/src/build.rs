@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use dash_mpd::{
     AdaptationSet, AudioChannelConfiguration, Period, Representation, SegmentTemplate,
-    SegmentTimeline, S, MPD,
+    SegmentTimeline, MPD, S,
 };
 use dyndo_core::asset::{Segment, Track};
 use dyndo_core::cmaf::Metadata;
@@ -105,7 +105,10 @@ fn group_by_key<T, K: PartialEq>(items: &[T], key: impl Fn(&T) -> K) -> Vec<(K, 
 /// per `(fourcc, language)` key, each track becoming one `Representation`.
 fn mpd(tracks: &[Track]) -> MPD {
     let groups = group_by_key(tracks, |t| {
-        (t.metadata.fourcc(), t.metadata.language().map(str::to_string))
+        (
+            t.metadata.fourcc(),
+            t.metadata.language().map(str::to_string),
+        )
     });
 
     let adaptations = groups
@@ -166,4 +169,64 @@ pub(crate) fn build_mpd(tracks: &[Track], compact: bool) -> MPD {
         crate::compact::compact(&mut m);
     }
     m
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn seg(duration: u64) -> Segment {
+        Segment {
+            offset: 0,
+            size: 0,
+            duration,
+        }
+    }
+
+    #[test]
+    fn build_timeline_sets_time_only_on_the_first_entry() {
+        let out = build_timeline(&[seg(10), seg(20)], 100);
+        assert_eq!(out[0].t, Some(100));
+        assert_eq!(out[1].t, None);
+    }
+
+    #[test]
+    fn build_timeline_run_length_encodes_equal_durations() {
+        // three equal segments collapse to one S with r = 2 repeats
+        let out = build_timeline(&[seg(10), seg(10), seg(10)], 0);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].r, Some(2));
+    }
+
+    #[test]
+    fn build_timeline_starts_a_new_entry_on_duration_change() {
+        let out = build_timeline(&[seg(10), seg(20)], 0);
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[1].d, 20);
+    }
+
+    #[test]
+    fn frame_rate_str_omits_a_denominator_of_one() {
+        assert_eq!(frame_rate_str((30, 1)), "30");
+    }
+
+    #[test]
+    fn frame_rate_str_keeps_a_fractional_rate() {
+        assert_eq!(frame_rate_str((30_000, 1_001)), "30000/1001");
+    }
+
+    #[test]
+    fn group_by_key_preserves_first_seen_key_order() {
+        let items = ["a", "b", "a", "c"];
+        let groups = group_by_key(&items, |s| s.to_string());
+        let keys: Vec<_> = groups.iter().map(|(k, _)| k.clone()).collect();
+        assert_eq!(keys, vec!["a", "b", "c"]);
+    }
+
+    #[test]
+    fn group_by_key_collects_indices_of_like_keys() {
+        let items = ["a", "b", "a"];
+        let groups = group_by_key(&items, |s| s.to_string());
+        assert_eq!(groups[0].1, vec![0, 2]);
+    }
 }

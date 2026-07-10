@@ -53,7 +53,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Command::Index { input, output } => {
             let mut asset = Asset::new();
             for path in &input {
-                asset.add_track(Track::from_path(&op, path, &output).await);
+                asset.add_track(Track::from_path(&op, path, &output).await?);
             }
             asset.path = output;
             AssetModel::from(&asset).write(&op, &asset.path).await?;
@@ -65,7 +65,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             compact,
         } => {
             let model = AssetModel::read(&op, &input).await?;
-            let asset = Asset::from_model(&op, model, &input).await;
+            let asset = Asset::from_model(&op, model, &input).await?;
             let mpd = dyndo_dash::generate_mpd(&asset, compact);
             op.write(&output, mpd.into_bytes()).await?;
             println!("wrote {output}");
