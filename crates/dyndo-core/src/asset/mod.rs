@@ -58,12 +58,11 @@ pub async fn build_asset(inputs: &[PathBuf]) -> Result<Asset> {
     Ok(Asset { tracks })
 }
 
-/// Load `{dir}/asset.json` into an [`Asset`]. `id` names the asset in error
-/// messages only. A missing file yields [`Error::AssetNotFound`]; invalid JSON
-/// yields [`Error::MalformedAsset`].
-pub async fn load_asset(dir: &Path, id: &str) -> Result<Asset> {
-    let path = dir.join("asset.json");
-    let bytes = match tokio::fs::read(&path).await {
+/// Load the descriptor JSON at `path` into an [`Asset`]. `id` names the asset in
+/// error messages only. A missing file yields [`Error::AssetNotFound`]; invalid
+/// JSON yields [`Error::MalformedAsset`].
+pub async fn load_asset(path: &Path, id: &str) -> Result<Asset> {
+    let bytes = match tokio::fs::read(path).await {
         Ok(bytes) => bytes,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             return Err(Error::AssetNotFound(id.to_string()));
@@ -141,14 +140,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn load_asset_reads_asset_json_from_the_dir() {
+    async fn load_asset_reads_the_descriptor_at_the_path() {
         let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("asset.json");
         let json = r#"{"tracks":[{"type":"video","id":"v0","source":"v.mp4",
             "fourcc":"avc1","timescale":90000,"width":1920,"height":1080}]}"#;
-        tokio::fs::write(dir.path().join("asset.json"), json)
-            .await
-            .unwrap();
-        let asset = load_asset(dir.path(), "some-id").await.unwrap();
+        tokio::fs::write(&path, json).await.unwrap();
+        let asset = load_asset(&path, "some-id").await.unwrap();
         assert_eq!(asset.tracks.len(), 1);
         assert_eq!(asset.track("v0").map(Track::id), Some("v0"));
     }
@@ -156,17 +154,18 @@ mod tests {
     #[tokio::test]
     async fn load_asset_missing_file_is_asset_not_found() {
         let dir = tempfile::tempdir().unwrap();
-        let err = load_asset(dir.path(), "bbb").await.unwrap_err();
+        let err = load_asset(&dir.path().join("asset.json"), "bbb")
+            .await
+            .unwrap_err();
         assert!(matches!(err, Error::AssetNotFound(id) if id == "bbb"));
     }
 
     #[tokio::test]
     async fn load_asset_malformed_json_is_malformed_asset() {
         let dir = tempfile::tempdir().unwrap();
-        tokio::fs::write(dir.path().join("asset.json"), b"not json")
-            .await
-            .unwrap();
-        let err = load_asset(dir.path(), "bbb").await.unwrap_err();
+        let path = dir.path().join("asset.json");
+        tokio::fs::write(&path, b"not json").await.unwrap();
+        let err = load_asset(&path, "bbb").await.unwrap_err();
         assert!(matches!(err, Error::MalformedAsset { .. }));
     }
 }
