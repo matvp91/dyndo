@@ -1,11 +1,15 @@
+//! The wire model (`asset.json`): serializable [`AssetModel`] and [`TrackModel`].
+
 use bytes::Buf;
 use opendal::Operator;
 use serde::{Deserialize, Serialize};
 
 use crate::CoreError;
 
+/// The serializable descriptor (`asset.json`): a list of tracks.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AssetModel {
+    /// The asset's tracks, in descriptor order.
     pub tracks: Vec<TrackModel>,
 }
 
@@ -32,10 +36,14 @@ impl AssetModel {
     }
 }
 
+/// One track's wire representation, tagged by media type
+/// (`"type": "video"|"audio"`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum TrackModel {
+    /// A video track, with dimensions and codec.
     Video(VideoTrackModel),
+    /// An audio track, with sample rate, channels, and language.
     Audio(AudioTrackModel),
 }
 
@@ -57,24 +65,39 @@ impl TrackModel {
     }
 }
 
+/// The video-track fields of the wire model (`asset.json`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct VideoTrackModel {
+    /// Representation id (see [`TrackModel::id`]).
     pub id: String,
+    /// Source path of the track file, relative to the descriptor.
     pub path: String,
+    /// Sample-entry fourcc (e.g. `"avc1"`).
     pub fourcc: String,
+    /// Units per second for durations in this track.
     pub timescale: u32,
+    /// Visual width, in pixels.
     pub width: u32,
+    /// Visual height, in pixels.
     pub height: u32,
 }
 
+/// The audio-track fields of the wire model (`asset.json`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AudioTrackModel {
+    /// Representation id (see [`TrackModel::id`]).
     pub id: String,
+    /// Source path of the track file, relative to the descriptor.
     pub path: String,
+    /// Sample-entry fourcc (e.g. `"mp4a"`, `"ac-3"`, `"ec-3"`).
     pub fourcc: String,
+    /// Units per second for durations in this track.
     pub timescale: u32,
+    /// Sampling rate, in Hz.
     pub sample_rate: u32,
+    /// Channel count.
     pub channels: u16,
+    /// ISO-639-2 language code; omitted from the JSON when `None`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub language: Option<String>,
 }

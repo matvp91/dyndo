@@ -36,6 +36,10 @@ async fn atom<A: ReadAtom>(
 /// Scan the `moov`/`sidx`/first-`moof` boxes of the CMAF track at `path` and
 /// project them into the common [`Header`] and the track's [`Metadata`]. `mdat`
 /// is never fetched.
+///
+/// # Errors
+/// Propagates any [`CoreError`] if a required box is missing, cannot be read
+/// or parsed, or if the track's codec is unsupported.
 pub async fn header(
     op: &Operator,
     path: &str,
@@ -186,17 +190,24 @@ fn language_string(mdhd: &Mdhd) -> String {
 /// The fields common to every CMAF track's header.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Header {
+    /// Units per second for durations in this track.
     pub timescale: u32,
+    /// Total presentation duration, in the track timescale.
     pub duration: u64,
     /// Average bitrate in bits/s, derived from the segment sizes and duration.
     pub bandwidth: u32,
+    /// Presentation time of the first (sub)segment, in the track timescale.
     pub earliest_presentation_time: u64,
+    /// Location of the init segment (`ftyp`+`moov`) within the track file.
     pub init_segment: Segment,
 }
 
+/// Per-media-type track metadata produced by parsing the CMAF header.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Metadata {
+    /// Video-specific metadata (codec, dimensions, frame rate).
     Video(VideoMetadata),
+    /// Audio-specific metadata (codec, sample rate, channels, language).
     Audio(AudioMetadata),
 }
 
@@ -234,19 +245,29 @@ impl Metadata {
     }
 }
 
+/// Video track metadata parsed from the sample entry.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VideoMetadata {
+    /// The decoded video codec and its RFC 6381 parameters.
     pub codec: VideoCodec,
+    /// Visual width, in pixels.
     pub width: u32,
+    /// Visual height, in pixels.
     pub height: u32,
+    /// Frame rate as a (numerator, denominator) ratio, in frames per second.
     pub frame_rate: (u32, u32),
 }
 
+/// Audio track metadata parsed from the sample entry.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AudioMetadata {
+    /// The decoded audio codec and its RFC 6381 parameters.
     pub codec: AudioCodec,
+    /// Sampling rate, in Hz.
     pub sample_rate: u32,
+    /// Channel count.
     pub channels: u16,
+    /// ISO-639-2 language code (`"und"` when unspecified).
     pub language: String,
 }
 

@@ -1,3 +1,5 @@
+//! Supported codecs and the parameters needed for their RFC 6381 strings.
+
 use mp4_atom::{Audio, Codec, Visual};
 
 use crate::CoreError;
@@ -5,16 +7,26 @@ use crate::CoreError;
 /// A supported video codec with the parameters needed for its RFC 6381 string.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VideoCodec {
+    /// H.264/AVC, with the profile/constraints/level for its `avc1.PPCCLL` string.
     Avc {
+        /// AVC profile indication byte.
         profile: u8,
+        /// Profile-compatibility (constraint flags) byte.
         constraints: u8,
+        /// AVC level indication byte.
         level: u8,
     },
+    /// AV1, with the sequence parameters for its `av01.…` string.
     Av1 {
+        /// `seq_profile` from the AV1 config.
         seq_profile: u8,
+        /// `seq_level_idx_0` from the AV1 config.
         seq_level_idx: u8,
+        /// Tier: `true` = high (`H`), `false` = main (`M`).
         tier: bool,
+        /// Whether the stream is >8-bit.
         high_bitdepth: bool,
+        /// Whether the stream is 12-bit (takes precedence over `high_bitdepth`).
         twelve_bit: bool,
     },
 }
@@ -22,8 +34,14 @@ pub enum VideoCodec {
 /// A supported audio codec with the parameters needed for its RFC 6381 string.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AudioCodec {
-    Aac { audio_object_type: u8 },
+    /// AAC, with the MPEG-4 audio object type for its `mp4a.40.OO` string.
+    Aac {
+        /// MPEG-4 audio object type indication.
+        audio_object_type: u8,
+    },
+    /// Dolby Digital (AC-3).
     Ac3,
+    /// Dolby Digital Plus (E-AC-3).
     Ec3,
 }
 

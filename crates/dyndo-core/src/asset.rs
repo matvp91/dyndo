@@ -8,17 +8,27 @@ use crate::cmaf::{self, Header, Metadata};
 use crate::model::{AssetModel, AudioTrackModel, TrackModel, VideoTrackModel};
 use crate::CoreError;
 
+/// A dyndo asset: its tracks and where the descriptor was sourced from.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Asset {
+    /// The asset's tracks, in no particular order.
     pub tracks: Vec<Track>,
+    /// Path of the source descriptor (`asset.json`), used to resolve each
+    /// track's relative path.
     pub path: String,
 }
 
+/// One representation: a parsed CMAF track plus its (sub)segment map.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Track {
+    /// Resolved storage path of the track's CMAF file (not relative to the
+    /// descriptor).
     pub path: String,
+    /// Parsed CMAF header: timescale, duration, bandwidth, init segment.
     pub header: Header,
+    /// Codec-specific metadata (video or audio).
     pub metadata: Metadata,
+    /// The track's (sub)segments, in presentation order.
     pub segments: Vec<Segment>,
 }
 
@@ -26,8 +36,11 @@ pub struct Track {
 /// timescale.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Segment {
+    /// Byte offset of this (sub)segment within the track file.
     pub offset: u64,
+    /// Size of this (sub)segment, in bytes.
     pub size: u64,
+    /// Duration of this (sub)segment, in the track timescale.
     pub duration: u64,
 }
 
@@ -68,6 +81,11 @@ impl Asset {
 }
 
 impl Track {
+    /// Build a [`Track`] by parsing the CMAF header at `path` (resolved
+    /// relative to the descriptor's own `asset_path`) through `op`.
+    ///
+    /// # Errors
+    /// Propagates any [`CoreError`] from reading or parsing the track.
     pub async fn from_path(
         op: &Operator,
         path: &str,
@@ -89,6 +107,9 @@ impl Track {
     }
 
     /// Read the init segment (`ftyp`+`moov`) bytes through `op`.
+    ///
+    /// # Errors
+    /// Propagates any [`CoreError`] from the underlying read.
     pub async fn init_segment_bytes(&self, op: &Operator) -> Result<Vec<u8>, CoreError> {
         let s = self.header.init_segment;
         cmaf::read(op, &self.path, s.offset, s.size).await
@@ -96,6 +117,9 @@ impl Track {
 
     /// Read the media (sub)segment starting at presentation `time` through `op`,
     /// or `None` if no segment starts exactly there.
+    ///
+    /// # Errors
+    /// Propagates any [`CoreError`] from the underlying read.
     pub async fn segment_bytes(
         &self,
         op: &Operator,
