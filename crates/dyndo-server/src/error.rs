@@ -21,12 +21,14 @@ impl IntoResponse for ServerError {
     }
 }
 
-impl From<dyndo_core::Error> for ServerError {
-    fn from(e: dyndo_core::Error) -> Self {
-        use dyndo_core::Error;
-        match &e {
-            Error::AssetNotFound(_) => ServerError::NotFound(e.to_string()),
-            Error::Io { source, .. } if source.kind() == std::io::ErrorKind::NotFound => {
+/// Map the boxed errors returned by `dyndo_core` reads onto HTTP statuses: a
+/// missing descriptor (OpenDAL `NotFound`) is a 404, anything else — malformed
+/// JSON, other I/O — a 500. CMAF parse/read failures panic in the core by design
+/// and never surface here.
+impl From<Box<dyn std::error::Error>> for ServerError {
+    fn from(e: Box<dyn std::error::Error>) -> Self {
+        match e.downcast_ref::<opendal::Error>() {
+            Some(oe) if oe.kind() == opendal::ErrorKind::NotFound => {
                 ServerError::NotFound(e.to_string())
             }
             _ => ServerError::Internal(e.to_string()),
@@ -55,19 +57,22 @@ mod tests {
     }
 
     #[test]
-    fn missing_file_maps_to_not_found() {
-        let io = std::io::Error::new(std::io::ErrorKind::NotFound, "nope");
-        let err: ServerError = dyndo_core::Error::Io {
-            path: "a.mp4".into(),
-            source: io,
-        }
-        .into();
-        assert_eq!(err.into_response().status(), StatusCode::NOT_FOUND);
+    fn opendal_not_found_maps_to_404() {
+        let e: Box<dyn std::error::Error> =
+            Box::new(opendal::Error::new(opendal::ErrorKind::NotFound, "missing"));
+        assert_eq!(
+            ServerError::from(e).into_response().status(),
+            StatusCode::NOT_FOUND
+        );
     }
 
     #[test]
-    fn asset_not_found_maps_to_not_found() {
-        let err: ServerError = dyndo_core::Error::AssetNotFound("bbb".into()).into();
-        assert_eq!(err.into_response().status(), StatusCode::NOT_FOUND);
+    fn other_error_maps_to_500() {
+        let e: Box<dyn std::error::Error> =
+            Box::new(opendal::Error::new(opendal::ErrorKind::Unexpected, "boom"));
+        assert_eq!(
+            ServerError::from(e).into_response().status(),
+            StatusCode::INTERNAL_SERVER_ERROR
+        );
     }
 }

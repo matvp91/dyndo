@@ -12,12 +12,11 @@ path = "src/main.rs"
 
 [dependencies]
 dyndo-core = { path = "../dyndo-core" }
+dyndo-dash = { path = "../dyndo-dash" }
+opendal = { version = "0.58", default-features = false, features = ["services-fs"] }
 axum = "0.8"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
 tower-http = { version = "0.6", features = ["cors"] }
-url = "2"
-anyhow = "1"
-thiserror = "2"
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }

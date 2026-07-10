@@ -1,6 +1,8 @@
-use std::path::{Path, PathBuf};
-
 use clap::{Parser, Subcommand};
+use dyndo_core::asset::{Asset, Track};
+use dyndo_core::model::AssetModel;
+use opendal::services::Fs;
+use opendal::Operator;
 
 /// dyndo — CMAF indexer and DASH manifest generator.
 #[derive(Parser)]
@@ -12,24 +14,24 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Build an asset.json descriptor from one or more CMAF files.
+    /// Build an asset.json descriptor from one or more CMAF files. Inputs are
+    /// track paths relative to the output descriptor's directory.
     Index {
         /// Input CMAF file (repeatable, one track each).
         #[arg(short, long = "input", required = true)]
-        input: Vec<PathBuf>,
+        input: Vec<String>,
         /// Output descriptor path.
         #[arg(short, long = "output", default_value = "asset.json")]
-        output: PathBuf,
+        output: String,
     },
-    /// Generate a DASH MPD from an asset.json (sources resolved relative to the
-    /// asset.json's own directory).
+    /// Generate a DASH MPD from an asset.json.
     Dash {
         /// Input asset.json path.
         #[arg(short, long = "input", default_value = "asset.json")]
-        input: PathBuf,
+        input: String,
         /// Output manifest path.
         #[arg(short, long = "output", default_value = "stream.mpd")]
-        output: PathBuf,
+        output: String,
         /// Hoist SegmentTemplate content shared by all Representations up to the
         /// AdaptationSet level.
         #[arg(short = 'c', long = "compact")]
@@ -37,28 +39,36 @@ enum Command {
     },
 }
 
+/// Build the filesystem operator, rooted at `OPENDAL_FS_ROOT` (default `.`).
+fn operator() -> Result<Operator, Box<dyn std::error::Error>> {
+    let root = std::env::var("OPENDAL_FS_ROOT").unwrap_or_else(|_| ".".to_string());
+    Ok(Operator::new(Fs::default().root(&root))?)
+}
+
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
+    let op = operator()?;
     match cli.command {
         Command::Index { input, output } => {
-            let asset = dyndo_core::build_asset(&input).await?;
-            let json = serde_json::to_string_pretty(&asset)?;
-            tokio::fs::write(&output, json).await?;
-            println!("wrote {} ({} tracks)", output.display(), asset.tracks.len());
+            let mut asset = Asset::new();
+            for path in &input {
+                asset.add_track(Track::from_path(&op, path, &output).await);
+            }
+            asset.path = output;
+            AssetModel::from(&asset).write(&op, &asset.path).await?;
+            println!("wrote {} ({} tracks)", asset.path, asset.tracks.len());
         }
         Command::Dash {
             input,
             output,
             compact,
         } => {
-            let bytes = tokio::fs::read(&input).await?;
-            let asset: dyndo_core::Asset = serde_json::from_slice(&bytes)?;
-            // Sources in asset.json are relative to the descriptor's own directory.
-            let base = input.parent().unwrap_or_else(|| Path::new(""));
-            let mpd = dyndo_core::generate_mpd(&asset, base, compact).await?;
-            tokio::fs::write(&output, mpd).await?;
-            println!("wrote {}", output.display());
+            let model = AssetModel::read(&op, &input).await?;
+            let asset = Asset::from_model(&op, model, &input).await;
+            let mpd = dyndo_dash::generate_mpd(&asset, compact);
+            op.write(&output, mpd.into_bytes()).await?;
+            println!("wrote {output}");
         }
     }
     Ok(())

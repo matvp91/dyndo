@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/dyndo-core", "crates/dyndo-cli", "crates/dyndo-server"]
+members = ["crates/dyndo-core", "crates/dyndo-dash", "crates/dyndo-cli", "crates/dyndo-server"]
 
 [workspace.lints.rust]
 future_incompatible = "warn"

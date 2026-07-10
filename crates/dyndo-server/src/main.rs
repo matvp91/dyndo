@@ -1,22 +1,19 @@
 mod error;
 mod routes;
 
-use std::path::PathBuf;
-use std::sync::Arc;
-
+use opendal::services::Fs;
+use opendal::Operator;
 use routes::build_router;
 
 const PORT: u16 = 8080;
+/// Filesystem root every asset key is resolved against.
+const ASSETS_ROOT: &str = "./assets";
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    // Canonicalise the base once; fall back to the raw path if it doesn't exist yet.
-    let assets_base = PathBuf::from("./assets");
-    let assets_base = Arc::new(assets_base.canonicalize().unwrap_or(assets_base));
-
-    let app = build_router(assets_base);
-    let addr = ("0.0.0.0", PORT);
-    let listener = tokio::net::TcpListener::bind(addr).await?;
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let op = Operator::new(Fs::default().root(ASSETS_ROOT))?;
+    let app = build_router(op);
+    let listener = tokio::net::TcpListener::bind(("0.0.0.0", PORT)).await?;
     println!("dyndo-server listening on http://0.0.0.0:{PORT}");
     axum::serve(listener, app).await?;
     Ok(())

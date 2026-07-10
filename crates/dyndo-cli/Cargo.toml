@@ -12,10 +12,11 @@ path = "src/main.rs"
 
 [dependencies]
 dyndo-core = { path = "../dyndo-core" }
+dyndo-dash = { path = "../dyndo-dash" }
+opendal = { version = "0.58", default-features = false, features = ["services-fs"] }
 clap = { version = "4", features = ["derive"] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs"] }
-serde_json = "1"
-anyhow = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 
 [dev-dependencies]
 tempfile = "3"
+serde_json = "1"
