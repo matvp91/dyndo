@@ -5,6 +5,7 @@
 //! `Operator::from_config`.
 
 use opendal::services::{FsConfig, S3Config};
+use opendal::Operator;
 use serde::{Deserialize, Serialize};
 
 use std::error::Error;
@@ -58,6 +59,22 @@ impl AppConfig {
             fs: None,
             s3: None,
         }
+    }
+
+    /// The listener address as `(host, port)`.
+    pub fn bind(&self) -> (&str, u16) {
+        (&self.server.host, self.server.port)
+    }
+
+    /// Build the OpenDAL operator for the selected store. Cloning the selected
+    /// sub-config is cheap and keeps `&self` intact for the caller; a missing
+    /// section (`None`) becomes an empty config that OpenDAL's `build()` rejects.
+    pub fn build_operator(&self) -> Result<Operator, Box<dyn Error>> {
+        let op = match self.store {
+            StoreKind::Fs => Operator::from_config(self.fs.clone().unwrap_or_default())?,
+            StoreKind::S3 => Operator::from_config(self.s3.clone().unwrap_or_default())?,
+        };
+        Ok(op)
     }
 }
 
@@ -169,5 +186,45 @@ mod tests {
             assert_eq!(c.s3.as_ref().unwrap().bucket, "b");
             Ok(())
         });
+    }
+
+    #[test]
+    fn build_operator_selects_fs() {
+        Jail::expect_with(|_jail| {
+            let mut c = AppConfig::defaults();
+            let mut fs = FsConfig::default();
+            fs.root = Some(".".to_string());
+            c.fs = Some(fs);
+            let op = c.build_operator().unwrap();
+            assert_eq!(op.info().scheme(), "fs");
+            Ok(())
+        });
+    }
+
+    #[test]
+    fn build_operator_selects_s3() {
+        let mut c = AppConfig::defaults();
+        c.store = StoreKind::S3;
+        let mut s3 = S3Config::default();
+        s3.bucket = "test-bucket".to_string();
+        s3.region = Some("us-east-1".to_string());
+        c.s3 = Some(s3);
+        let op = c.build_operator().unwrap();
+        assert_eq!(op.info().scheme(), "s3");
+    }
+
+    #[test]
+    fn fs_store_without_config_errors() {
+        // Default state: store fs, no fs section -> OpenDAL rejects (no root).
+        let c = AppConfig::defaults();
+        assert!(c.build_operator().is_err());
+    }
+
+    #[test]
+    fn s3_store_without_config_errors() {
+        let mut c = AppConfig::defaults();
+        c.store = StoreKind::S3;
+        c.s3 = None;
+        assert!(c.build_operator().is_err());
     }
 }
