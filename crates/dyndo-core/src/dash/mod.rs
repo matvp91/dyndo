@@ -7,9 +7,9 @@ use std::path::Path;
 pub(crate) use build::build_mpd;
 use serde::Serialize;
 
+use crate::asset::Asset;
 use crate::cmaf::read_header;
 use crate::error::{Error, Result};
-use crate::model::Asset;
 use crate::storage::LocalFile;
 
 /// Read every track's source (joined onto `base`), then build + serialize a static

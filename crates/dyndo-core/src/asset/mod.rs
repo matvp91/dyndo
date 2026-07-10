@@ -1,11 +1,16 @@
+pub mod id;
+mod model;
+
+pub use model::{Asset, AudioTrack, Track, VideoTrack};
+
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use crate::cmaf::{read_header, Stream};
 use crate::error::{Error, Result};
-use crate::model::id::track_id;
-use crate::model::{Asset, AudioTrack, Track, VideoTrack};
 use crate::storage::{LocalFile, Source};
+
+use self::id::track_id;
 
 pub async fn describe_track<S: Source>(source: &S, key: String) -> Result<Track> {
     let header = read_header(source, &key).await?;
