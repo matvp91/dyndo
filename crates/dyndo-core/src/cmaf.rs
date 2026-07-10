@@ -170,12 +170,17 @@ fn first_sample_duration(moof: &Moof, moov: &Moov) -> u32 {
         .unwrap_or(0)
 }
 
-fn language_string(mdhd: &Mdhd) -> String {
-    match mdhd.language.as_str() {
-        "" => "und",
-        lang => lang,
+/// Map an empty ISO-639-2 language code to the "undetermined" placeholder.
+fn normalize_language(lang: &str) -> &str {
+    if lang.is_empty() {
+        "und"
+    } else {
+        lang
     }
-    .to_string()
+}
+
+fn language_string(mdhd: &Mdhd) -> String {
+    normalize_language(mdhd.language.as_str()).to_string()
 }
 
 /// The fields common to every CMAF track's header.
@@ -243,4 +248,64 @@ pub struct AudioMetadata {
     pub sample_rate: u32,
     pub channels: u16,
     pub language: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn gcd_of_coprime_numbers_is_one() {
+        assert_eq!(gcd(9, 4), 1);
+    }
+
+    #[test]
+    fn gcd_extracts_the_common_factor() {
+        assert_eq!(gcd(48_000, 1_600), 1_600);
+    }
+
+    #[test]
+    fn frame_rate_reduces_to_lowest_terms() {
+        // 48000 timescale / 1600 sample duration = 30 fps
+        assert_eq!(frame_rate(1_600, 48_000), (30, 1));
+    }
+
+    #[test]
+    fn frame_rate_is_zero_when_sample_duration_is_zero() {
+        assert_eq!(frame_rate(0, 48_000), (0, 1));
+    }
+
+    #[test]
+    fn average_bandwidth_is_zero_when_duration_is_zero() {
+        assert_eq!(average_bandwidth(1_000, 0, 48_000), 0);
+    }
+
+    #[test]
+    fn average_bandwidth_is_bits_per_second() {
+        // 1000 bytes over exactly 1 second = 8000 bits/s
+        assert_eq!(average_bandwidth(1_000, 48_000, 48_000), 8_000);
+    }
+
+    #[test]
+    fn normalize_language_maps_empty_to_und() {
+        assert_eq!(normalize_language(""), "und");
+    }
+
+    #[test]
+    fn normalize_language_passes_through_a_known_code() {
+        assert_eq!(normalize_language("nld"), "nld");
+    }
+
+    #[tokio::test]
+    async fn header_returns_error_on_garbage_input_instead_of_panicking() {
+        use opendal::services::Fs;
+        use opendal::Operator;
+
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("bad.mp4"), [0xAA_u8; 64]).unwrap();
+        let op = Operator::new(Fs::default().root(dir.path().to_str().unwrap())).unwrap();
+
+        let result = header(&op, "bad.mp4").await;
+        assert!(result.is_err(), "expected an error on garbage input, got Ok");
+    }
 }

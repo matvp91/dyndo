@@ -135,3 +135,65 @@ impl AudioCodec {
             .ok_or(CoreError::UnsupportedCodec("audio"))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn avc_rfc6381_formats_profile_constraints_level_as_hex() {
+        let c = VideoCodec::Avc { profile: 100, constraints: 0, level: 40 };
+        assert_eq!(c.rfc6381(), "avc1.640028");
+    }
+
+    #[test]
+    fn av1_rfc6381_main_tier_eight_bit() {
+        let c = VideoCodec::Av1 {
+            seq_profile: 0, seq_level_idx: 1, tier: false, high_bitdepth: false, twelve_bit: false,
+        };
+        assert_eq!(c.rfc6381(), "av01.0.01M.08");
+    }
+
+    #[test]
+    fn av1_rfc6381_high_tier_ten_bit() {
+        let c = VideoCodec::Av1 {
+            seq_profile: 0, seq_level_idx: 8, tier: true, high_bitdepth: true, twelve_bit: false,
+        };
+        assert_eq!(c.rfc6381(), "av01.0.08H.10");
+    }
+
+    #[test]
+    fn av1_rfc6381_twelve_bit_takes_precedence_over_high_bitdepth() {
+        let c = VideoCodec::Av1 {
+            seq_profile: 1, seq_level_idx: 0, tier: false, high_bitdepth: true, twelve_bit: true,
+        };
+        assert_eq!(c.rfc6381(), "av01.1.00M.12");
+    }
+
+    #[test]
+    fn aac_rfc6381_includes_object_type() {
+        assert_eq!(AudioCodec::Aac { audio_object_type: 2 }.rfc6381(), "mp4a.40.2");
+    }
+
+    #[test]
+    fn ac3_rfc6381_is_the_fourcc() {
+        assert_eq!(AudioCodec::Ac3.rfc6381(), "ac-3");
+    }
+
+    #[test]
+    fn ec3_rfc6381_is_the_fourcc() {
+        assert_eq!(AudioCodec::Ec3.rfc6381(), "ec-3");
+    }
+
+    #[test]
+    fn video_from_codecs_on_empty_slice_is_unsupported() {
+        let err = VideoCodec::from_codecs(&[]).unwrap_err();
+        assert!(matches!(err, CoreError::UnsupportedCodec("video")), "got {err:?}");
+    }
+
+    #[test]
+    fn audio_from_codecs_on_empty_slice_is_unsupported() {
+        let err = AudioCodec::from_codecs(&[]).unwrap_err();
+        assert!(matches!(err, CoreError::UnsupportedCodec("audio")), "got {err:?}");
+    }
+}
