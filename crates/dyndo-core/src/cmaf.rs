@@ -306,6 +306,9 @@ mod tests {
         let op = Operator::new(Fs::default().root(dir.path().to_str().unwrap())).unwrap();
 
         let result = header(&op, "bad.mp4").await;
-        assert!(result.is_err(), "expected an error on garbage input, got Ok");
+        assert!(
+            result.is_err(),
+            "expected an error on garbage input, got Ok"
+        );
     }
 }
