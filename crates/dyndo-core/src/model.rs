@@ -7,20 +7,13 @@ pub struct AssetModel {
 }
 
 impl AssetModel {
-    pub async fn read(
-        op: &Operator,
-        path: &str,
-    ) -> Result<AssetModel, Box<dyn std::error::Error>> {
+    pub async fn read(op: &Operator, path: &str) -> Result<AssetModel, Box<dyn std::error::Error>> {
         let bytes = op.read(path).await?;
         Ok(serde_json::from_slice(&bytes.to_vec())?)
     }
 
     /// Serialize to pretty JSON and write to `path` through `op`.
-    pub async fn write(
-        &self,
-        op: &Operator,
-        path: &str,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn write(&self, op: &Operator, path: &str) -> Result<(), Box<dyn std::error::Error>> {
         let bytes = serde_json::to_vec_pretty(self)?;
         op.write(path, bytes).await?;
         Ok(())

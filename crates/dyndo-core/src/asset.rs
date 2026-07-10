@@ -2,10 +2,10 @@
 //! sourced from. Built from the model in [`crate::model`].
 
 use opendal::Operator;
+use relative_path::RelativePath;
 
 use crate::cmaf::{self, Header, Metadata};
 use crate::model::{AssetModel, AudioTrackModel, TrackModel, VideoTrackModel};
-use relative_path::RelativePath;
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Asset {

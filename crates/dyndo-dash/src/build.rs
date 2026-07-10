@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use dash_mpd::{
     AdaptationSet, AudioChannelConfiguration, Period, Representation, SegmentTemplate,
-    SegmentTimeline, S, MPD,
+    SegmentTimeline, MPD, S,
 };
 use dyndo_core::asset::{Segment, Track};
 use dyndo_core::cmaf::Metadata;
@@ -105,7 +105,10 @@ fn group_by_key<T, K: PartialEq>(items: &[T], key: impl Fn(&T) -> K) -> Vec<(K, 
 /// per `(fourcc, language)` key, each track becoming one `Representation`.
 fn mpd(tracks: &[Track]) -> MPD {
     let groups = group_by_key(tracks, |t| {
-        (t.metadata.fourcc(), t.metadata.language().map(str::to_string))
+        (
+            t.metadata.fourcc(),
+            t.metadata.language().map(str::to_string),
+        )
     });
 
     let adaptations = groups
