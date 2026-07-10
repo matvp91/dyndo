@@ -51,18 +51,24 @@ fn hoist_shared_attributes(set: &mut AdaptationSet) {
             let first = set.representations[0]
                 .SegmentTemplate
                 .as_ref()
-                .unwrap()
+                .expect("SegmentTemplate present: guarded by the all(is_some) check above")
                 .$field
                 .clone();
             if first.is_some()
-                && set
-                    .representations
-                    .iter()
-                    .all(|r| r.SegmentTemplate.as_ref().unwrap().$field == first)
+                && set.representations.iter().all(|r| {
+                    r.SegmentTemplate
+                        .as_ref()
+                        .expect("SegmentTemplate present: guarded above")
+                        .$field
+                        == first
+                })
             {
                 shared.$field = first;
                 for rep in &mut set.representations {
-                    rep.SegmentTemplate.as_mut().unwrap().$field = None;
+                    rep.SegmentTemplate
+                        .as_mut()
+                        .expect("SegmentTemplate present: guarded above")
+                        .$field = None;
                 }
                 hoisted_any = true;
             }
@@ -97,5 +103,59 @@ fn hoist_shared_attributes(set: &mut AdaptationSet) {
                 rep.SegmentTemplate = None;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use dash_mpd::Representation;
+
+    use super::*;
+
+    fn rep_with_media(media: &str) -> Representation {
+        Representation {
+            SegmentTemplate: Some(SegmentTemplate {
+                media: Some(media.to_string()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn hoist_shared_template_lifts_identical_templates() {
+        let mut set = AdaptationSet {
+            representations: vec![rep_with_media("x"), rep_with_media("x")],
+            ..Default::default()
+        };
+        hoist_shared_template(&mut set);
+        assert!(set.SegmentTemplate.is_some());
+        assert!(set
+            .representations
+            .iter()
+            .all(|r| r.SegmentTemplate.is_none()));
+    }
+
+    #[test]
+    fn hoist_shared_template_leaves_differing_templates_in_place() {
+        let mut set = AdaptationSet {
+            representations: vec![rep_with_media("x"), rep_with_media("y")],
+            ..Default::default()
+        };
+        hoist_shared_template(&mut set);
+        assert!(set.SegmentTemplate.is_none());
+    }
+
+    #[test]
+    fn hoist_shared_attributes_lifts_a_common_field() {
+        let mut set = AdaptationSet {
+            representations: vec![rep_with_media("same"), rep_with_media("same")],
+            ..Default::default()
+        };
+        hoist_shared_attributes(&mut set);
+        assert_eq!(
+            set.SegmentTemplate.and_then(|t| t.media),
+            Some("same".to_string())
+        );
     }
 }

@@ -15,6 +15,7 @@ pub fn generate_mpd(asset: &Asset, compact: bool) -> String {
     let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
     let mut serializer = quick_xml::se::Serializer::new(&mut xml);
     serializer.indent(' ', 2);
-    mpd.serialize(serializer).unwrap();
+    mpd.serialize(serializer)
+        .expect("MPD serialization is infallible for a well-formed model");
     xml
 }
