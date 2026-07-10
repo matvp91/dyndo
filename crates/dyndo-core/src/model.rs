@@ -1,5 +1,8 @@
+use bytes::Buf;
 use opendal::Operator;
 use serde::{Deserialize, Serialize};
+
+use crate::CoreError;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AssetModel {
@@ -7,13 +10,22 @@ pub struct AssetModel {
 }
 
 impl AssetModel {
-    pub async fn read(op: &Operator, path: &str) -> Result<AssetModel, Box<dyn std::error::Error>> {
-        let bytes = op.read(path).await?;
-        Ok(serde_json::from_slice(&bytes.to_vec())?)
+    /// Read and deserialize the descriptor JSON at `path` through `op`.
+    ///
+    /// # Errors
+    /// [`CoreError::Storage`] if the object is missing or unreadable;
+    /// [`CoreError::Descriptor`] if the bytes are not valid descriptor JSON.
+    pub async fn read(op: &Operator, path: &str) -> Result<AssetModel, CoreError> {
+        let buf = op.read(path).await?;
+        Ok(serde_json::from_reader(buf.reader())?)
     }
 
     /// Serialize to pretty JSON and write to `path` through `op`.
-    pub async fn write(&self, op: &Operator, path: &str) -> Result<(), Box<dyn std::error::Error>> {
+    ///
+    /// # Errors
+    /// [`CoreError::Descriptor`] if serialization fails; [`CoreError::Storage`]
+    /// if the write fails.
+    pub async fn write(&self, op: &Operator, path: &str) -> Result<(), CoreError> {
         let bytes = serde_json::to_vec_pretty(self)?;
         op.write(path, bytes).await?;
         Ok(())

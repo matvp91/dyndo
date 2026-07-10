@@ -2,6 +2,7 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
+use dyndo_core::CoreError;
 
 #[derive(Debug)]
 pub enum ServerError {
@@ -21,14 +22,14 @@ impl IntoResponse for ServerError {
     }
 }
 
-/// Map the boxed errors returned by `dyndo_core` reads onto HTTP statuses: a
-/// missing descriptor (OpenDAL `NotFound`) is a 404, anything else — malformed
-/// JSON, other I/O — a 500. CMAF parse/read failures panic in the core by design
-/// and never surface here.
-impl From<Box<dyn std::error::Error>> for ServerError {
-    fn from(e: Box<dyn std::error::Error>) -> Self {
-        match e.downcast_ref::<opendal::Error>() {
-            Some(oe) if oe.kind() == opendal::ErrorKind::NotFound => {
+/// Map a [`CoreError`] onto an HTTP status. A missing object (OpenDAL
+/// `NotFound`) is a 404; every other failure — malformed descriptor JSON,
+/// unreadable or unsupported media, other I/O — is a 500, because the asset
+/// files are server-owned and a bad one is our problem, not the client's.
+impl From<CoreError> for ServerError {
+    fn from(e: CoreError) -> Self {
+        match &e {
+            CoreError::Storage(oe) if oe.kind() == opendal::ErrorKind::NotFound => {
                 ServerError::NotFound(e.to_string())
             }
             _ => ServerError::Internal(e.to_string()),
@@ -41,15 +42,23 @@ mod tests {
     use super::*;
 
     #[test]
-    fn variants_map_to_expected_status() {
+    fn not_found_variant_maps_to_404() {
         assert_eq!(
             ServerError::NotFound("x".into()).into_response().status(),
             StatusCode::NOT_FOUND
         );
+    }
+
+    #[test]
+    fn bad_request_variant_maps_to_400() {
         assert_eq!(
             ServerError::BadRequest("x".into()).into_response().status(),
             StatusCode::BAD_REQUEST
         );
+    }
+
+    #[test]
+    fn internal_variant_maps_to_500() {
         assert_eq!(
             ServerError::Internal("x".into()).into_response().status(),
             StatusCode::INTERNAL_SERVER_ERROR
@@ -57,9 +66,11 @@ mod tests {
     }
 
     #[test]
-    fn opendal_not_found_maps_to_404() {
-        let e: Box<dyn std::error::Error> =
-            Box::new(opendal::Error::new(opendal::ErrorKind::NotFound, "missing"));
+    fn core_storage_not_found_maps_to_404() {
+        let e = CoreError::Storage(opendal::Error::new(
+            opendal::ErrorKind::NotFound,
+            "missing",
+        ));
         assert_eq!(
             ServerError::from(e).into_response().status(),
             StatusCode::NOT_FOUND
@@ -67,9 +78,17 @@ mod tests {
     }
 
     #[test]
-    fn other_error_maps_to_500() {
-        let e: Box<dyn std::error::Error> =
-            Box::new(opendal::Error::new(opendal::ErrorKind::Unexpected, "boom"));
+    fn core_container_maps_to_500() {
+        let e = CoreError::Container("bad box".into());
+        assert_eq!(
+            ServerError::from(e).into_response().status(),
+            StatusCode::INTERNAL_SERVER_ERROR
+        );
+    }
+
+    #[test]
+    fn core_unsupported_codec_maps_to_500() {
+        let e = CoreError::UnsupportedCodec("video");
         assert_eq!(
             ServerError::from(e).into_response().status(),
             StatusCode::INTERNAL_SERVER_ERROR
