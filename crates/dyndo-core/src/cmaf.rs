@@ -8,14 +8,17 @@ use opendal::Operator;
 
 use crate::asset::Segment;
 use crate::codec::{AudioCodec, VideoCodec};
+use crate::CoreError;
 
 /// Read `len` bytes of `path` starting at `offset`, through `op`.
-pub(crate) async fn read(op: &Operator, path: &str, offset: u64, len: u64) -> Vec<u8> {
-    op.read_with(path)
-        .range(offset..offset + len)
-        .await
-        .unwrap()
-        .to_vec()
+pub(crate) async fn read(
+    op: &Operator,
+    path: &str,
+    offset: u64,
+    len: u64,
+) -> Result<Vec<u8>, CoreError> {
+    let buf = op.read_with(path).range(offset..offset + len).await?;
+    Ok(buf.to_vec())
 }
 
 /// Fetch a box body and decode it into atom `A`.
@@ -25,15 +28,18 @@ async fn atom<A: ReadAtom>(
     bh: &BoxHeader,
     body_start: u64,
     body_len: u64,
-) -> A {
-    let body = read(op, path, body_start, body_len).await;
-    A::read_atom(bh, &mut Cursor::new(&body[..])).unwrap()
+) -> Result<A, CoreError> {
+    let body = read(op, path, body_start, body_len).await?;
+    A::read_atom(bh, &mut Cursor::new(&body[..])).map_err(|e| CoreError::Container(e.to_string()))
 }
 
 /// Scan the `moov`/`sidx`/first-`moof` boxes of the CMAF track at `path` and
 /// project them into the common [`Header`] and the track's [`Metadata`]. `mdat`
 /// is never fetched.
-pub async fn header(op: &Operator, path: &str) -> (Header, Vec<Segment>, Metadata) {
+pub async fn header(
+    op: &Operator,
+    path: &str,
+) -> Result<(Header, Vec<Segment>, Metadata), CoreError> {
     let mut offset = 0u64;
     let mut moov: Option<Moov> = None;
     let mut sidx: Option<Sidx> = None;
@@ -42,28 +48,31 @@ pub async fn header(op: &Operator, path: &str) -> (Header, Vec<Segment>, Metadat
     let mut sidx_end = 0u64;
 
     while moov.is_none() || sidx.is_none() || first_moof.is_none() {
-        let head = read(op, path, offset, 16).await;
+        let head = read(op, path, offset, 16).await?;
         let mut cursor = Cursor::new(&head[..]);
-        let bh = BoxHeader::read_from(&mut cursor).unwrap();
+        let bh =
+            BoxHeader::read_from(&mut cursor).map_err(|e| CoreError::Container(e.to_string()))?;
         let body_start = offset + cursor.position();
-        let body_len = bh.size.unwrap() as u64;
+        let body_len =
+            bh.size
+                .ok_or_else(|| CoreError::Container("box has no size".into()))? as u64;
         let box_end = body_start + body_len;
 
         if bh.kind == Moov::KIND {
-            moov = Some(atom(op, path, &bh, body_start, body_len).await);
+            moov = Some(atom(op, path, &bh, body_start, body_len).await?);
             moov_end = box_end;
         } else if bh.kind == Sidx::KIND {
-            sidx = Some(atom(op, path, &bh, body_start, body_len).await);
+            sidx = Some(atom(op, path, &bh, body_start, body_len).await?);
             sidx_end = box_end;
         } else if bh.kind == Moof::KIND && first_moof.is_none() {
-            first_moof = Some(atom(op, path, &bh, body_start, body_len).await);
+            first_moof = Some(atom(op, path, &bh, body_start, body_len).await?);
         }
         offset = box_end;
     }
 
-    let moov = moov.unwrap();
-    let sidx = sidx.unwrap();
-    let first_moof = first_moof.unwrap();
+    let moov = moov.expect("present: the loop exits only once all three boxes are set");
+    let sidx = sidx.expect("present: the loop exits only once all three boxes are set");
+    let first_moof = first_moof.expect("present: the loop exits only once all three boxes are set");
 
     let segments = segments(&sidx, sidx_end);
     let duration = segments.iter().map(|s| s.duration).sum();
@@ -73,7 +82,7 @@ pub async fn header(op: &Operator, path: &str) -> (Header, Vec<Segment>, Metadat
     let mdia = &moov.trak[0].mdia;
     let codecs = &mdia.minf.stbl.stsd.codecs;
     let metadata = if mdia.hdlr.handler == FourCC::new(b"vide") {
-        let (codec, visual) = VideoCodec::from_codecs(codecs);
+        let (codec, visual) = VideoCodec::from_codecs(codecs)?;
         let sample_duration = first_sample_duration(&first_moof, &moov);
         Metadata::Video(VideoMetadata {
             codec,
@@ -82,7 +91,7 @@ pub async fn header(op: &Operator, path: &str) -> (Header, Vec<Segment>, Metadat
             frame_rate: frame_rate(sample_duration, sidx.timescale),
         })
     } else {
-        let (codec, audio) = AudioCodec::from_codecs(codecs);
+        let (codec, audio) = AudioCodec::from_codecs(codecs)?;
         Metadata::Audio(AudioMetadata {
             codec,
             sample_rate: audio.sample_rate.integer() as u32,
@@ -102,7 +111,7 @@ pub async fn header(op: &Operator, path: &str) -> (Header, Vec<Segment>, Metadat
             duration: 0,
         },
     };
-    (header, segments, metadata)
+    Ok((header, segments, metadata))
 }
 
 fn segments(sidx: &Sidx, sidx_end: u64) -> Vec<Segment> {
@@ -170,7 +179,7 @@ fn language_string(mdhd: &Mdhd) -> String {
 }
 
 /// The fields common to every CMAF track's header.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Header {
     pub timescale: u32,
     pub duration: u64,
@@ -180,7 +189,7 @@ pub struct Header {
     pub init_segment: Segment,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Metadata {
     Video(VideoMetadata),
     Audio(AudioMetadata),
@@ -220,7 +229,7 @@ impl Metadata {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VideoMetadata {
     pub codec: VideoCodec,
     pub width: u32,
@@ -228,7 +237,7 @@ pub struct VideoMetadata {
     pub frame_rate: (u32, u32),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AudioMetadata {
     pub codec: AudioCodec,
     pub sample_rate: u32,

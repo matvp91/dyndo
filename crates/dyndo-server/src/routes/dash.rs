@@ -17,7 +17,7 @@ use crate::error::ServerError;
 /// so the whole asset is built (each track's header parsed).
 pub(super) async fn manifest(op: &Operator, asset_path: &str) -> Result<Response, ServerError> {
     let model = AssetModel::read(op, asset_path).await?;
-    let asset = Asset::from_model(op, model, asset_path).await;
+    let asset = Asset::from_model(op, model, asset_path).await?;
     let xml = dyndo_dash::generate_mpd(&asset, true);
     Ok(([(CONTENT_TYPE, "application/dash+xml")], xml).into_response())
 }
@@ -34,8 +34,8 @@ pub(super) async fn init_segment(
         .iter()
         .find(|t| t.id() == repr)
         .ok_or_else(|| ServerError::NotFound(format!("no representation {repr}")))?;
-    let track = Track::from_path(op, source.path(), asset_path).await;
-    let bytes = track.init_segment_bytes(op).await;
+    let track = Track::from_path(op, source.path(), asset_path).await?;
+    let bytes = track.init_segment_bytes(op).await?;
     Ok(([(CONTENT_TYPE, track.metadata.mime_type())], bytes).into_response())
 }
 
@@ -54,7 +54,7 @@ pub(super) async fn media_segment(
         .iter()
         .find(|t| t.id() == repr)
         .ok_or_else(|| ServerError::NotFound(format!("no representation {repr}")))?;
-    let track = Track::from_path(op, source.path(), asset_path).await;
+    let track = Track::from_path(op, source.path(), asset_path).await?;
     let time: u64 = seg
         .strip_suffix(".m4s")
         .ok_or_else(|| ServerError::NotFound(format!("unknown segment: {seg}")))?
@@ -62,7 +62,7 @@ pub(super) async fn media_segment(
         .map_err(|_| ServerError::BadRequest(format!("invalid segment time: {seg}")))?;
     let bytes = track
         .segment_bytes(op, time)
-        .await
+        .await?
         .ok_or_else(|| ServerError::NotFound(format!("no segment at time {time}")))?;
     Ok(([(CONTENT_TYPE, track.metadata.mime_type())], bytes).into_response())
 }

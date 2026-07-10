@@ -3,6 +3,8 @@
 
 use mp4_atom::{Audio, Codec, Visual};
 
+use crate::CoreError;
+
 /// A supported video codec with the parameters needed for its RFC 6381 string.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VideoCodec {
@@ -68,7 +70,7 @@ impl VideoCodec {
     }
 
     /// Project the first supported video sample entry into `(VideoCodec, &Visual)`.
-    pub(crate) fn from_codecs(codecs: &[Codec]) -> (VideoCodec, &Visual) {
+    pub(crate) fn from_codecs(codecs: &[Codec]) -> Result<(VideoCodec, &Visual), CoreError> {
         codecs
             .iter()
             .find_map(|c| match c {
@@ -92,7 +94,7 @@ impl VideoCodec {
                 )),
                 _ => None,
             })
-            .unwrap()
+            .ok_or(CoreError::UnsupportedCodec("video"))
     }
 }
 
@@ -116,7 +118,7 @@ impl AudioCodec {
     }
 
     /// Project the first supported audio sample entry into `(AudioCodec, &Audio)`.
-    pub(crate) fn from_codecs(codecs: &[Codec]) -> (AudioCodec, &Audio) {
+    pub(crate) fn from_codecs(codecs: &[Codec]) -> Result<(AudioCodec, &Audio), CoreError> {
         codecs
             .iter()
             .find_map(|c| match c {
@@ -130,6 +132,6 @@ impl AudioCodec {
                 Codec::Eac3(a) => Some((AudioCodec::Ec3, &a.audio)),
                 _ => None,
             })
-            .unwrap()
+            .ok_or(CoreError::UnsupportedCodec("audio"))
     }
 }

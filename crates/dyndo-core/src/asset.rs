@@ -6,14 +6,15 @@ use relative_path::RelativePath;
 
 use crate::cmaf::{self, Header, Metadata};
 use crate::model::{AssetModel, AudioTrackModel, TrackModel, VideoTrackModel};
+use crate::CoreError;
 
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Asset {
     pub tracks: Vec<Track>,
     pub path: String,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Track {
     pub path: String,
     pub header: Header,
@@ -23,7 +24,7 @@ pub struct Track {
 
 /// A (sub)segment's location: byte `offset`/`size` plus `duration` in the track
 /// timescale.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Segment {
     pub offset: u64,
     pub size: u64,
@@ -41,7 +42,17 @@ impl Asset {
         self.tracks.push(track);
     }
 
-    pub async fn from_model(op: &Operator, model: AssetModel, path: impl Into<String>) -> Asset {
+    /// Build an [`Asset`] from its wire [`AssetModel`], parsing every track's
+    /// CMAF header. `path` is the descriptor's own path, used to resolve each
+    /// track's relative path.
+    ///
+    /// # Errors
+    /// Propagates any [`CoreError`] from reading or parsing a track.
+    pub async fn from_model(
+        op: &Operator,
+        model: AssetModel,
+        path: impl Into<String>,
+    ) -> Result<Asset, CoreError> {
         let path = path.into();
         let mut asset = Asset::new();
         for track in model.tracks {
@@ -49,47 +60,57 @@ impl Asset {
                 TrackModel::Video(v) => v.path,
                 TrackModel::Audio(a) => a.path,
             };
-            asset.add_track(Track::from_path(op, &rel, &path).await);
+            asset.add_track(Track::from_path(op, &rel, &path).await?);
         }
         asset.path = path;
-        asset
+        Ok(asset)
     }
 }
 
 impl Track {
-    pub async fn from_path(op: &Operator, path: &str, asset_path: &str) -> Track {
+    pub async fn from_path(
+        op: &Operator,
+        path: &str,
+        asset_path: &str,
+    ) -> Result<Track, CoreError> {
         let key = RelativePath::new(asset_path)
             .parent()
-            .unwrap()
+            .expect("descriptor path always has a parent")
             .join(path)
             .normalize()
             .into_string();
-        let (header, segments, metadata) = cmaf::header(op, &key).await;
-        Track {
+        let (header, segments, metadata) = cmaf::header(op, &key).await?;
+        Ok(Track {
             path: key,
             header,
             metadata,
             segments,
-        }
+        })
     }
 
     /// Read the init segment (`ftyp`+`moov`) bytes through `op`.
-    pub async fn init_segment_bytes(&self, op: &Operator) -> Vec<u8> {
+    pub async fn init_segment_bytes(&self, op: &Operator) -> Result<Vec<u8>, CoreError> {
         let s = self.header.init_segment;
         cmaf::read(op, &self.path, s.offset, s.size).await
     }
 
     /// Read the media (sub)segment starting at presentation `time` through `op`,
     /// or `None` if no segment starts exactly there.
-    pub async fn segment_bytes(&self, op: &Operator, time: u64) -> Option<Vec<u8>> {
+    pub async fn segment_bytes(
+        &self,
+        op: &Operator,
+        time: u64,
+    ) -> Result<Option<Vec<u8>>, CoreError> {
         let mut t = self.header.earliest_presentation_time;
         for seg in &self.segments {
             if t == time {
-                return Some(cmaf::read(op, &self.path, seg.offset, seg.size).await);
+                return Ok(Some(
+                    cmaf::read(op, &self.path, seg.offset, seg.size).await?,
+                ));
             }
             t += seg.duration;
         }
-        None
+        Ok(None)
     }
 
     /// This track's total presentation duration, in milliseconds.
@@ -133,7 +154,7 @@ impl Track {
     fn to_model(&self, asset_path: &str) -> TrackModel {
         let path = RelativePath::new(asset_path)
             .parent()
-            .unwrap()
+            .expect("descriptor path always has a parent")
             .relative(self.path.as_str())
             .into_string();
         let id = self.id();
