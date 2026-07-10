@@ -2,7 +2,7 @@
 CARGO ?= cargo
 BIN   := dyndo
 
-.PHONY: build build-debug run test lint fmt fmt-check check install clean
+.PHONY: build build-debug run test lint fmt fmt-check check doc install clean
 
 ## build: release build of the CLI -> target/release/dyndo
 build:
@@ -35,6 +35,10 @@ fmt-check:
 ## check: fast type-check of the workspace
 check:
 	$(CARGO) check --workspace
+
+## doc: build workspace docs, warnings as errors
+doc:
+	RUSTDOCFLAGS="-D warnings" $(CARGO) doc --no-deps --workspace
 
 ## install: install the dyndo CLI into ~/.cargo/bin
 install:
