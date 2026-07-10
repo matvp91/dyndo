@@ -2,10 +2,9 @@ mod build;
 mod compact;
 mod timeline;
 
-pub(crate) use build::build_mpd;
-
 use std::path::Path;
 
+pub(crate) use build::build_mpd;
 use serde::Serialize;
 
 use crate::cmaf::read_header;

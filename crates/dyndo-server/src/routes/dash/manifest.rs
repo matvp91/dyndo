@@ -5,13 +5,11 @@ use axum::{
     http::header,
     response::{IntoResponse, Response},
 };
-
 use dyndo_core::generate_mpd;
 
+use super::{load_asset, resolve_within};
 use crate::config::Config;
 use crate::error::ServerError;
-
-use super::{load_asset, resolve_within};
 
 pub(crate) async fn manifest(
     State(config): State<Arc<Config>>,

@@ -3,6 +3,9 @@ name = "dyndo-core"
 version = "0.1.0"
 edition = "2021"
 
+[lints]
+workspace = true
+
 [dependencies]
 dash-mpd = { version = "0.20", default-features = false }
 mp4-atom = "0.12.1"

@@ -28,13 +28,13 @@ test:
 lint:
 	$(CARGO) clippy --all-targets -- -D warnings
 
-## fmt: format all crates
+## fmt: format all crates (nightly rustfmt — required for import grouping)
 fmt:
-	$(CARGO) fmt --all
+	$(CARGO) +nightly fmt --all
 
-## fmt-check: verify formatting without modifying
+## fmt-check: verify formatting without modifying (nightly rustfmt)
 fmt-check:
-	$(CARGO) fmt --all --check
+	$(CARGO) +nightly fmt --all --check
 
 ## check: fast type-check of the workspace
 check:

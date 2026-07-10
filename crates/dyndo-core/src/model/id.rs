@@ -51,7 +51,11 @@ mod tests {
             duration: 0,
             bandwidth,
             earliest_presentation_time: 0,
-            init_segment: Segment { offset: 0, size: 0, duration: 0 },
+            init_segment: Segment {
+                offset: 0,
+                size: 0,
+                duration: 0,
+            },
             segments: Vec::new(),
             stream: Stream::Video(VideoStream {
                 codec,
@@ -73,7 +77,11 @@ mod tests {
             duration: 0,
             bandwidth,
             earliest_presentation_time: 0,
-            init_segment: Segment { offset: 0, size: 0, duration: 0 },
+            init_segment: Segment {
+                offset: 0,
+                size: 0,
+                duration: 0,
+            },
             segments: Vec::new(),
             stream: Stream::Audio(AudioStream {
                 codec,

@@ -1,8 +1,9 @@
 use mp4_atom::{Audio, Codec, Visual};
-use super::header::malformed;
-use crate::error::Result;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+use crate::error::{Error, Result};
+
+/// A supported video codec with the parameters needed for its RFC 6381 string.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VideoCodec {
     Avc {
         profile: u8,
@@ -18,7 +19,8 @@ pub enum VideoCodec {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// A supported audio codec with the parameters needed for its RFC 6381 string.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AudioCodec {
     Aac { audio_object_type: u8 },
     Ac3,
@@ -26,6 +28,7 @@ pub enum AudioCodec {
 }
 
 impl VideoCodec {
+    /// The sample-entry fourcc (e.g. `"avc1"`, `"av01"`).
     pub fn fourcc(&self) -> &'static str {
         match self {
             VideoCodec::Avc { .. } => "avc1",
@@ -65,6 +68,7 @@ impl VideoCodec {
 }
 
 impl AudioCodec {
+    /// The sample-entry fourcc (e.g. `"mp4a"`, `"ac-3"`, `"ec-3"`).
     pub fn fourcc(&self) -> &'static str {
         match self {
             AudioCodec::Aac { .. } => "mp4a",
@@ -108,7 +112,11 @@ pub(crate) fn video_codec<'a>(codecs: &'a [Codec], path: &str) -> Result<(VideoC
             )),
             _ => None,
         })
-        .ok_or_else(|| malformed(path, "stsd", "no supported video sample entry"))
+        .ok_or_else(|| Error::MalformedBox {
+            box_type: "stsd".into(),
+            path: path.into(),
+            reason: "no supported video sample entry".into(),
+        })
 }
 
 /// Project the first supported audio sample entry into `(AudioCodec, &Audio)`.
@@ -126,13 +134,18 @@ pub(crate) fn audio_codec<'a>(codecs: &'a [Codec], path: &str) -> Result<(AudioC
             Codec::Eac3(a) => Some((AudioCodec::Ec3, &a.audio)),
             _ => None,
         })
-        .ok_or_else(|| malformed(path, "stsd", "no supported audio sample entry"))
+        .ok_or_else(|| Error::MalformedBox {
+            box_type: "stsd".into(),
+            path: path.into(),
+            reason: "no supported audio sample entry".into(),
+        })
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use mp4_atom::{Av01, Av1c, Codec, Visual};
+
+    use super::*;
 
     #[test]
     fn extracts_avc_params_and_visual() {
@@ -196,12 +209,18 @@ mod tests {
 
     #[test]
     fn video_extraction_errors_when_no_supported_entry() {
-        assert!(video_codec(&[], "t.mp4").is_err());
+        assert!(matches!(
+            video_codec(&[], "t.mp4"),
+            Err(Error::MalformedBox { .. })
+        ));
     }
 
     #[test]
     fn audio_extraction_errors_when_no_supported_entry() {
-        assert!(audio_codec(&[], "t.mp4").is_err());
+        assert!(matches!(
+            audio_codec(&[], "t.mp4"),
+            Err(Error::MalformedBox { .. })
+        ));
     }
 
     #[test]

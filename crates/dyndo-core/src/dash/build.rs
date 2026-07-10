@@ -1,8 +1,10 @@
 use std::time::Duration;
+
 use dash_mpd::{
     AdaptationSet, AudioChannelConfiguration, Period, Representation, SegmentTemplate,
     SegmentTimeline, MPD,
 };
+
 use crate::cmaf::{CmafHeader, Stream};
 use crate::dash::timeline::build_timeline;
 use crate::util::group_by_key;
@@ -187,7 +189,11 @@ mod tests {
                 duration: 900000,
                 bandwidth: 4_800_000,
                 earliest_presentation_time: 0,
-                init_segment: Segment { offset: 0, size: 700, duration: 0 },
+                init_segment: Segment {
+                    offset: 0,
+                    size: 700,
+                    duration: 0,
+                },
                 segments: vec![
                     Segment {
                         offset: 0,
@@ -218,7 +224,11 @@ mod tests {
                 duration: 480000,
                 bandwidth: 128_000,
                 earliest_presentation_time: 0,
-                init_segment: Segment { offset: 0, size: 600, duration: 0 },
+                init_segment: Segment {
+                    offset: 0,
+                    size: 600,
+                    duration: 0,
+                },
                 segments: vec![
                     Segment {
                         offset: 0,

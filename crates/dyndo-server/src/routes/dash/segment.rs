@@ -5,15 +5,13 @@ use axum::{
     http::header,
     response::{IntoResponse, Response},
 };
-
 use dyndo_core::{
     find_segment_by_time, read_header, Asset, CmafHeader, LocalFile, Source, Stream, Track,
 };
 
+use super::{load_asset, resolve_within};
 use crate::config::Config;
 use crate::error::ServerError;
-
-use super::{load_asset, resolve_within};
 
 pub(crate) async fn segment(
     State(config): State<Arc<Config>>,
@@ -30,7 +28,11 @@ pub(crate) async fn segment(
 
     let (start, len) = segment_byte_range(&header, &seg)?;
     let bytes = source.read_at(start, len).await?;
-    Ok(([(header::CONTENT_TYPE, content_type(&header.stream))], bytes).into_response())
+    Ok((
+        [(header::CONTENT_TYPE, content_type(&header.stream))],
+        bytes,
+    )
+        .into_response())
 }
 
 /// Find the track whose id matches the requested representation, or 404.
@@ -71,8 +73,9 @@ fn segment_byte_range(header: &CmafHeader, seg: &str) -> Result<(u64, usize), Se
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use dyndo_core::{Segment, VideoCodec, VideoStream};
+
+    use super::*;
 
     fn header() -> CmafHeader {
         CmafHeader {
@@ -80,10 +83,22 @@ mod tests {
             duration: 180000,
             bandwidth: 1000,
             earliest_presentation_time: 0,
-            init_segment: Segment { offset: 0, size: 100, duration: 0 },
+            init_segment: Segment {
+                offset: 0,
+                size: 100,
+                duration: 0,
+            },
             segments: vec![
-                Segment { offset: 100, size: 500, duration: 90000 },
-                Segment { offset: 600, size: 700, duration: 90000 },
+                Segment {
+                    offset: 100,
+                    size: 500,
+                    duration: 90000,
+                },
+                Segment {
+                    offset: 600,
+                    size: 700,
+                    duration: 90000,
+                },
             ],
             stream: Stream::Video(VideoStream {
                 codec: VideoCodec::Avc {
@@ -106,7 +121,10 @@ mod tests {
     #[test]
     fn m4s_resolves_to_the_segment_at_that_time() {
         assert_eq!(segment_byte_range(&header(), "0.m4s").unwrap(), (100, 500));
-        assert_eq!(segment_byte_range(&header(), "90000.m4s").unwrap(), (600, 700));
+        assert_eq!(
+            segment_byte_range(&header(), "90000.m4s").unwrap(),
+            (600, 700)
+        );
     }
 
     #[test]

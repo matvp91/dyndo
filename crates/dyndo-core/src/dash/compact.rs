@@ -102,8 +102,9 @@ fn hoist_shared_attributes(set: &mut AdaptationSet) {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use dash_mpd::{Period, Representation, SegmentTemplate, SegmentTimeline, S};
+
+    use super::*;
 
     /// A SegmentTemplate shaped like the builder's output: fixed init/media strings,
     /// PTO 0, a timescale, and a SegmentTimeline.

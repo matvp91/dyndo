@@ -1,15 +1,11 @@
-use std::io::Cursor;
-use mp4_atom::{Atom, FourCC, Header, Mdhd, Moof, Moov, ReadAtom, ReadFrom, Sidx};
-use crate::cmaf::codec::{self, AudioCodec, VideoCodec};
+use mp4_atom::{FourCC, Mdhd, Moof, Moov};
+
+use super::boxes::scan_header_boxes;
+use super::codec;
+use super::segment::{segments, Segment};
+use super::stream::{AudioStream, Stream, VideoStream};
 use crate::error::{Error, Result};
 use crate::storage::Source;
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct Segment {
-    pub offset: u64,
-    pub size: u64,
-    pub duration: u64,
-}
 
 /// A parsed CMAF header: the fields common to every track, plus a `stream`
 /// discriminant carrying the video- or audio-specific fields.
@@ -25,64 +21,6 @@ pub struct CmafHeader {
     pub stream: Stream,
 }
 
-/// The media-type-specific half of a [`CmafHeader`].
-#[derive(Debug, Clone, PartialEq)]
-pub enum Stream {
-    Video(VideoStream),
-    Audio(AudioStream),
-}
-
-impl Stream {
-    /// Sample-entry fourcc (e.g. `"avc1"`, `"mp4a"`), regardless of media type.
-    pub fn fourcc(&self) -> &'static str {
-        match self {
-            Stream::Video(v) => v.codec.fourcc(),
-            Stream::Audio(a) => a.codec.fourcc(),
-        }
-    }
-
-    /// RFC 6381 `codecs` string, regardless of media type.
-    pub fn rfc6381(&self) -> String {
-        match self {
-            Stream::Video(v) => v.codec.rfc6381(),
-            Stream::Audio(a) => a.codec.rfc6381(),
-        }
-    }
-
-    /// ISO-639-2 language, if the track carries one (audio only).
-    pub fn language(&self) -> Option<&str> {
-        match self {
-            Stream::Audio(a) => a.language.as_deref(),
-            Stream::Video(_) => None,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct VideoStream {
-    pub codec: VideoCodec,
-    pub width: u32,
-    pub height: u32,
-    pub frame_rate: (u32, u32),
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct AudioStream {
-    pub codec: AudioCodec,
-    pub sample_rate: u32,
-    pub channels: u16,
-    pub language: Option<String>,
-}
-
-pub(crate) fn malformed(path: &str, box_type: &str, reason: impl Into<String>) -> Error {
-    Error::MalformedBox {
-        box_type: box_type.into(),
-        path: path.into(),
-        reason: reason.into(),
-    }
-}
-
-/// ISO-639-2 language from `mdhd`; `"und"` (undetermined) and empty map to `None`.
 fn language_string(mdhd: &Mdhd) -> Option<String> {
     match mdhd.language.as_str() {
         "" | "und" => None,
@@ -90,7 +28,6 @@ fn language_string(mdhd: &Mdhd) -> Option<String> {
     }
 }
 
-/// Average bitrate in bits/s from the total segment bytes and the media duration.
 fn average_bandwidth(total_bytes: u64, duration: u64, timescale: u32) -> u32 {
     if duration == 0 || timescale == 0 {
         return 0;
@@ -107,7 +44,6 @@ fn gcd(a: u32, b: u32) -> u32 {
     }
 }
 
-/// `(num, den)` frame rate = `timescale / sample_duration`, reduced.
 fn frame_rate(sample_duration: u32, timescale: u32) -> (u32, u32) {
     if sample_duration == 0 || timescale == 0 {
         return (0, 1);
@@ -116,7 +52,6 @@ fn frame_rate(sample_duration: u32, timescale: u32) -> (u32, u32) {
     (timescale / g, sample_duration / g)
 }
 
-/// First sample's duration from the first moof, falling back to tfhd then trex defaults.
 fn first_sample_duration(moof: &Moof, moov: &Moov) -> u32 {
     let from_traf = moof.traf.first().and_then(|traf| {
         traf.trun
@@ -135,120 +70,14 @@ fn first_sample_duration(moof: &Moof, moov: &Moov) -> u32 {
         .unwrap_or(0)
 }
 
-/// A single box's parsed header plus the absolute byte range of its body.
-/// The body spans `[body_start, box_end)`; `body_len()` is that range's length
-/// (equivalently `header.size`, which excludes the header per ISO-BMFF).
-struct BoxFrame {
-    header: Header,
-    body_start: u64,
-    box_end: u64,
-}
-
-impl BoxFrame {
-    fn body_len(&self) -> usize {
-        (self.box_end - self.body_start) as usize
-    }
-}
-
-/// Read and parse the next box header at `offset`, computing its byte span.
-/// Returns `None` at end-of-source (fewer than 8 bytes remain).
-async fn next_box<S: Source>(source: &S, offset: u64, path: &str) -> Result<Option<BoxFrame>> {
-    let head_bytes = source.read_at(offset, 16).await?;
-    if head_bytes.len() < 8 {
-        return Ok(None); // reached end without a full box header
-    }
-    let mut cursor = Cursor::new(&head_bytes[..]);
-    let header =
-        Header::read_from(&mut cursor).map_err(|e| malformed(path, "box header", e.to_string()))?;
-    let header_len = cursor.position();
-    let body_len = header
-        .size
-        .ok_or_else(|| malformed(path, "box", "unbounded box size"))?;
-    let body_start = offset
-        .checked_add(header_len)
-        .ok_or_else(|| malformed(path, "box", "box size overflow"))?;
-    let box_end = body_start
-        .checked_add(body_len as u64)
-        .ok_or_else(|| malformed(path, "box", "box size overflow"))?;
-    Ok(Some(BoxFrame {
-        header,
-        body_start,
-        box_end,
-    }))
-}
-
-/// Fetch a box body and decode it into atom `A`.
-async fn read_atom_body<A: ReadAtom, S: Source>(
-    source: &S,
-    frame: &BoxFrame,
-    name: &str,
-    path: &str,
-) -> Result<A> {
-    let body = source.read_at(frame.body_start, frame.body_len()).await?;
-    A::read_atom(&frame.header, &mut Cursor::new(&body[..]))
-        .map_err(|e| malformed(path, name, e.to_string()))
-}
-
-/// The header boxes we care about, with the byte offsets they end at.
-struct ScannedBoxes {
-    moov: Moov,
-    sidx: Sidx,
-    first_moof: Moof,
-    moov_end: u64,
-    sidx_end: u64,
-}
-
-/// Header-first scan: read moov, sidx and the first moof; skip everything else
-/// (notably mdat, which we never fetch). Stops as soon as all three are seen.
-/// The first moof supplies the video sample duration used to derive frame rate.
-async fn scan_header_boxes<S: Source>(source: &S, path: &str) -> Result<ScannedBoxes> {
-    let mut offset = 0u64;
-    let mut moov: Option<Moov> = None;
-    let mut sidx: Option<Sidx> = None;
-    let mut first_moof: Option<Moof> = None;
-    let mut moov_end = 0u64;
-    let mut sidx_end = 0u64;
-
-    while moov.is_none() || sidx.is_none() || first_moof.is_none() {
-        let Some(frame) = next_box(source, offset, path).await? else {
-            break; // reached end without the boxes we need
-        };
-        if frame.header.kind == Moov::KIND {
-            moov = Some(read_atom_body(source, &frame, "moov", path).await?);
-            moov_end = frame.box_end;
-        } else if frame.header.kind == Sidx::KIND {
-            sidx = Some(read_atom_body(source, &frame, "sidx", path).await?);
-            sidx_end = frame.box_end;
-        } else if frame.header.kind == Moof::KIND && first_moof.is_none() {
-            first_moof = Some(read_atom_body(source, &frame, "moof", path).await?);
-        }
-        offset = frame.box_end;
-    }
-
-    Ok(ScannedBoxes {
-        moov: moov.ok_or_else(|| Error::MissingMoov(path.into()))?,
-        sidx: sidx.ok_or_else(|| Error::MissingSidx(path.into()))?,
-        first_moof: first_moof.ok_or_else(|| malformed(path, "moof", "missing first moof"))?,
-        moov_end,
-        sidx_end,
-    })
-}
-
-/// Absolute segment map from `sidx`: each reference's cumulative offset, size and duration.
-fn build_segments(sidx: &Sidx, sidx_end: u64) -> Vec<Segment> {
-    let mut seg_offset = sidx_end + sidx.first_offset;
-    let mut segments = Vec::with_capacity(sidx.references.len());
-    for r in &sidx.references {
-        segments.push(Segment {
-            offset: seg_offset,
-            size: r.reference_size as u64,
-            duration: r.subsegment_duration as u64,
-        });
-        seg_offset += r.reference_size as u64;
-    }
-    segments
-}
-
+/// Parse the CMAF header of a single-track fragmented MP4, scanning only the
+/// `ftyp`/`moov`/`sidx`/first-`moof` boxes — `mdat` is never fetched.
+///
+/// # Errors
+/// - [`Error::NotSingleTrack`] if the `moov` has zero or multiple tracks.
+/// - [`Error::MissingMoov`] or [`Error::MissingSidx`] if either box is absent.
+/// - [`Error::UnsupportedCodec`] for a handler that is neither video nor audio.
+/// - [`Error::MalformedBox`] if a box header or body fails to parse.
 pub async fn read_header<S: Source>(source: &S, path: &str) -> Result<CmafHeader> {
     let scanned = scan_header_boxes(source, path).await?;
 
@@ -261,7 +90,7 @@ pub async fn read_header<S: Source>(source: &S, path: &str) -> Result<CmafHeader
     }
     let trak = &scanned.moov.trak[0];
 
-    let segments = build_segments(&scanned.sidx, scanned.sidx_end);
+    let segments = segments(&scanned.sidx, scanned.sidx_end);
     let duration: u64 = segments.iter().map(|s| s.duration).sum();
     let total_bytes: u64 = segments.iter().map(|s| s.size).sum();
     let bandwidth = average_bandwidth(total_bytes, duration, scanned.sidx.timescale);

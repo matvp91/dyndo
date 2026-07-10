@@ -1,4 +1,5 @@
 use dash_mpd::S;
+
 use crate::cmaf::Segment;
 
 pub(crate) fn build_timeline(segments: &[Segment], first_t: u64) -> Vec<S> {

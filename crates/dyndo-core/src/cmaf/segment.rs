@@ -1,5 +1,32 @@
-use super::{CmafHeader, Segment};
+use mp4_atom::Sidx;
 
+use super::CmafHeader;
+
+/// A (sub)segment's location in the file: its byte `offset` and `size`, plus
+/// its `duration` in the track timescale (`0` for the init segment).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Segment {
+    pub offset: u64,
+    pub size: u64,
+    pub duration: u64,
+}
+
+pub(super) fn segments(sidx: &Sidx, sidx_end: u64) -> Vec<Segment> {
+    let mut seg_offset = sidx_end + sidx.first_offset;
+    let mut out = Vec::with_capacity(sidx.references.len());
+    for r in &sidx.references {
+        out.push(Segment {
+            offset: seg_offset,
+            size: r.reference_size as u64,
+            duration: r.subsegment_duration as u64,
+        });
+        seg_offset += r.reference_size as u64;
+    }
+    out
+}
+
+/// The segment whose presentation time equals `time` (in the track timescale),
+/// or `None` if no segment starts exactly at `time`.
 pub fn find_segment_by_time(header: &CmafHeader, time: u64) -> Option<&Segment> {
     let mut t = header.earliest_presentation_time;
     for seg in &header.segments {
@@ -22,7 +49,11 @@ mod tests {
             duration: segs.iter().map(|s| s.duration).sum(),
             bandwidth: 1000,
             earliest_presentation_time: ept,
-            init_segment: Segment { offset: 0, size: 100, duration: 0 },
+            init_segment: Segment {
+                offset: 0,
+                size: 100,
+                duration: 0,
+            },
             segments: segs,
             stream: Stream::Video(VideoStream {
                 codec: VideoCodec::Avc {
@@ -49,7 +80,11 @@ mod tests {
     fn resolves_boundaries_and_rejects_misses() {
         let h = header(
             0,
-            vec![seg(1000, 500, 90000), seg(1500, 700, 90000), seg(2200, 300, 45000)],
+            vec![
+                seg(1000, 500, 90000),
+                seg(1500, 700, 90000),
+                seg(2200, 300, 45000),
+            ],
         );
         // First segment at t == ept.
         assert_eq!(find_segment_by_time(&h, 0), Some(&h.segments[0]));

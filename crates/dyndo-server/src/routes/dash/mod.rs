@@ -3,14 +3,12 @@
 mod manifest;
 mod segment;
 
-pub(super) use manifest::manifest;
-pub(super) use segment::segment;
-
 use std::path::{Path as StdPath, PathBuf};
 
-use url::Url;
-
 use dyndo_core::Asset;
+pub(super) use manifest::manifest;
+pub(super) use segment::segment;
+use url::Url;
 
 use crate::error::ServerError;
 

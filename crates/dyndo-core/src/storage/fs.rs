@@ -1,6 +1,8 @@
 use std::io::SeekFrom;
 use std::path::{Path, PathBuf};
+
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
+
 use crate::error::{Error, Result};
 use crate::storage::Source;
 
@@ -60,8 +62,9 @@ impl Source for LocalFile {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::io::Write;
+
+    use super::*;
 
     #[tokio::test]
     async fn reads_ranges_and_size_from_a_file() {

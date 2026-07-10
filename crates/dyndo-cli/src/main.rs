@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+
 use clap::{Parser, Subcommand};
 
 /// dyndo — CMAF indexer and DASH manifest generator.

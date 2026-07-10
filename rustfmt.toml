@@ -1,0 +1,6 @@
+# `group_imports` is a nightly-only rustfmt option, so format with
+# `cargo +nightly fmt` (see the Makefile `fmt`/`fmt-check` targets).
+# It groups `use` statements into std, external crates, then local
+# (crate/super/self) blocks — each sorted and blank-line separated.
+group_imports = "StdExternalCrate"
+reorder_imports = true

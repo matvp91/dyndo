@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+
 use serde::Deserialize;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -22,11 +23,12 @@ impl Config {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use figment::{
         providers::{Format, Yaml},
         Figment,
     };
+
+    use super::*;
 
     #[test]
     fn parses_assets_base_path_and_port() {
