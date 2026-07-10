@@ -1,0 +1,16 @@
+store: fs
+
+server:
+  host: 0.0.0.0
+  port: 8080
+
+fs:
+  root: ./assets
+
+# To use S3, set `store: s3` and provide an `s3:` section. Credentials may be
+# omitted here and supplied via standard AWS_* env vars.
+# s3:
+#   bucket: my-assets
+#   region: eu-west-1
+#   endpoint: https://s3.eu-west-1.amazonaws.com
+#   root: /

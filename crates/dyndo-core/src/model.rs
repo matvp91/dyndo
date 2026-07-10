@@ -95,7 +95,7 @@ pub struct AudioTrackModel {
     pub timescale: u32,
     /// Sampling rate, in Hz.
     pub sample_rate: u32,
-    /// Channel count.
+    /// Number of audio channels (e.g. 2 for stereo, 6 for 5.1).
     pub channels: u16,
     /// ISO-639-2 language code; omitted from the JSON when `None`.
     #[serde(skip_serializing_if = "Option::is_none")]

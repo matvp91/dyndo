@@ -36,7 +36,7 @@ pub enum VideoCodec {
 pub enum AudioCodec {
     /// AAC, with the MPEG-4 audio object type for its `mp4a.40.OO` string.
     Aac {
-        /// MPEG-4 audio object type indication.
+        /// MPEG-4 Audio Object Type code (e.g. `2` = AAC-LC, `5` = HE-AAC), used in the `mp4a.40.OO` string.
         audio_object_type: u8,
     },
     /// Dolby Digital (AC-3).
