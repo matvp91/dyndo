@@ -5,12 +5,6 @@ use crate::error::{Error, Result};
 use crate::storage::Source;
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct ByteRange {
-    pub start: u64,
-    pub end: u64,
-}
-
-#[derive(Debug, Clone, PartialEq)]
 pub struct Segment {
     pub offset: u64,
     pub size: u64,
@@ -26,7 +20,7 @@ pub struct CmafHeader {
     /// Average bitrate in bits/s, derived from the segment sizes and duration.
     pub bandwidth: u32,
     pub earliest_presentation_time: u64,
-    pub init_range: ByteRange,
+    pub init_segment: Segment,
     pub segments: Vec<Segment>,
     pub stream: Stream,
 }
@@ -275,9 +269,11 @@ pub async fn read_header<S: Source>(source: &S, path: &str) -> Result<CmafHeader
     let mdia = &trak.mdia;
     let handler = mdia.hdlr.handler;
     let codecs = &mdia.minf.stbl.stsd.codecs;
-    let init_range = ByteRange {
-        start: 0,
-        end: scanned.moov_end,
+    // The init segment (ftyp+moov) carries no media samples, hence no duration.
+    let init_segment = Segment {
+        offset: 0,
+        size: scanned.moov_end,
+        duration: 0,
     };
 
     let stream = if handler == FourCC::new(b"vide") {
@@ -312,7 +308,7 @@ pub async fn read_header<S: Source>(source: &S, path: &str) -> Result<CmafHeader
         duration,
         bandwidth,
         earliest_presentation_time: scanned.sidx.earliest_presentation_time,
-        init_range,
+        init_segment,
         segments,
         stream,
     })
@@ -347,8 +343,8 @@ mod tests {
         assert_eq!(h.bandwidth, 4807228);
         assert_eq!(h.earliest_presentation_time, 0);
         assert_eq!(h.segments.len(), 715);
-        assert_eq!(h.init_range.start, 0);
-        assert_eq!(h.init_range.end, 766);
+        assert_eq!(h.init_segment.offset, 0);
+        assert_eq!(h.init_segment.size, 766);
         assert_eq!(h.segments[0].offset, 9386);
         assert_eq!(h.segments[0].size, 1495550);
         assert_eq!(h.segments[0].duration, 172800);
@@ -371,7 +367,7 @@ mod tests {
         assert_eq!(h.bandwidth, 196918);
         assert_eq!(h.earliest_presentation_time, 0);
         assert_eq!(h.segments.len(), 715);
-        assert_eq!(h.init_range.end, 662);
+        assert_eq!(h.init_segment.size, 662);
         assert_eq!(h.segments[0].offset, 9282);
         assert_eq!(h.segments[0].size, 48530);
         assert!(h.segments[0].duration > 0);
@@ -396,7 +392,7 @@ mod tests {
         assert_eq!(h.timescale, 12800);
         assert_eq!(h.duration, 25600);
         assert_eq!(h.segments.len(), 2);
-        assert_eq!(h.init_range.end, 783);
+        assert_eq!(h.init_segment.size, 783);
         assert_eq!(h.segments[0].offset, 847);
         assert_eq!(h.segments[0].size, 8342);
         assert_eq!(h.segments[0].duration, 12800);
@@ -413,7 +409,7 @@ mod tests {
         let h = read_header(&src, "audio_ac3_1.mp4").await.unwrap();
         assert_eq!(h.timescale, 48000);
         assert_eq!(h.segments.len(), 3);
-        assert_eq!(h.init_range.end, 725);
+        assert_eq!(h.init_segment.size, 725);
         assert_eq!(h.segments[0].offset, 801);
         assert_eq!(h.segments[0].size, 24684);
         assert_eq!(h.stream.fourcc(), "ac-3");
@@ -430,7 +426,7 @@ mod tests {
         let h = read_header(&src, "audio_ec3_1.mp4").await.unwrap();
         assert_eq!(h.timescale, 48000);
         assert_eq!(h.segments.len(), 3);
-        assert_eq!(h.init_range.end, 727);
+        assert_eq!(h.init_segment.size, 727);
         assert_eq!(h.segments[0].offset, 803);
         assert_eq!(h.segments[0].size, 24684);
         assert_eq!(h.stream.fourcc(), "ec-3");

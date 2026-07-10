@@ -43,7 +43,7 @@ pub fn track_id(header: &CmafHeader) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cmaf::{AudioCodec, AudioStream, ByteRange, VideoCodec, VideoStream};
+    use crate::cmaf::{AudioCodec, AudioStream, Segment, VideoCodec, VideoStream};
 
     fn video_header(codec: VideoCodec, height: u32, bandwidth: u32) -> CmafHeader {
         CmafHeader {
@@ -51,7 +51,7 @@ mod tests {
             duration: 0,
             bandwidth,
             earliest_presentation_time: 0,
-            init_range: ByteRange { start: 0, end: 0 },
+            init_segment: Segment { offset: 0, size: 0, duration: 0 },
             segments: Vec::new(),
             stream: Stream::Video(VideoStream {
                 codec,
@@ -73,7 +73,7 @@ mod tests {
             duration: 0,
             bandwidth,
             earliest_presentation_time: 0,
-            init_range: ByteRange { start: 0, end: 0 },
+            init_segment: Segment { offset: 0, size: 0, duration: 0 },
             segments: Vec::new(),
             stream: Stream::Audio(AudioStream {
                 codec,

@@ -177,7 +177,7 @@ pub(crate) fn build_mpd(tracks: &[(String, CmafHeader)], compact: bool) -> MPD {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cmaf::{AudioCodec, AudioStream, ByteRange, Segment, VideoCodec, VideoStream};
+    use crate::cmaf::{AudioCodec, AudioStream, Segment, VideoCodec, VideoStream};
 
     fn video(id: &str) -> (String, CmafHeader) {
         (
@@ -187,7 +187,7 @@ mod tests {
                 duration: 900000,
                 bandwidth: 4_800_000,
                 earliest_presentation_time: 0,
-                init_range: ByteRange { start: 0, end: 700 },
+                init_segment: Segment { offset: 0, size: 700, duration: 0 },
                 segments: vec![
                     Segment {
                         offset: 0,
@@ -218,7 +218,7 @@ mod tests {
                 duration: 480000,
                 bandwidth: 128_000,
                 earliest_presentation_time: 0,
-                init_range: ByteRange { start: 0, end: 600 },
+                init_segment: Segment { offset: 0, size: 600, duration: 0 },
                 segments: vec![
                     Segment {
                         offset: 0,

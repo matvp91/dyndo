@@ -55,15 +55,15 @@ fn content_type(stream: &Stream) -> &'static str {
 /// presentation time; anything else -> 404.
 fn segment_byte_range(header: &CmafHeader, seg: &str) -> Result<(u64, usize), ServerError> {
     if seg == "init.mp4" {
-        let r = &header.init_range;
-        Ok((r.start, (r.end - r.start) as usize))
+        let r = &header.init_segment;
+        Ok((r.offset, r.size as usize))
     } else if let Some(time_str) = seg.strip_suffix(".m4s") {
         let time: u64 = time_str
             .parse()
             .map_err(|_| ServerError::BadRequest(format!("invalid segment time: {seg}")))?;
         let r = find_segment_by_time(header, time)
             .ok_or_else(|| ServerError::NotFound(format!("no segment at time {time}")))?;
-        Ok((r.start, (r.end - r.start) as usize))
+        Ok((r.offset, r.size as usize))
     } else {
         Err(ServerError::NotFound(format!("unknown segment: {seg}")))
     }
@@ -72,7 +72,7 @@ fn segment_byte_range(header: &CmafHeader, seg: &str) -> Result<(u64, usize), Se
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dyndo_core::{ByteRange, Segment, VideoCodec, VideoStream};
+    use dyndo_core::{Segment, VideoCodec, VideoStream};
 
     fn header() -> CmafHeader {
         CmafHeader {
@@ -80,7 +80,7 @@ mod tests {
             duration: 180000,
             bandwidth: 1000,
             earliest_presentation_time: 0,
-            init_range: ByteRange { start: 0, end: 100 },
+            init_segment: Segment { offset: 0, size: 100, duration: 0 },
             segments: vec![
                 Segment { offset: 100, size: 500, duration: 90000 },
                 Segment { offset: 600, size: 700, duration: 90000 },
@@ -99,7 +99,7 @@ mod tests {
     }
 
     #[test]
-    fn init_resolves_to_the_init_range() {
+    fn init_resolves_to_the_init_segment() {
         assert_eq!(segment_byte_range(&header(), "init.mp4").unwrap(), (0, 100));
     }
 
