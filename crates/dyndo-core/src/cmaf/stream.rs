@@ -31,6 +31,14 @@ impl Stream {
             Stream::Video(_) => None,
         }
     }
+
+    /// The `video/mp4` / `audio/mp4` MIME type of this stream's CMAF segments.
+    pub fn mime_type(&self) -> &'static str {
+        match self {
+            Stream::Video(_) => "video/mp4",
+            Stream::Audio(_) => "audio/mp4",
+        }
+    }
 }
 
 /// The video-specific fields of a [`Stream`]; `frame_rate` is `(num, den)`.
@@ -49,4 +57,34 @@ pub struct AudioStream {
     pub sample_rate: u32,
     pub channels: u16,
     pub language: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cmaf::{AudioCodec, VideoCodec};
+
+    #[test]
+    fn mime_type_is_fmp4_by_media_kind() {
+        let video = Stream::Video(VideoStream {
+            codec: VideoCodec::Avc {
+                profile: 0x64,
+                constraints: 0,
+                level: 0x28,
+            },
+            width: 1920,
+            height: 1080,
+            frame_rate: (25, 1),
+        });
+        let audio = Stream::Audio(AudioStream {
+            codec: AudioCodec::Aac {
+                audio_object_type: 2,
+            },
+            sample_rate: 48000,
+            channels: 2,
+            language: None,
+        });
+        assert_eq!(video.mime_type(), "video/mp4");
+        assert_eq!(audio.mime_type(), "audio/mp4");
+    }
 }

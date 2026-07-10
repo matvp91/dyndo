@@ -5,9 +5,9 @@ use axum::{
     http::header,
     response::{IntoResponse, Response},
 };
-use dyndo_core::generate_mpd;
+use dyndo_core::{generate_mpd, load_asset};
 
-use super::{load_asset, resolve_within};
+use super::resolve_within;
 use crate::config::Config;
 use crate::error::ServerError;
 

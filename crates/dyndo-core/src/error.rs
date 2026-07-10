@@ -32,6 +32,12 @@ pub enum Error {
     #[error("duplicate track id {0} — inputs are not uniquely distinguishable")]
     DuplicateTrackId(String),
 
+    #[error("asset not found: {0}")]
+    AssetNotFound(String),
+
+    #[error("malformed asset.json for {id}: {reason}")]
+    MalformedAsset { id: String, reason: String },
+
     #[error("MPD serialization failed: {0}")]
     MpdSerialization(String),
 }

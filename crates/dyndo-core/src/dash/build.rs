@@ -126,10 +126,12 @@ fn mpd(tracks: &[(String, CmafHeader)]) -> MPD {
                 .collect();
             // Every track in a group shares a media kind (they share a fourcc), so a
             // representative track determines the set's content and mime type.
-            let (content_type, mime_type) = match &tracks[idxs[0]].1.stream {
-                Stream::Video(_) => ("video", "video/mp4"),
-                Stream::Audio(_) => ("audio", "audio/mp4"),
+            let stream = &tracks[idxs[0]].1.stream;
+            let content_type = match stream {
+                Stream::Video(_) => "video",
+                Stream::Audio(_) => "audio",
             };
+            let mime_type = stream.mime_type();
             AdaptationSet {
                 id: Some(set_id.to_string()),
                 contentType: Some(content_type.to_string()),

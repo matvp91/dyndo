@@ -7,6 +7,13 @@ pub struct Asset {
     pub tracks: Vec<Track>,
 }
 
+impl Asset {
+    /// The track whose id equals `id`, or `None` if the asset has no such track.
+    pub fn track(&self, id: &str) -> Option<&Track> {
+        self.tracks.iter().find(|t| t.id() == id)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum Track {
@@ -73,6 +80,34 @@ mod tests {
         assert_eq!(t["type"], "video");
         assert_eq!(t["fourcc"], "avc1");
         assert_eq!(t["width"], 1920);
+    }
+
+    #[test]
+    fn track_looks_up_by_id_and_misses_are_none() {
+        let asset = Asset {
+            tracks: vec![
+                Track::Video(VideoTrack {
+                    id: "v0".into(),
+                    source: "v.mp4".into(),
+                    fourcc: "avc1".into(),
+                    timescale: 90000,
+                    width: 1920,
+                    height: 1080,
+                }),
+                Track::Audio(AudioTrack {
+                    id: "a0".into(),
+                    source: "a.mp4".into(),
+                    fourcc: "mp4a".into(),
+                    timescale: 48000,
+                    sample_rate: 48000,
+                    channels: 2,
+                    language: None,
+                }),
+            ],
+        };
+        assert_eq!(asset.track("a0").map(Track::id), Some("a0"));
+        assert!(matches!(asset.track("v0"), Some(Track::Video(_))));
+        assert!(asset.track("nope").is_none());
     }
 
     #[test]

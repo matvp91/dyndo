@@ -25,6 +25,7 @@ impl From<dyndo_core::Error> for ServerError {
     fn from(e: dyndo_core::Error) -> Self {
         use dyndo_core::Error;
         match &e {
+            Error::AssetNotFound(_) => ServerError::NotFound(e.to_string()),
             Error::Io { source, .. } if source.kind() == std::io::ErrorKind::NotFound => {
                 ServerError::NotFound(e.to_string())
             }
@@ -61,6 +62,12 @@ mod tests {
             source: io,
         }
         .into();
+        assert_eq!(err.into_response().status(), StatusCode::NOT_FOUND);
+    }
+
+    #[test]
+    fn asset_not_found_maps_to_not_found() {
+        let err: ServerError = dyndo_core::Error::AssetNotFound("bbb".into()).into();
         assert_eq!(err.into_response().status(), StatusCode::NOT_FOUND);
     }
 }

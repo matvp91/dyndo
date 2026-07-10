@@ -1,6 +1,8 @@
 use mp4_atom::Sidx;
 
 use super::CmafHeader;
+use crate::error::Result;
+use crate::storage::Source;
 
 /// A (sub)segment's location in the file: its byte `offset` and `size`, plus
 /// its `duration` in the track timescale (`0` for the init segment).
@@ -38,10 +40,32 @@ pub fn find_segment_by_time(header: &CmafHeader, time: u64) -> Option<&Segment> 
     None
 }
 
+/// Read `header`'s init segment (`ftyp`+`moov`) bytes from `source`; the `mdat`
+/// boxes are never fetched.
+pub async fn read_init_segment<S: Source>(source: &S, header: &CmafHeader) -> Result<Vec<u8>> {
+    let r = &header.init_segment;
+    source.read_at(r.offset, r.size as usize).await
+}
+
+/// Read the media (sub)segment of `header` that starts at presentation `time`
+/// (in the track timescale) from `source`, or `None` if no segment starts
+/// exactly there.
+pub async fn read_segment<S: Source>(
+    source: &S,
+    header: &CmafHeader,
+    time: u64,
+) -> Result<Option<Vec<u8>>> {
+    let Some(seg) = find_segment_by_time(header, time) else {
+        return Ok(None);
+    };
+    let bytes = source.read_at(seg.offset, seg.size as usize).await?;
+    Ok(Some(bytes))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cmaf::{Segment, Stream, VideoCodec, VideoStream};
+    use crate::cmaf::{read_header, Segment, Stream, VideoCodec, VideoStream};
 
     fn header(ept: u64, segs: Vec<Segment>) -> CmafHeader {
         CmafHeader {
@@ -102,5 +126,45 @@ mod tests {
         let h = header(5000, vec![seg(10, 20, 90000)]);
         assert_eq!(find_segment_by_time(&h, 5000), Some(&h.segments[0]));
         assert_eq!(find_segment_by_time(&h, 0), None);
+    }
+
+    fn fixture(name: &str) -> crate::storage::LocalFile {
+        crate::storage::LocalFile::new(format!(
+            "{}/tests/fixtures/{}",
+            env!("CARGO_MANIFEST_DIR"),
+            name
+        ))
+    }
+
+    #[tokio::test]
+    async fn read_init_segment_returns_the_init_box_bytes() {
+        let src = fixture("video_avc_1080.mp4");
+        let header = read_header(&src, "video_avc_1080.mp4").await.unwrap();
+        let bytes = read_init_segment(&src, &header).await.unwrap();
+        // The init segment (ftyp+moov) is 766 bytes and fully present in the fixture.
+        assert_eq!(bytes.len(), 766);
+        // A CMAF init segment begins with the `ftyp` box: [size:4][type:4].
+        assert_eq!(&bytes[4..8], b"ftyp");
+    }
+
+    #[tokio::test]
+    async fn read_segment_returns_the_subsegment_at_that_time() {
+        let src = fixture("video_avc_1080.mp4");
+        let header = read_header(&src, "video_avc_1080.mp4").await.unwrap();
+        let bytes = read_segment(&src, &header, 0)
+            .await
+            .unwrap()
+            .expect("a segment starts at presentation time 0");
+        // The subsegment begins with its `moof` box (the `mdat` that follows is
+        // truncated in the fixture, but the header proves the offset is right).
+        assert_eq!(&bytes[4..8], b"moof");
+    }
+
+    #[tokio::test]
+    async fn read_segment_is_none_when_no_segment_starts_at_time() {
+        let src = fixture("video_avc_1080.mp4");
+        let header = read_header(&src, "video_avc_1080.mp4").await.unwrap();
+        // 1 falls between the first two segment boundaries — no exact match.
+        assert!(read_segment(&src, &header, 1).await.unwrap().is_none());
     }
 }

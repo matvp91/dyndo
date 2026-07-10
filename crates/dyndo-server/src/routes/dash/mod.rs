@@ -5,9 +5,8 @@ mod segment;
 
 use std::path::{Path as StdPath, PathBuf};
 
-use dyndo_core::Asset;
 pub(super) use manifest::manifest;
-pub(super) use segment::segment;
+pub(super) use segment::{init_segment, media_segment};
 use url::Url;
 
 use crate::error::ServerError;
@@ -30,23 +29,6 @@ fn resolve_within(base: &StdPath, untrusted: &str) -> Result<PathBuf, ServerErro
     joined
         .to_file_path()
         .map_err(|_| ServerError::BadRequest(format!("not a file path: {untrusted}")))
-}
-
-/// Load `{asset_dir}/asset.json` into an owned `Asset`. Missing file -> 404;
-/// malformed JSON -> 500. `asset_id` is used only for error messages.
-async fn load_asset(asset_dir: &StdPath, asset_id: &str) -> Result<Asset, ServerError> {
-    let json_path = asset_dir.join("asset.json");
-    let bytes = tokio::fs::read(&json_path)
-        .await
-        .map_err(|e| match e.kind() {
-            std::io::ErrorKind::NotFound => {
-                ServerError::NotFound(format!("asset not found: {asset_id}"))
-            }
-            _ => ServerError::Internal(format!("reading {}: {e}", json_path.display())),
-        })?;
-    let asset: Asset = serde_json::from_slice(&bytes)
-        .map_err(|e| ServerError::Internal(format!("invalid asset.json for {asset_id}: {e}")))?;
-    Ok(asset)
 }
 
 #[cfg(test)]
