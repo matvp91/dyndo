@@ -13,11 +13,18 @@ path = "src/main.rs"
 [dependencies]
 dyndo-core = { path = "../dyndo-core" }
 dyndo-dash = { path = "../dyndo-dash" }
-opendal = { version = "0.58", default-features = false, features = ["services-fs"] }
+opendal = { version = "0.58", default-features = false, features = ["services-fs", "services-s3"] }
 axum = "0.8"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
 tower-http = { version = "0.6", features = ["cors"] }
+figment = { version = "0.10", features = ["yaml", "env"] }
+serde = { version = "1", features = ["derive"] }
+thiserror = "2"
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
 tempfile = "3"
+# `Jail` (used by config::tests) is gated behind figment's own "test" feature;
+# Cargo unions this with the "yaml"/"env" features from [dependencies] when
+# building test targets.
+figment = { version = "0.10", features = ["test"] }

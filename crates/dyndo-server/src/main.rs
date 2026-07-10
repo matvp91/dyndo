@@ -1,20 +1,17 @@
+mod config;
 mod error;
 mod routes;
 
-use opendal::services::Fs;
-use opendal::Operator;
 use routes::build_router;
-
-const PORT: u16 = 8080;
-/// Filesystem root every asset key is resolved against.
-const ASSETS_ROOT: &str = "./assets";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let op = Operator::new(Fs::default().root(ASSETS_ROOT))?;
+    let cfg = config::load()?;
+    let op = cfg.build_operator()?;
+    let (host, port) = cfg.bind();
     let app = build_router(op);
-    let listener = tokio::net::TcpListener::bind(("0.0.0.0", PORT)).await?;
-    println!("dyndo-server listening on http://0.0.0.0:{PORT}");
+    let listener = tokio::net::TcpListener::bind((host, port)).await?;
+    println!("dyndo-server listening on http://{host}:{port}");
     axum::serve(listener, app).await?;
     Ok(())
 }
