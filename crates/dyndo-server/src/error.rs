@@ -67,10 +67,7 @@ mod tests {
 
     #[test]
     fn core_storage_not_found_maps_to_404() {
-        let e = CoreError::Storage(opendal::Error::new(
-            opendal::ErrorKind::NotFound,
-            "missing",
-        ));
+        let e = CoreError::Storage(opendal::Error::new(opendal::ErrorKind::NotFound, "missing"));
         assert_eq!(
             ServerError::from(e).into_response().status(),
             StatusCode::NOT_FOUND
@@ -89,6 +86,15 @@ mod tests {
     #[test]
     fn core_unsupported_codec_maps_to_500() {
         let e = CoreError::UnsupportedCodec("video");
+        assert_eq!(
+            ServerError::from(e).into_response().status(),
+            StatusCode::INTERNAL_SERVER_ERROR
+        );
+    }
+
+    #[test]
+    fn core_storage_other_kind_maps_to_500() {
+        let e = CoreError::Storage(opendal::Error::new(opendal::ErrorKind::Unexpected, "boom"));
         assert_eq!(
             ServerError::from(e).into_response().status(),
             StatusCode::INTERNAL_SERVER_ERROR
