@@ -143,6 +143,11 @@ fn build_figment() -> Result<Figment, ConfigError> {
 
 #[cfg(test)]
 mod tests {
+    // `figment::Jail::expect_with` dictates a closure returning
+    // `Result<(), figment::Error>`, so we can't box the error the way the
+    // production `ConfigError` does (clippy::result_large_err).
+    #![allow(clippy::result_large_err)]
+
     use figment::Jail;
 
     use super::*;
