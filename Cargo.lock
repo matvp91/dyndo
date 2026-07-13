@@ -560,6 +560,7 @@ dependencies = [
  "clap",
  "dyndo-core",
  "dyndo-dash",
+ "dyndo-hls",
  "opendal",
  "serde_json",
  "tempfile",

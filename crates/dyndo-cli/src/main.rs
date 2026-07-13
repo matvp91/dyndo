@@ -37,6 +37,16 @@ enum Command {
         #[arg(short = 'c', long = "compact")]
         compact: bool,
     },
+    /// Generate HLS playlists (a multivariant playlist + one media playlist per
+    /// track) from an asset.json, into an output directory.
+    Hls {
+        /// Input asset.json path.
+        #[arg(short, long = "input", default_value = "asset.json")]
+        input: String,
+        /// Output directory for the playlists.
+        #[arg(short, long = "output", default_value = "hls")]
+        output: String,
+    },
 }
 
 /// Build the filesystem operator, rooted at `OPENDAL_FS_ROOT` (default `.`).
@@ -69,6 +79,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mpd = dyndo_dash::generate_mpd(&asset, compact);
             op.write(&output, mpd.into_bytes()).await?;
             println!("wrote {output}");
+        }
+        Command::Hls { input, output } => {
+            let model = AssetModel::read(&op, &input).await?;
+            let asset = Asset::from_model(&op, model, &input).await?;
+            op.write(
+                &format!("{output}/index.m3u8"),
+                dyndo_hls::generate_master(&asset).into_bytes(),
+            )
+            .await?;
+            for track in &asset.tracks {
+                op.write(
+                    &format!("{output}/{}.m3u8", track.id()),
+                    dyndo_hls::generate_media(track).into_bytes(),
+                )
+                .await?;
+            }
+            println!("wrote {output}/ (1 master + {} media)", asset.tracks.len());
         }
     }
     Ok(())
