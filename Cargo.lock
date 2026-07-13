@@ -592,6 +592,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "dyndo-hls"
+version = "0.1.0"
+dependencies = [
+ "dyndo-core",
+ "hls_m3u8",
+]
+
+[[package]]
 name = "dyndo-server"
 version = "0.1.0"
 dependencies = [
@@ -845,6 +853,15 @@ name = "hex"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
+
+[[package]]
+name = "hls_m3u8"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bb594d4791abe0396469f972ce0f633c5f435e2a47c72f631d0115dc3dcccd5e"
+dependencies = [
+ "stable-vec",
+]
 
 [[package]]
 name = "hmac"
@@ -1988,6 +2005,12 @@ name = "spin"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d5fe4ccb98d9c292d56fec89a5e07da7fc4cf0dc11e156b41793132775d3e591"
+
+[[package]]
+name = "stable-vec"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6dac7bc0f7d0d44329b200020effbc25a534d89fa142af95e3ddf76113412a5e"
 
 [[package]]
 name = "stable_deref_trait"
