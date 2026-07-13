@@ -3,7 +3,7 @@
 **Dynamic media packaging for adaptive streaming, in Rust.**
 
 ![Rust](https://img.shields.io/badge/rust-2021-orange?logo=rust)
-![Packaging](https://img.shields.io/badge/packaging-DASH%20%7C%20CMAF-blue)
+![Packaging](https://img.shields.io/badge/packaging-DASH%20%7C%20HLS%20%7C%20CMAF-blue)
 
 `dyndo` turns your existing CMAF files into an adaptive-streaming service **without
 repackaging or duplicating a single byte of media**. You index your sources once
@@ -12,8 +12,8 @@ CMAF segments *on the fly*, straight from the original files via HTTP byte-range
 reads.
 
 > [!NOTE]
-> `dyndo` is in early development (`0.1.0`). DASH is implemented; HLS is a
-> deliberate near-term extension the model and routing already accommodate.
+> `dyndo` is in early development (`0.1.0`). Both DASH and HLS are implemented,
+> served from the same CMAF sources.
 
 ## Why dyndo
 
@@ -31,7 +31,8 @@ disk ahead of time, duplicating your media and coupling storage to a protocol.
   it. The same parser serves the CLI (to summarise and validate) and the server
   (to build the runtime index).
 - **Protocol at the edge.** Media segments are the same CMAF for every protocol;
-  only the manifest is protocol-specific, so `dyndo` is DASH-first and HLS-ready.
+  only the manifest is protocol-specific, so `dyndo` speaks both DASH and HLS
+  over one set of segment routes.
 
 ## How it works
 
@@ -62,6 +63,7 @@ the core carries no CLI or HTTP concerns and is reused by both binaries.
 |---|---|---|
 | [`dyndo-core`](crates/dyndo-core) | library | CMAF header parsing (bounded memory via `mp4-atom`), the `Asset`/`Track` domain model, the `asset.json` serde contract, and RFC 6381 codec strings. Reads bytes through [OpenDAL](https://opendal.apache.org/). |
 | [`dyndo-dash`](crates/dyndo-dash) | library | DASH MPD generation from an `Asset`, with an optional `--compact` pass that hoists shared `SegmentTemplate` content up to the `AdaptationSet`. |
+| [`dyndo-hls`](crates/dyndo-hls) | library | HLS playlist generation from an `Asset`: a multivariant playlist plus one media playlist per track, with demuxed audio grouped by codec. |
 | [`dyndo-cli`](crates/dyndo-cli) | binary (`dyndo`) | The indexing and offline-manifest CLI. |
 | [`dyndo-server`](crates/dyndo-server) | binary (`dyndo-server`) | The dynamic packaging HTTP server, built on [Axum](https://github.com/tokio-rs/axum). |
 
@@ -138,11 +140,12 @@ make run
 # dyndo-server listening on http://0.0.0.0:8080
 ```
 
-The server reads descriptors from `./assets` and exposes each one as a DASH
-stream. Point any DASH player at the manifest URL:
+The server reads descriptors from `./assets` and exposes each one as both a DASH
+and an HLS stream. Point a player at the manifest URL for either protocol:
 
 ```
-http://localhost:8080/asset.json/dash/index.mpd
+http://localhost:8080/asset.json/dash/index.mpd    # DASH
+http://localhost:8080/asset.json/hls/index.m3u8     # HLS
 ```
 
 Every stream lives under `/<asset>/<protocol>/<resource>`, where `<asset>` is the
@@ -152,10 +155,15 @@ from the descriptor (e.g. `video_avc1_1080_4807228`):
 | Method | Route | Description |
 |---|---|---|
 | `GET` | `/<asset>/dash/index.mpd` | The asset's DASH manifest (MPD). |
-| `GET` | `/<asset>/dash/<repr>/init.mp4` | A representation's initialization segment. |
-| `GET` | `/<asset>/dash/<repr>/<time>.m4s` | The media segment starting at presentation `time`. |
+| `GET` | `/<asset>/hls/index.m3u8` | The asset's HLS multivariant playlist. |
+| `GET` | `/<asset>/hls/<repr>.m3u8` | An HLS rendition's media playlist. |
+| `GET` | `/<asset>/<protocol>/<repr>/init.mp4` | A representation's initialization segment. |
+| `GET` | `/<asset>/<protocol>/<repr>/<time>.m4s` | The media segment starting at presentation `time`. |
 
-CORS is open (any origin, any method), so the manifest can be loaded from a
+The `init.mp4` and `<time>.m4s` segment routes are the same CMAF under either
+`<protocol>` prefix — segments are shared, only the manifest differs.
+
+CORS is open (any origin, any method), so a manifest can be loaded from a
 browser-based player during development.
 
 ### Offline manifests (optional)
@@ -172,6 +180,18 @@ dyndo dash -i assets/asset.json -o assets/stream.mpd --compact
 | `-i, --input <PATH>` | Input `asset.json`. | `asset.json` |
 | `-o, --output <PATH>` | Output manifest path. | `stream.mpd` |
 | `-c, --compact` | Hoist `SegmentTemplate` content shared by all representations up to the `AdaptationSet` level. | off |
+
+The same descriptor renders to HLS playlists in a directory (a multivariant
+`index.m3u8` plus one `<repr>.m3u8` per track):
+
+```bash
+dyndo hls -i assets/asset.json -o assets/hls
+```
+
+| Option | Description | Default |
+|---|---|---|
+| `-i, --input <PATH>` | Input `asset.json`. | `asset.json` |
+| `-o, --output <DIR>` | Output directory for the playlists. | `hls` |
 
 ## Supported codecs
 

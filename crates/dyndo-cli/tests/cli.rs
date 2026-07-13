@@ -122,3 +122,56 @@ fn dash_compact_flag_hoists_segment_template() {
     let first_st = compact.find("<SegmentTemplate").unwrap();
     assert!(first_st < first_rep);
 }
+
+#[test]
+fn generates_hls_playlists_from_asset_json() {
+    let dir = tempfile::tempdir().unwrap();
+    stage(dir.path(), &["video_avc_1080.mp4", "audio_aac_nl_2.mp4"]);
+
+    assert!(dyndo(dir.path())
+        .args([
+            "index",
+            "-i",
+            "video_avc_1080.mp4",
+            "-i",
+            "audio_aac_nl_2.mp4",
+            "-o",
+            "asset.json",
+        ])
+        .status()
+        .unwrap()
+        .success());
+
+    assert!(dyndo(dir.path())
+        .args(["hls", "-i", "asset.json", "-o", "hls"])
+        .status()
+        .unwrap()
+        .success());
+
+    // Master plus one media playlist per track (video + audio) = 3 files.
+    let names: Vec<String> = fs::read_dir(dir.path().join("hls"))
+        .unwrap()
+        .map(|e| e.unwrap().file_name().into_string().unwrap())
+        .collect();
+    assert_eq!(names.iter().filter(|n| n.ends_with(".m3u8")).count(), 3);
+    assert!(names
+        .iter()
+        .any(|n| n.starts_with("video_") && n.ends_with(".m3u8")));
+    assert!(names
+        .iter()
+        .any(|n| n.starts_with("audio_") && n.ends_with(".m3u8")));
+
+    let master = fs::read_to_string(dir.path().join("hls/index.m3u8")).unwrap();
+    assert!(master.contains("#EXT-X-STREAM-INF:"));
+    assert!(master.contains("#EXT-X-MEDIA:TYPE=AUDIO"));
+    assert!(master.contains("AUDIO=\"mp4a\""));
+
+    let video = names
+        .iter()
+        .find(|n| n.starts_with("video_") && n.ends_with(".m3u8"))
+        .unwrap();
+    let media = fs::read_to_string(dir.path().join("hls").join(video)).unwrap();
+    assert!(media.contains("#EXT-X-PLAYLIST-TYPE:VOD"));
+    assert!(media.contains("#EXT-X-MAP:URI="));
+    assert!(media.contains("#EXT-X-ENDLIST"));
+}

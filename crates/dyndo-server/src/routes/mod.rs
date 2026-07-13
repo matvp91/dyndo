@@ -5,7 +5,8 @@
 //! fixed protocol infix, which no declarative route can express — so the whole
 //! tail is captured by one catch-all and split by [`split_route`].
 
-mod dash;
+mod segment;
+mod transport;
 
 use axum::{
     extract::{Path, State},
@@ -19,9 +20,9 @@ use tower_http::cors::{Any, CorsLayer};
 use crate::error::ServerError;
 
 /// Streaming protocols we recognise. The manifest resource differs per protocol
-/// (`index.mpd` for DASH); media segments are the same CMAF for all. To light up
-/// HLS, add `"hls"` here and a sibling manifest arm in [`dispatch`].
-const PROTOCOLS: &[&str] = &["dash"];
+/// (`index.mpd` for DASH, `index.m3u8` + `{repr}.m3u8` for HLS); media segments
+/// are the same CMAF for all.
+const PROTOCOLS: &[&str] = &["dash", "hls"];
 
 pub(crate) fn build_router(op: Operator) -> Router {
     let cors = CorsLayer::new().allow_origin(Any).allow_methods(Any);
@@ -44,10 +45,17 @@ async fn dispatch(
     // from CMAF and identical for every protocol. A bare resource is the
     // manifest, which each protocol renders its own way.
     match resource.split_once('/') {
-        Some((repr, "init.mp4")) => dash::init_segment(&op, asset_path, repr).await,
-        Some((repr, seg)) => dash::media_segment(&op, asset_path, repr, seg).await,
+        Some((repr, "init.mp4")) => segment::init_segment(&op, asset_path, repr).await,
+        Some((repr, seg)) => segment::media_segment(&op, asset_path, repr, seg).await,
         None => match (protocol, resource) {
-            ("dash", "index.mpd") => dash::manifest(&op, asset_path).await,
+            ("dash", "index.mpd") => transport::dash_manifest(&op, asset_path).await,
+            ("hls", "index.m3u8") => transport::hls_master(&op, asset_path).await,
+            ("hls", r) if r.ends_with(".m3u8") => {
+                let repr = r
+                    .strip_suffix(".m3u8")
+                    .expect("guarded by the .ends_with(\".m3u8\") arm");
+                transport::hls_media(&op, asset_path, repr).await
+            }
             _ => Err(ServerError::NotFound(format!(
                 "no {protocol} resource {resource}"
             ))),
