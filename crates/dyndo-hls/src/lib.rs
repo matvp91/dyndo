@@ -1,5 +1,7 @@
 //! HLS playlist generation for dyndo assets, built on `dyndo_core`.
 
+#![deny(missing_docs)]
+
 mod build;
 
 use dyndo_core::asset::{Asset, Track};

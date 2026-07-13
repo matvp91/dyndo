@@ -51,7 +51,10 @@ async fn dispatch(
             ("dash", "index.mpd") => transport::dash_manifest(&op, asset_path).await,
             ("hls", "index.m3u8") => transport::hls_master(&op, asset_path).await,
             ("hls", r) if r.ends_with(".m3u8") => {
-                transport::hls_media(&op, asset_path, r.strip_suffix(".m3u8").unwrap()).await
+                let repr = r
+                    .strip_suffix(".m3u8")
+                    .expect("guarded by the .ends_with(\".m3u8\") arm");
+                transport::hls_media(&op, asset_path, repr).await
             }
             _ => Err(ServerError::NotFound(format!(
                 "no {protocol} resource {resource}"

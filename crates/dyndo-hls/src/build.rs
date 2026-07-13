@@ -25,7 +25,10 @@ pub(crate) fn build_media(track: &Track) -> MediaPlaylist<'static> {
         if i == 0 {
             b.map(ExtXMap::new(format!("{repr}/init.mp4")));
         }
-        segments.push(b.build().unwrap());
+        segments.push(
+            b.build()
+                .expect("a media segment always has a URI and duration"),
+        );
         time += seg.duration;
     }
 
@@ -38,7 +41,8 @@ pub(crate) fn build_media(track: &Track) -> MediaPlaylist<'static> {
     b.playlist_type(PlaylistType::Vod);
     b.has_end_list(true);
     b.segments(segments);
-    b.build().unwrap()
+    b.build()
+        .expect("target duration covers the longest segment")
 }
 
 /// The longest segment in whole seconds, rounded up (RFC 8216 requires an
@@ -87,7 +91,8 @@ pub(crate) fn build_master(tracks: &[Track]) -> MasterPlaylist<'static> {
     b.media(media);
     b.variant_streams(variants);
     b.has_independent_segments(true);
-    b.build().unwrap()
+    b.build()
+        .expect("every variant references a defined audio group")
 }
 
 fn is_video(track: &Track) -> bool {
@@ -133,7 +138,10 @@ fn audio_media(groups: &[AudioGroup]) -> Vec<ExtXMedia<'static>> {
             b.is_default(i == 0);
             b.is_autoselect(true);
             b.channels(Channels::new(a.channels as u64));
-            out.push(b.build().unwrap());
+            out.push(
+                b.build()
+                    .expect("audio media always has a type, group id, and name"),
+            );
         }
     }
     out
@@ -184,7 +192,7 @@ fn video_variant(
             .codecs(codecs)
             .resolution((meta.width as usize, meta.height as usize))
             .build()
-            .unwrap(),
+            .expect("stream data always has a bandwidth"),
     }
 }
 
@@ -200,7 +208,7 @@ fn audio_variant(t: &Track) -> VariantStream<'static> {
             .bandwidth(t.header.bandwidth as u64)
             .codecs(vec![Cow::Owned(t.metadata.rfc6381())])
             .build()
-            .unwrap(),
+            .expect("stream data always has a bandwidth"),
     }
 }
 
