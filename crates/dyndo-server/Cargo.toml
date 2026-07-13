@@ -13,6 +13,7 @@ path = "src/main.rs"
 [dependencies]
 dyndo-core = { path = "../dyndo-core" }
 dyndo-dash = { path = "../dyndo-dash" }
+dyndo-hls = { path = "../dyndo-hls" }
 opendal = { version = "0.58", default-features = false, features = ["services-fs", "services-s3"] }
 axum = "0.8"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }

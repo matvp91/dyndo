@@ -606,6 +606,7 @@ dependencies = [
  "axum",
  "dyndo-core",
  "dyndo-dash",
+ "dyndo-hls",
  "figment",
  "opendal",
  "serde",
