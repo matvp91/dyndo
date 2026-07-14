@@ -23,7 +23,7 @@ pub(super) async fn dash_manifest(
 ) -> Result<Response, ServerError> {
     let model = AssetModel::read(op, asset_path).await?;
     let asset = Asset::from_model(op, model, asset_path).await?;
-    let xml = dyndo_dash::generate_mpd(&asset, true);
+    let xml = dyndo_core::dash::generate_mpd(&asset, true);
     Ok(([(CONTENT_TYPE, DASH_CONTENT_TYPE)], xml).into_response())
 }
 

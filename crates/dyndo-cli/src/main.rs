@@ -76,7 +76,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         } => {
             let model = AssetModel::read(&op, &input).await?;
             let asset = Asset::from_model(&op, model, &input).await?;
-            let mpd = dyndo_dash::generate_mpd(&asset, compact);
+            let mpd = dyndo_core::dash::generate_mpd(&asset, compact);
             op.write(&output, mpd.into_bytes()).await?;
             println!("wrote {output}");
         }

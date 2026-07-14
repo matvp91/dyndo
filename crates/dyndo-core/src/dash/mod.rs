@@ -1,11 +1,11 @@
-//! DASH MPD generation for dyndo assets, built on `dyndo_core`.
-#![deny(missing_docs)]
+//! DASH MPD generation for dyndo assets.
 
 mod build;
 mod compact;
 
-use dyndo_core::asset::Asset;
 use serde::Serialize;
+
+use crate::asset::Asset;
 
 /// Build a static DASH MPD from `asset`, pretty-printed with two-space
 /// indentation. When `compact` is set, `SegmentTemplate` content shared by all
