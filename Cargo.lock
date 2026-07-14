@@ -559,8 +559,6 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "dyndo-core",
- "dyndo-dash",
- "dyndo-hls",
  "opendal",
  "serde_json",
  "tempfile",
@@ -572,8 +570,11 @@ name = "dyndo-core"
 version = "0.1.0"
 dependencies = [
  "bytes",
+ "dash-mpd",
+ "hls_m3u8",
  "mp4-atom",
  "opendal",
+ "quick-xml 0.40.1",
  "relative-path",
  "serde",
  "serde_json",
@@ -583,31 +584,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "dyndo-dash"
-version = "0.1.0"
-dependencies = [
- "dash-mpd",
- "dyndo-core",
- "quick-xml 0.40.1",
- "serde",
-]
-
-[[package]]
-name = "dyndo-hls"
-version = "0.1.0"
-dependencies = [
- "dyndo-core",
- "hls_m3u8",
-]
-
-[[package]]
 name = "dyndo-server"
 version = "0.1.0"
 dependencies = [
  "axum",
  "dyndo-core",
- "dyndo-dash",
- "dyndo-hls",
  "figment",
  "opendal",
  "serde",

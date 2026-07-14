@@ -23,7 +23,7 @@ pub(super) async fn dash_manifest(
 ) -> Result<Response, ServerError> {
     let model = AssetModel::read(op, asset_path).await?;
     let asset = Asset::from_model(op, model, asset_path).await?;
-    let xml = dyndo_dash::generate_mpd(&asset, true);
+    let xml = dyndo_core::dash::generate_mpd(&asset, true);
     Ok(([(CONTENT_TYPE, DASH_CONTENT_TYPE)], xml).into_response())
 }
 
@@ -32,7 +32,7 @@ pub(super) async fn dash_manifest(
 pub(super) async fn hls_master(op: &Operator, asset_path: &str) -> Result<Response, ServerError> {
     let model = AssetModel::read(op, asset_path).await?;
     let asset = Asset::from_model(op, model, asset_path).await?;
-    let playlist = dyndo_hls::generate_master(&asset);
+    let playlist = dyndo_core::hls::generate_master(&asset);
     Ok(([(CONTENT_TYPE, HLS_CONTENT_TYPE)], playlist).into_response())
 }
 
@@ -49,6 +49,6 @@ pub(super) async fn hls_media(
         .find(|t| t.id() == repr)
         .ok_or_else(|| ServerError::NotFound(format!("no representation {repr}")))?;
     let track = Track::from_path(op, source.path(), asset_path).await?;
-    let playlist = dyndo_hls::generate_media(&track);
+    let playlist = dyndo_core::hls::generate_media(&track);
     Ok(([(CONTENT_TYPE, HLS_CONTENT_TYPE)], playlist).into_response())
 }

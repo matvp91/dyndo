@@ -76,7 +76,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         } => {
             let model = AssetModel::read(&op, &input).await?;
             let asset = Asset::from_model(&op, model, &input).await?;
-            let mpd = dyndo_dash::generate_mpd(&asset, compact);
+            let mpd = dyndo_core::dash::generate_mpd(&asset, compact);
             op.write(&output, mpd.into_bytes()).await?;
             println!("wrote {output}");
         }
@@ -85,13 +85,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let asset = Asset::from_model(&op, model, &input).await?;
             op.write(
                 &format!("{output}/index.m3u8"),
-                dyndo_hls::generate_master(&asset).into_bytes(),
+                dyndo_core::hls::generate_master(&asset).into_bytes(),
             )
             .await?;
             for track in &asset.tracks {
                 op.write(
                     &format!("{output}/{}.m3u8", track.id()),
-                    dyndo_hls::generate_media(track).into_bytes(),
+                    dyndo_core::hls::generate_media(track).into_bytes(),
                 )
                 .await?;
             }

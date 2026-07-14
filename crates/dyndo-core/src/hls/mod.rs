@@ -1,10 +1,8 @@
-//! HLS playlist generation for dyndo assets, built on `dyndo_core`.
-
-#![deny(missing_docs)]
+//! HLS playlist generation for dyndo assets.
 
 mod build;
 
-use dyndo_core::asset::{Asset, Track};
+use crate::asset::{Asset, Track};
 
 /// Build the HLS media playlist for a single `track`: a VOD playlist with an
 /// `EXT-X-MAP` init segment and one media segment per (sub)segment.

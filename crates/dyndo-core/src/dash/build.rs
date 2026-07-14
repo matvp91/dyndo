@@ -4,8 +4,9 @@ use dash_mpd::{
     AdaptationSet, AudioChannelConfiguration, Period, Representation, SegmentTemplate,
     SegmentTimeline, MPD, S,
 };
-use dyndo_core::asset::{Segment, Track};
-use dyndo_core::cmaf::Metadata;
+
+use crate::asset::{Segment, Track};
+use crate::cmaf::Metadata;
 
 const INIT_TEMPLATE: &str = "$RepresentationID$/init.mp4";
 const MEDIA_TEMPLATE: &str = "$RepresentationID$/$Time$.m4s";
@@ -166,7 +167,7 @@ fn mpd(tracks: &[Track]) -> MPD {
 pub(crate) fn build_mpd(tracks: &[Track], compact: bool) -> MPD {
     let mut m = mpd(tracks);
     if compact {
-        crate::compact::compact(&mut m);
+        super::compact::compact(&mut m);
     }
     m
 }

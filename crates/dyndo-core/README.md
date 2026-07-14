@@ -16,6 +16,8 @@ so the byte source is pluggable (local filesystem today).
 | [`asset`](src/asset.rs) | The domain `Asset` (a list of `Track`s plus its source path) and `Segment`. Builds tracks from CMAF, reads init/media segment bytes on demand, and converts to/from the wire model. |
 | [`codec`](src/codec.rs) | The `VideoCodec` / `AudioCodec` enums and their RFC 6381 `codecs` strings (e.g. `avc1.640028`, `mp4a.40.2`). |
 | [`model`](src/model.rs) | The `asset.json` serde contract: `AssetModel` and the tagged `TrackModel` union. |
+| [`dash`](src/dash/mod.rs) | DASH MPD generation from an `Asset`, with an optional compaction pass that hoists `SegmentTemplate` content shared by all `Representation`s up to the `AdaptationSet`. |
+| [`hls`](src/hls/mod.rs) | HLS playlist generation from an `Asset`: a multivariant playlist plus one media playlist per track, with demuxed audio grouped by codec. |
 
 ## Design notes
 
@@ -34,3 +36,6 @@ so the byte source is pluggable (local filesystem today).
 [`mp4-atom`](https://crates.io/crates/mp4-atom) for typed box decoding,
 [`opendal`](https://crates.io/crates/opendal) for ranged reads, and `serde` /
 `serde_json` for the descriptor.
+[`dash-mpd`](https://crates.io/crates/dash-mpd) and
+[`quick-xml`](https://crates.io/crates/quick-xml) back DASH MPD generation, and
+[`hls_m3u8`](https://crates.io/crates/hls_m3u8) backs HLS playlists.
