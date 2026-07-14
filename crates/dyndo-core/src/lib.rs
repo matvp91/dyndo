@@ -7,6 +7,7 @@ pub mod cmaf;
 pub mod codec;
 pub mod dash;
 mod error;
+pub mod hls;
 pub mod model;
 
 pub use error::CoreError;

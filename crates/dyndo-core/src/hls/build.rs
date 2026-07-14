@@ -1,10 +1,11 @@
 use std::time::Duration;
 
-use dyndo_core::asset::{Segment, Track};
-use dyndo_core::cmaf::{AudioMetadata, Metadata, VideoMetadata};
 use hls_m3u8::tags::{ExtXMap, ExtXMedia, VariantStream};
 use hls_m3u8::types::{Channels, MediaType, PlaylistType, StreamData, UFloat};
 use hls_m3u8::{MasterPlaylist, MediaPlaylist, MediaSegment};
+
+use crate::asset::{Segment, Track};
+use crate::cmaf::{AudioMetadata, Metadata, VideoMetadata};
 
 /// Build the VOD media playlist for `track`: an `EXT-X-MAP` init on the first
 /// segment, then one segment per (sub)segment named by its running presentation
@@ -213,11 +214,10 @@ fn audio_variant(t: &Track, a: &AudioMetadata) -> VariantStream<'static> {
 
 #[cfg(test)]
 mod tests {
-    use dyndo_core::asset::{Segment, Track};
-    use dyndo_core::cmaf::{AudioMetadata, Header, Metadata, VideoMetadata};
-    use dyndo_core::codec::{AudioCodec, VideoCodec};
-
     use super::*;
+    use crate::asset::{Segment, Track};
+    use crate::cmaf::{AudioMetadata, Header, Metadata, VideoMetadata};
+    use crate::codec::{AudioCodec, VideoCodec};
 
     /// A header with `bandwidth` and one `Segment` per entry in `segs` (each
     /// carrying only a duration; offsets/sizes are irrelevant to playlists).

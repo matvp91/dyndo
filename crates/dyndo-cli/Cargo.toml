@@ -12,7 +12,6 @@ path = "src/main.rs"
 
 [dependencies]
 dyndo-core = { path = "../dyndo-core" }
-dyndo-hls = { path = "../dyndo-hls" }
 opendal = { version = "0.58", default-features = false, features = ["services-fs"] }
 clap = { version = "4", features = ["derive"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
