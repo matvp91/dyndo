@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::time::Duration;
 
 use dyndo_core::asset::{Segment, Track};
@@ -174,15 +173,15 @@ fn video_variant(
     fr: Option<f32>,
     group: Option<&AudioGroup>,
 ) -> VariantStream<'static> {
-    let mut codecs: Vec<Cow<'static, str>> = vec![Cow::Owned(meta.codec.rfc6381())];
+    let mut codecs = vec![meta.codec.rfc6381()];
     let mut bandwidth = v.header.bandwidth as u64;
     let audio = group.map(|g| {
-        codecs.push(Cow::Owned(g.codec.clone()));
+        codecs.push(g.codec.clone());
         bandwidth += g.max_bandwidth as u64;
-        Cow::Owned(g.id.clone())
+        g.id.clone().into()
     });
     VariantStream::ExtXStreamInf {
-        uri: Cow::Owned(format!("{}.m3u8", v.id())),
+        uri: format!("{}.m3u8", v.id()).into(),
         frame_rate: fr.map(UFloat::new),
         audio,
         subtitles: None,
@@ -199,14 +198,14 @@ fn video_variant(
 /// A standalone audio variant, used only when the asset has no video.
 fn audio_variant(t: &Track) -> VariantStream<'static> {
     VariantStream::ExtXStreamInf {
-        uri: Cow::Owned(format!("{}.m3u8", t.id())),
+        uri: format!("{}.m3u8", t.id()).into(),
         frame_rate: None,
         audio: None,
         subtitles: None,
         closed_captions: None,
         stream_data: StreamData::builder()
             .bandwidth(t.header.bandwidth as u64)
-            .codecs(vec![Cow::Owned(t.metadata.rfc6381())])
+            .codecs(vec![t.metadata.rfc6381()])
             .build()
             .expect("stream data always has a bandwidth"),
     }
