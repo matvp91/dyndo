@@ -56,14 +56,13 @@ flowchart LR
 
 ## Project layout
 
-`dyndo` is a Cargo workspace of four crates with a clean dependency direction —
-the core carries no CLI or HTTP concerns and is reused by both binaries.
+`dyndo` is a Cargo workspace of three crates — one library and two binaries — with
+a clean dependency direction: the core library carries no CLI or HTTP concerns and
+is reused by both binaries.
 
 | Crate | Kind | Responsibility |
 |---|---|---|
-| [`dyndo-core`](crates/dyndo-core) | library | CMAF header parsing (bounded memory via `mp4-atom`), the `Asset`/`Track` domain model, the `asset.json` serde contract, and RFC 6381 codec strings. Reads bytes through [OpenDAL](https://opendal.apache.org/). |
-| [`dyndo-dash`](crates/dyndo-dash) | library | DASH MPD generation from an `Asset`, with an optional `--compact` pass that hoists shared `SegmentTemplate` content up to the `AdaptationSet`. |
-| [`dyndo-hls`](crates/dyndo-hls) | library | HLS playlist generation from an `Asset`: a multivariant playlist plus one media playlist per track, with demuxed audio grouped by codec. |
+| [`dyndo-core`](crates/dyndo-core) | library | CMAF header parsing (bounded memory via `mp4-atom`), the `Asset`/`Track` domain model, the `asset.json` serde contract, RFC 6381 codec strings, and DASH/HLS manifest generation (the `dash` and `hls` modules). Reads bytes through [OpenDAL](https://opendal.apache.org/). |
 | [`dyndo-cli`](crates/dyndo-cli) | binary (`dyndo`) | The indexing and offline-manifest CLI. |
 | [`dyndo-server`](crates/dyndo-server) | binary (`dyndo-server`) | The dynamic packaging HTTP server, built on [Axum](https://github.com/tokio-rs/axum). |
 

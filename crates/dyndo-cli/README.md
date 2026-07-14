@@ -2,7 +2,7 @@
 
 The `dyndo` command-line tool — the indexing and offline-manifest entry point for
 [`dyndo`](../../README.md). It is thin wiring: argument parsing plus calls into
-[`dyndo-core`](../dyndo-core/README.md) and [`dyndo-dash`](../dyndo-dash/README.md).
+[`dyndo-core`](../dyndo-core/README.md).
 
 ## Commands
 
