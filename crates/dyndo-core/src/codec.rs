@@ -4,6 +4,25 @@ use mp4_atom::{Audio, Codec, Visual};
 
 use crate::CoreError;
 
+/// Which kind of media track a codec belongs to; the discriminant carried by
+/// [`CoreError::UnsupportedCodec`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MediaType {
+    /// A video track.
+    Video,
+    /// An audio track.
+    Audio,
+}
+
+impl std::fmt::Display for MediaType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            MediaType::Video => "video",
+            MediaType::Audio => "audio",
+        })
+    }
+}
+
 /// A supported video codec with the parameters needed for its RFC 6381 string.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VideoCodec {
@@ -109,7 +128,7 @@ impl VideoCodec {
                 )),
                 _ => None,
             })
-            .ok_or(CoreError::UnsupportedCodec("video"))
+            .ok_or(CoreError::UnsupportedCodec(MediaType::Video))
     }
 }
 
@@ -147,7 +166,7 @@ impl AudioCodec {
                 Codec::Eac3(a) => Some((AudioCodec::Ec3, &a.audio)),
                 _ => None,
             })
-            .ok_or(CoreError::UnsupportedCodec("audio"))
+            .ok_or(CoreError::UnsupportedCodec(MediaType::Audio))
     }
 }
 
@@ -226,7 +245,7 @@ mod tests {
     fn video_from_codecs_on_empty_slice_is_unsupported() {
         let err = VideoCodec::from_codecs(&[]).unwrap_err();
         assert!(
-            matches!(err, CoreError::UnsupportedCodec("video")),
+            matches!(err, CoreError::UnsupportedCodec(MediaType::Video)),
             "got {err:?}"
         );
     }
@@ -235,7 +254,7 @@ mod tests {
     fn audio_from_codecs_on_empty_slice_is_unsupported() {
         let err = AudioCodec::from_codecs(&[]).unwrap_err();
         assert!(
-            matches!(err, CoreError::UnsupportedCodec("audio")),
+            matches!(err, CoreError::UnsupportedCodec(MediaType::Audio)),
             "got {err:?}"
         );
     }

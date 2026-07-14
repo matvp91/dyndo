@@ -4,6 +4,8 @@ use axum::{
 };
 use dyndo_core::CoreError;
 
+/// The server's HTTP-facing error type; each variant maps to a status code
+/// in [`IntoResponse`].
 #[derive(Debug)]
 pub enum ServerError {
     NotFound(String),
@@ -85,7 +87,7 @@ mod tests {
 
     #[test]
     fn core_unsupported_codec_maps_to_500() {
-        let e = CoreError::UnsupportedCodec("video");
+        let e = CoreError::UnsupportedCodec(dyndo_core::codec::MediaType::Video);
         assert_eq!(
             ServerError::from(e).into_response().status(),
             StatusCode::INTERNAL_SERVER_ERROR
