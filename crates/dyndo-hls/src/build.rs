@@ -60,7 +60,7 @@ struct AudioGroup<'a> {
     id: &'static str,
     /// A representative RFC 6381 string for the group's `CODECS` contribution.
     codec: String,
-    /// The loudest member's bandwidth, added to a variant's `BANDWIDTH`.
+    /// The highest-bandwidth member's bandwidth, added to a variant's `BANDWIDTH`.
     max_bandwidth: u32,
     /// The group's renditions in first-seen order; the first is the default.
     tracks: Vec<(&'a Track, &'a AudioMetadata)>,
@@ -83,8 +83,6 @@ pub(crate) fn build_master(tracks: &[Track]) -> MasterPlaylist<'static> {
     }
     let groups = group_by_codec(&audios);
 
-    // With no video, audio tracks are standalone variants: no rendition
-    // group, no `EXT-X-MEDIA`.
     let (media, variants): (Vec<ExtXMedia<'static>>, Vec<VariantStream<'static>>) =
         if videos.is_empty() {
             (
@@ -290,7 +288,7 @@ mod tests {
     fn media_playlist_has_vod_map_and_running_time_segments() {
         // 90_000 timescale; segments 2s, 2s, 1s → presentation times 0, 180000, 360000.
         let track = video_track(720, 128_000, &[180_000, 180_000, 90_000]);
-        let repr = track.id(); // video_avc1_720_128000
+        let repr = track.id();
         let m = build_media(&track).to_string();
 
         assert!(m.contains("#EXT-X-PLAYLIST-TYPE:VOD"), "{m}");
@@ -442,7 +440,7 @@ mod tests {
     fn master_groups_multiple_audio_renditions() {
         // Two audio tracks with the SAME codec but different language/bandwidth
         // collapse into one group (two renditions), and the video variant's
-        // BANDWIDTH sums the video bitrate with the group's loudest member.
+        // BANDWIDTH sums the video bitrate with the group's highest-bandwidth member.
         let v = video_track(1080, 4_000_000, &[180_000]);
         let a_nld = audio_track(
             AudioCodec::Aac {
@@ -469,7 +467,6 @@ mod tests {
         assert!(m.contains("GROUP-ID=\"mp4a\""), "{m}");
         // Exactly one rendition is the group default (the first added: nld).
         assert_eq!(m.matches("DEFAULT=YES").count(), 1, "{m}");
-        // Both languages present.
         assert!(m.contains("LANGUAGE=\"nld\""), "{m}");
         assert!(m.contains("LANGUAGE=\"eng\""), "{m}");
         // One video × one group → one variant.

@@ -192,7 +192,8 @@ mod tests {
 
     #[test]
     fn build_timeline_run_length_encodes_equal_durations() {
-        // three equal segments collapse to one S with r = 2 repeats
+        // DASH S@r counts *additional* repeats, so three equal segments
+        // collapse to a single S with r = 2.
         let out = build_timeline(&[seg(10), seg(10), seg(10)], 0);
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].r, Some(2));

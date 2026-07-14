@@ -89,7 +89,7 @@ impl AppConfig {
 
     /// Build the OpenDAL operator for the selected store. Cloning the selected
     /// sub-config is cheap and keeps `&self` intact for the caller; a missing
-    /// section (`None`) becomes an empty config that OpenDAL's `build()` rejects.
+    /// section (`None`) becomes an empty config that `Operator::from_config` rejects.
     ///
     /// # Errors
     /// Returns [`ConfigError::Operator`] if OpenDAL rejects the selected store's

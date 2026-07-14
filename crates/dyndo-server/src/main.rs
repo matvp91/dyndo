@@ -1,3 +1,6 @@
+//! dyndo-server: the HTTP entry point. Loads config, builds the storage
+//! operator, and serves the router over TCP.
+
 mod config;
 mod error;
 mod routes;

@@ -1,3 +1,9 @@
+//! Compaction pass over a built MPD: hoist the `SegmentTemplate` and the
+//! template attributes shared by every `Representation` up to their parent
+//! `AdaptationSet`. Sound because DASH lets a `Representation` inherit
+//! `SegmentTemplate` fields from its `AdaptationSet` (ISO/IEC 23009-1), so the
+//! hoisted manifest stays equivalent to the input while emitting less XML.
+
 use dash_mpd::{AdaptationSet, SegmentTemplate, MPD};
 
 pub(crate) fn compact(mpd: &mut MPD) {

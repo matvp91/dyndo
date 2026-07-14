@@ -50,7 +50,7 @@ impl Asset {
         Asset::default()
     }
 
-    /// Append a track.
+    /// Append a track. Tracks carry no ordering guarantee (see [`Asset::tracks`]).
     pub fn add_track(&mut self, track: Track) {
         self.tracks.push(track);
     }
