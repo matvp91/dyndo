@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use dyndo_core::asset::{Segment, Track};
-use dyndo_core::cmaf::{Metadata, VideoMetadata};
+use dyndo_core::cmaf::{AudioMetadata, Metadata, VideoMetadata};
 use hls_m3u8::tags::{ExtXMap, ExtXMedia, VariantStream};
 use hls_m3u8::types::{Channels, MediaType, PlaylistType, StreamData, UFloat};
 use hls_m3u8::{MasterPlaylist, MediaPlaylist, MediaSegment};
@@ -57,12 +57,13 @@ fn target_duration(segments: &[Segment], timescale: u32) -> u64 {
 /// Audio tracks sharing one codec fourcc → one `EXT-X-MEDIA` `GROUP-ID`.
 struct AudioGroup<'a> {
     /// `GROUP-ID` = the codec fourcc (`"mp4a"`, `"ec-3"`, …).
-    id: String,
+    id: &'static str,
     /// A representative RFC 6381 string for the group's `CODECS` contribution.
     codec: String,
     /// The loudest member's bandwidth, added to a variant's `BANDWIDTH`.
     max_bandwidth: u32,
-    tracks: Vec<&'a Track>,
+    /// The group's renditions in first-seen order; the first is the default.
+    tracks: Vec<(&'a Track, &'a AudioMetadata)>,
 }
 
 /// Build the multivariant playlist from `tracks`. Video tracks become
@@ -70,8 +71,16 @@ struct AudioGroup<'a> {
 /// become `EXT-X-MEDIA` renditions. With no video, audio tracks are the
 /// variants (no group); with no audio, variants carry no `AUDIO`.
 pub(crate) fn build_master(tracks: &[Track]) -> MasterPlaylist<'static> {
-    let videos: Vec<&Track> = tracks.iter().filter(|t| is_video(t)).collect();
-    let audios: Vec<&Track> = tracks.iter().filter(|t| !is_video(t)).collect();
+    // Split by media type in one pass, keeping each track's narrowed metadata
+    // so the downstream builders never have to re-match `Metadata`.
+    let mut videos: Vec<(&Track, &VideoMetadata)> = Vec::new();
+    let mut audios: Vec<(&Track, &AudioMetadata)> = Vec::new();
+    for t in tracks {
+        match &t.metadata {
+            Metadata::Video(v) => videos.push((t, v)),
+            Metadata::Audio(a) => audios.push((t, a)),
+        }
+    }
     let groups = group_by_codec(&audios);
 
     // With no video, audio tracks are standalone variants: no rendition
@@ -80,7 +89,7 @@ pub(crate) fn build_master(tracks: &[Track]) -> MasterPlaylist<'static> {
         if videos.is_empty() {
             (
                 Vec::new(),
-                audios.iter().map(|t| audio_variant(t)).collect(),
+                audios.iter().map(|&(t, a)| audio_variant(t, a)).collect(),
             )
         } else {
             (audio_media(&groups), video_variants(&videos, &groups))
@@ -94,25 +103,21 @@ pub(crate) fn build_master(tracks: &[Track]) -> MasterPlaylist<'static> {
         .expect("every variant references a defined audio group")
 }
 
-fn is_video(track: &Track) -> bool {
-    matches!(track.metadata, Metadata::Video(_))
-}
-
 /// Group audio tracks by codec fourcc, preserving first-seen order.
-fn group_by_codec<'a>(audios: &[&'a Track]) -> Vec<AudioGroup<'a>> {
+fn group_by_codec<'a>(audios: &[(&'a Track, &'a AudioMetadata)]) -> Vec<AudioGroup<'a>> {
     let mut groups: Vec<AudioGroup> = Vec::new();
-    for &t in audios {
-        let fourcc = t.metadata.fourcc();
+    for &(t, a) in audios {
+        let fourcc = a.codec.fourcc();
         match groups.iter_mut().find(|g| g.id == fourcc) {
             Some(g) => {
                 g.max_bandwidth = g.max_bandwidth.max(t.header.bandwidth);
-                g.tracks.push(t);
+                g.tracks.push((t, a));
             }
             None => groups.push(AudioGroup {
-                id: fourcc.to_string(),
-                codec: t.metadata.rfc6381(),
+                id: fourcc,
+                codec: a.codec.rfc6381(),
                 max_bandwidth: t.header.bandwidth,
-                tracks: vec![t],
+                tracks: vec![(t, a)],
             }),
         }
     }
@@ -124,13 +129,10 @@ fn group_by_codec<'a>(audios: &[&'a Track]) -> Vec<AudioGroup<'a>> {
 fn audio_media(groups: &[AudioGroup]) -> Vec<ExtXMedia<'static>> {
     let mut out = Vec::new();
     for g in groups {
-        for (i, t) in g.tracks.iter().enumerate() {
-            let Metadata::Audio(a) = &t.metadata else {
-                unreachable!("audio group holds audio tracks");
-            };
+        for (i, &(t, a)) in g.tracks.iter().enumerate() {
             let mut b = ExtXMedia::builder();
             b.media_type(MediaType::Audio);
-            b.group_id(g.id.clone());
+            b.group_id(g.id);
             b.name(a.language.clone());
             b.language(a.language.clone());
             b.uri(format!("{}.m3u8", t.id()));
@@ -148,12 +150,12 @@ fn audio_media(groups: &[AudioGroup]) -> Vec<ExtXMedia<'static>> {
 
 /// Every video track × every audio group (or just the video track when there
 /// are no groups).
-fn video_variants(videos: &[&Track], groups: &[AudioGroup]) -> Vec<VariantStream<'static>> {
+fn video_variants(
+    videos: &[(&Track, &VideoMetadata)],
+    groups: &[AudioGroup],
+) -> Vec<VariantStream<'static>> {
     let mut out = Vec::new();
-    for v in videos {
-        let Metadata::Video(meta) = &v.metadata else {
-            unreachable!("video list holds video tracks");
-        };
+    for &(v, meta) in videos {
         let fr =
             (meta.frame_rate.0 != 0).then(|| meta.frame_rate.0 as f32 / meta.frame_rate.1 as f32);
         if groups.is_empty() {
@@ -178,7 +180,7 @@ fn video_variant(
     let audio = group.map(|g| {
         codecs.push(g.codec.clone());
         bandwidth += g.max_bandwidth as u64;
-        g.id.clone().into()
+        g.id.into()
     });
     VariantStream::ExtXStreamInf {
         uri: format!("{}.m3u8", v.id()).into(),
@@ -196,7 +198,7 @@ fn video_variant(
 }
 
 /// A standalone audio variant, used only when the asset has no video.
-fn audio_variant(t: &Track) -> VariantStream<'static> {
+fn audio_variant(t: &Track, a: &AudioMetadata) -> VariantStream<'static> {
     VariantStream::ExtXStreamInf {
         uri: format!("{}.m3u8", t.id()).into(),
         frame_rate: None,
@@ -205,7 +207,7 @@ fn audio_variant(t: &Track) -> VariantStream<'static> {
         closed_captions: None,
         stream_data: StreamData::builder()
             .bandwidth(t.header.bandwidth as u64)
-            .codecs(vec![t.metadata.rfc6381()])
+            .codecs(vec![a.codec.rfc6381()])
             .build()
             .expect("stream data always has a bandwidth"),
     }
