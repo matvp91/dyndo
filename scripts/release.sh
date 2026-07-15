@@ -19,8 +19,10 @@ MANIFESTS=(
 )
 
 # Print the [package] version from a Cargo.toml (the first `version = "..."`).
+# `tr -d '\r'` guards against a CRLF-checked-out manifest (e.g. core.autocrlf),
+# so the version never carries a trailing carriage return.
 read_current_version() {
-  sed -n 's/^version = "\(.*\)"/\1/p' "$1" | head -n1
+  sed -n 's/^version = "\(.*\)"/\1/p' "$1" | head -n1 | tr -d '\r'
 }
 
 # Return 0 iff $1 is a bare X.Y.Z semver (numeric, no pre-release/build).
