@@ -1,5 +1,7 @@
 //! WebVTT document parsing: `&str` → [`Subtitle`].
 
+use std::borrow::Cow;
+
 use super::error::CoreTextError;
 use super::subtitle::{Cue, Subtitle};
 
@@ -15,7 +17,13 @@ use super::subtitle::{Cue, Subtitle};
 /// or a cue's end precedes its start.
 pub fn parse(input: &str) -> Result<Subtitle, CoreTextError> {
     let input = input.strip_prefix('\u{feff}').unwrap_or(input);
-    let normalized = input.replace("\r\n", "\n").replace('\r', "\n");
+    // Normalize line endings to `\n` lazily: the common LF-only document is
+    // borrowed as-is; only CR-bearing input pays for an owned copy.
+    let normalized: Cow<'_, str> = if input.contains('\r') {
+        Cow::Owned(input.replace("\r\n", "\n").replace('\r', "\n"))
+    } else {
+        Cow::Borrowed(input)
+    };
 
     if !normalized
         .lines()
@@ -28,8 +36,8 @@ pub fn parse(input: &str) -> Result<Subtitle, CoreTextError> {
 
     let mut cues = Vec::new();
     for block in split_blocks(&normalized) {
-        if is_cue(&block) {
-            cues.push(parse_cue(&block)?);
+        if is_cue(block) {
+            cues.push(parse_cue(block)?);
         }
         // Non-cue blocks (header, STYLE/REGION, NOTE) are ignored.
     }
@@ -41,22 +49,28 @@ pub fn parse(input: &str) -> Result<Subtitle, CoreTextError> {
     })
 }
 
-/// Split into blocks separated by one or more blank lines.
-fn split_blocks(s: &str) -> Vec<String> {
+/// Split into blocks separated by one or more blank lines. Blocks are
+/// subslices of `s` (which is `\n`-normalized), so no text is copied; a
+/// block spans its first through last non-blank line, interior newlines
+/// included.
+fn split_blocks(s: &str) -> Vec<&str> {
     let mut out = Vec::new();
-    let mut cur: Vec<&str> = Vec::new();
-    for line in s.lines() {
+    let mut start: Option<usize> = None;
+    let mut end = 0;
+    let mut pos = 0;
+    for line in s.split('\n') {
         if line.trim().is_empty() {
-            if !cur.is_empty() {
-                out.push(cur.join("\n"));
-                cur.clear();
+            if let Some(start) = start.take() {
+                out.push(&s[start..end]);
             }
         } else {
-            cur.push(line);
+            start.get_or_insert(pos);
+            end = pos + line.len();
         }
+        pos += line.len() + 1;
     }
-    if !cur.is_empty() {
-        out.push(cur.join("\n"));
+    if let Some(start) = start {
+        out.push(&s[start..end]);
     }
     out
 }
@@ -67,15 +81,14 @@ fn is_cue(block: &str) -> bool {
 }
 
 fn parse_cue(block: &str) -> Result<Cue, CoreTextError> {
-    let mut lines = block.lines();
-    let first = lines.next().unwrap_or("");
-    let timing = if first.contains("-->") {
-        first
+    let (first, rest) = block.split_once('\n').unwrap_or((block, ""));
+    let (timing, text) = if first.contains("-->") {
+        (first, rest)
+    } else if rest.is_empty() {
+        return Err(CoreTextError::Vtt("cue id without a timing line".into()));
     } else {
         // First line is the cue id — recognized but discarded.
-        lines
-            .next()
-            .ok_or_else(|| CoreTextError::Vtt("cue id without a timing line".into()))?
+        rest.split_once('\n').unwrap_or((rest, ""))
     };
 
     let (start_raw, rest) = timing
@@ -93,11 +106,12 @@ fn parse_cue(block: &str) -> Result<Cue, CoreTextError> {
         )));
     }
 
-    let text = lines.collect::<Vec<_>>().join("\n");
+    // `block` is a contiguous slice, so the payload after the timing line is
+    // already the joined multi-line text — one allocation, no collect/join.
     Ok(Cue {
         start_ms,
         end_ms,
-        text,
+        text: text.to_string(),
     })
 }
 
@@ -175,6 +189,13 @@ mod tests {
     #[test]
     fn normalizes_crlf_and_bom() {
         let doc = "\u{feff}WEBVTT\r\n\r\n00:00.000 --> 00:01.000\r\nx\r\n";
+        let s = parse(doc).unwrap();
+        assert_eq!(s.cues[0].text, "x");
+    }
+
+    #[test]
+    fn normalizes_lone_carriage_returns() {
+        let doc = "WEBVTT\r\r00:00.000 --> 00:01.000\rx";
         let s = parse(doc).unwrap();
         assert_eq!(s.cues[0].text, "x");
     }
