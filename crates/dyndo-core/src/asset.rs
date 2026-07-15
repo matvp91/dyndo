@@ -67,9 +67,11 @@ mod sealed {
 // "callers cannot add Send bounds" concern doesn't apply here.
 #[allow(async_fn_in_trait)]
 pub trait Track: sealed::HasHeader {
-    /// The representation id, computed from the codec fourcc plus per-type
-    /// discriminators (e.g. `video_avc1_1080_4807228`,
-    /// `audio_mp4a_nld_2_196918`, `text_wvtt_eng`).
+    /// The representation id: the descriptor's stored id when present, else
+    /// derived from the codec fourcc plus per-type discriminators (e.g.
+    /// `video_avc1_1080_4807228`, `audio_mp4a_nld_2_196918`, `text_wvtt_eng`).
+    /// Manifests and segment routes both key representations by this value,
+    /// so the stored id must win on both paths or they drift apart.
     fn id(&self) -> String;
 
     /// The `video/mp4` / `audio/mp4` / `application/mp4` MIME type of the
@@ -151,20 +153,24 @@ pub struct VideoTrack {
     path: String,
     cmaf_header: CmafHeader,
     cmaf_metadata: VideoCmafMetadata,
+    id_descriptor: Option<String>,
 }
 
 impl VideoTrack {
     /// Assemble a video track from its resolved `path`, parsed `cmaf_header`,
-    /// and probed `cmaf_metadata`.
+    /// probed `cmaf_metadata`, and the descriptor's `id_descriptor` (`None`
+    /// when the track was probed without a descriptor entry).
     pub fn new(
         path: String,
         cmaf_header: CmafHeader,
         cmaf_metadata: VideoCmafMetadata,
+        id_descriptor: Option<String>,
     ) -> VideoTrack {
         VideoTrack {
             path,
             cmaf_header,
             cmaf_metadata,
+            id_descriptor,
         }
     }
 
@@ -214,12 +220,15 @@ impl sealed::HasHeader for VideoTrack {
 
 impl Track for VideoTrack {
     fn id(&self) -> String {
-        format!(
-            "video_{}_{}_{}",
-            self.codec().fourcc(),
-            self.height(),
-            self.bandwidth()
-        )
+        match &self.id_descriptor {
+            Some(id) => id.clone(),
+            None => format!(
+                "video_{}_{}_{}",
+                self.codec().fourcc(),
+                self.height(),
+                self.bandwidth()
+            ),
+        }
     }
 
     fn mime_type(&self) -> &'static str {
@@ -233,20 +242,24 @@ pub struct AudioTrack {
     path: String,
     cmaf_header: CmafHeader,
     cmaf_metadata: AudioCmafMetadata,
+    id_descriptor: Option<String>,
 }
 
 impl AudioTrack {
     /// Assemble an audio track from its resolved `path`, parsed `cmaf_header`,
-    /// and probed `cmaf_metadata`.
+    /// probed `cmaf_metadata`, and the descriptor's `id_descriptor` (`None`
+    /// when the track was probed without a descriptor entry).
     pub fn new(
         path: String,
         cmaf_header: CmafHeader,
         cmaf_metadata: AudioCmafMetadata,
+        id_descriptor: Option<String>,
     ) -> AudioTrack {
         AudioTrack {
             path,
             cmaf_header,
             cmaf_metadata,
+            id_descriptor,
         }
     }
 
@@ -297,13 +310,16 @@ impl sealed::HasHeader for AudioTrack {
 
 impl Track for AudioTrack {
     fn id(&self) -> String {
-        format!(
-            "audio_{}_{}_{}_{}",
-            self.codec().fourcc(),
-            self.language(),
-            self.channels(),
-            self.bandwidth()
-        )
+        match &self.id_descriptor {
+            Some(id) => id.clone(),
+            None => format!(
+                "audio_{}_{}_{}_{}",
+                self.codec().fourcc(),
+                self.language(),
+                self.channels(),
+                self.bandwidth()
+            ),
+        }
     }
 
     fn mime_type(&self) -> &'static str {
@@ -317,23 +333,27 @@ pub struct TextTrack {
     path: String,
     cmaf_header: CmafHeader,
     cmaf_metadata: TextCmafMetadata,
+    id_descriptor: Option<String>,
     language_descriptor: Option<String>,
 }
 
 impl TextTrack {
     /// Assemble a text track from its resolved `path`, parsed `cmaf_header`,
-    /// probed `cmaf_metadata`, and the descriptor's `language_descriptor`
-    /// (`None` when the track was probed without a descriptor entry).
+    /// probed `cmaf_metadata`, and the descriptor's `id_descriptor` and
+    /// `language_descriptor` (`None` when the track was probed without a
+    /// descriptor entry).
     pub fn new(
         path: String,
         cmaf_header: CmafHeader,
         cmaf_metadata: TextCmafMetadata,
+        id_descriptor: Option<String>,
         language_descriptor: Option<String>,
     ) -> TextTrack {
         TextTrack {
             path,
             cmaf_header,
             cmaf_metadata,
+            id_descriptor,
             language_descriptor,
         }
     }
@@ -377,7 +397,10 @@ impl sealed::HasHeader for TextTrack {
 
 impl Track for TextTrack {
     fn id(&self) -> String {
-        format!("text_{}_{}", self.codec().fourcc(), self.language())
+        match &self.id_descriptor {
+            Some(id) => id.clone(),
+            None => format!("text_{}_{}", self.codec().fourcc(), self.language()),
+        }
     }
 
     fn mime_type(&self) -> &'static str {
@@ -417,10 +440,10 @@ impl AnyTrack {
         let (cmaf_header, cmaf_metadata) = cmaf::probe(op, &path).await?;
         match (model, cmaf_metadata) {
             (TrackModel::Video(_), CmafMetadata::Video(m)) => {
-                Ok(AnyTrack::Video(VideoTrack::new(path, cmaf_header, m)))
+                Ok(AnyTrack::Video(VideoTrack::new(path, cmaf_header, m, Some(model.id().to_owned()))))
             }
             (TrackModel::Audio(_), CmafMetadata::Audio(m)) => {
-                Ok(AnyTrack::Audio(AudioTrack::new(path, cmaf_header, m)))
+                Ok(AnyTrack::Audio(AudioTrack::new(path, cmaf_header, m, Some(model.id().to_owned()))))
             }
             (TrackModel::Text(t), CmafMetadata::Text(m)) => {
                 let language = (!t.language.is_empty()).then(|| t.language.clone());
@@ -428,6 +451,7 @@ impl AnyTrack {
                     path,
                     cmaf_header,
                     m,
+                    Some(model.id().to_owned()),
                     language,
                 )))
             }
@@ -498,13 +522,13 @@ impl Asset {
         match cmaf_metadata {
             CmafMetadata::Video(m) => self
                 .video_tracks
-                .push(VideoTrack::new(path, cmaf_header, m)),
+                .push(VideoTrack::new(path, cmaf_header, m, None)),
             CmafMetadata::Audio(m) => self
                 .audio_tracks
-                .push(AudioTrack::new(path, cmaf_header, m)),
+                .push(AudioTrack::new(path, cmaf_header, m, None)),
             CmafMetadata::Text(m) => {
                 self.text_tracks
-                    .push(TextTrack::new(path, cmaf_header, m, None))
+                    .push(TextTrack::new(path, cmaf_header, m, None, None))
             }
         }
         Ok(())
