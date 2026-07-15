@@ -1,0 +1,123 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+# Never cancel an in-flight release run.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    name: verify tag matches Cargo.toml
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        run: |
+          tag="${GITHUB_REF_NAME}"                       # e.g. v0.2.0
+          cargo_version="$(sed -n 's/^version = "\(.*\)"/\1/p' crates/dyndo-cli/Cargo.toml | head -n1 | tr -d '\r')"
+          if [[ "$tag" != "v${cargo_version}" ]]; then
+            echo "::error::tag ${tag} does not match Cargo.toml version ${cargo_version} (expected v${cargo_version})"
+            exit 1
+          fi
+          echo "version=${cargo_version}" >> "$GITHUB_OUTPUT"
+
+  checks:
+    name: checks (fmt/clippy/test/doc)
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      # Pinned nightly for rustfmt (rustfmt.toml uses group_imports); keep in
+      # sync with the Makefile NIGHTLY variable and ci.yml.
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2026-07-09
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - run: make fmt-check
+      - run: make lint
+      - run: make test
+      - run: make doc
+
+  build:
+    name: build ${{ matrix.target }}
+    needs: [verify, checks]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          - os: macos-latest
+            target: x86_64-apple-darwin
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+      - name: Build binaries
+        run: cargo build --release -p dyndo-cli -p dyndo-server --target ${{ matrix.target }}
+      - name: Package tarballs
+        run: |
+          version="${{ needs.verify.outputs.version }}"
+          target="${{ matrix.target }}"
+          bindir="target/${target}/release"
+          mkdir -p dist
+          for bin in dyndo dyndo-server; do
+            stage="$(mktemp -d)"
+            cp "${bindir}/${bin}" "${stage}/"
+            cp README.md "${stage}/"
+            tar -czf "dist/${bin}-v${version}-${target}.tar.gz" -C "${stage}" "${bin}" README.md
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binaries-${{ matrix.target }}
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+  release:
+    name: publish release
+    needs: [verify, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: binaries-*
+          merge-multiple: true
+          path: dist
+      - name: Generate checksums
+        run: |
+          version="${{ needs.verify.outputs.version }}"
+          ( cd dist && sha256sum ./*.tar.gz > "dyndo-v${version}-SHA256SUMS.txt" )
+      - name: Create GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version="${{ needs.verify.outputs.version }}"
+          gh release create "v${version}" \
+            --title "v${version}" \
+            --generate-notes \
+            dist/*.tar.gz \
+            "dist/dyndo-v${version}-SHA256SUMS.txt"

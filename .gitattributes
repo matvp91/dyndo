@@ -1,0 +1,8 @@
+# This repo uses LF line endings everywhere. A local core.autocrlf=true would
+# otherwise smudge files to CRLF on checkout, breaking shell shebangs
+# (env: bash\r) and the release script's parsing of Cargo.toml versions.
+# `eol=lf` overrides autocrlf on every clone/checkout.
+* text=auto eol=lf
+
+# Binary assets: never apply line-ending conversion.
+*.mp4 binary
