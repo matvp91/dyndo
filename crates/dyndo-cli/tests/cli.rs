@@ -175,3 +175,22 @@ fn generates_hls_playlists_from_asset_json() {
     assert!(media.contains("#EXT-X-MAP:URI="));
     assert!(media.contains("#EXT-X-ENDLIST"));
 }
+
+#[test]
+fn pack_vtt_writes_wvtt_cmaf_track() {
+    let dir = tempfile::tempdir().unwrap();
+    stage(dir.path(), &["sample.vtt"]);
+
+    let status = dyndo(dir.path())
+        .args(["pack", "-i", "sample.vtt", "-o", "subs.mp4"])
+        .status()
+        .unwrap();
+    assert!(status.success());
+
+    let data = fs::read(dir.path().join("subs.mp4")).unwrap();
+    assert!(data.len() > 8, "expected a non-trivial mp4");
+    // First top-level box is `ftyp` (bytes 4..8 are the fourcc).
+    assert_eq!(&data[4..8], b"ftyp");
+    // The wvtt sample entry is present somewhere in the moov.
+    assert!(data.windows(4).any(|w| w == b"wvtt"));
+}

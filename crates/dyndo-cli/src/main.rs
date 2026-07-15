@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use clap::{Parser, Subcommand};
 use dyndo_core::asset::{Asset, Track};
 use dyndo_core::model::AssetModel;
@@ -46,6 +48,22 @@ enum Command {
         /// Output directory for the playlists.
         #[arg(short, long = "output", default_value = "hls")]
         output: String,
+    },
+    /// Pack a source subtitle/text file into a CMAF track. The input's
+    /// extension selects the packer (currently: `.vtt` → `wvtt`).
+    Pack {
+        /// Input source file (currently `.vtt`).
+        #[arg(short, long = "input")]
+        input: String,
+        /// Output CMAF track path.
+        #[arg(short, long = "output", default_value = "text.mp4")]
+        output: String,
+        /// Segment duration, in milliseconds.
+        #[arg(short = 'd', long = "segment-duration", default_value_t = 4000)]
+        segment_duration_ms: u64,
+        /// ISO-639-2 language code stored in the track.
+        #[arg(short, long = "language", default_value = "und")]
+        language: String,
     },
 }
 
@@ -105,6 +123,34 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .await?;
             }
             println!("wrote {output}/ (1 master + {count} media)");
+        }
+        Command::Pack {
+            input,
+            output,
+            segment_duration_ms,
+            language,
+        } => {
+            let ext = Path::new(&input)
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(str::to_ascii_lowercase);
+            match ext.as_deref() {
+                Some("vtt") => {
+                    let raw = op.read(&input).await?;
+                    let text = String::from_utf8(raw.to_vec())
+                        .map_err(|e| format!("input is not valid UTF-8: {e}"))?;
+                    let vtt = dyndo_core::text::parse(&text)?;
+                    let bytes = dyndo_core::text::wvtt::pack(&vtt, segment_duration_ms, &language)?;
+                    op.write(&output, bytes).await?;
+                    println!("wrote {output}");
+                }
+                other => {
+                    return Err(format!(
+                        "pack: unsupported input extension {other:?} (supported: vtt)"
+                    )
+                    .into());
+                }
+            }
         }
     }
     Ok(())
