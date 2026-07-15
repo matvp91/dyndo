@@ -163,7 +163,7 @@ pub async fn probe(op: &Operator, path: &str) -> Result<(CmafHeader, CmafMetadat
         let codec = TextCodec::from_codecs(codecs)?;
         CmafMetadata::Text(TextCmafMetadata {
             codec,
-            language: language_code(&mdia.mdhd),
+            language: optional_language_code(&mdia.mdhd),
         })
     } else {
         return Err(CoreError::Container(format!(
@@ -264,6 +264,12 @@ fn language_code(mdhd: &Mdhd) -> String {
     normalize_language(mdhd.language.as_str()).to_string()
 }
 
+/// The `mdhd` language as `Some(code)`, or `None` when the box leaves it empty.
+fn optional_language_code(mdhd: &Mdhd) -> Option<String> {
+    let lang = mdhd.language.as_str();
+    (!lang.is_empty()).then(|| lang.to_string())
+}
+
 /// The media-agnostic result of parsing a CMAF track's header region: timing,
 /// the init-segment location, and the (sub)segment map.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -327,8 +333,9 @@ pub struct AudioCmafMetadata {
 pub struct TextCmafMetadata {
     /// The decoded text codec and its RFC 6381 parameters.
     pub codec: TextCodec,
-    /// ISO-639-2 language code (`"und"` when unspecified).
-    pub language: String,
+    /// ISO-639-2 language code from the file's `mdhd` box, or `None` when the
+    /// file leaves it unspecified.
+    pub language: Option<String>,
 }
 
 #[cfg(test)]
@@ -425,7 +432,7 @@ mod tests {
             panic!("expected a text track, got {m:?}");
         };
         assert_eq!(t.codec, TextCodec::Wvtt);
-        assert_eq!(t.language, "eng");
+        assert_eq!(t.language.as_deref(), Some("eng"));
     }
 
     #[tokio::test]

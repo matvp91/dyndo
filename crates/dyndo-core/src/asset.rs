@@ -339,9 +339,9 @@ impl TextTrack {
         &self.cmaf_metadata.codec
     }
 
-    /// ISO-639-2 language code (`"und"` when unspecified).
+    /// ISO-639-2 language code (`"und"` when the file leaves it unspecified).
     pub fn language(&self) -> &str {
-        &self.cmaf_metadata.language
+        self.cmaf_metadata.language.as_deref().unwrap_or("und")
     }
 
     /// Project to the wire [`TrackModel`], relativizing the stored (resolved)
@@ -575,20 +575,25 @@ mod tests {
         }
     }
 
-    fn text_track(language: &str) -> TextTrack {
+    fn text_track(language: Option<&str>) -> TextTrack {
         TextTrack::new(
             String::new(),
             header(1000, 0, &[]),
             TextCmafMetadata {
                 codec: TextCodec::Wvtt,
-                language: language.to_string(),
+                language: language.map(str::to_string),
             },
         )
     }
 
     #[test]
     fn text_track_id_is_text_fourcc_language() {
-        assert_eq!(text_track("und").id(), "text_wvtt_und");
+        assert_eq!(text_track(Some("und")).id(), "text_wvtt_und");
+    }
+
+    #[test]
+    fn text_language_falls_back_to_und_when_file_has_none() {
+        assert_eq!(text_track(None).language(), "und");
     }
 
     fn video_track(timescale: u32, duration: u64, seg_durations: &[u64]) -> VideoTrack {

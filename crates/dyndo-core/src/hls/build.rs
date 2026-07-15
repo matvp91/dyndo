@@ -339,7 +339,7 @@ mod tests {
             cmaf_header(1000, bandwidth, segs),
             TextCmafMetadata {
                 codec: TextCodec::Wvtt,
-                language: lang.to_string(),
+                language: Some(lang.to_string()),
             },
         )
     }

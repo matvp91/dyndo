@@ -280,7 +280,7 @@ mod tests {
             },
             TextCmafMetadata {
                 codec: TextCodec::Wvtt,
-                language: language.to_string(),
+                language: Some(language.to_string()),
             },
         )
     }
