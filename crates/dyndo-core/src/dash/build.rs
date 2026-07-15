@@ -5,8 +5,7 @@ use dash_mpd::{
     SegmentTimeline, MPD, S,
 };
 
-use crate::asset::{Segment, Track};
-use crate::cmaf::Metadata;
+use crate::asset::{AudioTrack, Segment, Track, VideoTrack};
 
 const INIT_TEMPLATE: &str = "$RepresentationID$/init.mp4";
 const MEDIA_TEMPLATE: &str = "$RepresentationID$/$Time$.m4s";
@@ -57,35 +56,44 @@ fn segment_template(timescale: u32, pto: u64, segments: &[Segment]) -> SegmentTe
     }
 }
 
-fn representation(track: &Track) -> Representation {
-    let h = &track.header;
-    let base = Representation {
+/// The fields every representation shares: id, bandwidth, codecs, and the
+/// segment template. Per-media-type builders add their own dimensions or audio
+/// configuration.
+fn base_representation<T: Track>(track: &T, codecs: String) -> Representation {
+    let h = track.cmaf_header();
+    Representation {
         id: Some(track.id()),
         bandwidth: Some(h.bandwidth as u64),
-        codecs: Some(track.metadata.rfc6381()),
+        codecs: Some(codecs),
         SegmentTemplate: Some(segment_template(
             h.timescale,
             h.earliest_presentation_time,
-            &track.segments,
+            &h.segments,
         )),
         ..Default::default()
-    };
-    match &track.metadata {
-        Metadata::Video(v) => Representation {
-            width: Some(v.width as u64),
-            height: Some(v.height as u64),
-            frameRate: (v.frame_rate.0 != 0).then(|| frame_rate_str(v.frame_rate)),
-            ..base
-        },
-        Metadata::Audio(a) => Representation {
-            audioSamplingRate: Some(a.sample_rate.to_string()),
-            AudioChannelConfiguration: vec![AudioChannelConfiguration {
-                schemeIdUri: AUDIO_CHANNEL_CONFIG_SCHEME.to_string(),
-                value: Some(a.channels.to_string()),
-                ..Default::default()
-            }],
-            ..base
-        },
+    }
+}
+
+fn video_representation(track: &VideoTrack) -> Representation {
+    let m = &track.cmaf_metadata;
+    Representation {
+        width: Some(m.width as u64),
+        height: Some(m.height as u64),
+        frameRate: (m.frame_rate.0 != 0).then(|| frame_rate_str(m.frame_rate)),
+        ..base_representation(track, m.codec.rfc6381())
+    }
+}
+
+fn audio_representation(track: &AudioTrack) -> Representation {
+    let m = &track.cmaf_metadata;
+    Representation {
+        audioSamplingRate: Some(m.sample_rate.to_string()),
+        AudioChannelConfiguration: vec![AudioChannelConfiguration {
+            schemeIdUri: AUDIO_CHANNEL_CONFIG_SCHEME.to_string(),
+            value: Some(m.channels.to_string()),
+            ..Default::default()
+        }],
+        ..base_representation(track, m.codec.rfc6381())
     }
 }
 
@@ -102,40 +110,44 @@ fn group_by_key<T, K: PartialEq>(items: &[T], key: impl Fn(&T) -> K) -> Vec<(K, 
     groups
 }
 
-/// Build the raw static VOD `MPD`. Tracks are grouped into one `AdaptationSet`
-/// per `(fourcc, language)` key, each track becoming one `Representation`.
-fn mpd(tracks: &[Track]) -> MPD {
-    let groups = group_by_key(tracks, |t| {
-        (
-            t.metadata.fourcc(),
-            t.metadata.language().map(str::to_string),
-        )
-    });
+/// Build one `AdaptationSet` from a group of like representations.
+fn adaptation_set(
+    id: usize,
+    content_type: &str,
+    mime: &str,
+    lang: Option<String>,
+    representations: Vec<Representation>,
+) -> AdaptationSet {
+    AdaptationSet {
+        id: Some(id.to_string()),
+        contentType: Some(content_type.to_string()),
+        mimeType: Some(mime.to_string()),
+        lang,
+        segmentAlignment: Some(true),
+        startWithSAP: Some(1),
+        representations,
+        ..Default::default()
+    }
+}
 
-    let adaptations = groups
-        .iter()
-        .enumerate()
-        .map(|(set_id, ((_fourcc, lang), idxs))| {
-            let representations = idxs.iter().map(|&i| representation(&tracks[i])).collect();
-            // Every track in a group shares a fourcc, so a representative track
-            // determines the set's content and mime type.
-            let metadata = &tracks[idxs[0]].metadata;
-            let content_type = match metadata {
-                Metadata::Video(_) => "video",
-                Metadata::Audio(_) => "audio",
-            };
-            AdaptationSet {
-                id: Some(set_id.to_string()),
-                contentType: Some(content_type.to_string()),
-                mimeType: Some(metadata.mime_type().to_string()),
-                lang: lang.clone(),
-                segmentAlignment: Some(true),
-                startWithSAP: Some(1),
-                representations,
-                ..Default::default()
-            }
-        })
-        .collect();
+/// Build the raw static VOD `MPD`: one `AdaptationSet` per video codec fourcc,
+/// then one per audio `(fourcc, language)`, each track becoming a `Representation`.
+fn mpd(videos: &[VideoTrack], audios: &[AudioTrack]) -> MPD {
+    let mut adaptations = Vec::new();
+    let mut set_id = 0;
+
+    for (_fourcc, idxs) in group_by_key(videos, |t| t.cmaf_metadata.codec.fourcc()) {
+        let representations = idxs.iter().map(|&i| video_representation(&videos[i])).collect();
+        adaptations.push(adaptation_set(set_id, "video", "video/mp4", None, representations));
+        set_id += 1;
+    }
+    for ((_fourcc, lang), idxs) in group_by_key(audios, |t| {
+        (t.cmaf_metadata.codec.fourcc(), t.cmaf_metadata.language.clone())
+    }) {
+        let representations = idxs.iter().map(|&i| audio_representation(&audios[i])).collect();
+        adaptations.push(adaptation_set(set_id, "audio", "audio/mp4", Some(lang), representations));
+        set_id += 1;
+    }
 
     let period = Period {
         id: Some("0".to_string()),
@@ -144,12 +156,18 @@ fn mpd(tracks: &[Track]) -> MPD {
         ..Default::default()
     };
 
-    let min_buffer_ms = tracks
+    let min_buffer_ms = videos
         .iter()
-        .map(Track::max_segment_duration_ms)
+        .map(|t| t.max_segment_duration_ms())
+        .chain(audios.iter().map(|t| t.max_segment_duration_ms()))
         .max()
         .unwrap_or(0);
-    let media_duration_ms = tracks.iter().map(Track::duration_ms).max().unwrap_or(0);
+    let media_duration_ms = videos
+        .iter()
+        .map(|t| t.duration_ms())
+        .chain(audios.iter().map(|t| t.duration_ms()))
+        .max()
+        .unwrap_or(0);
 
     MPD {
         xmlns: Some(MPD_XMLNS.to_string()),
@@ -164,8 +182,8 @@ fn mpd(tracks: &[Track]) -> MPD {
 
 /// Assemble the final `MPD`, optionally hoisting shared `SegmentTemplate` content
 /// up to the `AdaptationSet` level.
-pub(crate) fn build_mpd(tracks: &[Track], compact: bool) -> MPD {
-    let mut m = mpd(tracks);
+pub(crate) fn build_mpd(videos: &[VideoTrack], audios: &[AudioTrack], compact: bool) -> MPD {
+    let mut m = mpd(videos, audios);
     if compact {
         super::compact::compact(&mut m);
     }

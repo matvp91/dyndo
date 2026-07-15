@@ -1,4 +1,4 @@
-//! A lightweight parse of a CMAF track's header region into a [`Header`] and
+//! A lightweight parse of a CMAF track's header region into a [`CmafHeader`] and
 //! [`Metadata`], reading byte ranges through an operator.
 
 use std::io::Cursor;
@@ -34,8 +34,8 @@ async fn atom<A: ReadAtom>(
 }
 
 /// Scan the `moov`/`sidx`/first-`moof` boxes of the CMAF track at `path` and
-/// project them into the common [`Header`] and the track's [`Metadata`]. `mdat`
-/// is never fetched.
+/// project them into the common [`CmafHeader`] and the track's [`Metadata`].
+/// `mdat` is never fetched.
 ///
 /// # Errors
 /// Propagates any [`CoreError`] if a required box is missing, cannot be read
@@ -43,7 +43,7 @@ async fn atom<A: ReadAtom>(
 pub async fn header(
     op: &Operator,
     path: &str,
-) -> Result<(Header, Vec<Segment>, Metadata), CoreError> {
+) -> Result<(CmafHeader, Metadata), CoreError> {
     let mut offset = 0u64;
     let mut moov: Option<Moov> = None;
     let mut sidx: Option<Sidx> = None;
@@ -88,7 +88,7 @@ pub async fn header(
     let metadata = if mdia.hdlr.handler == FourCC::new(b"vide") {
         let (codec, visual) = VideoCodec::from_codecs(codecs)?;
         let sample_duration = first_sample_duration(&first_moof, &moov);
-        Metadata::Video(VideoMetadata {
+        Metadata::Video(VideoCmafMetadata {
             codec,
             width: visual.width as u32,
             height: visual.height as u32,
@@ -96,7 +96,7 @@ pub async fn header(
         })
     } else {
         let (codec, audio) = AudioCodec::from_codecs(codecs)?;
-        Metadata::Audio(AudioMetadata {
+        Metadata::Audio(AudioCmafMetadata {
             codec,
             sample_rate: audio.sample_rate.integer() as u32,
             channels: audio.channel_count,
@@ -104,7 +104,7 @@ pub async fn header(
         })
     };
 
-    let header = Header {
+    let header = CmafHeader {
         timescale: sidx.timescale,
         duration,
         bandwidth,
@@ -114,8 +114,9 @@ pub async fn header(
             size: moov_end,
             duration: 0,
         },
+        segments,
     };
-    Ok((header, segments, metadata))
+    Ok((header, metadata))
 }
 
 fn segments(sidx: &Sidx, sidx_end: u64) -> Vec<Segment> {
@@ -187,9 +188,10 @@ fn language_string(mdhd: &Mdhd) -> String {
     normalize_language(mdhd.language.as_str()).to_string()
 }
 
-/// The fields common to every CMAF track's header.
+/// The media-agnostic result of parsing a CMAF track's header region: timing,
+/// the init-segment location, and the (sub)segment map.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Header {
+pub struct CmafHeader {
     /// Units per second for durations in this track.
     pub timescale: u32,
     /// Total presentation duration, in the track timescale.
@@ -200,54 +202,25 @@ pub struct Header {
     pub earliest_presentation_time: u64,
     /// Location of the init segment (`ftyp`+`moov`) within the track file.
     pub init_segment: Segment,
+    /// The track's (sub)segments, in presentation order.
+    pub segments: Vec<Segment>,
 }
 
-/// Per-media-type track metadata produced by parsing the CMAF header.
+/// The parser's verdict on a CMAF track: which media type it is, plus the
+/// per-type metadata read from the sample entry. Stored on the corresponding
+/// [`VideoTrack`](crate::asset::VideoTrack) /
+/// [`AudioTrack`](crate::asset::AudioTrack) as its `cmaf_metadata`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Metadata {
-    /// Video-specific metadata (codec, dimensions, frame rate).
-    Video(VideoMetadata),
-    /// Audio-specific metadata (codec, sample rate, channels, language).
-    Audio(AudioMetadata),
+    /// A video track's metadata.
+    Video(VideoCmafMetadata),
+    /// An audio track's metadata.
+    Audio(AudioCmafMetadata),
 }
 
-impl Metadata {
-    /// Sample-entry fourcc (e.g. `"avc1"`, `"mp4a"`), regardless of media type.
-    pub fn fourcc(&self) -> &'static str {
-        match self {
-            Metadata::Video(v) => v.codec.fourcc(),
-            Metadata::Audio(a) => a.codec.fourcc(),
-        }
-    }
-
-    /// RFC 6381 `codecs` string, regardless of media type.
-    pub fn rfc6381(&self) -> String {
-        match self {
-            Metadata::Video(v) => v.codec.rfc6381(),
-            Metadata::Audio(a) => a.codec.rfc6381(),
-        }
-    }
-
-    /// The `video/mp4` / `audio/mp4` MIME type of this track's CMAF segments.
-    pub fn mime_type(&self) -> &'static str {
-        match self {
-            Metadata::Video(_) => "video/mp4",
-            Metadata::Audio(_) => "audio/mp4",
-        }
-    }
-
-    /// ISO-639-2 language (audio only; video is `None`).
-    pub fn language(&self) -> Option<&str> {
-        match self {
-            Metadata::Video(_) => None,
-            Metadata::Audio(a) => Some(&a.language),
-        }
-    }
-}
-
-/// Video track metadata parsed from the sample entry.
+/// The media-specific fields parsed from a video track's sample entry.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct VideoMetadata {
+pub struct VideoCmafMetadata {
     /// The decoded video codec and its RFC 6381 parameters.
     pub codec: VideoCodec,
     /// Visual width, in pixels.
@@ -258,9 +231,9 @@ pub struct VideoMetadata {
     pub frame_rate: (u32, u32),
 }
 
-/// Audio track metadata parsed from the sample entry.
+/// The media-specific fields parsed from an audio track's sample entry.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AudioMetadata {
+pub struct AudioCmafMetadata {
     /// The decoded audio codec and its RFC 6381 parameters.
     pub codec: AudioCodec,
     /// Sampling rate, in Hz.
