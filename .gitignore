@@ -1,4 +1,6 @@
 /target
 /assets
 /docs/superpowers
+/docs/book
+/.claude/worktrees
 .DS_Store

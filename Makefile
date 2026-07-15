@@ -5,7 +5,7 @@ BIN     := dyndo
 # Dated so formatting is reproducible across machines and CI; bump deliberately.
 NIGHTLY ?= nightly-2026-07-09
 
-.PHONY: build build-debug run test lint fmt fmt-check check doc install clean
+.PHONY: build build-debug run test lint fmt fmt-check check doc book book-serve install clean
 
 ## build: release build of the CLI -> target/release/dyndo
 build:
@@ -42,6 +42,14 @@ check:
 ## doc: build workspace docs, warnings as errors
 doc:
 	RUSTDOCFLAGS="-D warnings" $(CARGO) doc --no-deps --workspace
+
+## book: build the mdBook user guide -> docs/book
+book:
+	mdbook build docs
+
+## book-serve: serve the mdBook user guide locally with live reload
+book-serve:
+	mdbook serve docs --open
 
 ## install: install the dyndo CLI into ~/.cargo/bin
 install:
