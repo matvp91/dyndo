@@ -15,7 +15,7 @@ fn fixtures_op() -> Operator {
 #[tokio::test]
 async fn parses_video_avc_fixture() {
     let op = fixtures_op();
-    let (h, m) = cmaf::header(&op, "video_avc_1080.mp4").await.unwrap();
+    let (h, m) = cmaf::probe(&op, "video_avc_1080.mp4").await.unwrap();
 
     assert_eq!(h.timescale, 90_000);
     assert_eq!(h.duration, 123_328_800);
@@ -42,7 +42,7 @@ async fn parses_video_avc_fixture() {
 #[tokio::test]
 async fn parses_audio_aac_fixture() {
     let op = fixtures_op();
-    let (h, m) = cmaf::header(&op, "audio_aac_nl_2.mp4").await.unwrap();
+    let (h, m) = cmaf::probe(&op, "audio_aac_nl_2.mp4").await.unwrap();
 
     assert_eq!(h.timescale, 48_000);
     assert_eq!(h.duration, 65_775_616);

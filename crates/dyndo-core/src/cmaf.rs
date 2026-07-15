@@ -16,7 +16,7 @@ use crate::codec::{AudioCodec, VideoCodec};
 use crate::CoreError;
 
 /// Read `len` bytes of `path` starting at `offset`, through `op`.
-pub(crate) async fn read(
+pub(crate) async fn read_range(
     op: &Operator,
     path: &str,
     offset: u64,
@@ -77,7 +77,7 @@ async fn skip<R: AsyncRead + Unpin>(r: &mut R, len: u64) -> Result<(), CoreError
 /// # Errors
 /// Propagates any [`CoreError`] if a required box is missing, cannot be read
 /// or parsed, or if the track's codec is unsupported.
-pub async fn header(op: &Operator, path: &str) -> Result<(CmafHeader, Metadata), CoreError> {
+pub async fn probe(op: &Operator, path: &str) -> Result<(CmafHeader, Metadata), CoreError> {
     let reader = op
         .reader(path)
         .await?
@@ -88,11 +88,11 @@ pub async fn header(op: &Operator, path: &str) -> Result<(CmafHeader, Metadata),
 
     let mut moov: Option<Moov> = None;
     let mut sidx: Option<Sidx> = None;
-    let first_moof: Moof;
+    let mut moof: Option<Moof> = None;
     let mut moov_end = 0u64;
     let mut sidx_end = 0u64;
 
-    loop {
+    while moov.is_none() || sidx.is_none() || moof.is_none() {
         let bh = BoxHeader::read_from(&mut r)
             .await
             .map_err(|e| CoreError::Container(e.to_string()))?;
@@ -116,9 +116,11 @@ pub async fn header(op: &Operator, path: &str) -> Result<(CmafHeader, Metadata),
             sidx_end = r.count();
         } else if bh.kind == Moof::KIND {
             // The first `moof` ends the header region; `mdat` follows it.
-            first_moof = Moof::read_atom(&bh, &mut r)
-                .await
-                .map_err(|e| CoreError::Container(e.to_string()))?;
+            moof = Some(
+                Moof::read_atom(&bh, &mut r)
+                    .await
+                    .map_err(|e| CoreError::Container(e.to_string()))?,
+            );
             break;
         } else {
             skip(&mut r, body_len).await?;
@@ -127,8 +129,9 @@ pub async fn header(op: &Operator, path: &str) -> Result<(CmafHeader, Metadata),
 
     let moov = moov.ok_or_else(|| CoreError::Container("missing moov before first moof".into()))?;
     let sidx = sidx.ok_or_else(|| CoreError::Container("missing sidx before first moof".into()))?;
+    let moof = moof.ok_or_else(|| CoreError::Container("missing moof".into()))?;
 
-    let segments = segments(&sidx, sidx_end);
+    let segments = build_segments(&sidx, sidx_end);
     let duration = segments.iter().map(|s| s.duration).sum();
     let total_bytes = segments.iter().map(|s| s.size).sum();
     let bandwidth = average_bandwidth(total_bytes, duration, sidx.timescale);
@@ -137,12 +140,12 @@ pub async fn header(op: &Operator, path: &str) -> Result<(CmafHeader, Metadata),
     let codecs = &mdia.minf.stbl.stsd.codecs;
     let metadata = if mdia.hdlr.handler == FourCC::new(b"vide") {
         let (codec, visual) = VideoCodec::from_codecs(codecs)?;
-        let sample_duration = first_sample_duration(&first_moof, &moov);
+        let sample_duration = first_sample_duration(&moof, &moov);
         Metadata::Video(VideoCmafMetadata {
             codec,
             width: visual.width as u32,
             height: visual.height as u32,
-            frame_rate: frame_rate(sample_duration, sidx.timescale),
+            frame_rate: frame_rate_ratio(sample_duration, sidx.timescale),
         })
     } else {
         let (codec, audio) = AudioCodec::from_codecs(codecs)?;
@@ -150,7 +153,7 @@ pub async fn header(op: &Operator, path: &str) -> Result<(CmafHeader, Metadata),
             codec,
             sample_rate: audio.sample_rate.integer() as u32,
             channels: audio.channel_count,
-            language: language_string(&mdia.mdhd),
+            language: language_code(&mdia.mdhd),
         })
     };
 
@@ -169,7 +172,7 @@ pub async fn header(op: &Operator, path: &str) -> Result<(CmafHeader, Metadata),
     Ok((header, metadata))
 }
 
-fn segments(sidx: &Sidx, sidx_end: u64) -> Vec<Segment> {
+fn build_segments(sidx: &Sidx, sidx_end: u64) -> Vec<Segment> {
     let mut seg_offset = sidx_end + sidx.first_offset;
     let mut out = Vec::with_capacity(sidx.references.len());
     for r in &sidx.references {
@@ -199,7 +202,7 @@ fn gcd(a: u32, b: u32) -> u32 {
     }
 }
 
-fn frame_rate(sample_duration: u32, timescale: u32) -> (u32, u32) {
+fn frame_rate_ratio(sample_duration: u32, timescale: u32) -> (u32, u32) {
     if sample_duration == 0 || timescale == 0 {
         return (0, 1);
     }
@@ -234,7 +237,7 @@ fn normalize_language(lang: &str) -> &str {
     }
 }
 
-fn language_string(mdhd: &Mdhd) -> String {
+fn language_code(mdhd: &Mdhd) -> String {
     normalize_language(mdhd.language.as_str()).to_string()
 }
 
@@ -325,12 +328,12 @@ mod tests {
     #[test]
     fn frame_rate_reduces_to_lowest_terms() {
         // 48000 timescale / 1600 sample duration = 30 fps
-        assert_eq!(frame_rate(1_600, 48_000), (30, 1));
+        assert_eq!(frame_rate_ratio(1_600, 48_000), (30, 1));
     }
 
     #[test]
     fn frame_rate_is_zero_when_sample_duration_is_zero() {
-        assert_eq!(frame_rate(0, 48_000), (0, 1));
+        assert_eq!(frame_rate_ratio(0, 48_000), (0, 1));
     }
 
     #[test]
@@ -363,7 +366,7 @@ mod tests {
         std::fs::write(dir.path().join("bad.mp4"), [0xAA_u8; 64]).unwrap();
         let op = Operator::new(Fs::default().root(dir.path().to_str().unwrap())).unwrap();
 
-        let result = header(&op, "bad.mp4").await;
+        let result = probe(&op, "bad.mp4").await;
         assert!(
             result.is_err(),
             "expected an error on garbage input, got Ok"

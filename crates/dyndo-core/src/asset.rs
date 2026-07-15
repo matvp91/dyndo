@@ -116,7 +116,7 @@ pub trait Track: Sized {
     /// Propagates any [`CoreError`] from the underlying read.
     async fn init_segment_bytes(&self, op: &Operator) -> Result<Vec<u8>, CoreError> {
         let s = self.cmaf_header().init_segment;
-        cmaf::read(op, self.path(), s.offset, s.size).await
+        cmaf::read_range(op, self.path(), s.offset, s.size).await
     }
 
     /// Read the media (sub)segment starting at presentation `time` through `op`,
@@ -133,7 +133,7 @@ pub trait Track: Sized {
         for seg in &self.cmaf_header().segments {
             if t == time {
                 return Ok(Some(
-                    cmaf::read(op, self.path(), seg.offset, seg.size).await?,
+                    cmaf::read_range(op, self.path(), seg.offset, seg.size).await?,
                 ));
             }
             t += seg.duration;
@@ -166,7 +166,7 @@ impl Track for VideoTrack {
         descriptor_path: &str,
     ) -> Result<VideoTrack, CoreError> {
         let path = resolve(descriptor_path, &model.path);
-        let (cmaf_header, cmaf_metadata) = cmaf::header(op, &path).await?;
+        let (cmaf_header, cmaf_metadata) = cmaf::probe(op, &path).await?;
         let Metadata::Video(cmaf_metadata) = cmaf_metadata else {
             panic!("descriptor declares a video track at {path} but its CMAF is audio");
         };
@@ -208,7 +208,7 @@ impl Track for AudioTrack {
         descriptor_path: &str,
     ) -> Result<AudioTrack, CoreError> {
         let path = resolve(descriptor_path, &model.path);
-        let (cmaf_header, cmaf_metadata) = cmaf::header(op, &path).await?;
+        let (cmaf_header, cmaf_metadata) = cmaf::probe(op, &path).await?;
         let Metadata::Audio(cmaf_metadata) = cmaf_metadata else {
             panic!("descriptor declares an audio track at {path} but its CMAF is video");
         };
@@ -308,7 +308,7 @@ impl Asset {
         descriptor_path: &str,
     ) -> Result<(), CoreError> {
         let path = resolve(descriptor_path, file_path);
-        let (cmaf_header, cmaf_metadata) = cmaf::header(op, &path).await?;
+        let (cmaf_header, cmaf_metadata) = cmaf::probe(op, &path).await?;
         match cmaf_metadata {
             Metadata::Video(cmaf_metadata) => self.video_tracks.push(VideoTrack {
                 path,
