@@ -161,7 +161,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let text = String::from_utf8(raw.to_vec())
                         .map_err(|e| format!("input is not valid UTF-8: {e}"))?;
                     let mut subtitle = dyndo_core::text::vtt::parse(&text)?;
-                    subtitle.language = language;
+                    subtitle.language = if language.is_empty() {
+                        "und".to_string()
+                    } else {
+                        language
+                    };
                     let subs = subtitle.expand(&segments);
                     let bytes = dyndo_core::text::wvtt::pack(subs, segments)?;
 

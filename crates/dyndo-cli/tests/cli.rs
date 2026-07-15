@@ -330,6 +330,47 @@ fn pack_aligns_subtitles_to_video_and_updates_asset() {
 }
 
 #[test]
+fn pack_empty_language_normalizes_to_und() {
+    let dir = tempfile::tempdir().unwrap();
+    stage(dir.path(), &["video_avc_1080.mp4", "sample.vtt"]);
+
+    // Index the video so pack has a timeline to align to.
+    assert!(dyndo(dir.path())
+        .args(["index", "-i", "video_avc_1080.mp4", "-o", "asset.json"])
+        .status()
+        .unwrap()
+        .success());
+
+    // Pack with an empty language: should normalize to "und", matching core's
+    // probe-time normalization, instead of writing text_wvtt_.mp4.
+    assert!(dyndo(dir.path())
+        .args(["pack", "-i", "sample.vtt", "-a", "asset.json", "-l", ""])
+        .status()
+        .unwrap()
+        .success());
+
+    // <id>.mp4 is written with the normalized "und" language, not the raw
+    // empty string.
+    let data = fs::read(dir.path().join("text_wvtt_und.mp4")).unwrap();
+    assert!(data.len() > 8, "expected a non-trivial mp4");
+    assert_eq!(&data[4..8], b"ftyp");
+    assert!(data.windows(4).any(|w| w == b"wvtt"));
+    assert!(!dir.path().join("text_wvtt_.mp4").exists());
+
+    // asset.json now lists the text track with id/language "und".
+    let json: serde_json::Value =
+        serde_json::from_slice(&fs::read(dir.path().join("asset.json")).unwrap()).unwrap();
+    let tracks = json["tracks"].as_array().unwrap();
+    let text = tracks
+        .iter()
+        .find(|t| t["type"] == "text")
+        .expect("a text track in the updated asset");
+    assert_eq!(text["fourcc"], "wvtt");
+    assert_eq!(text["language"], "und");
+    assert_eq!(text["path"], "text_wvtt_und.mp4");
+}
+
+#[test]
 fn pack_without_a_video_track_fails() {
     let dir = tempfile::tempdir().unwrap();
     stage(dir.path(), &["audio_aac_nl_2.mp4", "sample.vtt"]);
