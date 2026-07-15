@@ -9,6 +9,10 @@ use routes::build_router;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Install opendal's default HTTP transport (reqwest). With
+    // `default-features = false` there is no ctor-based auto-install, and
+    // network-backed services (s3) error at first read without it.
+    opendal::install_default();
     let cfg = config::load()?;
     let op = cfg.build_operator()?;
     let (host, port) = cfg.bind();

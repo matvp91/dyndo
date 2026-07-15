@@ -12,7 +12,10 @@ path = "src/main.rs"
 
 [dependencies]
 dyndo-core = { path = "../dyndo-core" }
-opendal = { version = "0.58", default-features = false, features = ["services-fs", "services-s3"] }
+# `http-transport-reqwest` supplies the HTTP client for network-backed services;
+# without it the s3 backend fails at runtime with "default HTTP transport is not
+# installed" (fs never touches HTTP, so only s3 needs it).
+opendal = { version = "0.58", default-features = false, features = ["services-fs", "services-s3", "http-transport-reqwest"] }
 axum = "0.8"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
 tower-http = { version = "0.6", features = ["cors"] }
