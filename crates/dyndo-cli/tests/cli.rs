@@ -371,6 +371,75 @@ fn pack_empty_language_normalizes_to_und() {
 }
 
 #[test]
+fn manual_language_edit_in_asset_json_overrides_probed_language() {
+    let dir = tempfile::tempdir().unwrap();
+    stage(dir.path(), &["video_avc_1080.mp4", "sample.vtt"]);
+
+    // Index the video and pack the subtitle with language "eng": both the
+    // wvtt file's mdhd and asset.json now say "eng".
+    assert!(dyndo(dir.path())
+        .args(["index", "-i", "video_avc_1080.mp4", "-o", "asset.json"])
+        .status()
+        .unwrap()
+        .success());
+    assert!(dyndo(dir.path())
+        .args(["pack", "-i", "sample.vtt", "-a", "asset.json", "-l", "eng"])
+        .status()
+        .unwrap()
+        .success());
+
+    /// Set the text track's `language` in `asset.json` to `lang`.
+    fn set_text_language(dir: &Path, lang: &str) {
+        let path = dir.join("asset.json");
+        let mut json: serde_json::Value =
+            serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        let text = json["tracks"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|t| t["type"] == "text")
+            .expect("a text track in asset.json");
+        text["language"] = lang.into();
+        fs::write(&path, serde_json::to_vec_pretty(&json).unwrap()).unwrap();
+    }
+
+    // Hand-edit the descriptor language to "nld": manifests must follow it
+    // even though the file's mdhd still says "eng".
+    set_text_language(dir.path(), "nld");
+
+    assert!(dyndo(dir.path())
+        .args(["dash", "-i", "asset.json", "-o", "stream.mpd"])
+        .status()
+        .unwrap()
+        .success());
+    let xml = fs::read_to_string(dir.path().join("stream.mpd")).unwrap();
+    assert!(xml.contains("lang=\"nld\""), "{xml}");
+    assert!(xml.contains("text_wvtt_nld"), "{xml}");
+    // The asset has no audio track, so the only lang attribute is the text
+    // AdaptationSet's — the probed "eng" must not leak through.
+    assert!(!xml.contains("lang=\"eng\""), "{xml}");
+
+    assert!(dyndo(dir.path())
+        .args(["hls", "-i", "asset.json", "-o", "hls"])
+        .status()
+        .unwrap()
+        .success());
+    let master = fs::read_to_string(dir.path().join("hls/index.m3u8")).unwrap();
+    assert!(master.contains("LANGUAGE=\"nld\""), "{master}");
+
+    // An emptied descriptor language falls back to the file's probed value.
+    set_text_language(dir.path(), "");
+    assert!(dyndo(dir.path())
+        .args(["dash", "-i", "asset.json", "-o", "fallback.mpd"])
+        .status()
+        .unwrap()
+        .success());
+    let xml = fs::read_to_string(dir.path().join("fallback.mpd")).unwrap();
+    assert!(xml.contains("lang=\"eng\""), "{xml}");
+    assert!(xml.contains("text_wvtt_eng"), "{xml}");
+}
+
+#[test]
 fn pack_without_a_video_track_fails() {
     let dir = tempfile::tempdir().unwrap();
     stage(dir.path(), &["audio_aac_nl_2.mp4", "sample.vtt"]);
