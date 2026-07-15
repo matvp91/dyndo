@@ -7,8 +7,7 @@ use mp4_atom::{
 };
 
 use super::error::CoreTextError;
-use super::subtitle::Subtitle;
-use super::subtitle_chunk::{self, SubtitleChunk};
+use super::subtitle::{self, Subtitle, SubtitleChunk};
 
 /// Media timescale for packed tracks (ms map 1:1 to media units).
 const TIMESCALE: u32 = 1000;
@@ -83,7 +82,7 @@ fn encode_chunk(chunk: &SubtitleChunk) -> (Vec<TrunEntry>, Vec<u8>, u64) {
 /// # Errors
 /// [`CoreTextError::Wvtt`] if any box fails to encode.
 pub fn pack(subtitle: &Subtitle, chunk_duration_ms: u64) -> Result<Vec<u8>, CoreTextError> {
-    let chunks = subtitle_chunk::chunk(subtitle, chunk_duration_ms);
+    let chunks = subtitle::chunk(subtitle, chunk_duration_ms);
     let track_duration = subtitle.cues.iter().map(|c| c.end_ms).max().unwrap_or(0);
 
     let mut media = Vec::new();
