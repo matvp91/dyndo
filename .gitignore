@@ -4,3 +4,4 @@
 /docs/book
 /.claude/worktrees
 .DS_Store
+.wrangler
