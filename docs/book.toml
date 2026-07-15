@@ -1,0 +1,21 @@
+[book]
+title = "dyndo"
+description = "Dynamic media packaging for adaptive streaming, in Rust."
+authors = ["Matthias Van Parijs"]
+language = "en"
+src = "src"
+
+[output.html]
+default-theme = "rust"
+preferred-dark-theme = "ayu"
+git-repository-url = "https://github.com/matvp91/dyndo"
+edit-url-template = "https://github.com/matvp91/dyndo/edit/main/docs/{path}"
+# Project Pages site (https://matvp91.github.io/dyndo/); keeps asset URLs correct.
+site-url = "/dyndo/"
+
+[output.html.fold]
+enable = true
+level = 1
+
+[output.html.search]
+enable = true
