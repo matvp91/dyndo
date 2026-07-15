@@ -14,10 +14,9 @@ use axum::{
     routing::get,
     Router,
 };
+use dyndo_core::model::{AssetModel, TrackModel};
 use opendal::Operator;
 use tower_http::cors::{Any, CorsLayer};
-
-use dyndo_core::model::{AssetModel, TrackModel};
 
 use crate::error::ServerError;
 

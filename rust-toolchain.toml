@@ -1,0 +1,8 @@
+# Pin the toolchain so `-D warnings` / `clippy::all = deny` builds are
+# reproducible: a new stable release can't introduce a lint that breaks CI
+# without a deliberate bump here. Formatting runs on a pinned nightly instead
+# (see the Makefile `fmt`/`fmt-check` targets and .github/workflows/ci.yml),
+# because rustfmt.toml uses the nightly-only `group_imports` option.
+[toolchain]
+channel = "stable"
+components = ["rustfmt", "clippy"]
