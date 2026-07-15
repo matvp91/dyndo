@@ -7,7 +7,8 @@ use mp4_atom::{
 };
 
 use super::error::CoreTextError;
-use super::subtitle::{self, Subtitle, SubtitleChunk};
+use super::subtitle::{Cue, Subtitle};
+use crate::asset::Segment;
 
 /// Media timescale for packed tracks (ms map 1:1 to media units).
 const TIMESCALE: u32 = 1000;
@@ -20,15 +21,12 @@ fn push_box(out: &mut Vec<u8>, fourcc: &[u8; 4], body: &[u8]) {
     out.extend_from_slice(body);
 }
 
-/// Group a chunk's cues into samples (consecutive cues sharing `[start, end]`)
-/// and return the `trun` entries, the concatenated `mdat` bytes, and the chunk's
-/// total duration. A lone empty-`text` cue → one `vtte`; otherwise one
-/// `vttc{payl}` per cue.
-fn encode_chunk(chunk: &SubtitleChunk) -> (Vec<TrunEntry>, Vec<u8>, u64) {
-    let cues = &chunk.cues;
+/// Group `cues` into samples (consecutive cues sharing `[start, end]`) and
+/// return the `trun` entries plus the concatenated `mdat` bytes. A lone
+/// empty-`text` cue → one `vtte`; otherwise one `vttc{payl}` per cue.
+fn encode_samples(cues: &[Cue]) -> (Vec<TrunEntry>, Vec<u8>) {
     let mut entries = Vec::new();
     let mut mdat = Vec::new();
-    let mut duration = 0u64;
 
     let mut i = 0;
     while i < cues.len() {
@@ -50,36 +48,40 @@ fn encode_chunk(chunk: &SubtitleChunk) -> (Vec<TrunEntry>, Vec<u8>, u64) {
             }
         }
 
-        let sample_duration = end - start;
         entries.push(TrunEntry {
-            duration: Some(sample_duration as u32),
+            duration: Some((end - start) as u32),
             size: Some(bytes.len() as u32),
             flags: None,
             cts: None,
         });
-        duration += sample_duration;
         mdat.extend_from_slice(&bytes);
         i = j;
     }
-    (entries, mdat, duration)
+    (entries, mdat)
 }
 
-/// Pack a `Subtitle` into a fragmented CMAF `wvtt` track.
+/// Pack per-segment `subtitles` into a fragmented CMAF `wvtt` track — one CMAF
+/// segment per `(subtitle, segment)` pair (equal length by construction; see
+/// [`Subtitle::expand`]). Per-sample durations come from cue extents;
+/// per-segment decode time and `sidx` duration come from `segment.duration_ms`.
+/// The `mdhd` language is taken from the first subtitle (`"und"` if empty).
 ///
-/// Chunks the cues (via [`subtitle::chunk`]) into `chunk_duration_ms`
-/// windows, then emits `ftyp` · `moov` · `sidx` · per-chunk `styp` · `moof` ·
-/// `mdat`. The `Subtitle`'s `language` is written into the track's `mdhd`.
+/// Emits `ftyp` · `moov` · `sidx` · then per segment `styp` · `moof` · `mdat`.
 ///
 /// # Errors
 /// [`CoreTextError::Wvtt`] if any box fails to encode.
-pub fn pack(subtitle: &Subtitle, chunk_duration_ms: u64) -> Result<Vec<u8>, CoreTextError> {
-    let chunks = subtitle::chunk(subtitle, chunk_duration_ms);
-    let track_duration = subtitle.cues.iter().map(|c| c.end_ms).max().unwrap_or(0);
+pub fn pack(subtitles: Vec<Subtitle>, segments: Vec<Segment>) -> Result<Vec<u8>, CoreTextError> {
+    let track_duration: u64 = segments.iter().map(|s| s.duration_ms).sum();
+    let language = subtitles
+        .first()
+        .map(|s| s.language.clone())
+        .unwrap_or_else(|| "und".to_string());
 
     let mut media = Vec::new();
     let mut seg_refs: Vec<SegmentReference> = Vec::new();
-    for (i, chunk) in chunks.iter().enumerate() {
-        let (entries, mdat_data, seg_duration) = encode_chunk(chunk);
+    let mut decode_time = 0u64;
+    for (i, (sub, seg)) in subtitles.iter().zip(&segments).enumerate() {
+        let (entries, mdat_data) = encode_samples(&sub.cues);
 
         let mut moof = Moof {
             mfhd: Mfhd {
@@ -91,8 +93,10 @@ pub fn pack(subtitle: &Subtitle, chunk_duration_ms: u64) -> Result<Vec<u8>, Core
                     default_base_is_moof: true,
                     ..Default::default()
                 },
+                // decode_time equals the first cue's start by construction, but
+                // is independent of whether the window has any cue.
                 tfdt: Some(Tfdt {
-                    base_media_decode_time: chunk.cues.first().map(|c| c.start_ms).unwrap_or(0),
+                    base_media_decode_time: decode_time,
                 }),
                 trun: vec![Trun {
                     data_offset: Some(0),
@@ -123,11 +127,12 @@ pub fn pack(subtitle: &Subtitle, chunk_duration_ms: u64) -> Result<Vec<u8>, Core
         seg_refs.push(SegmentReference {
             reference_type: false,
             reference_size: seg_bytes.len() as u32,
-            subsegment_duration: seg_duration as u32,
+            subsegment_duration: seg.duration_ms as u32,
             starts_with_sap: true,
             sap_type: 1,
             sap_delta_time: 0,
         });
+        decode_time += seg.duration_ms;
         media.extend_from_slice(&seg_bytes);
     }
 
@@ -168,7 +173,7 @@ pub fn pack(subtitle: &Subtitle, chunk_duration_ms: u64) -> Result<Vec<u8>, Core
                 mdhd: Mdhd {
                     timescale: TIMESCALE,
                     duration: track_duration,
-                    language: subtitle.language.clone(),
+                    language,
                     ..Default::default()
                 },
                 hdlr: Hdlr {
@@ -226,7 +231,15 @@ pub fn pack(subtitle: &Subtitle, chunk_duration_ms: u64) -> Result<Vec<u8>, Core
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::text::subtitle::Cue;
+
+    fn seg_ms(duration_ms: u64) -> Segment {
+        Segment {
+            offset: 0,
+            size: 0,
+            duration: 0,
+            duration_ms,
+        }
+    }
 
     #[test]
     fn pack_round_trips_through_mp4_atom() {
@@ -247,7 +260,10 @@ mod tests {
                 },
             ],
         };
-        let bytes = pack(&subtitle, 4000).unwrap();
+        // Two 4000ms segments (a video timeline): windows [0,4000) and [4000,8000).
+        let segments = vec![seg_ms(4000), seg_ms(4000)];
+        let subs = subtitle.expand(&segments);
+        let bytes = pack(subs, segments).unwrap();
 
         let mut buf = bytes.as_slice();
         let mut kinds = Vec::new();
@@ -274,7 +290,7 @@ mod tests {
             Codec::Wvtt(_)
         ));
 
-        // 0-2s and 5-7s over 4s windows → windows [0,4) and [4,7) → 2 chunks.
+        // Two segments in, two out.
         let seg_count = kinds.iter().filter(|k| **k == FourCC::new(b"styp")).count();
         assert_eq!(seg_count, 2);
         assert_eq!(sidx.unwrap().references.len(), seg_count);
@@ -290,13 +306,35 @@ mod tests {
                 text: "Hi".into(),
             }],
         };
-        // One chunk; timeline [0,2000): gap [0,1000), cue [1000,2000).
-        let bytes = pack(&subtitle, 100_000).unwrap();
+        // One 2000ms segment: [0,1000) gap, [1000,2000) cue.
+        let segments = vec![seg_ms(2000)];
+        let subs = subtitle.expand(&segments);
+        let bytes = pack(subs, segments).unwrap();
         assert!(bytes.windows(4).any(|w| w == b"vtte"));
         assert!(bytes.windows(4).any(|w| w == b"vttc"));
         assert!(bytes.windows(4).any(|w| w == b"payl"));
         assert!(!bytes.windows(4).any(|w| w == b"vsid"));
         assert!(!bytes.windows(4).any(|w| w == b"iden"));
         assert!(!bytes.windows(4).any(|w| w == b"sttg"));
+    }
+
+    #[test]
+    fn sample_durations_in_a_window_sum_to_its_span() {
+        // A fully-tiled 2000ms window: gap [0,1000) + cue [1000,2000).
+        let cues = vec![
+            Cue {
+                start_ms: 0,
+                end_ms: 1000,
+                text: String::new(),
+            },
+            Cue {
+                start_ms: 1000,
+                end_ms: 2000,
+                text: "Hi".into(),
+            },
+        ];
+        let (entries, _mdat) = encode_samples(&cues);
+        let total: u64 = entries.iter().map(|e| e.duration.unwrap() as u64).sum();
+        assert_eq!(total, 2000);
     }
 }

@@ -393,7 +393,7 @@ mod tests {
     async fn probe_reads_a_packed_wvtt_text_track() {
         use opendal::services::Fs;
 
-        use crate::text::{Cue, Subtitle};
+        use crate::text::subtitle::{Cue, Subtitle};
 
         let subtitle = Subtitle {
             language: "eng".to_string(),
@@ -403,7 +403,14 @@ mod tests {
                 text: "Hello".into(),
             }],
         };
-        let bytes = crate::text::wvtt::pack(&subtitle, 4000).unwrap();
+        let segments = vec![Segment {
+            offset: 0,
+            size: 0,
+            duration: 0,
+            duration_ms: 4000,
+        }];
+        let subs = subtitle.expand(&segments);
+        let bytes = crate::text::wvtt::pack(subs, segments).unwrap();
 
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("subs.mp4"), &bytes).unwrap();
