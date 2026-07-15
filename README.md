@@ -235,3 +235,18 @@ Tests run against small, committed header-only CMAF fixtures under
 [`tests/fixtures`](tests/fixtures) — just enough of each file (`ftyp` + `moov` +
 `sidx` + first `moof`) to exercise parsing end to end without shipping gigabytes
 of media.
+
+## Releasing
+
+Releases are cut locally and published by CI:
+
+```bash
+./scripts/release.sh          # prompts for the next version, e.g. 0.2.0
+```
+
+The script bumps all three crate versions in lockstep, commits
+`release: <version>`, tags `v<version>`, and pushes. Pushing the tag triggers
+[`.github/workflows/release.yml`](.github/workflows/release.yml), which verifies
+the tag matches `Cargo.toml`, re-runs the CI gate, builds `dyndo` and
+`dyndo-server` for Linux and macOS, and publishes a GitHub Release with the
+binaries and a `SHA256SUMS` file.
