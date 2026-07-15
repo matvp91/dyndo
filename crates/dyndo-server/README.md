@@ -1,8 +1,8 @@
 # dyndo-server
 
 The dynamic packaging HTTP server for [`dyndo`](../../README.md), built on
-[Axum](https://github.com/tokio-rs/axum). It serves DASH streams straight from
-your CMAF sources: at request time it reads each source's header through
+[Axum](https://github.com/tokio-rs/axum). It serves DASH and HLS streams straight
+from your CMAF sources: at request time it reads each source's header through
 [`dyndo-core`](../dyndo-core/README.md), renders the manifest with the same
 crate's `dash`/`hls` modules, and streams init/media segments via byte-range
 reads — nothing is pre-packaged to disk.
@@ -14,10 +14,11 @@ cargo run        # or, from the repo root: make run
 # dyndo-server listening on http://0.0.0.0:8080
 ```
 
-Descriptors are read from `./assets`. Point a DASH player at the manifest:
+Descriptors are read from `./assets`. Point a player at either manifest:
 
 ```
-http://localhost:8080/asset.json/dash/index.mpd
+http://localhost:8080/asset.json/dash/index.mpd    # DASH
+http://localhost:8080/asset.json/hls/index.m3u8     # HLS
 ```
 
 ## Routes
@@ -29,12 +30,14 @@ from the descriptor (e.g. `video_avc1_1080_4807228`).
 | Method | Route | Description |
 |---|---|---|
 | `GET` | `/<asset>/dash/index.mpd` | The asset's DASH manifest (MPD). |
-| `GET` | `/<asset>/dash/<repr>/init.mp4` | A representation's initialization segment. |
-| `GET` | `/<asset>/dash/<repr>/<time>.m4s` | The media segment starting at presentation `time`. |
+| `GET` | `/<asset>/hls/index.m3u8` | The asset's HLS multivariant playlist. |
+| `GET` | `/<asset>/hls/<repr>.m3u8` | An HLS rendition's media playlist. |
+| `GET` | `/<asset>/<protocol>/<repr>/init.mp4` | A representation's initialization segment. |
+| `GET` | `/<asset>/<protocol>/<repr>/<time>.m4s` | The media segment starting at presentation `time`. |
 
-Media segments are the same CMAF bytes for any protocol, so only the manifest
-route is DASH-specific. Adding HLS means registering the protocol and a sibling
-manifest handler — the segment routes are reused as-is.
+Media segments are the same CMAF bytes under either `<protocol>` prefix, so only
+the manifest resource is protocol-specific — the `init.mp4` and `<time>.m4s`
+segment routes are shared.
 
 ## Configuration
 
@@ -46,5 +49,8 @@ manifest handler — the segment routes are reused as-is.
 
 ## Errors
 
-A missing descriptor is a `404`; malformed JSON or other I/O is a `500`. CMAF
-parse/read failures panic in the core by design and never surface as a response.
+A missing object (descriptor or source file) is a `404`. Every other core
+failure — malformed descriptor JSON, an unreadable, unsupported, or
+descriptor-mismatched CMAF source, other I/O — maps to a `500`, because the
+asset files are server-owned and a bad one is our problem, not the client's. An
+unknown representation or a malformed segment path is a `404` / `400`.
