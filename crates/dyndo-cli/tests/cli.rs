@@ -414,7 +414,11 @@ fn manual_language_edit_in_asset_json_overrides_probed_language() {
         .success());
     let xml = fs::read_to_string(dir.path().join("stream.mpd")).unwrap();
     assert!(xml.contains("lang=\"nld\""), "{xml}");
-    assert!(xml.contains("text_wvtt_nld"), "{xml}");
+    // The representation id stays the one stored in asset.json at pack time —
+    // segment routes look tracks up by that id, so a language edit must not
+    // re-derive it.
+    assert!(xml.contains("text_wvtt_eng"), "{xml}");
+    assert!(!xml.contains("text_wvtt_nld"), "{xml}");
     // The asset has no audio track, so the only lang attribute is the text
     // AdaptationSet's — the probed "eng" must not leak through.
     assert!(!xml.contains("lang=\"eng\""), "{xml}");

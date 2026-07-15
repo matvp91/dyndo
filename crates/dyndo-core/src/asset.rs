@@ -158,19 +158,20 @@ pub struct VideoTrack {
 
 impl VideoTrack {
     /// Assemble a video track from its resolved `path`, parsed `cmaf_header`,
-    /// probed `cmaf_metadata`, and the descriptor's `id_descriptor` (`None`
-    /// when the track was probed without a descriptor entry).
+    /// probed `cmaf_metadata`, and the descriptor `model` it came from (`None`
+    /// when the track was probed without a descriptor entry). Only the
+    /// descriptor overrides (the stored id) are kept; the model is not.
     pub fn new(
         path: String,
         cmaf_header: CmafHeader,
         cmaf_metadata: VideoCmafMetadata,
-        id_descriptor: Option<String>,
+        model: Option<&VideoTrackModel>,
     ) -> VideoTrack {
         VideoTrack {
             path,
             cmaf_header,
             cmaf_metadata,
-            id_descriptor,
+            id_descriptor: model.map(|m| m.id.clone()),
         }
     }
 
@@ -247,19 +248,20 @@ pub struct AudioTrack {
 
 impl AudioTrack {
     /// Assemble an audio track from its resolved `path`, parsed `cmaf_header`,
-    /// probed `cmaf_metadata`, and the descriptor's `id_descriptor` (`None`
-    /// when the track was probed without a descriptor entry).
+    /// probed `cmaf_metadata`, and the descriptor `model` it came from (`None`
+    /// when the track was probed without a descriptor entry). Only the
+    /// descriptor overrides (the stored id) are kept; the model is not.
     pub fn new(
         path: String,
         cmaf_header: CmafHeader,
         cmaf_metadata: AudioCmafMetadata,
-        id_descriptor: Option<String>,
+        model: Option<&AudioTrackModel>,
     ) -> AudioTrack {
         AudioTrack {
             path,
             cmaf_header,
             cmaf_metadata,
-            id_descriptor,
+            id_descriptor: model.map(|m| m.id.clone()),
         }
     }
 
@@ -339,22 +341,24 @@ pub struct TextTrack {
 
 impl TextTrack {
     /// Assemble a text track from its resolved `path`, parsed `cmaf_header`,
-    /// probed `cmaf_metadata`, and the descriptor's `id_descriptor` and
-    /// `language_descriptor` (`None` when the track was probed without a
-    /// descriptor entry).
+    /// probed `cmaf_metadata`, and the descriptor `model` it came from (`None`
+    /// when the track was probed without a descriptor entry). Only the
+    /// descriptor overrides are kept, the model is not: the stored id, and the
+    /// non-empty `language` (a hand-edited empty string falls through to the
+    /// probed value).
     pub fn new(
         path: String,
         cmaf_header: CmafHeader,
         cmaf_metadata: TextCmafMetadata,
-        id_descriptor: Option<String>,
-        language_descriptor: Option<String>,
+        model: Option<&TextTrackModel>,
     ) -> TextTrack {
         TextTrack {
             path,
             cmaf_header,
             cmaf_metadata,
-            id_descriptor,
-            language_descriptor,
+            id_descriptor: model.map(|m| m.id.clone()),
+            language_descriptor: model
+                .and_then(|m| (!m.language.is_empty()).then(|| m.language.clone())),
         }
     }
 
@@ -422,9 +426,9 @@ pub enum AnyTrack {
 
 impl AnyTrack {
     /// Build the track by parsing the CMAF header at `model`'s path (resolved
-    /// against the descriptor's own `descriptor_path`) through `op`. For text
-    /// tracks, the descriptor's non-empty `language` becomes the override (a
-    /// hand-edited empty string falls through to the probed value).
+    /// against the descriptor's own `descriptor_path`) through `op`. The
+    /// per-type model is handed to the matching track's `new`, which lifts the
+    /// descriptor overrides out of it (see e.g. [`TextTrack::new`]).
     ///
     /// # Errors
     /// Propagates any [`CoreError`] from reading or parsing the track, or a
@@ -439,22 +443,24 @@ impl AnyTrack {
         let path = path::resolve(descriptor_path, model.path());
         let (cmaf_header, cmaf_metadata) = cmaf::probe(op, &path).await?;
         match (model, cmaf_metadata) {
-            (TrackModel::Video(_), CmafMetadata::Video(m)) => {
-                Ok(AnyTrack::Video(VideoTrack::new(path, cmaf_header, m, Some(model.id().to_owned()))))
-            }
-            (TrackModel::Audio(_), CmafMetadata::Audio(m)) => {
-                Ok(AnyTrack::Audio(AudioTrack::new(path, cmaf_header, m, Some(model.id().to_owned()))))
-            }
-            (TrackModel::Text(t), CmafMetadata::Text(m)) => {
-                let language = (!t.language.is_empty()).then(|| t.language.clone());
-                Ok(AnyTrack::Text(TextTrack::new(
-                    path,
-                    cmaf_header,
-                    m,
-                    Some(model.id().to_owned()),
-                    language,
-                )))
-            }
+            (TrackModel::Video(v), CmafMetadata::Video(m)) => Ok(AnyTrack::Video(VideoTrack::new(
+                path,
+                cmaf_header,
+                m,
+                Some(v),
+            ))),
+            (TrackModel::Audio(a), CmafMetadata::Audio(m)) => Ok(AnyTrack::Audio(AudioTrack::new(
+                path,
+                cmaf_header,
+                m,
+                Some(a),
+            ))),
+            (TrackModel::Text(t), CmafMetadata::Text(m)) => Ok(AnyTrack::Text(TextTrack::new(
+                path,
+                cmaf_header,
+                m,
+                Some(t),
+            ))),
             _ => Err(CoreError::Container(format!(
                 "track at {path}: descriptor type and CMAF type disagree"
             ))),
@@ -520,15 +526,17 @@ impl Asset {
         let path = path::resolve(descriptor_path, file_path);
         let (cmaf_header, cmaf_metadata) = cmaf::probe(op, &path).await?;
         match cmaf_metadata {
-            CmafMetadata::Video(m) => self
-                .video_tracks
-                .push(VideoTrack::new(path, cmaf_header, m, None)),
-            CmafMetadata::Audio(m) => self
-                .audio_tracks
-                .push(AudioTrack::new(path, cmaf_header, m, None)),
+            CmafMetadata::Video(m) => {
+                self.video_tracks
+                    .push(VideoTrack::new(path, cmaf_header, m, None))
+            }
+            CmafMetadata::Audio(m) => {
+                self.audio_tracks
+                    .push(AudioTrack::new(path, cmaf_header, m, None))
+            }
             CmafMetadata::Text(m) => {
                 self.text_tracks
-                    .push(TextTrack::new(path, cmaf_header, m, None, None))
+                    .push(TextTrack::new(path, cmaf_header, m, None))
             }
         }
         Ok(())
@@ -619,7 +627,17 @@ mod tests {
         }
     }
 
-    fn text_track(language: Option<&str>, descriptor: Option<&str>) -> TextTrack {
+    fn text_model(id: &str, language: &str) -> TextTrackModel {
+        TextTrackModel {
+            id: id.to_string(),
+            path: String::new(),
+            fourcc: "wvtt".to_string(),
+            timescale: 1000,
+            language: language.to_string(),
+        }
+    }
+
+    fn text_track(language: Option<&str>, model: Option<&TextTrackModel>) -> TextTrack {
         TextTrack::new(
             String::new(),
             header(1000, 0, &[]),
@@ -627,7 +645,7 @@ mod tests {
                 codec: TextCodec::Wvtt,
                 language: language.map(str::to_string),
             },
-            descriptor.map(str::to_string),
+            model,
         )
     }
 
@@ -643,7 +661,14 @@ mod tests {
 
     #[test]
     fn descriptor_language_wins_over_probed_language() {
-        assert_eq!(text_track(Some("eng"), Some("nld")).language(), "nld");
+        let model = text_model("text_wvtt_nld", "nld");
+        assert_eq!(text_track(Some("eng"), Some(&model)).language(), "nld");
+    }
+
+    #[test]
+    fn empty_descriptor_language_falls_through_to_probed_language() {
+        let model = text_model("text_wvtt_eng", "");
+        assert_eq!(text_track(Some("eng"), Some(&model)).language(), "eng");
     }
 
     #[test]
@@ -652,13 +677,15 @@ mod tests {
     }
 
     #[test]
-    fn text_track_id_uses_the_effective_language() {
-        assert_eq!(text_track(Some("eng"), Some("nld")).id(), "text_wvtt_nld");
+    fn descriptor_id_wins_over_derived_id() {
+        let model = text_model("my_subs", "nld");
+        assert_eq!(text_track(Some("eng"), Some(&model)).id(), "my_subs");
     }
 
     #[test]
-    fn to_model_round_trips_the_effective_language() {
-        let track = text_track(Some("eng"), Some("nld"));
+    fn to_model_round_trips_the_descriptor_id_and_language() {
+        let model = text_model("text_wvtt_nld", "nld");
+        let track = text_track(Some("eng"), Some(&model));
         let TrackModel::Text(m) = track.to_model("asset.json") else {
             panic!("expected a text model");
         };
@@ -680,7 +707,63 @@ mod tests {
                 height: 0,
                 frame_rate: (0, 1),
             },
+            None,
         )
+    }
+
+    #[test]
+    fn video_descriptor_id_wins_over_derived_id() {
+        let model = VideoTrackModel {
+            id: "my_video".to_string(),
+            path: String::new(),
+            fourcc: "avc1".to_string(),
+            timescale: 90_000,
+            width: 0,
+            height: 0,
+        };
+        let track = VideoTrack::new(
+            String::new(),
+            header(90_000, 0, &[]),
+            VideoCmafMetadata {
+                codec: VideoCodec::Avc {
+                    profile: 0,
+                    constraints: 0,
+                    level: 0,
+                },
+                width: 0,
+                height: 0,
+                frame_rate: (0, 1),
+            },
+            Some(&model),
+        );
+        assert_eq!(track.id(), "my_video");
+    }
+
+    #[test]
+    fn audio_descriptor_id_wins_over_derived_id() {
+        let model = AudioTrackModel {
+            id: "my_audio".to_string(),
+            path: String::new(),
+            fourcc: "mp4a".to_string(),
+            timescale: 48_000,
+            sample_rate: 48_000,
+            channels: 2,
+            language: Some("nld".to_string()),
+        };
+        let track = AudioTrack::new(
+            String::new(),
+            header(48_000, 0, &[]),
+            AudioCmafMetadata {
+                codec: AudioCodec::Aac {
+                    audio_object_type: 2,
+                },
+                sample_rate: 48_000,
+                channels: 2,
+                language: "nld".to_string(),
+            },
+            Some(&model),
+        );
+        assert_eq!(track.id(), "my_audio");
     }
 
     #[test]

@@ -311,6 +311,7 @@ mod tests {
             String::new(),
             cmaf_header(90_000, bandwidth, segs),
             video_metadata(height),
+            None,
         )
     }
 
@@ -330,6 +331,7 @@ mod tests {
                 channels,
                 language: lang.to_string(),
             },
+            None,
         )
     }
 
@@ -462,7 +464,7 @@ mod tests {
             earliest_presentation_time: 45_000,
             ..cmaf_header(90_000, 128_000, &[180_000, 90_000])
         };
-        let track = VideoTrack::new(String::new(), header, video_metadata(720));
+        let track = VideoTrack::new(String::new(), header, video_metadata(720), None);
         let repr = track.id();
         let m = build_media(&track).to_string();
 
