@@ -12,7 +12,7 @@ use tokio::io::{AsyncRead, AsyncReadExt, ReadBuf};
 use tokio_util::compat::FuturesAsyncReadCompatExt;
 
 use crate::asset::Segment;
-use crate::codec::{AudioCodec, VideoCodec};
+use crate::codec::{AudioCodec, TextCodec, VideoCodec};
 use crate::CoreError;
 
 /// Read `len` bytes of `path` starting at `offset`, through `op`.
@@ -157,6 +157,12 @@ pub async fn probe(op: &Operator, path: &str) -> Result<(CmafHeader, Metadata), 
             channels: audio.channel_count,
             language: language_code(&mdia.mdhd),
         })
+    } else if handler == FourCC::new(b"text") {
+        let codec = TextCodec::from_codecs(codecs)?;
+        Metadata::Text(TextCmafMetadata {
+            codec,
+            language: language_code(&mdia.mdhd),
+        })
     } else {
         return Err(CoreError::Container(format!(
             "unrecognized media handler {handler}"
@@ -275,6 +281,8 @@ pub enum Metadata {
     Video(VideoCmafMetadata),
     /// An audio track's metadata.
     Audio(AudioCmafMetadata),
+    /// A timed-text track's metadata.
+    Text(TextCmafMetadata),
 }
 
 /// The media-specific fields parsed from a video track's sample entry.
@@ -299,6 +307,15 @@ pub struct AudioCmafMetadata {
     pub sample_rate: u32,
     /// Number of audio channels (e.g. 2 for stereo, 6 for 5.1).
     pub channels: u16,
+    /// ISO-639-2 language code (`"und"` when unspecified).
+    pub language: String,
+}
+
+/// The media-specific fields parsed from a timed-text track's sample entry.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TextCmafMetadata {
+    /// The decoded text codec and its RFC 6381 parameters.
+    pub codec: TextCodec,
     /// ISO-639-2 language code (`"und"` when unspecified).
     pub language: String,
 }
@@ -361,6 +378,35 @@ mod tests {
     #[test]
     fn normalize_language_passes_through_a_known_code() {
         assert_eq!(normalize_language("nld"), "nld");
+    }
+
+    #[tokio::test]
+    async fn probe_reads_a_packed_wvtt_text_track() {
+        use crate::text::{Cue, Subtitle};
+        use opendal::services::Fs;
+
+        let subtitle = Subtitle {
+            language: "eng".to_string(),
+            cues: vec![Cue {
+                start_ms: 0,
+                end_ms: 2000,
+                text: "Hello".into(),
+            }],
+        };
+        let bytes = crate::text::wvtt::pack(&subtitle, 4000).unwrap();
+
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("subs.mp4"), &bytes).unwrap();
+        let op = Operator::new(Fs::default().root(dir.path().to_str().unwrap())).unwrap();
+
+        let (h, m) = probe(&op, "subs.mp4").await.unwrap();
+        assert!(!h.segments.is_empty(), "expected at least one segment");
+
+        let Metadata::Text(t) = m else {
+            panic!("expected a text track, got {m:?}");
+        };
+        assert_eq!(t.codec, TextCodec::Wvtt);
+        assert_eq!(t.language, "eng");
     }
 
     #[tokio::test]

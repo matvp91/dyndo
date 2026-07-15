@@ -196,10 +196,6 @@ impl TextCodec {
     }
 
     /// Project the first supported timed-text sample entry into a [`TextCodec`].
-    #[expect(
-        dead_code,
-        reason = "consumed by cmaf::probe's text-handler arm in the next commit"
-    )]
     pub(crate) fn from_codecs(codecs: &[Codec]) -> Result<TextCodec, CoreError> {
         codecs
             .iter()
@@ -219,6 +215,15 @@ mod tests {
     fn wvtt_fourcc_and_rfc6381() {
         assert_eq!(TextCodec::Wvtt.fourcc(), "wvtt");
         assert_eq!(TextCodec::Wvtt.rfc6381(), "wvtt");
+    }
+
+    #[test]
+    fn text_from_codecs_on_empty_slice_is_unsupported() {
+        let err = TextCodec::from_codecs(&[]).unwrap_err();
+        assert!(
+            matches!(err, CoreError::UnsupportedCodec(MediaType::Text)),
+            "got {err:?}"
+        );
     }
 
     #[test]

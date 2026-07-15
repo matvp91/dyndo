@@ -4,7 +4,9 @@
 use opendal::Operator;
 use relative_path::RelativePath;
 
-use crate::cmaf::{self, AudioCmafMetadata, CmafHeader, Metadata, VideoCmafMetadata};
+use crate::cmaf::{
+    self, AudioCmafMetadata, CmafHeader, Metadata, TextCmafMetadata, VideoCmafMetadata,
+};
 use crate::model::{AssetModel, AudioTrackModel, TrackModel, VideoTrackModel};
 use crate::CoreError;
 
@@ -15,6 +17,8 @@ pub struct Asset {
     pub video_tracks: Vec<VideoTrack>,
     /// The asset's audio tracks, in no particular order.
     pub audio_tracks: Vec<AudioTrack>,
+    /// The asset's text tracks, in no particular order.
+    pub text_tracks: Vec<TextTrack>,
     /// Path of the source descriptor (`asset.json`), used to resolve each
     /// track's relative path.
     pub path: String,
@@ -56,6 +60,19 @@ pub struct AudioTrack {
     pub cmaf_header: CmafHeader,
     /// Parsed audio-specific metadata: codec, sample rate, channels, language.
     pub cmaf_metadata: AudioCmafMetadata,
+}
+
+/// A parsed CMAF timed-text track: its [`CmafHeader`] and [`TextCmafMetadata`],
+/// plus the resolved storage path.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TextTrack {
+    /// Resolved storage path of the track's CMAF file (not relative to the
+    /// descriptor).
+    pub path: String,
+    /// Parsed CMAF header: timing, init segment, and the (sub)segment map.
+    pub cmaf_header: CmafHeader,
+    /// Parsed text-specific metadata: codec and language.
+    pub cmaf_metadata: TextCmafMetadata,
 }
 
 /// A track whose media type is known only at runtime (e.g. resolved from a
@@ -316,6 +333,11 @@ impl Asset {
                 cmaf_metadata,
             }),
             Metadata::Audio(cmaf_metadata) => self.audio_tracks.push(AudioTrack {
+                path,
+                cmaf_header,
+                cmaf_metadata,
+            }),
+            Metadata::Text(cmaf_metadata) => self.text_tracks.push(TextTrack {
                 path,
                 cmaf_header,
                 cmaf_metadata,
