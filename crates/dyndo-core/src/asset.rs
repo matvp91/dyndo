@@ -6,7 +6,7 @@ use futures_util::future::try_join_all;
 use opendal::Operator;
 
 use crate::cmaf::{
-    self, AudioCmafMetadata, CmafHeader, Metadata, TextCmafMetadata, VideoCmafMetadata,
+    self, AudioCmafMetadata, CmafHeader, CmafMetadata, TextCmafMetadata, VideoCmafMetadata,
 };
 use crate::model::{AssetModel, AudioTrackModel, TextTrackModel, TrackModel, VideoTrackModel};
 use crate::path;
@@ -66,12 +66,12 @@ pub type AudioTrack = Track<AudioCmafMetadata>;
 pub type TextTrack = Track<TextCmafMetadata>;
 /// A parsed CMAF track whose media type is known only at runtime (e.g. resolved
 /// from a descriptor id).
-pub type AnyTrack = Track<Metadata>;
+pub type AnyTrack = Track<CmafMetadata>;
 
 /// The media-type-specific behaviour a [`Track<M>`] delegates to: how the
 /// metadata is recovered from its wire model and a freshly-probed CMAF header,
 /// its representation id, and its segments' MIME type. Implemented by each
-/// concrete metadata type and by the runtime-typed [`Metadata`] enum, so a
+/// concrete metadata type and by the runtime-typed [`CmafMetadata`] enum, so a
 /// single generic [`Track<M>`] serves both statically- and dynamically-typed
 /// tracks.
 pub trait TrackMetadata: Sized {
@@ -86,7 +86,7 @@ pub trait TrackMetadata: Sized {
     /// Recover this metadata from the `probed` CMAF metadata declared by
     /// `model`, or `None` when the file's media type contradicts the model
     /// (the descriptor and its file have drifted apart).
-    fn from_probe(model: &Self::Model, probed: Metadata) -> Option<Self>;
+    fn from_probe(model: &Self::Model, probed: CmafMetadata) -> Option<Self>;
 
     /// The representation id, computed from the codec fourcc, dimensions/channels
     /// and the `header`'s bandwidth (e.g. `video_avc1_1080_4807228`,
@@ -203,9 +203,9 @@ impl TrackMetadata for VideoCmafMetadata {
         &model.path
     }
 
-    fn from_probe(_model: &VideoTrackModel, probed: Metadata) -> Option<VideoCmafMetadata> {
+    fn from_probe(_model: &VideoTrackModel, probed: CmafMetadata) -> Option<VideoCmafMetadata> {
         match probed {
-            Metadata::Video(m) => Some(m),
+            CmafMetadata::Video(m) => Some(m),
             _ => None,
         }
     }
@@ -231,9 +231,9 @@ impl TrackMetadata for AudioCmafMetadata {
         &model.path
     }
 
-    fn from_probe(_model: &AudioTrackModel, probed: Metadata) -> Option<AudioCmafMetadata> {
+    fn from_probe(_model: &AudioTrackModel, probed: CmafMetadata) -> Option<AudioCmafMetadata> {
         match probed {
-            Metadata::Audio(m) => Some(m),
+            CmafMetadata::Audio(m) => Some(m),
             _ => None,
         }
     }
@@ -260,9 +260,9 @@ impl TrackMetadata for TextCmafMetadata {
         &model.path
     }
 
-    fn from_probe(_model: &TextTrackModel, probed: Metadata) -> Option<TextCmafMetadata> {
+    fn from_probe(_model: &TextTrackModel, probed: CmafMetadata) -> Option<TextCmafMetadata> {
         match probed {
-            Metadata::Text(m) => Some(m),
+            CmafMetadata::Text(m) => Some(m),
             _ => None,
         }
     }
@@ -276,38 +276,38 @@ impl TrackMetadata for TextCmafMetadata {
     }
 }
 
-impl TrackMetadata for Metadata {
+impl TrackMetadata for CmafMetadata {
     type Model = TrackModel;
 
     fn model_path(model: &TrackModel) -> &str {
         model.path()
     }
 
-    fn from_probe(model: &TrackModel, probed: Metadata) -> Option<Metadata> {
+    fn from_probe(model: &TrackModel, probed: CmafMetadata) -> Option<CmafMetadata> {
         // AnyTrack keeps whatever the file actually is, but only when its media
         // type matches the one the descriptor declared.
         let agree = matches!(
             (model, &probed),
-            (TrackModel::Video(_), Metadata::Video(_))
-                | (TrackModel::Audio(_), Metadata::Audio(_))
-                | (TrackModel::Text(_), Metadata::Text(_))
+            (TrackModel::Video(_), CmafMetadata::Video(_))
+                | (TrackModel::Audio(_), CmafMetadata::Audio(_))
+                | (TrackModel::Text(_), CmafMetadata::Text(_))
         );
         agree.then_some(probed)
     }
 
     fn id(&self, header: &CmafHeader) -> String {
         match self {
-            Metadata::Video(m) => m.id(header),
-            Metadata::Audio(m) => m.id(header),
-            Metadata::Text(m) => m.id(header),
+            CmafMetadata::Video(m) => m.id(header),
+            CmafMetadata::Audio(m) => m.id(header),
+            CmafMetadata::Text(m) => m.id(header),
         }
     }
 
     fn mime_type(&self) -> &'static str {
         match self {
-            Metadata::Video(m) => m.mime_type(),
-            Metadata::Audio(m) => m.mime_type(),
-            Metadata::Text(m) => m.mime_type(),
+            CmafMetadata::Video(m) => m.mime_type(),
+            CmafMetadata::Audio(m) => m.mime_type(),
+            CmafMetadata::Text(m) => m.mime_type(),
         }
     }
 }
@@ -348,17 +348,17 @@ impl Asset {
             cmaf_metadata,
         } = track;
         match cmaf_metadata {
-            Metadata::Video(cmaf_metadata) => self.video_tracks.push(VideoTrack {
+            CmafMetadata::Video(cmaf_metadata) => self.video_tracks.push(VideoTrack {
                 path,
                 cmaf_header,
                 cmaf_metadata,
             }),
-            Metadata::Audio(cmaf_metadata) => self.audio_tracks.push(AudioTrack {
+            CmafMetadata::Audio(cmaf_metadata) => self.audio_tracks.push(AudioTrack {
                 path,
                 cmaf_header,
                 cmaf_metadata,
             }),
-            Metadata::Text(cmaf_metadata) => self.text_tracks.push(TextTrack {
+            CmafMetadata::Text(cmaf_metadata) => self.text_tracks.push(TextTrack {
                 path,
                 cmaf_header,
                 cmaf_metadata,

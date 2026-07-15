@@ -1,5 +1,5 @@
 //! A lightweight parse of a CMAF track's header region into a [`CmafHeader`] and
-//! [`Metadata`], reading byte ranges through an operator.
+//! [`CmafMetadata`], reading byte ranges through an operator.
 
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -73,14 +73,14 @@ async fn skip<R: AsyncRead + Unpin>(r: &mut R, len: u64) -> Result<(), CoreError
 }
 
 /// Scan the `moov`/`sidx`/first-`moof` boxes of the CMAF track at `path` and
-/// project them into the common [`CmafHeader`] and the track's [`Metadata`].
+/// project them into the common [`CmafHeader`] and the track's [`CmafMetadata`].
 /// `mdat` is never fetched.
 ///
 /// # Errors
 /// Propagates any [`CoreError`] if a required box is missing, cannot be read
 /// or parsed, if the track's media handler is neither video (`vide`) nor audio
 /// (`soun`), or if the track's codec is unsupported.
-pub async fn probe(op: &Operator, path: &str) -> Result<(CmafHeader, Metadata), CoreError> {
+pub async fn probe(op: &Operator, path: &str) -> Result<(CmafHeader, CmafMetadata), CoreError> {
     let reader = op
         .reader(path)
         .await?
@@ -145,7 +145,7 @@ pub async fn probe(op: &Operator, path: &str) -> Result<(CmafHeader, Metadata), 
     let metadata = if handler == FourCC::new(b"vide") {
         let (codec, visual) = VideoCodec::from_codecs(codecs)?;
         let sample_duration = first_sample_duration(&moof, &moov);
-        Metadata::Video(VideoCmafMetadata {
+        CmafMetadata::Video(VideoCmafMetadata {
             codec,
             width: visual.width as u32,
             height: visual.height as u32,
@@ -153,7 +153,7 @@ pub async fn probe(op: &Operator, path: &str) -> Result<(CmafHeader, Metadata), 
         })
     } else if handler == FourCC::new(b"soun") {
         let (codec, audio) = AudioCodec::from_codecs(codecs)?;
-        Metadata::Audio(AudioCmafMetadata {
+        CmafMetadata::Audio(AudioCmafMetadata {
             codec,
             sample_rate: audio.sample_rate.integer() as u32,
             channels: audio.channel_count,
@@ -161,7 +161,7 @@ pub async fn probe(op: &Operator, path: &str) -> Result<(CmafHeader, Metadata), 
         })
     } else if handler == FourCC::new(b"text") {
         let codec = TextCodec::from_codecs(codecs)?;
-        Metadata::Text(TextCmafMetadata {
+        CmafMetadata::Text(TextCmafMetadata {
             codec,
             language: language_code(&mdia.mdhd),
         })
@@ -287,7 +287,7 @@ pub struct CmafHeader {
 /// [`VideoTrack`](crate::asset::VideoTrack) /
 /// [`AudioTrack`](crate::asset::AudioTrack) as its `cmaf_metadata`.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Metadata {
+pub enum CmafMetadata {
     /// A video track's metadata.
     Video(VideoCmafMetadata),
     /// An audio track's metadata.
@@ -421,7 +421,7 @@ mod tests {
         let (h, m) = probe(&op, "subs.mp4").await.unwrap();
         assert!(!h.segments.is_empty(), "expected at least one segment");
 
-        let Metadata::Text(t) = m else {
+        let CmafMetadata::Text(t) = m else {
             panic!("expected a text track, got {m:?}");
         };
         assert_eq!(t.codec, TextCodec::Wvtt);

@@ -1,8 +1,8 @@
 //! End-to-end checks that the CMAF parser projects the committed fixtures into
-//! the expected `CmafHeader` / `Metadata`. Acts as the regression guard for the
+//! the expected `CmafHeader` / `CmafMetadata`. Acts as the regression guard for the
 //! streaming rewrite.
 
-use dyndo_core::cmaf::{self, Metadata};
+use dyndo_core::cmaf::{self, CmafMetadata};
 use opendal::services::Fs;
 use opendal::Operator;
 
@@ -29,7 +29,7 @@ async fn parses_video_avc_fixture() {
     assert_eq!(first.size, 1_495_550);
     assert_eq!(first.duration, 172_800);
 
-    let Metadata::Video(v) = m else {
+    let CmafMetadata::Video(v) = m else {
         panic!("expected a video track");
     };
     assert_eq!(v.codec.fourcc().to_string(), "avc1");
@@ -54,7 +54,7 @@ async fn parses_audio_aac_fixture() {
     assert_eq!(first.size, 48_530);
     assert_eq!(first.duration, 94_208);
 
-    let Metadata::Audio(a) = m else {
+    let CmafMetadata::Audio(a) = m else {
         panic!("expected an audio track");
     };
     assert_eq!(a.codec.fourcc().to_string(), "mp4a");
