@@ -4,19 +4,19 @@ use hls_m3u8::tags::{ExtXMap, ExtXMedia, VariantStream};
 use hls_m3u8::types::{Channels, MediaType, PlaylistType, StreamData, UFloat};
 use hls_m3u8::{MasterPlaylist, MediaPlaylist, MediaSegment};
 
-use crate::asset::{Segment, Track};
-use crate::cmaf::{AudioMetadata, Metadata, VideoMetadata};
+use crate::asset::{AudioTrack, Segment, Track, VideoTrack};
 
 /// Build the VOD media playlist for `track`: an `EXT-X-MAP` init on the first
 /// segment, then one segment per (sub)segment named by its running presentation
 /// time. `EXT-X-TARGETDURATION` is the longest segment in whole seconds.
-pub(crate) fn build_media(track: &Track) -> MediaPlaylist<'static> {
+pub(crate) fn build_media<T: Track>(track: &T) -> MediaPlaylist<'static> {
     let repr = track.id();
-    let timescale = track.header.timescale;
+    let header = track.cmaf_header();
+    let timescale = header.timescale;
 
-    let mut time = track.header.earliest_presentation_time;
-    let mut segments: Vec<MediaSegment<'static>> = Vec::with_capacity(track.segments.len());
-    for (i, seg) in track.segments.iter().enumerate() {
+    let mut time = header.earliest_presentation_time;
+    let mut segments: Vec<MediaSegment<'static>> = Vec::with_capacity(header.segments.len());
+    for (i, seg) in header.segments.iter().enumerate() {
         let mut b = MediaSegment::builder();
         b.uri(format!("{repr}/{time}.m4s"));
         b.duration(Duration::from_secs_f64(
@@ -35,7 +35,7 @@ pub(crate) fn build_media(track: &Track) -> MediaPlaylist<'static> {
     let mut b = MediaPlaylist::builder();
     b.media_sequence(0);
     b.target_duration(Duration::from_secs(target_duration(
-        &track.segments,
+        &header.segments,
         timescale,
     )));
     b.playlist_type(PlaylistType::Vod);
@@ -64,34 +64,24 @@ struct AudioGroup<'a> {
     /// The highest-bandwidth member's bandwidth, added to a variant's `BANDWIDTH`.
     max_bandwidth: u32,
     /// The group's renditions in first-seen order; the first is the default.
-    tracks: Vec<(&'a Track, &'a AudioMetadata)>,
+    tracks: Vec<&'a AudioTrack>,
 }
 
-/// Build the multivariant playlist from `tracks`. Video tracks become
-/// `EXT-X-STREAM-INF` variants (one per audio group, cartesian); audio tracks
-/// become `EXT-X-MEDIA` renditions. With no video, audio tracks are the
-/// variants (no group); with no audio, variants carry no `AUDIO`.
-pub(crate) fn build_master(tracks: &[Track]) -> MasterPlaylist<'static> {
-    // Split by media type in one pass, keeping each track's narrowed metadata
-    // so the downstream builders never have to re-match `Metadata`.
-    let mut videos: Vec<(&Track, &VideoMetadata)> = Vec::new();
-    let mut audios: Vec<(&Track, &AudioMetadata)> = Vec::new();
-    for t in tracks {
-        match &t.metadata {
-            Metadata::Video(v) => videos.push((t, v)),
-            Metadata::Audio(a) => audios.push((t, a)),
-        }
-    }
-    let groups = group_by_codec(&audios);
+/// Build the multivariant playlist. Video tracks become `EXT-X-STREAM-INF`
+/// variants (one per audio group, cartesian); audio tracks become `EXT-X-MEDIA`
+/// renditions. With no video, audio tracks are the variants (no group); with no
+/// audio, variants carry no `AUDIO`.
+pub(crate) fn build_master(
+    videos: &[VideoTrack],
+    audios: &[AudioTrack],
+) -> MasterPlaylist<'static> {
+    let groups = group_by_codec(audios);
 
     let (media, variants): (Vec<ExtXMedia<'static>>, Vec<VariantStream<'static>>) =
         if videos.is_empty() {
-            (
-                Vec::new(),
-                audios.iter().map(|&(t, a)| audio_variant(t, a)).collect(),
-            )
+            (Vec::new(), audios.iter().map(audio_variant).collect())
         } else {
-            (audio_media(&groups), video_variants(&videos, &groups))
+            (audio_media(&groups), video_variants(videos, &groups))
         };
 
     let mut b = MasterPlaylist::builder();
@@ -103,20 +93,20 @@ pub(crate) fn build_master(tracks: &[Track]) -> MasterPlaylist<'static> {
 }
 
 /// Group audio tracks by codec fourcc, preserving first-seen order.
-fn group_by_codec<'a>(audios: &[(&'a Track, &'a AudioMetadata)]) -> Vec<AudioGroup<'a>> {
+fn group_by_codec(audios: &[AudioTrack]) -> Vec<AudioGroup<'_>> {
     let mut groups: Vec<AudioGroup> = Vec::new();
-    for &(t, a) in audios {
-        let fourcc = a.codec.fourcc();
+    for t in audios {
+        let fourcc = t.cmaf_metadata.codec.fourcc();
         match groups.iter_mut().find(|g| g.id == fourcc) {
             Some(g) => {
-                g.max_bandwidth = g.max_bandwidth.max(t.header.bandwidth);
-                g.tracks.push((t, a));
+                g.max_bandwidth = g.max_bandwidth.max(t.cmaf_header.bandwidth);
+                g.tracks.push(t);
             }
             None => groups.push(AudioGroup {
                 id: fourcc,
-                codec: a.codec.rfc6381(),
-                max_bandwidth: t.header.bandwidth,
-                tracks: vec![(t, a)],
+                codec: t.cmaf_metadata.codec.rfc6381(),
+                max_bandwidth: t.cmaf_header.bandwidth,
+                tracks: vec![t],
             }),
         }
     }
@@ -128,16 +118,17 @@ fn group_by_codec<'a>(audios: &[(&'a Track, &'a AudioMetadata)]) -> Vec<AudioGro
 fn audio_media(groups: &[AudioGroup]) -> Vec<ExtXMedia<'static>> {
     let mut out = Vec::new();
     for g in groups {
-        for (i, &(t, a)) in g.tracks.iter().enumerate() {
+        for (i, &t) in g.tracks.iter().enumerate() {
+            let m = &t.cmaf_metadata;
             let mut b = ExtXMedia::builder();
             b.media_type(MediaType::Audio);
             b.group_id(g.id);
-            b.name(a.language.clone());
-            b.language(a.language.clone());
+            b.name(m.language.clone());
+            b.language(m.language.clone());
             b.uri(format!("{}.m3u8", t.id()));
             b.is_default(i == 0);
             b.is_autoselect(true);
-            b.channels(Channels::new(a.channels as u64));
+            b.channels(Channels::new(m.channels as u64));
             out.push(
                 b.build()
                     .expect("audio media always has a type, group id, and name"),
@@ -149,19 +140,16 @@ fn audio_media(groups: &[AudioGroup]) -> Vec<ExtXMedia<'static>> {
 
 /// Every video track × every audio group (or just the video track when there
 /// are no groups).
-fn video_variants(
-    videos: &[(&Track, &VideoMetadata)],
-    groups: &[AudioGroup],
-) -> Vec<VariantStream<'static>> {
+fn video_variants(videos: &[VideoTrack], groups: &[AudioGroup]) -> Vec<VariantStream<'static>> {
     let mut out = Vec::new();
-    for &(v, meta) in videos {
-        let fr =
-            (meta.frame_rate.0 != 0).then(|| meta.frame_rate.0 as f32 / meta.frame_rate.1 as f32);
+    for v in videos {
+        let (num, den) = v.cmaf_metadata.frame_rate;
+        let fr = (num != 0).then(|| num as f32 / den as f32);
         if groups.is_empty() {
-            out.push(video_variant(v, meta, fr, None));
+            out.push(video_variant(v, fr, None));
         } else {
             for g in groups {
-                out.push(video_variant(v, meta, fr, Some(g)));
+                out.push(video_variant(v, fr, Some(g)));
             }
         }
     }
@@ -169,13 +157,13 @@ fn video_variants(
 }
 
 fn video_variant(
-    v: &Track,
-    meta: &VideoMetadata,
+    v: &VideoTrack,
     fr: Option<f32>,
     group: Option<&AudioGroup>,
 ) -> VariantStream<'static> {
-    let mut codecs = vec![meta.codec.rfc6381()];
-    let mut bandwidth = v.header.bandwidth as u64;
+    let m = &v.cmaf_metadata;
+    let mut codecs = vec![m.codec.rfc6381()];
+    let mut bandwidth = v.cmaf_header.bandwidth as u64;
     let audio = group.map(|g| {
         codecs.push(g.codec.clone());
         bandwidth += g.max_bandwidth as u64;
@@ -190,14 +178,15 @@ fn video_variant(
         stream_data: StreamData::builder()
             .bandwidth(bandwidth)
             .codecs(codecs)
-            .resolution((meta.width as usize, meta.height as usize))
+            .resolution((m.width as usize, m.height as usize))
             .build()
             .expect("stream data always has a bandwidth"),
     }
 }
 
 /// A standalone audio variant, used only when the asset has no video.
-fn audio_variant(t: &Track, a: &AudioMetadata) -> VariantStream<'static> {
+fn audio_variant(t: &AudioTrack) -> VariantStream<'static> {
+    let m = &t.cmaf_metadata;
     VariantStream::ExtXStreamInf {
         uri: format!("{}.m3u8", t.id()).into(),
         frame_rate: None,
@@ -205,8 +194,8 @@ fn audio_variant(t: &Track, a: &AudioMetadata) -> VariantStream<'static> {
         subtitles: None,
         closed_captions: None,
         stream_data: StreamData::builder()
-            .bandwidth(t.header.bandwidth as u64)
-            .codecs(vec![a.codec.rfc6381()])
+            .bandwidth(t.cmaf_header.bandwidth as u64)
+            .codecs(vec![m.codec.rfc6381()])
             .build()
             .expect("stream data always has a bandwidth"),
     }
@@ -215,22 +204,13 @@ fn audio_variant(t: &Track, a: &AudioMetadata) -> VariantStream<'static> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::asset::{Segment, Track};
-    use crate::cmaf::{AudioMetadata, Header, Metadata, VideoMetadata};
+    use crate::cmaf::{AudioCmafMetadata, CmafHeader, VideoCmafMetadata};
     use crate::codec::{AudioCodec, VideoCodec};
 
-    /// A header with `bandwidth` and one `Segment` per entry in `segs` (each
-    /// carrying only a duration; offsets/sizes are irrelevant to playlists).
-    fn header(timescale: u32, bandwidth: u32, segs: &[u64]) -> (Header, Vec<Segment>) {
-        let segments = segs
-            .iter()
-            .map(|&d| Segment {
-                offset: 0,
-                size: 0,
-                duration: d,
-            })
-            .collect();
-        let h = Header {
+    /// A [`CmafHeader`] with `bandwidth` and one `Segment` per entry in `segs`
+    /// (each carrying only a duration; offsets/sizes are irrelevant to playlists).
+    fn cmaf_header(timescale: u32, bandwidth: u32, segs: &[u64]) -> CmafHeader {
+        CmafHeader {
             timescale,
             duration: segs.iter().sum(),
             bandwidth,
@@ -240,16 +220,22 @@ mod tests {
                 size: 0,
                 duration: 0,
             },
-        };
-        (h, segments)
+            segments: segs
+                .iter()
+                .map(|&d| Segment {
+                    offset: 0,
+                    size: 0,
+                    duration: d,
+                })
+                .collect(),
+        }
     }
 
-    fn video_track(height: u32, bandwidth: u32, segs: &[u64]) -> Track {
-        let (h, segments) = header(90_000, bandwidth, segs);
-        Track {
+    fn video_track(height: u32, bandwidth: u32, segs: &[u64]) -> VideoTrack {
+        VideoTrack {
             path: String::new(),
-            header: h,
-            metadata: Metadata::Video(VideoMetadata {
+            cmaf_header: cmaf_header(90_000, bandwidth, segs),
+            cmaf_metadata: VideoCmafMetadata {
                 codec: VideoCodec::Avc {
                     profile: 0x64,
                     constraints: 0x00,
@@ -258,8 +244,7 @@ mod tests {
                 width: height * 16 / 9,
                 height,
                 frame_rate: (25, 1),
-            }),
-            segments,
+            },
         }
     }
 
@@ -269,18 +254,16 @@ mod tests {
         channels: u16,
         bandwidth: u32,
         segs: &[u64],
-    ) -> Track {
-        let (h, segments) = header(48_000, bandwidth, segs);
-        Track {
+    ) -> AudioTrack {
+        AudioTrack {
             path: String::new(),
-            header: h,
-            metadata: Metadata::Audio(AudioMetadata {
+            cmaf_header: cmaf_header(48_000, bandwidth, segs),
+            cmaf_metadata: AudioCmafMetadata {
                 codec,
                 sample_rate: 48_000,
                 channels,
                 language: lang.to_string(),
-            }),
-            segments,
+            },
         }
     }
 
@@ -314,7 +297,7 @@ mod tests {
         // Nonzero eps: the first segment starts at eps, not 0. 90_000 timescale;
         // eps 45000, segments 2s, 1s → presentation times 45000, 225000.
         let mut track = video_track(720, 128_000, &[180_000, 90_000]);
-        track.header.earliest_presentation_time = 45_000;
+        track.cmaf_header.earliest_presentation_time = 45_000;
         let repr = track.id();
         let m = build_media(&track).to_string();
 
@@ -349,7 +332,7 @@ mod tests {
             &[96_000],
         );
         let (vid, aid) = (v.id(), a.id());
-        let m = build_master(&[v, a]).to_string();
+        let m = build_master(&[v], &[a]).to_string();
 
         assert!(m.contains("#EXT-X-INDEPENDENT-SEGMENTS"), "{m}");
         assert!(m.contains("#EXT-X-MEDIA:TYPE=AUDIO"), "{m}");
@@ -377,7 +360,7 @@ mod tests {
             128_000,
             &[96_000],
         );
-        let m = build_master(&[v1, v2, a]).to_string();
+        let m = build_master(&[v1, v2], &[a]).to_string();
 
         assert_eq!(m.matches("#EXT-X-STREAM-INF").count(), 2, "{m}");
         assert_eq!(m.matches("#EXT-X-MEDIA:TYPE=AUDIO").count(), 1, "{m}");
@@ -397,7 +380,7 @@ mod tests {
             &[96_000],
         );
         let ec3 = audio_track(AudioCodec::Ec3, "nld", 6, 384_000, &[96_000]);
-        let m = build_master(&[v, aac, ec3]).to_string();
+        let m = build_master(&[v], &[aac, ec3]).to_string();
 
         assert_eq!(m.matches("#EXT-X-STREAM-INF").count(), 2, "{m}");
         assert_eq!(m.matches("#EXT-X-MEDIA:TYPE=AUDIO").count(), 2, "{m}");
@@ -410,7 +393,7 @@ mod tests {
     #[test]
     fn video_only_has_no_audio_group() {
         let v = video_track(1080, 4_000_000, &[180_000]);
-        let m = build_master(&[v]).to_string();
+        let m = build_master(&[v], &[]).to_string();
 
         assert!(m.contains("#EXT-X-STREAM-INF"), "{m}");
         assert!(!m.contains("#EXT-X-MEDIA"), "{m}");
@@ -428,7 +411,7 @@ mod tests {
             128_000,
             &[96_000],
         );
-        let m = build_master(&[a]).to_string();
+        let m = build_master(&[], &[a]).to_string();
 
         assert!(m.contains("#EXT-X-STREAM-INF"), "{m}");
         assert!(!m.contains("#EXT-X-MEDIA"), "{m}");
@@ -460,7 +443,7 @@ mod tests {
             96_000,
             &[96_000],
         );
-        let m = build_master(&[v, a_nld, a_eng]).to_string();
+        let m = build_master(&[v], &[a_nld, a_eng]).to_string();
 
         // Two renditions in the single "mp4a" group.
         assert_eq!(m.matches("#EXT-X-MEDIA:TYPE=AUDIO").count(), 2, "{m}");

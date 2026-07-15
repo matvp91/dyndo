@@ -1,17 +1,22 @@
-//! A lightweight parse of a CMAF track's header region into a [`Header`] and
+//! A lightweight parse of a CMAF track's header region into a [`CmafHeader`] and
 //! [`Metadata`], reading byte ranges through an operator.
 
-use std::io::Cursor;
+use std::pin::Pin;
+use std::task::{Context, Poll};
 
-use mp4_atom::{Atom, FourCC, Header as BoxHeader, Mdhd, Moof, Moov, ReadAtom, ReadFrom, Sidx};
+use mp4_atom::{
+    AsyncReadAtom, AsyncReadFrom, Atom, FourCC, Header as BoxHeader, Mdhd, Moof, Moov, Sidx,
+};
 use opendal::Operator;
+use tokio::io::{AsyncRead, AsyncReadExt, ReadBuf};
+use tokio_util::compat::FuturesAsyncReadCompatExt;
 
 use crate::asset::Segment;
 use crate::codec::{AudioCodec, VideoCodec};
 use crate::CoreError;
 
 /// Read `len` bytes of `path` starting at `offset`, through `op`.
-pub(crate) async fn read(
+pub(crate) async fn read_range(
     op: &Operator,
     path: &str,
     offset: u64,
@@ -21,90 +26,144 @@ pub(crate) async fn read(
     Ok(buf.to_vec())
 }
 
-/// Fetch a box body and decode it into atom `A`.
-async fn atom<A: ReadAtom>(
-    op: &Operator,
-    path: &str,
-    bh: &BoxHeader,
-    body_start: u64,
-    body_len: u64,
-) -> Result<A, CoreError> {
-    let body = read(op, path, body_start, body_len).await?;
-    A::read_atom(bh, &mut Cursor::new(&body[..])).map_err(|e| CoreError::Container(e.to_string()))
+/// An [`AsyncRead`] that tallies every byte read through it, so the streamed
+/// parse can record absolute box offsets (`moov`/`sidx` end) without seeking.
+struct CountingReader<R> {
+    inner: R,
+    count: u64,
+}
+
+impl<R> CountingReader<R> {
+    fn new(inner: R) -> Self {
+        Self { inner, count: 0 }
+    }
+
+    /// Total bytes read through this reader so far.
+    fn count(&self) -> u64 {
+        self.count
+    }
+}
+
+impl<R: AsyncRead + Unpin> AsyncRead for CountingReader<R> {
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<std::io::Result<()>> {
+        let before = buf.filled().len();
+        let poll = Pin::new(&mut self.inner).poll_read(cx, buf);
+        if let Poll::Ready(Ok(())) = &poll {
+            self.count += (buf.filled().len() - before) as u64;
+        }
+        poll
+    }
+}
+
+/// Read and discard `len` bytes from `r`, erroring if the stream ends early.
+async fn skip<R: AsyncRead + Unpin>(r: &mut R, len: u64) -> Result<(), CoreError> {
+    let copied = tokio::io::copy(&mut r.take(len), &mut tokio::io::sink())
+        .await
+        .map_err(|e| CoreError::Container(e.to_string()))?;
+    if copied != len {
+        return Err(CoreError::Container("truncated box body".into()));
+    }
+    Ok(())
 }
 
 /// Scan the `moov`/`sidx`/first-`moof` boxes of the CMAF track at `path` and
-/// project them into the common [`Header`] and the track's [`Metadata`]. `mdat`
-/// is never fetched.
+/// project them into the common [`CmafHeader`] and the track's [`Metadata`].
+/// `mdat` is never fetched.
 ///
 /// # Errors
 /// Propagates any [`CoreError`] if a required box is missing, cannot be read
-/// or parsed, or if the track's codec is unsupported.
-pub async fn header(
-    op: &Operator,
-    path: &str,
-) -> Result<(Header, Vec<Segment>, Metadata), CoreError> {
-    let mut offset = 0u64;
+/// or parsed, if the track's media handler is neither video (`vide`) nor audio
+/// (`soun`), or if the track's codec is unsupported.
+pub async fn probe(op: &Operator, path: &str) -> Result<(CmafHeader, Metadata), CoreError> {
+    let reader = op
+        .reader(path)
+        .await?
+        .into_futures_async_read(..)
+        .await?
+        .compat();
+    let mut r = CountingReader::new(reader);
+
     let mut moov: Option<Moov> = None;
     let mut sidx: Option<Sidx> = None;
-    let mut first_moof: Option<Moof> = None;
+    let mut moof: Option<Moof> = None;
     let mut moov_end = 0u64;
     let mut sidx_end = 0u64;
 
-    while moov.is_none() || sidx.is_none() || first_moof.is_none() {
-        let head = read(op, path, offset, 16).await?;
-        let mut cursor = Cursor::new(&head[..]);
-        let bh =
-            BoxHeader::read_from(&mut cursor).map_err(|e| CoreError::Container(e.to_string()))?;
-        let body_start = offset + cursor.position();
+    while moov.is_none() || sidx.is_none() || moof.is_none() {
+        let bh = BoxHeader::read_from(&mut r)
+            .await
+            .map_err(|e| CoreError::Container(e.to_string()))?;
         let body_len =
             bh.size
                 .ok_or_else(|| CoreError::Container("box has no size".into()))? as u64;
-        let box_end = body_start + body_len;
 
         if bh.kind == Moov::KIND {
-            moov = Some(atom(op, path, &bh, body_start, body_len).await?);
-            moov_end = box_end;
+            moov = Some(
+                Moov::read_atom(&bh, &mut r)
+                    .await
+                    .map_err(|e| CoreError::Container(e.to_string()))?,
+            );
+            moov_end = r.count();
         } else if bh.kind == Sidx::KIND {
-            sidx = Some(atom(op, path, &bh, body_start, body_len).await?);
-            sidx_end = box_end;
-        } else if bh.kind == Moof::KIND && first_moof.is_none() {
-            first_moof = Some(atom(op, path, &bh, body_start, body_len).await?);
+            sidx = Some(
+                Sidx::read_atom(&bh, &mut r)
+                    .await
+                    .map_err(|e| CoreError::Container(e.to_string()))?,
+            );
+            sidx_end = r.count();
+        } else if bh.kind == Moof::KIND {
+            // The first `moof` ends the header region; `mdat` follows it.
+            moof = Some(
+                Moof::read_atom(&bh, &mut r)
+                    .await
+                    .map_err(|e| CoreError::Container(e.to_string()))?,
+            );
+            break;
+        } else {
+            skip(&mut r, body_len).await?;
         }
-        offset = box_end;
     }
 
-    let moov = moov.expect("present: the loop exits only once all three boxes are set");
-    let sidx = sidx.expect("present: the loop exits only once all three boxes are set");
-    let first_moof = first_moof.expect("present: the loop exits only once all three boxes are set");
+    let moov = moov.ok_or_else(|| CoreError::Container("missing moov before first moof".into()))?;
+    let sidx = sidx.ok_or_else(|| CoreError::Container("missing sidx before first moof".into()))?;
+    let moof = moof.ok_or_else(|| CoreError::Container("missing moof".into()))?;
 
-    let segments = segments(&sidx, sidx_end);
+    let segments = build_segments(&sidx, sidx_end);
     let duration = segments.iter().map(|s| s.duration).sum();
     let total_bytes = segments.iter().map(|s| s.size).sum();
     let bandwidth = average_bandwidth(total_bytes, duration, sidx.timescale);
 
     let mdia = &moov.trak[0].mdia;
     let codecs = &mdia.minf.stbl.stsd.codecs;
-    let metadata = if mdia.hdlr.handler == FourCC::new(b"vide") {
+    let handler = mdia.hdlr.handler;
+    let metadata = if handler == FourCC::new(b"vide") {
         let (codec, visual) = VideoCodec::from_codecs(codecs)?;
-        let sample_duration = first_sample_duration(&first_moof, &moov);
-        Metadata::Video(VideoMetadata {
+        let sample_duration = first_sample_duration(&moof, &moov);
+        Metadata::Video(VideoCmafMetadata {
             codec,
             width: visual.width as u32,
             height: visual.height as u32,
-            frame_rate: frame_rate(sample_duration, sidx.timescale),
+            frame_rate: frame_rate_ratio(sample_duration, sidx.timescale),
         })
-    } else {
+    } else if handler == FourCC::new(b"soun") {
         let (codec, audio) = AudioCodec::from_codecs(codecs)?;
-        Metadata::Audio(AudioMetadata {
+        Metadata::Audio(AudioCmafMetadata {
             codec,
             sample_rate: audio.sample_rate.integer() as u32,
             channels: audio.channel_count,
-            language: language_string(&mdia.mdhd),
+            language: language_code(&mdia.mdhd),
         })
+    } else {
+        return Err(CoreError::Container(format!(
+            "unrecognized media handler {handler}"
+        )));
     };
 
-    let header = Header {
+    let header = CmafHeader {
         timescale: sidx.timescale,
         duration,
         bandwidth,
@@ -114,11 +173,12 @@ pub async fn header(
             size: moov_end,
             duration: 0,
         },
+        segments,
     };
-    Ok((header, segments, metadata))
+    Ok((header, metadata))
 }
 
-fn segments(sidx: &Sidx, sidx_end: u64) -> Vec<Segment> {
+fn build_segments(sidx: &Sidx, sidx_end: u64) -> Vec<Segment> {
     let mut seg_offset = sidx_end + sidx.first_offset;
     let mut out = Vec::with_capacity(sidx.references.len());
     for r in &sidx.references {
@@ -148,7 +208,7 @@ fn gcd(a: u32, b: u32) -> u32 {
     }
 }
 
-fn frame_rate(sample_duration: u32, timescale: u32) -> (u32, u32) {
+fn frame_rate_ratio(sample_duration: u32, timescale: u32) -> (u32, u32) {
     if sample_duration == 0 || timescale == 0 {
         return (0, 1);
     }
@@ -183,13 +243,14 @@ fn normalize_language(lang: &str) -> &str {
     }
 }
 
-fn language_string(mdhd: &Mdhd) -> String {
+fn language_code(mdhd: &Mdhd) -> String {
     normalize_language(mdhd.language.as_str()).to_string()
 }
 
-/// The fields common to every CMAF track's header.
+/// The media-agnostic result of parsing a CMAF track's header region: timing,
+/// the init-segment location, and the (sub)segment map.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Header {
+pub struct CmafHeader {
     /// Units per second for durations in this track.
     pub timescale: u32,
     /// Total presentation duration, in the track timescale.
@@ -200,54 +261,25 @@ pub struct Header {
     pub earliest_presentation_time: u64,
     /// Location of the init segment (`ftyp`+`moov`) within the track file.
     pub init_segment: Segment,
+    /// The track's (sub)segments, in presentation order.
+    pub segments: Vec<Segment>,
 }
 
-/// Per-media-type track metadata produced by parsing the CMAF header.
+/// The parser's verdict on a CMAF track: which media type it is, plus the
+/// per-type metadata read from the sample entry. Stored on the corresponding
+/// [`VideoTrack`](crate::asset::VideoTrack) /
+/// [`AudioTrack`](crate::asset::AudioTrack) as its `cmaf_metadata`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Metadata {
-    /// Video-specific metadata (codec, dimensions, frame rate).
-    Video(VideoMetadata),
-    /// Audio-specific metadata (codec, sample rate, channels, language).
-    Audio(AudioMetadata),
+    /// A video track's metadata.
+    Video(VideoCmafMetadata),
+    /// An audio track's metadata.
+    Audio(AudioCmafMetadata),
 }
 
-impl Metadata {
-    /// Sample-entry fourcc (e.g. `"avc1"`, `"mp4a"`), regardless of media type.
-    pub fn fourcc(&self) -> &'static str {
-        match self {
-            Metadata::Video(v) => v.codec.fourcc(),
-            Metadata::Audio(a) => a.codec.fourcc(),
-        }
-    }
-
-    /// RFC 6381 `codecs` string, regardless of media type.
-    pub fn rfc6381(&self) -> String {
-        match self {
-            Metadata::Video(v) => v.codec.rfc6381(),
-            Metadata::Audio(a) => a.codec.rfc6381(),
-        }
-    }
-
-    /// The `video/mp4` / `audio/mp4` MIME type of this track's CMAF segments.
-    pub fn mime_type(&self) -> &'static str {
-        match self {
-            Metadata::Video(_) => "video/mp4",
-            Metadata::Audio(_) => "audio/mp4",
-        }
-    }
-
-    /// ISO-639-2 language (audio only; video is `None`).
-    pub fn language(&self) -> Option<&str> {
-        match self {
-            Metadata::Video(_) => None,
-            Metadata::Audio(a) => Some(&a.language),
-        }
-    }
-}
-
-/// Video track metadata parsed from the sample entry.
+/// The media-specific fields parsed from a video track's sample entry.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct VideoMetadata {
+pub struct VideoCmafMetadata {
     /// The decoded video codec and its RFC 6381 parameters.
     pub codec: VideoCodec,
     /// Visual width, in pixels.
@@ -258,9 +290,9 @@ pub struct VideoMetadata {
     pub frame_rate: (u32, u32),
 }
 
-/// Audio track metadata parsed from the sample entry.
+/// The media-specific fields parsed from an audio track's sample entry.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AudioMetadata {
+pub struct AudioCmafMetadata {
     /// The decoded audio codec and its RFC 6381 parameters.
     pub codec: AudioCodec,
     /// Sampling rate, in Hz.
@@ -275,6 +307,20 @@ pub struct AudioMetadata {
 mod tests {
     use super::*;
 
+    #[tokio::test]
+    async fn counting_reader_tracks_bytes_read() {
+        let data = [1u8, 2, 3, 4, 5, 6, 7, 8];
+        let mut r = CountingReader::new(&data[..]);
+
+        let mut first = [0u8; 3];
+        r.read_exact(&mut first).await.unwrap();
+        assert_eq!(r.count(), 3);
+
+        let mut rest = Vec::new();
+        r.read_to_end(&mut rest).await.unwrap();
+        assert_eq!(r.count(), 8);
+    }
+
     #[test]
     fn gcd_of_coprime_numbers_is_one() {
         assert_eq!(gcd(9, 4), 1);
@@ -288,12 +334,12 @@ mod tests {
     #[test]
     fn frame_rate_reduces_to_lowest_terms() {
         // 48000 timescale / 1600 sample duration = 30 fps
-        assert_eq!(frame_rate(1_600, 48_000), (30, 1));
+        assert_eq!(frame_rate_ratio(1_600, 48_000), (30, 1));
     }
 
     #[test]
     fn frame_rate_is_zero_when_sample_duration_is_zero() {
-        assert_eq!(frame_rate(0, 48_000), (0, 1));
+        assert_eq!(frame_rate_ratio(0, 48_000), (0, 1));
     }
 
     #[test]
@@ -318,15 +364,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn header_returns_error_on_garbage_input_instead_of_panicking() {
+    async fn probe_returns_error_on_garbage_input_instead_of_panicking() {
         use opendal::services::Fs;
-        use opendal::Operator;
 
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("bad.mp4"), [0xAA_u8; 64]).unwrap();
         let op = Operator::new(Fs::default().root(dir.path().to_str().unwrap())).unwrap();
 
-        let result = header(&op, "bad.mp4").await;
+        let result = probe(&op, "bad.mp4").await;
         assert!(
             result.is_err(),
             "expected an error on garbage input, got Ok"

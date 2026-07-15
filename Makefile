@@ -1,6 +1,9 @@
 # dyndo — build & dev tasks
-CARGO ?= cargo
-BIN   := dyndo
+CARGO   ?= cargo
+BIN     := dyndo
+# Pinned nightly for rustfmt (rustfmt.toml uses the nightly-only `group_imports`).
+# Dated so formatting is reproducible across machines and CI; bump deliberately.
+NIGHTLY ?= nightly-2026-07-09
 
 .PHONY: build build-debug run test lint fmt fmt-check check doc install clean
 
@@ -24,13 +27,13 @@ test:
 lint:
 	$(CARGO) clippy --all-targets -- -D warnings
 
-## fmt: format all crates (nightly rustfmt — required for import grouping)
+## fmt: format all crates (pinned nightly rustfmt — required for import grouping)
 fmt:
-	$(CARGO) +nightly fmt --all
+	$(CARGO) +$(NIGHTLY) fmt --all
 
-## fmt-check: verify formatting without modifying (nightly rustfmt)
+## fmt-check: verify formatting without modifying (pinned nightly rustfmt)
 fmt-check:
-	$(CARGO) +nightly fmt --all --check
+	$(CARGO) +$(NIGHTLY) fmt --all --check
 
 ## check: fast type-check of the workspace
 check:

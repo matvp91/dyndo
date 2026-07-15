@@ -63,11 +63,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Command::Index { input, output } => {
             let mut asset = Asset::new();
             for path in &input {
-                asset.add_track(Track::from_path(&op, path, &output).await?);
+                asset.add_track(&op, path, &output).await?;
             }
             asset.path = output;
             AssetModel::from(&asset).write(&op, &asset.path).await?;
-            println!("wrote {} ({} tracks)", asset.path, asset.tracks.len());
+            let tracks = asset.video_tracks.len() + asset.audio_tracks.len();
+            println!("wrote {} ({tracks} tracks)", asset.path);
         }
         Command::Dash {
             input,
@@ -88,14 +89,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 dyndo_core::hls::generate_master(&asset).into_bytes(),
             )
             .await?;
-            for track in &asset.tracks {
+            let count = asset.video_tracks.len() + asset.audio_tracks.len();
+            for t in &asset.video_tracks {
                 op.write(
-                    &format!("{output}/{}.m3u8", track.id()),
-                    dyndo_core::hls::generate_media(track).into_bytes(),
+                    &format!("{output}/{}.m3u8", t.id()),
+                    dyndo_core::hls::generate_media(t).into_bytes(),
                 )
                 .await?;
             }
-            println!("wrote {output}/ (1 master + {} media)", asset.tracks.len());
+            for t in &asset.audio_tracks {
+                op.write(
+                    &format!("{output}/{}.m3u8", t.id()),
+                    dyndo_core::hls::generate_media(t).into_bytes(),
+                )
+                .await?;
+            }
+            println!("wrote {output}/ (1 master + {count} media)");
         }
     }
     Ok(())

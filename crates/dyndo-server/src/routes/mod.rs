@@ -14,6 +14,7 @@ use axum::{
     routing::get,
     Router,
 };
+use dyndo_core::model::{AssetModel, TrackModel};
 use opendal::Operator;
 use tower_http::cors::{Any, CorsLayer};
 
@@ -77,4 +78,14 @@ fn split_route(path: &str) -> Option<(&str, &str, &str)> {
         }
     }
     best.map(|(i, proto, res_start)| (&path[..i], proto, &path[res_start..]))
+}
+
+/// Find the descriptor track whose representation id is `repr`, matching against
+/// the ids recorded in the descriptor (no CMAF parse). 404 if none matches.
+fn find_source<'a>(model: &'a AssetModel, repr: &str) -> Result<&'a TrackModel, ServerError> {
+    model
+        .tracks
+        .iter()
+        .find(|t| t.id() == repr)
+        .ok_or_else(|| ServerError::NotFound(format!("no representation {repr}")))
 }

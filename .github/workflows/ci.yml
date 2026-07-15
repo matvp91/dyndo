@@ -19,8 +19,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      # rustfmt.toml uses `group_imports`, a nightly-only option.
-      - uses: dtolnay/rust-toolchain@nightly
+      # rustfmt.toml uses `group_imports`, a nightly-only option. Pinned to a
+      # dated nightly so formatting is reproducible (keep in sync with the
+      # Makefile `NIGHTLY` variable).
+      - uses: dtolnay/rust-toolchain@nightly-2026-07-09
         with:
           components: rustfmt
       - run: make fmt-check

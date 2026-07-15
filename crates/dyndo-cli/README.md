@@ -39,6 +39,20 @@ dyndo dash -i assets/asset.json -o assets/stream.mpd --compact
 | `-o, --output <PATH>` | Output manifest path. | `stream.mpd` |
 | `-c, --compact` | Hoist shared `SegmentTemplate` content up to the `AdaptationSet` level. | off |
 
+### `dyndo hls`
+
+Render static HLS playlists from an `asset.json` into a directory: a multivariant
+`index.m3u8` plus one `<repr>.m3u8` media playlist per track.
+
+```bash
+dyndo hls -i assets/asset.json -o assets/hls
+```
+
+| Option | Description | Default |
+|---|---|---|
+| `-i, --input <PATH>` | Input `asset.json`. | `asset.json` |
+| `-o, --output <DIR>` | Output directory for the playlists. | `hls` |
+
 ## Configuration
 
 All I/O is rooted at an [OpenDAL](https://opendal.apache.org/) filesystem

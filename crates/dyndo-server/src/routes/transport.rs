@@ -6,10 +6,11 @@ use axum::{
     http::header::CONTENT_TYPE,
     response::{IntoResponse, Response},
 };
-use dyndo_core::asset::{Asset, Track};
+use dyndo_core::asset::{AnyTrack, Asset, Track};
 use dyndo_core::model::AssetModel;
 use opendal::Operator;
 
+use super::find_source;
 use crate::error::ServerError;
 
 const DASH_CONTENT_TYPE: &str = "application/dash+xml";
@@ -43,12 +44,7 @@ pub(super) async fn hls_media(
     repr: &str,
 ) -> Result<Response, ServerError> {
     let model = AssetModel::read(op, asset_path).await?;
-    let source = model
-        .tracks
-        .iter()
-        .find(|t| t.id() == repr)
-        .ok_or_else(|| ServerError::NotFound(format!("no representation {repr}")))?;
-    let track = Track::from_path(op, source.path(), asset_path).await?;
+    let track = AnyTrack::from_model(op, find_source(&model, repr)?, asset_path).await?;
     let playlist = dyndo_core::hls::generate_media(&track);
     Ok(([(CONTENT_TYPE, HLS_CONTENT_TYPE)], playlist).into_response())
 }
