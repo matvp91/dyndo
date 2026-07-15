@@ -90,7 +90,7 @@ jobs:
             cp README.md "${stage}/"
             tar -czf "dist/${bin}-v${version}-${target}.tar.gz" -C "${stage}" "${bin}" README.md
           done
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
           name: binaries-${{ matrix.target }}
           path: dist/*.tar.gz
@@ -102,7 +102,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v8
         with:
           pattern: binaries-*
           merge-multiple: true
