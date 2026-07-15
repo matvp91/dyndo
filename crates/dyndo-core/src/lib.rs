@@ -10,5 +10,6 @@ mod error;
 pub mod hls;
 pub mod model;
 pub mod text;
+pub mod utils;
 
 pub use error::CoreError;
