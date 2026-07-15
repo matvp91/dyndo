@@ -23,7 +23,12 @@ pub fn parse(input: &str) -> Result<WebVtt, CoreTextError> {
     let input = input.strip_prefix('\u{feff}').unwrap_or(input);
     let normalized = input.replace("\r\n", "\n").replace('\r', "\n");
 
-    if !normalized.lines().next().unwrap_or("").starts_with("WEBVTT") {
+    if !normalized
+        .lines()
+        .next()
+        .unwrap_or("")
+        .starts_with("WEBVTT")
+    {
         return Err(CoreTextError::Vtt("missing WEBVTT signature".into()));
     }
 

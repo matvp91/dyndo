@@ -3,6 +3,7 @@
 mod error;
 mod vtt;
 mod vtt_cue;
+pub mod wvtt;
 
 pub use error::CoreTextError;
 pub use vtt::{parse, WebVtt};
