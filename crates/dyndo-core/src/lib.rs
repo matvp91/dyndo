@@ -9,5 +9,6 @@ pub mod dash;
 mod error;
 pub mod hls;
 pub mod model;
+pub mod text;
 
 pub use error::CoreError;
