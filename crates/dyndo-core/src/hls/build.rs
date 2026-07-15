@@ -4,19 +4,18 @@ use hls_m3u8::tags::{ExtXMap, ExtXMedia, VariantStream};
 use hls_m3u8::types::{Channels, MediaType, PlaylistType, StreamData, UFloat};
 use hls_m3u8::{MasterPlaylist, MediaPlaylist, MediaSegment};
 
-use crate::asset::{AudioTrack, Segment, TextTrack, Track, TrackMetadata, VideoTrack};
+use crate::asset::{AudioTrack, Segment, TextTrack, Track, VideoTrack};
 
 /// Build the VOD media playlist for `track`: an `EXT-X-MAP` init on the first
 /// segment, then one segment per (sub)segment named by its running presentation
 /// time. `EXT-X-TARGETDURATION` is the longest segment in whole seconds.
-pub(crate) fn build_media<M: TrackMetadata>(track: &Track<M>) -> MediaPlaylist<'static> {
+pub(crate) fn build_media(track: &impl Track) -> MediaPlaylist<'static> {
     let repr = track.id();
-    let header = track.cmaf_header();
-    let timescale = header.timescale;
+    let timescale = track.timescale();
 
-    let mut time = header.earliest_presentation_time;
-    let mut segments: Vec<MediaSegment<'static>> = Vec::with_capacity(header.segments.len());
-    for (i, seg) in header.segments.iter().enumerate() {
+    let mut time = track.earliest_presentation_time();
+    let mut segments: Vec<MediaSegment<'static>> = Vec::with_capacity(track.segments().len());
+    for (i, seg) in track.segments().iter().enumerate() {
         let mut b = MediaSegment::builder();
         b.uri(format!("{repr}/{time}.m4s"));
         b.duration(Duration::from_secs_f64(
@@ -35,7 +34,7 @@ pub(crate) fn build_media<M: TrackMetadata>(track: &Track<M>) -> MediaPlaylist<'
     let mut b = MediaPlaylist::builder();
     b.media_sequence(0);
     b.target_duration(Duration::from_secs(target_duration(
-        &header.segments,
+        track.segments(),
         timescale,
     )));
     b.playlist_type(PlaylistType::Vod);
@@ -117,7 +116,7 @@ pub(crate) fn build_master(
 /// The single subtitle group for `texts` (`GROUP-ID` = the codec fourcc), or
 /// `None` when the asset has no text tracks.
 fn subtitle_group(texts: &[TextTrack]) -> Option<SubtitleGroup<'_>> {
-    let id = texts.first()?.cmaf_metadata.codec.fourcc();
+    let id = texts.first()?.codec().fourcc();
     Some(SubtitleGroup {
         id,
         tracks: texts.iter().collect(),
@@ -133,12 +132,11 @@ fn subtitle_media(group: Option<&SubtitleGroup>) -> Vec<ExtXMedia<'static>> {
     };
     let mut out = Vec::new();
     for t in &group.tracks {
-        let m = &t.cmaf_metadata;
         let mut b = ExtXMedia::builder();
         b.media_type(MediaType::Subtitles);
         b.group_id(group.id);
-        b.name(m.language.clone());
-        b.language(m.language.clone());
+        b.name(t.language().to_string());
+        b.language(t.language().to_string());
         b.uri(format!("{}.m3u8", t.id()));
         b.is_default(false);
         b.is_autoselect(false);
@@ -154,16 +152,16 @@ fn subtitle_media(group: Option<&SubtitleGroup>) -> Vec<ExtXMedia<'static>> {
 fn audio_group(audios: &[AudioTrack]) -> Vec<AudioGroup<'_>> {
     let mut groups: Vec<AudioGroup> = Vec::new();
     for t in audios {
-        let fourcc = t.cmaf_metadata.codec.fourcc();
+        let fourcc = t.codec().fourcc();
         match groups.iter_mut().find(|g| g.id == fourcc) {
             Some(g) => {
-                g.max_bandwidth = g.max_bandwidth.max(t.cmaf_header.bandwidth);
+                g.max_bandwidth = g.max_bandwidth.max(t.bandwidth());
                 g.tracks.push(t);
             }
             None => groups.push(AudioGroup {
                 id: fourcc,
-                codec: t.cmaf_metadata.codec.rfc6381(),
-                max_bandwidth: t.cmaf_header.bandwidth,
+                codec: t.codec().rfc6381(),
+                max_bandwidth: t.bandwidth(),
                 tracks: vec![t],
             }),
         }
@@ -177,16 +175,15 @@ fn audio_media(groups: &[AudioGroup]) -> Vec<ExtXMedia<'static>> {
     let mut out = Vec::new();
     for g in groups {
         for (i, &t) in g.tracks.iter().enumerate() {
-            let m = &t.cmaf_metadata;
             let mut b = ExtXMedia::builder();
             b.media_type(MediaType::Audio);
             b.group_id(g.id);
-            b.name(m.language.clone());
-            b.language(m.language.clone());
+            b.name(t.language().to_string());
+            b.language(t.language().to_string());
             b.uri(format!("{}.m3u8", t.id()));
             b.is_default(i == 0);
             b.is_autoselect(true);
-            b.channels(Channels::new(m.channels as u64));
+            b.channels(Channels::new(t.channels() as u64));
             out.push(
                 b.build()
                     .expect("audio media always has a type, group id, and name"),
@@ -206,7 +203,7 @@ fn video_variants(
 ) -> Vec<VariantStream<'static>> {
     let mut out = Vec::new();
     for v in videos {
-        let (num, den) = v.cmaf_metadata.frame_rate;
+        let (num, den) = v.frame_rate();
         let fr = (num != 0).then(|| num as f32 / den as f32);
         if groups.is_empty() {
             out.push(video_variant(v, fr, None, subs));
@@ -225,9 +222,8 @@ fn video_variant(
     group: Option<&AudioGroup>,
     subs: Option<&'static str>,
 ) -> VariantStream<'static> {
-    let m = &v.cmaf_metadata;
-    let mut codecs = vec![m.codec.rfc6381()];
-    let mut bandwidth = v.cmaf_header.bandwidth as u64;
+    let mut codecs = vec![v.codec().rfc6381()];
+    let mut bandwidth = v.bandwidth() as u64;
     let audio = group.map(|g| {
         codecs.push(g.codec.clone());
         bandwidth += g.max_bandwidth as u64;
@@ -242,7 +238,7 @@ fn video_variant(
         stream_data: StreamData::builder()
             .bandwidth(bandwidth)
             .codecs(codecs)
-            .resolution((m.width as usize, m.height as usize))
+            .resolution((v.width() as usize, v.height() as usize))
             .build()
             .expect("stream data always has a bandwidth"),
     }
@@ -251,7 +247,6 @@ fn video_variant(
 /// A standalone audio variant, used only when the asset has no video. `subs` is
 /// the subtitle group it references, if the asset has text tracks.
 fn audio_variant(t: &AudioTrack, subs: Option<&'static str>) -> VariantStream<'static> {
-    let m = &t.cmaf_metadata;
     VariantStream::ExtXStreamInf {
         uri: format!("{}.m3u8", t.id()).into(),
         frame_rate: None,
@@ -259,8 +254,8 @@ fn audio_variant(t: &AudioTrack, subs: Option<&'static str>) -> VariantStream<'s
         subtitles: subs.map(Into::into),
         closed_captions: None,
         stream_data: StreamData::builder()
-            .bandwidth(t.cmaf_header.bandwidth as u64)
-            .codecs(vec![m.codec.rfc6381()])
+            .bandwidth(t.bandwidth() as u64)
+            .codecs(vec![t.codec().rfc6381()])
             .build()
             .expect("stream data always has a bandwidth"),
     }
@@ -298,21 +293,25 @@ mod tests {
         }
     }
 
-    fn video_track(height: u32, bandwidth: u32, segs: &[u64]) -> VideoTrack {
-        VideoTrack {
-            path: String::new(),
-            cmaf_header: cmaf_header(90_000, bandwidth, segs),
-            cmaf_metadata: VideoCmafMetadata {
-                codec: VideoCodec::Avc {
-                    profile: 0x64,
-                    constraints: 0x00,
-                    level: 0x28,
-                },
-                width: height * 16 / 9,
-                height,
-                frame_rate: (25, 1),
+    fn video_metadata(height: u32) -> VideoCmafMetadata {
+        VideoCmafMetadata {
+            codec: VideoCodec::Avc {
+                profile: 0x64,
+                constraints: 0x00,
+                level: 0x28,
             },
+            width: height * 16 / 9,
+            height,
+            frame_rate: (25, 1),
         }
+    }
+
+    fn video_track(height: u32, bandwidth: u32, segs: &[u64]) -> VideoTrack {
+        VideoTrack::new(
+            String::new(),
+            cmaf_header(90_000, bandwidth, segs),
+            video_metadata(height),
+        )
     }
 
     fn audio_track(
@@ -322,27 +321,27 @@ mod tests {
         bandwidth: u32,
         segs: &[u64],
     ) -> AudioTrack {
-        AudioTrack {
-            path: String::new(),
-            cmaf_header: cmaf_header(48_000, bandwidth, segs),
-            cmaf_metadata: AudioCmafMetadata {
+        AudioTrack::new(
+            String::new(),
+            cmaf_header(48_000, bandwidth, segs),
+            AudioCmafMetadata {
                 codec,
                 sample_rate: 48_000,
                 channels,
                 language: lang.to_string(),
             },
-        }
+        )
     }
 
     fn text_track(lang: &str, bandwidth: u32, segs: &[u64]) -> TextTrack {
-        TextTrack {
-            path: String::new(),
-            cmaf_header: cmaf_header(1000, bandwidth, segs),
-            cmaf_metadata: TextCmafMetadata {
+        TextTrack::new(
+            String::new(),
+            cmaf_header(1000, bandwidth, segs),
+            TextCmafMetadata {
                 codec: TextCodec::Wvtt,
                 language: lang.to_string(),
             },
-        }
+        )
     }
 
     /// The single line describing a media rendition of the given `type_attr`
@@ -458,8 +457,11 @@ mod tests {
     fn media_segment_uris_reflect_nonzero_presentation_time() {
         // Nonzero eps: the first segment starts at eps, not 0. 90_000 timescale;
         // eps 45000, segments 2s, 1s → presentation times 45000, 225000.
-        let mut track = video_track(720, 128_000, &[180_000, 90_000]);
-        track.cmaf_header.earliest_presentation_time = 45_000;
+        let header = CmafHeader {
+            earliest_presentation_time: 45_000,
+            ..cmaf_header(90_000, 128_000, &[180_000, 90_000])
+        };
+        let track = VideoTrack::new(String::new(), header, video_metadata(720));
         let repr = track.id();
         let m = build_media(&track).to_string();
 

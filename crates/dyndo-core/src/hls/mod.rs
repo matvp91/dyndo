@@ -2,11 +2,11 @@
 
 mod build;
 
-use crate::asset::{Asset, Track, TrackMetadata};
+use crate::asset::{Asset, Track};
 
 /// Build the HLS media playlist for a single `track`: a VOD playlist with an
 /// `EXT-X-MAP` init segment and one media segment per (sub)segment.
-pub fn generate_media<M: TrackMetadata>(track: &Track<M>) -> String {
+pub fn generate_media(track: &impl Track) -> String {
     build::build_media(track).to_string()
 }
 

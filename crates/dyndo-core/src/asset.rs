@@ -1,5 +1,5 @@
-//! The domain `Asset`: video and audio tracks plus where the descriptor was
-//! sourced from. Built from the model in [`crate::model`].
+//! The domain `Asset`: video, audio, and text tracks plus where the descriptor
+//! was sourced from. Built from the model in [`crate::model`].
 
 use bytes::Bytes;
 use futures_util::future::try_join_all;
@@ -8,6 +8,7 @@ use opendal::Operator;
 use crate::cmaf::{
     self, AudioCmafMetadata, CmafHeader, CmafMetadata, TextCmafMetadata, VideoCmafMetadata,
 };
+use crate::codec::{AudioCodec, TextCodec, VideoCodec};
 use crate::model::{AssetModel, AudioTrackModel, TextTrackModel, TrackModel, VideoTrackModel};
 use crate::path;
 use crate::CoreError;
@@ -42,121 +43,362 @@ pub struct Segment {
     pub duration_ms: u64,
 }
 
-/// A parsed CMAF track: its resolved storage path, the [`CmafHeader`] shared by
-/// every media type, and the media-specific `cmaf_metadata` that tells the kinds
-/// apart. The concrete kinds are the aliases [`VideoTrack`], [`AudioTrack`], and
-/// [`TextTrack`]; [`AnyTrack`] is the kind resolved only at runtime.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Track<M> {
-    /// Resolved storage path of the track's CMAF file (not relative to the
-    /// descriptor).
-    pub path: String,
-    /// Parsed CMAF header: timing, init segment, and the (sub)segment map.
-    pub cmaf_header: CmafHeader,
-    /// Parsed media-specific metadata: codec plus the fields unique to this
-    /// media type.
-    pub cmaf_metadata: M,
+mod sealed {
+    use crate::cmaf::CmafHeader;
+
+    /// Crate-internal access to a track's parsed header and resolved path,
+    /// powering [`Track`](super::Track)'s provided methods without exposing
+    /// [`CmafHeader`] outside the crate.
+    pub trait HasHeader {
+        /// The track's parsed CMAF header.
+        fn header(&self) -> &CmafHeader;
+        /// Resolved storage path of the track's CMAF file.
+        fn path_str(&self) -> &str;
+    }
 }
 
-/// A parsed CMAF video track: codec, dimensions, and frame rate.
-pub type VideoTrack = Track<VideoCmafMetadata>;
-/// A parsed CMAF audio track: codec, sample rate, channels, and language.
-pub type AudioTrack = Track<AudioCmafMetadata>;
-/// A parsed CMAF timed-text track: codec and language.
-pub type TextTrack = Track<TextCmafMetadata>;
-/// A parsed CMAF track whose media type is known only at runtime (e.g. resolved
-/// from a descriptor id).
-pub type AnyTrack = Track<CmafMetadata>;
-
-/// The media-type-specific behaviour a [`Track<M>`] delegates to: how the
-/// metadata is recovered from its wire model and a freshly-probed CMAF header,
-/// its representation id, and its segments' MIME type. Implemented by each
-/// concrete metadata type and by the runtime-typed [`CmafMetadata`] enum, so a
-/// single generic [`Track<M>`] serves both statically- and dynamically-typed
-/// tracks.
-pub trait TrackMetadata: Sized {
-    /// The wire model this metadata is built from ([`VideoTrackModel`],
-    /// [`AudioTrackModel`], [`TextTrackModel`], or the [`TrackModel`] enum for
-    /// [`AnyTrack`]).
-    type Model;
-
-    /// The `model`'s source path, relative to the descriptor.
-    fn model_path(model: &Self::Model) -> &str;
-
-    /// Recover this metadata from the `probed` CMAF metadata declared by
-    /// `model`, or `None` when the file's media type contradicts the model
-    /// (the descriptor and its file have drifted apart).
-    fn from_probe(model: &Self::Model, probed: CmafMetadata) -> Option<Self>;
-
-    /// The representation id, computed from the codec fourcc, dimensions/channels
-    /// and the `header`'s bandwidth (e.g. `video_avc1_1080_4807228`,
-    /// `audio_mp4a_nld_2_196918`).
-    fn id(&self, header: &CmafHeader) -> String;
+/// The behaviour every parsed CMAF track shares: identity (`id`, `mime_type`),
+/// granular access to the parsed header's timing and (sub)segment map, and
+/// byte-range reads of its segments. Implemented by [`VideoTrack`],
+/// [`AudioTrack`], [`TextTrack`], and the runtime-typed [`AnyTrack`]. Sealed:
+/// it cannot be implemented outside this crate.
+// In-workspace callers only await the async methods on concrete track values,
+// where the compiler proves the returned future Send on its own — the lint's
+// "callers cannot add Send bounds" concern doesn't apply here.
+#[allow(async_fn_in_trait)]
+pub trait Track: sealed::HasHeader {
+    /// The representation id, computed from the codec fourcc plus per-type
+    /// discriminators (e.g. `video_avc1_1080_4807228`,
+    /// `audio_mp4a_nld_2_196918`, `text_wvtt_eng`).
+    fn id(&self) -> String;
 
     /// The `video/mp4` / `audio/mp4` / `application/mp4` MIME type of the
     /// track's CMAF segments.
     fn mime_type(&self) -> &'static str;
-}
 
-impl<M> Track<M> {
-    /// Resolved storage path of the track's CMAF file.
-    pub fn path(&self) -> &str {
-        &self.path
+    /// Resolved storage path of the track's CMAF file (not relative to the
+    /// descriptor).
+    fn path(&self) -> &str {
+        self.path_str()
     }
 
-    /// The track's parsed CMAF header (timing, init segment, and segment map).
-    pub fn cmaf_header(&self) -> &CmafHeader {
-        &self.cmaf_header
+    /// Units per second for durations in this track.
+    fn timescale(&self) -> u32 {
+        self.header().timescale
+    }
+
+    /// Average bitrate in bits/s, derived from the segment sizes and duration.
+    fn bandwidth(&self) -> u32 {
+        self.header().bandwidth
+    }
+
+    /// Presentation time of the first (sub)segment, in the track timescale.
+    fn earliest_presentation_time(&self) -> u64 {
+        self.header().earliest_presentation_time
+    }
+
+    /// The track's (sub)segments, in presentation order.
+    fn segments(&self) -> &[Segment] {
+        &self.header().segments
+    }
+
+    /// This track's total presentation duration, in milliseconds.
+    fn duration_ms(&self) -> u64 {
+        units_to_ms(self.header().duration, self.header().timescale)
+    }
+
+    /// The longest (sub)segment in this track, in milliseconds (0 if it has
+    /// none).
+    fn max_segment_duration_ms(&self) -> u64 {
+        self.segments()
+            .iter()
+            .map(|s| s.duration_ms)
+            .max()
+            .unwrap_or(0)
     }
 
     /// Read the init segment (`ftyp`+`moov`) bytes through `op`.
     ///
     /// # Errors
     /// Propagates any [`CoreError`] from the underlying read.
-    pub async fn init_segment_bytes(&self, op: &Operator) -> Result<Bytes, CoreError> {
-        let s = self.cmaf_header().init_segment;
-        cmaf::read_range(op, self.path(), s.offset, s.size).await
+    async fn init_segment_bytes(&self, op: &Operator) -> Result<Bytes, CoreError> {
+        let s = self.header().init_segment;
+        cmaf::read_range(op, self.path_str(), s.offset, s.size).await
     }
 
-    /// Read the media (sub)segment starting at presentation `time` through `op`,
-    /// or `None` if no segment starts exactly there.
+    /// Read the media (sub)segment starting at presentation `time` through
+    /// `op`, or `None` if no segment starts exactly there.
     ///
     /// # Errors
     /// Propagates any [`CoreError`] from the underlying read.
-    pub async fn segment_bytes(
-        &self,
-        op: &Operator,
-        time: u64,
-    ) -> Result<Option<Bytes>, CoreError> {
-        let mut t = self.cmaf_header().earliest_presentation_time;
-        for seg in &self.cmaf_header().segments {
+    async fn segment_bytes(&self, op: &Operator, time: u64) -> Result<Option<Bytes>, CoreError> {
+        let mut t = self.earliest_presentation_time();
+        for seg in self.segments() {
             if t == time {
                 return Ok(Some(
-                    cmaf::read_range(op, self.path(), seg.offset, seg.size).await?,
+                    cmaf::read_range(op, self.path_str(), seg.offset, seg.size).await?,
                 ));
             }
             t += seg.duration;
         }
         Ok(None)
     }
+}
 
-    /// This track's total presentation duration, in milliseconds.
-    pub fn duration_ms(&self) -> u64 {
-        units_to_ms(self.cmaf_header().duration, self.cmaf_header().timescale)
+/// A parsed CMAF video track: codec, dimensions, and frame rate.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VideoTrack {
+    path: String,
+    cmaf_header: CmafHeader,
+    cmaf_metadata: VideoCmafMetadata,
+}
+
+impl VideoTrack {
+    /// Assemble a video track from its resolved `path`, parsed `cmaf_header`,
+    /// and probed `cmaf_metadata`.
+    pub fn new(
+        path: String,
+        cmaf_header: CmafHeader,
+        cmaf_metadata: VideoCmafMetadata,
+    ) -> VideoTrack {
+        VideoTrack {
+            path,
+            cmaf_header,
+            cmaf_metadata,
+        }
     }
 
-    /// The longest (sub)segment in this track, in milliseconds (0 if it has none).
-    pub fn max_segment_duration_ms(&self) -> u64 {
-        self.cmaf_header()
-            .segments
-            .iter()
-            .map(|s| s.duration_ms)
-            .max()
-            .unwrap_or(0)
+    /// The decoded video codec and its RFC 6381 parameters.
+    pub fn codec(&self) -> &VideoCodec {
+        &self.cmaf_metadata.codec
+    }
+
+    /// Visual width, in pixels.
+    pub fn width(&self) -> u32 {
+        self.cmaf_metadata.width
+    }
+
+    /// Visual height, in pixels.
+    pub fn height(&self) -> u32 {
+        self.cmaf_metadata.height
+    }
+
+    /// Frame rate as a (numerator, denominator) ratio, in frames per second.
+    pub fn frame_rate(&self) -> (u32, u32) {
+        self.cmaf_metadata.frame_rate
+    }
+
+    /// Project to the wire [`TrackModel`], relativizing the stored (resolved)
+    /// path back to a file path relative to the descriptor `descriptor_path`.
+    fn to_model(&self, descriptor_path: &str) -> TrackModel {
+        TrackModel::Video(VideoTrackModel {
+            id: self.id(),
+            path: path::relativize(descriptor_path, &self.path),
+            fourcc: self.codec().fourcc().to_string(),
+            timescale: self.timescale(),
+            width: self.width(),
+            height: self.height(),
+        })
     }
 }
 
-impl<M: TrackMetadata> Track<M> {
+impl sealed::HasHeader for VideoTrack {
+    fn header(&self) -> &CmafHeader {
+        &self.cmaf_header
+    }
+
+    fn path_str(&self) -> &str {
+        &self.path
+    }
+}
+
+impl Track for VideoTrack {
+    fn id(&self) -> String {
+        format!(
+            "video_{}_{}_{}",
+            self.codec().fourcc(),
+            self.height(),
+            self.bandwidth()
+        )
+    }
+
+    fn mime_type(&self) -> &'static str {
+        "video/mp4"
+    }
+}
+
+/// A parsed CMAF audio track: codec, sample rate, channels, and language.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AudioTrack {
+    path: String,
+    cmaf_header: CmafHeader,
+    cmaf_metadata: AudioCmafMetadata,
+}
+
+impl AudioTrack {
+    /// Assemble an audio track from its resolved `path`, parsed `cmaf_header`,
+    /// and probed `cmaf_metadata`.
+    pub fn new(
+        path: String,
+        cmaf_header: CmafHeader,
+        cmaf_metadata: AudioCmafMetadata,
+    ) -> AudioTrack {
+        AudioTrack {
+            path,
+            cmaf_header,
+            cmaf_metadata,
+        }
+    }
+
+    /// The decoded audio codec and its RFC 6381 parameters.
+    pub fn codec(&self) -> &AudioCodec {
+        &self.cmaf_metadata.codec
+    }
+
+    /// Sampling rate, in Hz.
+    pub fn sample_rate(&self) -> u32 {
+        self.cmaf_metadata.sample_rate
+    }
+
+    /// Number of audio channels (e.g. 2 for stereo, 6 for 5.1).
+    pub fn channels(&self) -> u16 {
+        self.cmaf_metadata.channels
+    }
+
+    /// ISO-639-2 language code (`"und"` when the file leaves it unspecified).
+    pub fn language(&self) -> &str {
+        &self.cmaf_metadata.language
+    }
+
+    /// Project to the wire [`TrackModel`], relativizing the stored (resolved)
+    /// path back to a file path relative to the descriptor `descriptor_path`.
+    fn to_model(&self, descriptor_path: &str) -> TrackModel {
+        TrackModel::Audio(AudioTrackModel {
+            id: self.id(),
+            path: path::relativize(descriptor_path, &self.path),
+            fourcc: self.codec().fourcc().to_string(),
+            timescale: self.timescale(),
+            sample_rate: self.sample_rate(),
+            channels: self.channels(),
+            language: Some(self.cmaf_metadata.language.clone()),
+        })
+    }
+}
+
+impl sealed::HasHeader for AudioTrack {
+    fn header(&self) -> &CmafHeader {
+        &self.cmaf_header
+    }
+
+    fn path_str(&self) -> &str {
+        &self.path
+    }
+}
+
+impl Track for AudioTrack {
+    fn id(&self) -> String {
+        format!(
+            "audio_{}_{}_{}_{}",
+            self.codec().fourcc(),
+            self.language(),
+            self.channels(),
+            self.bandwidth()
+        )
+    }
+
+    fn mime_type(&self) -> &'static str {
+        "audio/mp4"
+    }
+}
+
+/// A parsed CMAF timed-text track: codec and language.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TextTrack {
+    path: String,
+    cmaf_header: CmafHeader,
+    cmaf_metadata: TextCmafMetadata,
+}
+
+impl TextTrack {
+    /// Assemble a text track from its resolved `path`, parsed `cmaf_header`,
+    /// and probed `cmaf_metadata`.
+    pub fn new(
+        path: String,
+        cmaf_header: CmafHeader,
+        cmaf_metadata: TextCmafMetadata,
+    ) -> TextTrack {
+        TextTrack {
+            path,
+            cmaf_header,
+            cmaf_metadata,
+        }
+    }
+
+    /// The decoded text codec and its RFC 6381 parameters.
+    pub fn codec(&self) -> &TextCodec {
+        &self.cmaf_metadata.codec
+    }
+
+    /// ISO-639-2 language code (`"und"` when unspecified).
+    pub fn language(&self) -> &str {
+        &self.cmaf_metadata.language
+    }
+
+    /// Project to the wire [`TrackModel`], relativizing the stored (resolved)
+    /// path back to a file path relative to the descriptor `descriptor_path`.
+    fn to_model(&self, descriptor_path: &str) -> TrackModel {
+        TrackModel::Text(TextTrackModel {
+            id: self.id(),
+            path: path::relativize(descriptor_path, &self.path),
+            fourcc: self.codec().fourcc().to_string(),
+            timescale: self.timescale(),
+            language: self.language().to_string(),
+        })
+    }
+}
+
+impl sealed::HasHeader for TextTrack {
+    fn header(&self) -> &CmafHeader {
+        &self.cmaf_header
+    }
+
+    fn path_str(&self) -> &str {
+        &self.path
+    }
+}
+
+impl Track for TextTrack {
+    fn id(&self) -> String {
+        format!("text_{}_{}", self.codec().fourcc(), self.language())
+    }
+
+    fn mime_type(&self) -> &'static str {
+        "application/mp4"
+    }
+}
+
+/// A parsed CMAF track whose media type is known only at runtime (e.g.
+/// resolved from a descriptor id).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AnyTrack {
+    /// A video track.
+    Video(VideoTrack),
+    /// An audio track.
+    Audio(AudioTrack),
+    /// A timed-text track.
+    Text(TextTrack),
+}
+
+impl AnyTrack {
+    /// Wrap a probe result into the matching concrete track.
+    fn from_probe(path: String, cmaf_header: CmafHeader, cmaf_metadata: CmafMetadata) -> AnyTrack {
+        match cmaf_metadata {
+            CmafMetadata::Video(m) => AnyTrack::Video(VideoTrack::new(path, cmaf_header, m)),
+            CmafMetadata::Audio(m) => AnyTrack::Audio(AudioTrack::new(path, cmaf_header, m)),
+            CmafMetadata::Text(m) => AnyTrack::Text(TextTrack::new(path, cmaf_header, m)),
+        }
+    }
+
     /// Build the track by parsing the CMAF header at `model`'s path (resolved
     /// against the descriptor's own `descriptor_path`) through `op`.
     ///
@@ -167,147 +409,58 @@ impl<M: TrackMetadata> Track<M> {
     /// descriptor and its file have drifted apart.
     pub async fn from_model(
         op: &Operator,
-        model: &M::Model,
+        model: &TrackModel,
         descriptor_path: &str,
-    ) -> Result<Track<M>, CoreError> {
-        let path = path::resolve(descriptor_path, M::model_path(model));
+    ) -> Result<AnyTrack, CoreError> {
+        let path = path::resolve(descriptor_path, model.path());
         let (cmaf_header, cmaf_metadata) = cmaf::probe(op, &path).await?;
-        let Some(cmaf_metadata) = M::from_probe(model, cmaf_metadata) else {
-            return Err(CoreError::Container(format!(
-                "track at {path}: descriptor type and CMAF type disagree"
-            )));
-        };
-        Ok(Track {
-            path,
-            cmaf_header,
-            cmaf_metadata,
-        })
-    }
-
-    /// The representation id (see [`TrackMetadata::id`]).
-    pub fn id(&self) -> String {
-        self.cmaf_metadata.id(&self.cmaf_header)
-    }
-
-    /// The MIME type of this track's CMAF segments (see
-    /// [`TrackMetadata::mime_type`]).
-    pub fn mime_type(&self) -> &'static str {
-        self.cmaf_metadata.mime_type()
-    }
-}
-
-impl TrackMetadata for VideoCmafMetadata {
-    type Model = VideoTrackModel;
-
-    fn model_path(model: &VideoTrackModel) -> &str {
-        &model.path
-    }
-
-    fn from_probe(_model: &VideoTrackModel, probed: CmafMetadata) -> Option<VideoCmafMetadata> {
-        match probed {
-            CmafMetadata::Video(m) => Some(m),
-            _ => None,
-        }
-    }
-
-    fn id(&self, header: &CmafHeader) -> String {
-        format!(
-            "video_{}_{}_{}",
-            self.codec.fourcc(),
-            self.height,
-            header.bandwidth
-        )
-    }
-
-    fn mime_type(&self) -> &'static str {
-        "video/mp4"
-    }
-}
-
-impl TrackMetadata for AudioCmafMetadata {
-    type Model = AudioTrackModel;
-
-    fn model_path(model: &AudioTrackModel) -> &str {
-        &model.path
-    }
-
-    fn from_probe(_model: &AudioTrackModel, probed: CmafMetadata) -> Option<AudioCmafMetadata> {
-        match probed {
-            CmafMetadata::Audio(m) => Some(m),
-            _ => None,
-        }
-    }
-
-    fn id(&self, header: &CmafHeader) -> String {
-        format!(
-            "audio_{}_{}_{}_{}",
-            self.codec.fourcc(),
-            self.language,
-            self.channels,
-            header.bandwidth
-        )
-    }
-
-    fn mime_type(&self) -> &'static str {
-        "audio/mp4"
-    }
-}
-
-impl TrackMetadata for TextCmafMetadata {
-    type Model = TextTrackModel;
-
-    fn model_path(model: &TextTrackModel) -> &str {
-        &model.path
-    }
-
-    fn from_probe(_model: &TextTrackModel, probed: CmafMetadata) -> Option<TextCmafMetadata> {
-        match probed {
-            CmafMetadata::Text(m) => Some(m),
-            _ => None,
-        }
-    }
-
-    fn id(&self, _header: &CmafHeader) -> String {
-        format!("text_{}_{}", self.codec.fourcc(), self.language)
-    }
-
-    fn mime_type(&self) -> &'static str {
-        "application/mp4"
-    }
-}
-
-impl TrackMetadata for CmafMetadata {
-    type Model = TrackModel;
-
-    fn model_path(model: &TrackModel) -> &str {
-        model.path()
-    }
-
-    fn from_probe(model: &TrackModel, probed: CmafMetadata) -> Option<CmafMetadata> {
-        // AnyTrack keeps whatever the file actually is, but only when its media
-        // type matches the one the descriptor declared.
         let agree = matches!(
-            (model, &probed),
+            (model, &cmaf_metadata),
             (TrackModel::Video(_), CmafMetadata::Video(_))
                 | (TrackModel::Audio(_), CmafMetadata::Audio(_))
                 | (TrackModel::Text(_), CmafMetadata::Text(_))
         );
-        agree.then_some(probed)
+        if !agree {
+            return Err(CoreError::Container(format!(
+                "track at {path}: descriptor type and CMAF type disagree"
+            )));
+        }
+        Ok(AnyTrack::from_probe(path, cmaf_header, cmaf_metadata))
+    }
+}
+
+impl sealed::HasHeader for AnyTrack {
+    fn header(&self) -> &CmafHeader {
+        match self {
+            AnyTrack::Video(t) => &t.cmaf_header,
+            AnyTrack::Audio(t) => &t.cmaf_header,
+            AnyTrack::Text(t) => &t.cmaf_header,
+        }
     }
 
-    fn id(&self, header: &CmafHeader) -> String {
+    fn path_str(&self) -> &str {
         match self {
-            CmafMetadata::Video(m) => m.id(header),
-            CmafMetadata::Audio(m) => m.id(header),
-            CmafMetadata::Text(m) => m.id(header),
+            AnyTrack::Video(t) => &t.path,
+            AnyTrack::Audio(t) => &t.path,
+            AnyTrack::Text(t) => &t.path,
+        }
+    }
+}
+
+impl Track for AnyTrack {
+    fn id(&self) -> String {
+        match self {
+            AnyTrack::Video(t) => t.id(),
+            AnyTrack::Audio(t) => t.id(),
+            AnyTrack::Text(t) => t.id(),
         }
     }
 
     fn mime_type(&self) -> &'static str {
         match self {
-            CmafMetadata::Video(m) => m.mime_type(),
-            CmafMetadata::Audio(m) => m.mime_type(),
-            CmafMetadata::Text(m) => m.mime_type(),
+            AnyTrack::Video(t) => t.mime_type(),
+            AnyTrack::Audio(t) => t.mime_type(),
+            AnyTrack::Text(t) => t.mime_type(),
         }
     }
 }
@@ -319,8 +472,9 @@ impl Asset {
     }
 
     /// Parse the CMAF file at `file_path` and add it as the video, audio, or
-    /// text track its `hdlr` box declares. `descriptor_path` resolves `file_path`
-    /// relative to the descriptor. Tracks carry no ordering guarantee.
+    /// text track its `hdlr` box declares. `descriptor_path` resolves
+    /// `file_path` relative to the descriptor. Tracks carry no ordering
+    /// guarantee.
     ///
     /// # Errors
     /// Propagates any [`CoreError`] from reading or parsing the track.
@@ -332,37 +486,16 @@ impl Asset {
     ) -> Result<(), CoreError> {
         let path = path::resolve(descriptor_path, file_path);
         let (cmaf_header, cmaf_metadata) = cmaf::probe(op, &path).await?;
-        self.push_track(Track {
-            path,
-            cmaf_header,
-            cmaf_metadata,
-        });
+        self.push_track(AnyTrack::from_probe(path, cmaf_header, cmaf_metadata));
         Ok(())
     }
 
     /// File a parsed track under the vec for its media type.
     fn push_track(&mut self, track: AnyTrack) {
-        let Track {
-            path,
-            cmaf_header,
-            cmaf_metadata,
-        } = track;
-        match cmaf_metadata {
-            CmafMetadata::Video(cmaf_metadata) => self.video_tracks.push(VideoTrack {
-                path,
-                cmaf_header,
-                cmaf_metadata,
-            }),
-            CmafMetadata::Audio(cmaf_metadata) => self.audio_tracks.push(AudioTrack {
-                path,
-                cmaf_header,
-                cmaf_metadata,
-            }),
-            CmafMetadata::Text(cmaf_metadata) => self.text_tracks.push(TextTrack {
-                path,
-                cmaf_header,
-                cmaf_metadata,
-            }),
+        match track {
+            AnyTrack::Video(t) => self.video_tracks.push(t),
+            AnyTrack::Audio(t) => self.audio_tracks.push(t),
+            AnyTrack::Text(t) => self.text_tracks.push(t),
         }
     }
 
@@ -374,7 +507,7 @@ impl Asset {
     /// # Errors
     /// Propagates any [`CoreError`] from reading or parsing a track, including
     /// the [`CoreError::Container`] mismatch when a file's media type
-    /// contradicts its descriptor entry (see [`Track::from_model`]).
+    /// contradicts its descriptor entry (see [`AnyTrack::from_model`]).
     pub async fn from_model(
         op: &Operator,
         model: AssetModel,
@@ -394,51 +527,6 @@ impl Asset {
         }
         asset.path = path;
         Ok(asset)
-    }
-}
-
-impl VideoTrack {
-    /// Project to the wire [`TrackModel`], relativizing the stored (resolved)
-    /// path back to a file path relative to the descriptor `descriptor_path`.
-    fn to_model(&self, descriptor_path: &str) -> TrackModel {
-        TrackModel::Video(VideoTrackModel {
-            id: self.id(),
-            path: path::relativize(descriptor_path, &self.path),
-            fourcc: self.cmaf_metadata.codec.fourcc().to_string(),
-            timescale: self.cmaf_header.timescale,
-            width: self.cmaf_metadata.width,
-            height: self.cmaf_metadata.height,
-        })
-    }
-}
-
-impl AudioTrack {
-    /// Project to the wire [`TrackModel`], relativizing the stored (resolved)
-    /// path back to a file path relative to the descriptor `descriptor_path`.
-    fn to_model(&self, descriptor_path: &str) -> TrackModel {
-        TrackModel::Audio(AudioTrackModel {
-            id: self.id(),
-            path: path::relativize(descriptor_path, &self.path),
-            fourcc: self.cmaf_metadata.codec.fourcc().to_string(),
-            timescale: self.cmaf_header.timescale,
-            sample_rate: self.cmaf_metadata.sample_rate,
-            channels: self.cmaf_metadata.channels,
-            language: Some(self.cmaf_metadata.language.clone()),
-        })
-    }
-}
-
-impl TextTrack {
-    /// Project to the wire [`TrackModel`], relativizing the stored (resolved)
-    /// path back to a file path relative to the descriptor `descriptor_path`.
-    fn to_model(&self, descriptor_path: &str) -> TrackModel {
-        TrackModel::Text(TextTrackModel {
-            id: self.id(),
-            path: path::relativize(descriptor_path, &self.path),
-            fourcc: self.cmaf_metadata.codec.fourcc().to_string(),
-            timescale: self.cmaf_header.timescale,
-            language: self.cmaf_metadata.language.clone(),
-        })
     }
 }
 
@@ -463,27 +551,39 @@ mod tests {
     use super::*;
     use crate::codec::{TextCodec, VideoCodec};
 
-    fn text_track(language: &str) -> TextTrack {
-        TextTrack {
-            path: String::new(),
-            cmaf_header: CmafHeader {
-                timescale: 1000,
+    fn header(timescale: u32, duration: u64, seg_durations: &[u64]) -> CmafHeader {
+        CmafHeader {
+            timescale,
+            duration,
+            bandwidth: 0,
+            earliest_presentation_time: 0,
+            init_segment: Segment {
+                offset: 0,
+                size: 0,
                 duration: 0,
-                bandwidth: 0,
-                earliest_presentation_time: 0,
-                init_segment: Segment {
+                duration_ms: 0,
+            },
+            segments: seg_durations
+                .iter()
+                .map(|&d| Segment {
                     offset: 0,
                     size: 0,
-                    duration: 0,
-                    duration_ms: 0,
-                },
-                segments: Vec::new(),
-            },
-            cmaf_metadata: TextCmafMetadata {
+                    duration: d,
+                    duration_ms: (d as u128 * 1000 / timescale as u128) as u64,
+                })
+                .collect(),
+        }
+    }
+
+    fn text_track(language: &str) -> TextTrack {
+        TextTrack::new(
+            String::new(),
+            header(1000, 0, &[]),
+            TextCmafMetadata {
                 codec: TextCodec::Wvtt,
                 language: language.to_string(),
             },
-        }
+        )
     }
 
     #[test]
@@ -492,30 +592,10 @@ mod tests {
     }
 
     fn video_track(timescale: u32, duration: u64, seg_durations: &[u64]) -> VideoTrack {
-        VideoTrack {
-            path: String::new(),
-            cmaf_header: CmafHeader {
-                timescale,
-                duration,
-                bandwidth: 0,
-                earliest_presentation_time: 0,
-                init_segment: Segment {
-                    offset: 0,
-                    size: 0,
-                    duration: 0,
-                    duration_ms: 0,
-                },
-                segments: seg_durations
-                    .iter()
-                    .map(|&d| Segment {
-                        offset: 0,
-                        size: 0,
-                        duration: d,
-                        duration_ms: (d as u128 * 1000 / timescale as u128) as u64,
-                    })
-                    .collect(),
-            },
-            cmaf_metadata: VideoCmafMetadata {
+        VideoTrack::new(
+            String::new(),
+            header(timescale, duration, seg_durations),
+            VideoCmafMetadata {
                 codec: VideoCodec::Avc {
                     profile: 0,
                     constraints: 0,
@@ -525,7 +605,7 @@ mod tests {
                 height: 0,
                 frame_rate: (0, 1),
             },
-        }
+        )
     }
 
     #[test]

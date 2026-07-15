@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use clap::{Parser, Subcommand};
-use dyndo_core::asset::Asset;
+use dyndo_core::asset::{Asset, Track};
 use dyndo_core::model::AssetModel;
 use opendal::services::Fs;
 use opendal::Operator;
@@ -146,14 +146,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     // First video track's segment timeline (error if no video).
                     let model = AssetModel::read(&op, &asset).await?;
                     let mut asset_obj = Asset::from_model(&op, model, &asset).await?;
-                    let segments = &asset_obj
+                    let segments = asset_obj
                         .video_tracks
                         .first()
                         .ok_or_else(|| {
                             "pack: asset has no video track to align subtitles to".to_string()
                         })?
-                        .cmaf_header
-                        .segments;
+                        .segments();
 
                     // Parse → expand → pack.
                     let raw = op.read(&input).await?;
@@ -170,7 +169,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                     // Text ids are header-free (text_{fourcc}_{language}), so the
                     // name is known before writing. Mirrors
-                    // dyndo_core::asset::TextCmafMetadata::id; packing is always wvtt.
+                    // dyndo_core::asset::TextTrack::id; packing is always wvtt.
                     let out = format!("text_wvtt_{language}.mp4");
                     let id = format!("text_wvtt_{language}");
                     let dest = dyndo_core::path::resolve(&asset, &out);

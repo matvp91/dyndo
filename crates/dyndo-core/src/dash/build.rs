@@ -5,7 +5,7 @@ use dash_mpd::{
     SegmentTimeline, MPD, S,
 };
 
-use crate::asset::{AudioTrack, Segment, TextTrack, Track, TrackMetadata, VideoTrack};
+use crate::asset::{AudioTrack, Segment, TextTrack, Track, VideoTrack};
 
 const INIT_TEMPLATE: &str = "$RepresentationID$/init.mp4";
 const MEDIA_TEMPLATE: &str = "$RepresentationID$/$Time$.m4s";
@@ -60,48 +60,45 @@ fn segment_template(timescale: u32, pto: u64, segments: &[Segment]) -> SegmentTe
 /// The fields every representation shares: id, bandwidth, codecs, and the
 /// segment template. Per-media-type builders add their own dimensions or audio
 /// configuration.
-fn base_representation<M: TrackMetadata>(track: &Track<M>, codecs: String) -> Representation {
-    let h = track.cmaf_header();
+fn base_representation(track: &impl Track, codecs: String) -> Representation {
     Representation {
         id: Some(track.id()),
-        bandwidth: Some(h.bandwidth as u64),
+        bandwidth: Some(track.bandwidth() as u64),
         codecs: Some(codecs),
         SegmentTemplate: Some(segment_template(
-            h.timescale,
-            h.earliest_presentation_time,
-            &h.segments,
+            track.timescale(),
+            track.earliest_presentation_time(),
+            track.segments(),
         )),
         ..Default::default()
     }
 }
 
 fn video_representation(track: &VideoTrack) -> Representation {
-    let m = &track.cmaf_metadata;
     Representation {
-        width: Some(m.width as u64),
-        height: Some(m.height as u64),
-        frameRate: (m.frame_rate.0 != 0).then(|| frame_rate_str(m.frame_rate)),
-        ..base_representation(track, m.codec.rfc6381())
+        width: Some(track.width() as u64),
+        height: Some(track.height() as u64),
+        frameRate: (track.frame_rate().0 != 0).then(|| frame_rate_str(track.frame_rate())),
+        ..base_representation(track, track.codec().rfc6381())
     }
 }
 
 fn audio_representation(track: &AudioTrack) -> Representation {
-    let m = &track.cmaf_metadata;
     Representation {
-        audioSamplingRate: Some(m.sample_rate.to_string()),
+        audioSamplingRate: Some(track.sample_rate().to_string()),
         AudioChannelConfiguration: vec![AudioChannelConfiguration {
             schemeIdUri: AUDIO_CHANNEL_CONFIG_SCHEME.to_string(),
-            value: Some(m.channels.to_string()),
+            value: Some(track.channels().to_string()),
             ..Default::default()
         }],
-        ..base_representation(track, m.codec.rfc6381())
+        ..base_representation(track, track.codec().rfc6381())
     }
 }
 
 /// A text `Representation` carries no dimensions or channel configuration; the
 /// shared base (id, bandwidth, `codecs`, segment template) is all it needs.
 fn text_representation(track: &TextTrack) -> Representation {
-    base_representation(track, track.cmaf_metadata.codec.rfc6381())
+    base_representation(track, track.codec().rfc6381())
 }
 
 /// The DASH `Role` that marks a text `AdaptationSet` as translated-dialogue
@@ -157,7 +154,7 @@ fn mpd(videos: &[VideoTrack], audios: &[AudioTrack], texts: &[TextTrack]) -> MPD
     let mut adaptations = Vec::new();
     let mut set_id = 0;
 
-    for (_fourcc, idxs) in group_by_key(videos, |t| t.cmaf_metadata.codec.fourcc()) {
+    for (_fourcc, idxs) in group_by_key(videos, |t| t.codec().fourcc()) {
         let representations = idxs
             .iter()
             .map(|&i| video_representation(&videos[i]))
@@ -172,12 +169,9 @@ fn mpd(videos: &[VideoTrack], audios: &[AudioTrack], texts: &[TextTrack]) -> MPD
         ));
         set_id += 1;
     }
-    for ((_fourcc, lang), idxs) in group_by_key(audios, |t| {
-        (
-            t.cmaf_metadata.codec.fourcc(),
-            t.cmaf_metadata.language.clone(),
-        )
-    }) {
+    for ((_fourcc, lang), idxs) in
+        group_by_key(audios, |t| (t.codec().fourcc(), t.language().to_string()))
+    {
         let representations = idxs
             .iter()
             .map(|&i| audio_representation(&audios[i]))
@@ -192,12 +186,9 @@ fn mpd(videos: &[VideoTrack], audios: &[AudioTrack], texts: &[TextTrack]) -> MPD
         ));
         set_id += 1;
     }
-    for ((_fourcc, lang), idxs) in group_by_key(texts, |t| {
-        (
-            t.cmaf_metadata.codec.fourcc(),
-            t.cmaf_metadata.language.clone(),
-        )
-    }) {
+    for ((_fourcc, lang), idxs) in
+        group_by_key(texts, |t| (t.codec().fourcc(), t.language().to_string()))
+    {
         let representations = idxs
             .iter()
             .map(|&i| text_representation(&texts[i]))
@@ -277,9 +268,9 @@ mod tests {
     }
 
     fn text_track(language: &str) -> TextTrack {
-        TextTrack {
-            path: String::new(),
-            cmaf_header: CmafHeader {
+        TextTrack::new(
+            String::new(),
+            CmafHeader {
                 timescale: 1000,
                 duration: 4000,
                 bandwidth: 256,
@@ -287,11 +278,11 @@ mod tests {
                 init_segment: seg(0),
                 segments: vec![seg(4000)],
             },
-            cmaf_metadata: TextCmafMetadata {
+            TextCmafMetadata {
                 codec: TextCodec::Wvtt,
                 language: language.to_string(),
             },
-        }
+        )
     }
 
     #[test]
