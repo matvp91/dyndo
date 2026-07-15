@@ -188,20 +188,8 @@ fn advertises_text_track_in_dash_and_hls() {
         ],
     );
 
-    // Pack the subtitle source into a wvtt CMAF track, then index all three.
-    assert!(dyndo(dir.path())
-        .args([
-            "pack",
-            "-i",
-            "text_sample.vtt",
-            "-o",
-            "subs.mp4",
-            "-l",
-            "eng"
-        ])
-        .status()
-        .unwrap()
-        .success());
+    // Index video + audio, then pack the subtitle against the asset (which adds
+    // the text track to asset.json itself).
     assert!(dyndo(dir.path())
         .args([
             "index",
@@ -209,17 +197,27 @@ fn advertises_text_track_in_dash_and_hls() {
             "video_avc_1080.mp4",
             "-i",
             "audio_aac_nl_2.mp4",
-            "-i",
-            "subs.mp4",
             "-o",
             "asset.json",
         ])
         .status()
         .unwrap()
         .success());
+    assert!(dyndo(dir.path())
+        .args([
+            "pack",
+            "-i",
+            "text_sample.vtt",
+            "-a",
+            "asset.json",
+            "-l",
+            "eng"
+        ])
+        .status()
+        .unwrap()
+        .success());
 
-    // HLS: the master advertises the subtitle group and a text media playlist
-    // is written alongside the video/audio ones.
+    // HLS: the master advertises the subtitle group and a text media playlist.
     assert!(dyndo(dir.path())
         .args(["hls", "-i", "asset.json", "-o", "hls"])
         .status()
@@ -256,44 +254,96 @@ fn advertises_text_track_in_dash_and_hls() {
 #[test]
 fn indexes_wvtt_text_track() {
     let dir = tempfile::tempdir().unwrap();
-    stage(dir.path(), &["text_sample.vtt"]);
+    stage(dir.path(), &["video_avc_1080.mp4", "text_sample.vtt"]);
 
     assert!(dyndo(dir.path())
-        .args(["pack", "-i", "text_sample.vtt", "-o", "subs.mp4"])
+        .args(["index", "-i", "video_avc_1080.mp4", "-o", "asset.json"])
+        .status()
+        .unwrap()
+        .success());
+    assert!(dyndo(dir.path())
+        .args([
+            "pack",
+            "-i",
+            "text_sample.vtt",
+            "-a",
+            "asset.json",
+            "-l",
+            "eng"
+        ])
         .status()
         .unwrap()
         .success());
 
+    // Index the packed wvtt file on its own into a fresh descriptor.
     assert!(dyndo(dir.path())
-        .args(["index", "-i", "subs.mp4", "-o", "asset.json"])
+        .args(["index", "-i", "text_wvtt_eng.mp4", "-o", "text.json"])
         .status()
         .unwrap()
         .success());
 
     let json: serde_json::Value =
-        serde_json::from_slice(&fs::read(dir.path().join("asset.json")).unwrap()).unwrap();
+        serde_json::from_slice(&fs::read(dir.path().join("text.json")).unwrap()).unwrap();
     let tracks = json["tracks"].as_array().unwrap();
     assert_eq!(tracks.len(), 1);
     assert_eq!(tracks[0]["type"], "text");
     assert_eq!(tracks[0]["fourcc"], "wvtt");
-    assert_eq!(tracks[0]["path"], "subs.mp4");
+    assert_eq!(tracks[0]["path"], "text_wvtt_eng.mp4");
 }
 
 #[test]
-fn pack_vtt_writes_wvtt_cmaf_track() {
+fn pack_aligns_subtitles_to_video_and_updates_asset() {
     let dir = tempfile::tempdir().unwrap();
-    stage(dir.path(), &["sample.vtt"]);
+    stage(dir.path(), &["video_avc_1080.mp4", "sample.vtt"]);
+
+    // Index the video so pack has a timeline to align to.
+    assert!(dyndo(dir.path())
+        .args(["index", "-i", "video_avc_1080.mp4", "-o", "asset.json"])
+        .status()
+        .unwrap()
+        .success());
+
+    // Pack the subtitle against the asset's first video track.
+    assert!(dyndo(dir.path())
+        .args(["pack", "-i", "sample.vtt", "-a", "asset.json", "-l", "eng"])
+        .status()
+        .unwrap()
+        .success());
+
+    // <id>.mp4 is written beside the descriptor and is a valid wvtt MP4.
+    let data = fs::read(dir.path().join("text_wvtt_eng.mp4")).unwrap();
+    assert!(data.len() > 8, "expected a non-trivial mp4");
+    assert_eq!(&data[4..8], b"ftyp");
+    assert!(data.windows(4).any(|w| w == b"wvtt"));
+
+    // asset.json now lists the text track.
+    let json: serde_json::Value =
+        serde_json::from_slice(&fs::read(dir.path().join("asset.json")).unwrap()).unwrap();
+    let tracks = json["tracks"].as_array().unwrap();
+    let text = tracks
+        .iter()
+        .find(|t| t["type"] == "text")
+        .expect("a text track in the updated asset");
+    assert_eq!(text["fourcc"], "wvtt");
+    assert_eq!(text["language"], "eng");
+    assert_eq!(text["path"], "text_wvtt_eng.mp4");
+}
+
+#[test]
+fn pack_without_a_video_track_fails() {
+    let dir = tempfile::tempdir().unwrap();
+    stage(dir.path(), &["audio_aac_nl_2.mp4", "sample.vtt"]);
+
+    // An audio-only asset has no video timeline to align to.
+    assert!(dyndo(dir.path())
+        .args(["index", "-i", "audio_aac_nl_2.mp4", "-o", "asset.json"])
+        .status()
+        .unwrap()
+        .success());
 
     let status = dyndo(dir.path())
-        .args(["pack", "-i", "sample.vtt", "-o", "subs.mp4"])
+        .args(["pack", "-i", "sample.vtt", "-a", "asset.json", "-l", "eng"])
         .status()
         .unwrap();
-    assert!(status.success());
-
-    let data = fs::read(dir.path().join("subs.mp4")).unwrap();
-    assert!(data.len() > 8, "expected a non-trivial mp4");
-    // First top-level box is `ftyp` (bytes 4..8 are the fourcc).
-    assert_eq!(&data[4..8], b"ftyp");
-    // The wvtt sample entry is present somewhere in the moov.
-    assert!(data.windows(4).any(|w| w == b"wvtt"));
+    assert!(!status.success(), "pack should fail without a video track");
 }
