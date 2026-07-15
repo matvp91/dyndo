@@ -4,12 +4,12 @@ use hls_m3u8::tags::{ExtXMap, ExtXMedia, VariantStream};
 use hls_m3u8::types::{Channels, MediaType, PlaylistType, StreamData, UFloat};
 use hls_m3u8::{MasterPlaylist, MediaPlaylist, MediaSegment};
 
-use crate::asset::{AudioTrack, Segment, TextTrack, Track, VideoTrack};
+use crate::asset::{AudioTrack, Segment, TextTrack, Track, TrackMetadata, VideoTrack};
 
 /// Build the VOD media playlist for `track`: an `EXT-X-MAP` init on the first
 /// segment, then one segment per (sub)segment named by its running presentation
 /// time. `EXT-X-TARGETDURATION` is the longest segment in whole seconds.
-pub(crate) fn build_media<T: Track>(track: &T) -> MediaPlaylist<'static> {
+pub(crate) fn build_media<M: TrackMetadata>(track: &Track<M>) -> MediaPlaylist<'static> {
     let repr = track.id();
     let header = track.cmaf_header();
     let timescale = header.timescale;

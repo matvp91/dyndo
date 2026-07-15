@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use clap::{Parser, Subcommand};
-use dyndo_core::asset::{Asset, Track};
+use dyndo_core::asset::Asset;
 use dyndo_core::model::AssetModel;
 use opendal::services::Fs;
 use opendal::Operator;

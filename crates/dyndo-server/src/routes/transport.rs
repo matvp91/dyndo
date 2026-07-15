@@ -6,7 +6,7 @@ use axum::{
     http::header::CONTENT_TYPE,
     response::{IntoResponse, Response},
 };
-use dyndo_core::asset::{AnyTrack, Asset, Track};
+use dyndo_core::asset::{AnyTrack, Asset};
 use dyndo_core::model::AssetModel;
 use opendal::Operator;
 

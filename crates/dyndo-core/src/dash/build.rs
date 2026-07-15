@@ -5,7 +5,7 @@ use dash_mpd::{
     SegmentTimeline, MPD, S,
 };
 
-use crate::asset::{AudioTrack, Segment, TextTrack, Track, VideoTrack};
+use crate::asset::{AudioTrack, Segment, TextTrack, Track, TrackMetadata, VideoTrack};
 
 const INIT_TEMPLATE: &str = "$RepresentationID$/init.mp4";
 const MEDIA_TEMPLATE: &str = "$RepresentationID$/$Time$.m4s";
@@ -60,7 +60,7 @@ fn segment_template(timescale: u32, pto: u64, segments: &[Segment]) -> SegmentTe
 /// The fields every representation shares: id, bandwidth, codecs, and the
 /// segment template. Per-media-type builders add their own dimensions or audio
 /// configuration.
-fn base_representation<T: Track>(track: &T, codecs: String) -> Representation {
+fn base_representation<M: TrackMetadata>(track: &Track<M>, codecs: String) -> Representation {
     let h = track.cmaf_header();
     Representation {
         id: Some(track.id()),
