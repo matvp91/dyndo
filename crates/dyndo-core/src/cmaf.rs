@@ -382,8 +382,9 @@ mod tests {
 
     #[tokio::test]
     async fn probe_reads_a_packed_wvtt_text_track() {
-        use crate::text::{Cue, Subtitle};
         use opendal::services::Fs;
+
+        use crate::text::{Cue, Subtitle};
 
         let subtitle = Subtitle {
             language: "eng".to_string(),

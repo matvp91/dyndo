@@ -75,7 +75,7 @@ fn encode_chunk(chunk: &SubtitleChunk) -> (Vec<TrunEntry>, Vec<u8>, u64) {
 
 /// Pack a `Subtitle` into a fragmented CMAF `wvtt` track.
 ///
-/// Chunks the cues (via [`subtitle_chunk::chunk`]) into `chunk_duration_ms`
+/// Chunks the cues (via [`subtitle::chunk`]) into `chunk_duration_ms`
 /// windows, then emits `ftyp` · `moov` · `sidx` · per-chunk `styp` · `moof` ·
 /// `mdat`. The `Subtitle`'s `language` is written into the track's `mdhd`.
 ///
