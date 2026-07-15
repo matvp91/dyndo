@@ -49,18 +49,17 @@ enum Command {
         #[arg(short, long = "output", default_value = "hls")]
         output: String,
     },
-    /// Pack a source subtitle/text file into a CMAF track. The input's
-    /// extension selects the packer (currently: `.vtt` → `wvtt`).
+    /// Pack a source subtitle file into a CMAF text track aligned to the first
+    /// video track of an asset, writing it as `<id>.mp4` beside the descriptor and
+    /// adding it to the asset. The input extension selects the packer
+    /// (currently: `.vtt` → `wvtt`).
     Pack {
         /// Input source file (currently `.vtt`).
         #[arg(short, long = "input")]
         input: String,
-        /// Output CMAF track path.
-        #[arg(short, long = "output", default_value = "text.mp4")]
-        output: String,
-        /// Segment duration, in milliseconds.
-        #[arg(short = 'd', long = "segment-duration", default_value_t = 4000)]
-        segment_duration_ms: u64,
+        /// Asset descriptor to align to and update.
+        #[arg(short, long = "asset", default_value = "asset.json")]
+        asset: String,
         /// ISO-639-2 language code stored in the track.
         #[arg(short, long = "language", default_value = "und")]
         language: String,
@@ -135,8 +134,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Command::Pack {
             input,
-            output,
-            segment_duration_ms,
+            asset,
             language,
         } => {
             let ext = Path::new(&input)
@@ -145,14 +143,42 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .map(str::to_ascii_lowercase);
             match ext.as_deref() {
                 Some("vtt") => {
+                    // First video track's segment timeline (error if no video).
+                    let model = AssetModel::read(&op, &asset).await?;
+                    let mut asset_obj = Asset::from_model(&op, model, &asset).await?;
+                    let segments = asset_obj
+                        .video_tracks
+                        .first()
+                        .ok_or_else(|| {
+                            "pack: asset has no video track to align subtitles to".to_string()
+                        })?
+                        .cmaf_header
+                        .segments
+                        .clone();
+
+                    // Parse → expand → pack.
                     let raw = op.read(&input).await?;
                     let text = String::from_utf8(raw.to_vec())
                         .map_err(|e| format!("input is not valid UTF-8: {e}"))?;
-                    let mut subtitle = dyndo_core::text::parse(&text)?;
+                    let mut subtitle = dyndo_core::text::vtt::parse(&text)?;
                     subtitle.language = language;
-                    let bytes = dyndo_core::text::wvtt::pack(&subtitle, segment_duration_ms)?;
-                    op.write(&output, bytes).await?;
-                    println!("wrote {output}");
+                    let subs = subtitle.expand(&segments);
+                    let bytes = dyndo_core::text::wvtt::pack(subs, segments)?;
+
+                    // Text ids are header-free (text_{fourcc}_{language}), so the
+                    // name is known before writing. Mirrors
+                    // dyndo_core::asset::TextCmafMetadata::id; packing is always wvtt.
+                    let out = format!("text_wvtt_{}.mp4", subtitle.language);
+                    let id = format!("text_wvtt_{}", subtitle.language);
+                    let dest = dyndo_core::utils::path::resolve(&asset, &out);
+                    op.write(&dest, bytes).await?;
+
+                    // Add to the model (add_track probes the file), replacing any
+                    // stale same-id entry, then rewrite the descriptor.
+                    asset_obj.text_tracks.retain(|t| t.id() != id);
+                    asset_obj.add_track(&op, &out, &asset).await?;
+                    AssetModel::from(&asset_obj).write(&op, &asset).await?;
+                    println!("wrote {out}; updated {asset}");
                 }
                 other => {
                     return Err(format!(
