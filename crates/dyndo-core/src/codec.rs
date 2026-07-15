@@ -12,6 +12,8 @@ pub enum MediaType {
     Video,
     /// An audio track.
     Audio,
+    /// A text (subtitle/caption) track.
+    Text,
 }
 
 impl std::fmt::Display for MediaType {
@@ -19,6 +21,7 @@ impl std::fmt::Display for MediaType {
         f.write_str(match self {
             MediaType::Video => "video",
             MediaType::Audio => "audio",
+            MediaType::Text => "text",
         })
     }
 }
@@ -170,9 +173,53 @@ impl AudioCodec {
     }
 }
 
+/// A supported timed-text codec.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TextCodec {
+    /// WebVTT in ISO-BMFF (`wvtt`), per ISO/IEC 14496-30.
+    Wvtt,
+}
+
+impl TextCodec {
+    /// The sample-entry fourcc (`"wvtt"`).
+    pub fn fourcc(&self) -> &'static str {
+        match self {
+            TextCodec::Wvtt => "wvtt",
+        }
+    }
+
+    /// RFC 6381 codecs parameter (`"wvtt"`).
+    pub fn rfc6381(&self) -> String {
+        match self {
+            TextCodec::Wvtt => "wvtt".to_string(),
+        }
+    }
+
+    /// Project the first supported timed-text sample entry into a [`TextCodec`].
+    #[expect(
+        dead_code,
+        reason = "consumed by cmaf::probe's text-handler arm in the next commit"
+    )]
+    pub(crate) fn from_codecs(codecs: &[Codec]) -> Result<TextCodec, CoreError> {
+        codecs
+            .iter()
+            .find_map(|c| match c {
+                Codec::Wvtt(_) => Some(TextCodec::Wvtt),
+                _ => None,
+            })
+            .ok_or(CoreError::UnsupportedCodec(MediaType::Text))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn wvtt_fourcc_and_rfc6381() {
+        assert_eq!(TextCodec::Wvtt.fourcc(), "wvtt");
+        assert_eq!(TextCodec::Wvtt.rfc6381(), "wvtt");
+    }
 
     #[test]
     fn avc_rfc6381_formats_profile_constraints_level_as_hex() {
