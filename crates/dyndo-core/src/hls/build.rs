@@ -284,6 +284,7 @@ mod tests {
                 offset: 0,
                 size: 0,
                 duration: 0,
+                duration_ms: 0,
             },
             segments: segs
                 .iter()
@@ -291,6 +292,7 @@ mod tests {
                     offset: 0,
                     size: 0,
                     duration: d,
+                    duration_ms: (d as u128 * 1000 / timescale as u128) as u64,
                 })
                 .collect(),
         }

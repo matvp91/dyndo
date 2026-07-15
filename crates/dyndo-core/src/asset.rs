@@ -25,7 +25,7 @@ pub struct Asset {
 }
 
 /// A (sub)segment's location: byte `offset`/`size` plus `duration` in the track
-/// timescale.
+/// timescale and `duration_ms` in milliseconds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Segment {
     /// Byte offset of this (sub)segment within the track file.
@@ -34,6 +34,10 @@ pub struct Segment {
     pub size: u64,
     /// Duration of this (sub)segment, in the track timescale.
     pub duration: u64,
+    /// Duration of this (sub)segment, in milliseconds. Computed once at probe
+    /// from `duration`/timescale using drift-free cumulative boundaries, so a
+    /// track's per-segment `duration_ms` values sum to its total ms duration.
+    pub duration_ms: u64,
 }
 
 /// A parsed CMAF track: its resolved storage path, the [`CmafHeader`] shared by
@@ -144,7 +148,7 @@ impl<M> Track<M> {
         self.cmaf_header()
             .segments
             .iter()
-            .map(|s| units_to_ms(s.duration, self.cmaf_header().timescale))
+            .map(|s| s.duration_ms)
             .max()
             .unwrap_or(0)
     }
@@ -440,7 +444,7 @@ impl From<&Asset> for AssetModel {
 }
 
 /// Convert a count of `timescale`-units to milliseconds, truncating toward zero.
-fn units_to_ms(units: u64, timescale: u32) -> u64 {
+pub(crate) fn units_to_ms(units: u64, timescale: u32) -> u64 {
     (units as u128 * 1000 / timescale as u128) as u64
 }
 
@@ -461,6 +465,7 @@ mod tests {
                     offset: 0,
                     size: 0,
                     duration: 0,
+                    duration_ms: 0,
                 },
                 segments: Vec::new(),
             },
@@ -488,6 +493,7 @@ mod tests {
                     offset: 0,
                     size: 0,
                     duration: 0,
+                    duration_ms: 0,
                 },
                 segments: seg_durations
                     .iter()
@@ -495,6 +501,7 @@ mod tests {
                         offset: 0,
                         size: 0,
                         duration: d,
+                        duration_ms: (d as u128 * 1000 / timescale as u128) as u64,
                     })
                     .collect(),
             },

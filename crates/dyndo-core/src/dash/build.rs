@@ -272,6 +272,7 @@ mod tests {
             offset: 0,
             size: 0,
             duration,
+            duration_ms: duration,
         }
     }
 

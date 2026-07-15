@@ -178,6 +178,7 @@ pub async fn probe(op: &Operator, path: &str) -> Result<(CmafHeader, Metadata), 
             offset: 0,
             size: moov_end,
             duration: 0,
+            duration_ms: 0,
         },
         segments,
     };
@@ -185,13 +186,21 @@ pub async fn probe(op: &Operator, path: &str) -> Result<(CmafHeader, Metadata), 
 }
 
 fn build_segments(sidx: &Sidx, sidx_end: u64) -> Vec<Segment> {
+    let ts = sidx.timescale;
     let mut seg_offset = sidx_end + sidx.first_offset;
+    let (mut acc_units, mut acc_ms) = (0u64, 0u64);
     let mut out = Vec::with_capacity(sidx.references.len());
     for r in &sidx.references {
+        let duration = r.subsegment_duration as u64;
+        acc_units += duration;
+        let boundary_ms = crate::asset::units_to_ms(acc_units, ts);
+        let duration_ms = boundary_ms - acc_ms;
+        acc_ms = boundary_ms;
         out.push(Segment {
             offset: seg_offset,
             size: r.reference_size as u64,
-            duration: r.subsegment_duration as u64,
+            duration,
+            duration_ms,
         });
         seg_offset += r.reference_size as u64;
     }
@@ -423,5 +432,34 @@ mod tests {
             result.is_err(),
             "expected an error on garbage input, got Ok"
         );
+    }
+
+    fn reference(subsegment_duration: u32) -> mp4_atom::SegmentReference {
+        mp4_atom::SegmentReference {
+            reference_type: false,
+            reference_size: 100,
+            subsegment_duration,
+            starts_with_sap: true,
+            sap_type: 1,
+            sap_delta_time: 0,
+        }
+    }
+
+    #[test]
+    fn build_segments_computes_drift_free_ms() {
+        // timescale 3: three 1-unit segments are 1/3 s each. Independent
+        // per-segment rounding gives 333+333+333 = 999 ms; cumulative-boundary
+        // differencing gives 333+333+334 = 1000, matching the track total.
+        let sidx = mp4_atom::Sidx {
+            reference_id: 1,
+            timescale: 3,
+            earliest_presentation_time: 0,
+            first_offset: 0,
+            references: vec![reference(1), reference(1), reference(1)],
+        };
+        let segs = build_segments(&sidx, 0);
+        let ms: Vec<u64> = segs.iter().map(|s| s.duration_ms).collect();
+        assert_eq!(ms, vec![333, 333, 334]);
+        assert_eq!(ms.iter().sum::<u64>(), 1000);
     }
 }
