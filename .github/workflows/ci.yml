@@ -22,8 +22,9 @@ jobs:
       # rustfmt.toml uses `group_imports`, a nightly-only option. Pinned to a
       # dated nightly so formatting is reproducible (keep in sync with the
       # Makefile `NIGHTLY` variable).
-      - uses: dtolnay/rust-toolchain@nightly-2026-07-09
+      - uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: nightly-2026-07-09
           components: rustfmt
       - run: make fmt-check
 
