@@ -7,7 +7,7 @@ use crate::cmaf::{
     self, AudioCmafMetadata, CmafHeader, Metadata, TextCmafMetadata, VideoCmafMetadata,
 };
 use crate::model::{AssetModel, AudioTrackModel, TextTrackModel, TrackModel, VideoTrackModel};
-use crate::utils::path;
+use crate::path;
 use crate::CoreError;
 
 /// A dyndo asset: its tracks and where the descriptor was sourced from.
