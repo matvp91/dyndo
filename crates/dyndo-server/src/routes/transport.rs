@@ -44,7 +44,7 @@ pub(super) async fn hls_media(
     repr: &str,
 ) -> Result<Response, ServerError> {
     let model = AssetModel::read(op, asset_path).await?;
-    let track = AnyTrack::from_model(op, find_source(&model, repr)?.clone(), asset_path).await?;
+    let track = AnyTrack::from_model(op, find_source(&model, repr)?, asset_path).await?;
     let playlist = dyndo_core::hls::generate_media(&track);
     Ok(([(CONTENT_TYPE, HLS_CONTENT_TYPE)], playlist).into_response())
 }

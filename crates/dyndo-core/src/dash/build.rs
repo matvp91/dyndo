@@ -137,15 +137,36 @@ fn mpd(videos: &[VideoTrack], audios: &[AudioTrack]) -> MPD {
     let mut set_id = 0;
 
     for (_fourcc, idxs) in group_by_key(videos, |t| t.cmaf_metadata.codec.fourcc()) {
-        let representations = idxs.iter().map(|&i| video_representation(&videos[i])).collect();
-        adaptations.push(adaptation_set(set_id, "video", "video/mp4", None, representations));
+        let representations = idxs
+            .iter()
+            .map(|&i| video_representation(&videos[i]))
+            .collect();
+        adaptations.push(adaptation_set(
+            set_id,
+            "video",
+            "video/mp4",
+            None,
+            representations,
+        ));
         set_id += 1;
     }
     for ((_fourcc, lang), idxs) in group_by_key(audios, |t| {
-        (t.cmaf_metadata.codec.fourcc(), t.cmaf_metadata.language.clone())
+        (
+            t.cmaf_metadata.codec.fourcc(),
+            t.cmaf_metadata.language.clone(),
+        )
     }) {
-        let representations = idxs.iter().map(|&i| audio_representation(&audios[i])).collect();
-        adaptations.push(adaptation_set(set_id, "audio", "audio/mp4", Some(lang), representations));
+        let representations = idxs
+            .iter()
+            .map(|&i| audio_representation(&audios[i]))
+            .collect();
+        adaptations.push(adaptation_set(
+            set_id,
+            "audio",
+            "audio/mp4",
+            Some(lang),
+            representations,
+        ));
         set_id += 1;
     }
 

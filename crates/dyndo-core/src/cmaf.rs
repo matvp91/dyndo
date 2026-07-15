@@ -364,9 +364,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn header_returns_error_on_garbage_input_instead_of_panicking() {
+    async fn probe_returns_error_on_garbage_input_instead_of_panicking() {
         use opendal::services::Fs;
-        use opendal::Operator;
 
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("bad.mp4"), [0xAA_u8; 64]).unwrap();

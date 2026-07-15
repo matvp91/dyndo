@@ -72,10 +72,12 @@ pub enum AnyTrack {
 /// Behaviour shared by every track kind: how it is built from its wire model,
 /// its representation id, and the media-agnostic reads and derivations over its
 /// header and (sub)segments.
-// `async fn` in a trait is fine here: `Track` is only ever used via static
-// dispatch (concrete types and `T: Track` generics), never `dyn Track`, and the
-// concrete futures are `Send` for callers like the server that need it.
-#[allow(async_fn_in_trait)]
+#[expect(
+    async_fn_in_trait,
+    reason = "Track is only ever used via static dispatch (concrete types and \
+              `T: Track` generics), never `dyn Track`, and the concrete futures \
+              are `Send` for callers like the server that need it."
+)]
 pub trait Track: Sized {
     /// The wire model ([`VideoTrackModel`] or [`AudioTrackModel`]) this track is
     /// built from.
@@ -85,15 +87,13 @@ pub trait Track: Sized {
     /// relative to the descriptor's own `descriptor_path`) through `op`.
     ///
     /// # Errors
-    /// Propagates any [`CoreError`] from reading or parsing the track.
-    ///
-    /// # Panics
-    /// Panics if the file's media type contradicts the model (e.g. a video model
-    /// whose CMAF parses as audio); dyndo always writes descriptors that match
-    /// their files, so a mismatch is a corrupt descriptor.
+    /// Propagates any [`CoreError`] from reading or parsing the track, or a
+    /// [`CoreError::Container`] if the file's media type contradicts the model
+    /// (e.g. a video model whose CMAF parses as audio), which means the
+    /// descriptor and its file have drifted apart.
     async fn from_model(
         op: &Operator,
-        model: Self::Model,
+        model: &Self::Model,
         descriptor_path: &str,
     ) -> Result<Self, CoreError>;
 
@@ -124,11 +124,7 @@ pub trait Track: Sized {
     ///
     /// # Errors
     /// Propagates any [`CoreError`] from the underlying read.
-    async fn segment_bytes(
-        &self,
-        op: &Operator,
-        time: u64,
-    ) -> Result<Option<Vec<u8>>, CoreError> {
+    async fn segment_bytes(&self, op: &Operator, time: u64) -> Result<Option<Vec<u8>>, CoreError> {
         let mut t = self.cmaf_header().earliest_presentation_time;
         for seg in &self.cmaf_header().segments {
             if t == time {
@@ -162,13 +158,15 @@ impl Track for VideoTrack {
 
     async fn from_model(
         op: &Operator,
-        model: VideoTrackModel,
+        model: &VideoTrackModel,
         descriptor_path: &str,
     ) -> Result<VideoTrack, CoreError> {
         let path = resolve(descriptor_path, &model.path);
         let (cmaf_header, cmaf_metadata) = cmaf::probe(op, &path).await?;
         let Metadata::Video(cmaf_metadata) = cmaf_metadata else {
-            panic!("descriptor declares a video track at {path} but its CMAF is audio");
+            return Err(CoreError::Container(format!(
+                "descriptor declares a video track at {path} but its CMAF is audio"
+            )));
         };
         Ok(VideoTrack {
             path,
@@ -204,13 +202,15 @@ impl Track for AudioTrack {
 
     async fn from_model(
         op: &Operator,
-        model: AudioTrackModel,
+        model: &AudioTrackModel,
         descriptor_path: &str,
     ) -> Result<AudioTrack, CoreError> {
         let path = resolve(descriptor_path, &model.path);
         let (cmaf_header, cmaf_metadata) = cmaf::probe(op, &path).await?;
         let Metadata::Audio(cmaf_metadata) = cmaf_metadata else {
-            panic!("descriptor declares an audio track at {path} but its CMAF is video");
+            return Err(CoreError::Container(format!(
+                "descriptor declares an audio track at {path} but its CMAF is video"
+            )));
         };
         Ok(AudioTrack {
             path,
@@ -247,7 +247,7 @@ impl Track for AnyTrack {
 
     async fn from_model(
         op: &Operator,
-        model: TrackModel,
+        model: &TrackModel,
         descriptor_path: &str,
     ) -> Result<AnyTrack, CoreError> {
         Ok(match model {
@@ -337,13 +337,17 @@ impl Asset {
     ) -> Result<Asset, CoreError> {
         let path = path.into();
         let mut asset = Asset::new();
-        for track in model.tracks {
+        for track in &model.tracks {
             match track {
                 TrackModel::Video(v) => {
-                    asset.video_tracks.push(VideoTrack::from_model(op, v, &path).await?);
+                    asset
+                        .video_tracks
+                        .push(VideoTrack::from_model(op, v, &path).await?);
                 }
                 TrackModel::Audio(a) => {
-                    asset.audio_tracks.push(AudioTrack::from_model(op, a, &path).await?);
+                    asset
+                        .audio_tracks
+                        .push(AudioTrack::from_model(op, a, &path).await?);
                 }
             }
         }

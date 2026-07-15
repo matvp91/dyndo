@@ -34,7 +34,10 @@ pub(crate) fn build_media<T: Track>(track: &T) -> MediaPlaylist<'static> {
 
     let mut b = MediaPlaylist::builder();
     b.media_sequence(0);
-    b.target_duration(Duration::from_secs(target_duration(&header.segments, timescale)));
+    b.target_duration(Duration::from_secs(target_duration(
+        &header.segments,
+        timescale,
+    )));
     b.playlist_type(PlaylistType::Vod);
     b.has_end_list(true);
     b.segments(segments);

@@ -19,7 +19,7 @@ pub(super) async fn init_segment(
     repr: &str,
 ) -> Result<Response, ServerError> {
     let model = AssetModel::read(op, asset_path).await?;
-    let track = AnyTrack::from_model(op, find_source(&model, repr)?.clone(), asset_path).await?;
+    let track = AnyTrack::from_model(op, find_source(&model, repr)?, asset_path).await?;
     let bytes = track.init_segment_bytes(op).await?;
     Ok(([(CONTENT_TYPE, track.mime_type())], bytes).into_response())
 }
@@ -37,7 +37,7 @@ pub(super) async fn media_segment(
         .parse()
         .map_err(|_| ServerError::BadRequest(format!("invalid segment time: {seg}")))?;
     let model = AssetModel::read(op, asset_path).await?;
-    let track = AnyTrack::from_model(op, find_source(&model, repr)?.clone(), asset_path).await?;
+    let track = AnyTrack::from_model(op, find_source(&model, repr)?, asset_path).await?;
     let bytes = track
         .segment_bytes(op, time)
         .await?
