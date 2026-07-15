@@ -282,6 +282,7 @@ mod tests {
                 codec: TextCodec::Wvtt,
                 language: Some(language.to_string()),
             },
+            None,
         )
     }
 

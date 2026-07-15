@@ -317,20 +317,24 @@ pub struct TextTrack {
     path: String,
     cmaf_header: CmafHeader,
     cmaf_metadata: TextCmafMetadata,
+    language_descriptor: Option<String>,
 }
 
 impl TextTrack {
     /// Assemble a text track from its resolved `path`, parsed `cmaf_header`,
-    /// and probed `cmaf_metadata`.
+    /// probed `cmaf_metadata`, and the descriptor's `language_descriptor`
+    /// (`None` when the track was probed without a descriptor entry).
     pub fn new(
         path: String,
         cmaf_header: CmafHeader,
         cmaf_metadata: TextCmafMetadata,
+        language_descriptor: Option<String>,
     ) -> TextTrack {
         TextTrack {
             path,
             cmaf_header,
             cmaf_metadata,
+            language_descriptor,
         }
     }
 
@@ -339,9 +343,13 @@ impl TextTrack {
         &self.cmaf_metadata.codec
     }
 
-    /// ISO-639-2 language code (`"und"` when the file leaves it unspecified).
+    /// The track's effective ISO-639-2 language: the descriptor's value when
+    /// present, else the language parsed from the file, else `"und"`.
     pub fn language(&self) -> &str {
-        self.cmaf_metadata.language.as_deref().unwrap_or("und")
+        self.language_descriptor
+            .as_deref()
+            .or(self.cmaf_metadata.language.as_deref())
+            .unwrap_or("und")
     }
 
     /// Project to the wire [`TrackModel`], relativizing the stored (resolved)
@@ -390,12 +398,21 @@ pub enum AnyTrack {
 }
 
 impl AnyTrack {
-    /// Wrap a probe result into the matching concrete track.
-    fn from_probe(path: String, cmaf_header: CmafHeader, cmaf_metadata: CmafMetadata) -> AnyTrack {
+    /// Wrap a probe result into the matching concrete track. `text_language`
+    /// is the descriptor's language for text tracks (`None` on the
+    /// descriptor-less [`Asset::add_track`] path); other media types ignore it.
+    fn from_probe(
+        path: String,
+        cmaf_header: CmafHeader,
+        cmaf_metadata: CmafMetadata,
+        text_language: Option<String>,
+    ) -> AnyTrack {
         match cmaf_metadata {
             CmafMetadata::Video(m) => AnyTrack::Video(VideoTrack::new(path, cmaf_header, m)),
             CmafMetadata::Audio(m) => AnyTrack::Audio(AudioTrack::new(path, cmaf_header, m)),
-            CmafMetadata::Text(m) => AnyTrack::Text(TextTrack::new(path, cmaf_header, m)),
+            CmafMetadata::Text(m) => {
+                AnyTrack::Text(TextTrack::new(path, cmaf_header, m, text_language))
+            }
         }
     }
 
@@ -425,7 +442,19 @@ impl AnyTrack {
                 "track at {path}: descriptor type and CMAF type disagree"
             )));
         }
-        Ok(AnyTrack::from_probe(path, cmaf_header, cmaf_metadata))
+        // The descriptor's text language overrides the probed one; a
+        // hand-edited empty string falls through to the probe instead of
+        // winning with "".
+        let text_language = match model {
+            TrackModel::Text(t) if !t.language.is_empty() => Some(t.language.clone()),
+            _ => None,
+        };
+        Ok(AnyTrack::from_probe(
+            path,
+            cmaf_header,
+            cmaf_metadata,
+            text_language,
+        ))
     }
 }
 
@@ -486,7 +515,7 @@ impl Asset {
     ) -> Result<(), CoreError> {
         let path = path::resolve(descriptor_path, file_path);
         let (cmaf_header, cmaf_metadata) = cmaf::probe(op, &path).await?;
-        self.push_track(AnyTrack::from_probe(path, cmaf_header, cmaf_metadata));
+        self.push_track(AnyTrack::from_probe(path, cmaf_header, cmaf_metadata, None));
         Ok(())
     }
 
@@ -575,7 +604,7 @@ mod tests {
         }
     }
 
-    fn text_track(language: Option<&str>) -> TextTrack {
+    fn text_track(language: Option<&str>, descriptor: Option<&str>) -> TextTrack {
         TextTrack::new(
             String::new(),
             header(1000, 0, &[]),
@@ -583,17 +612,43 @@ mod tests {
                 codec: TextCodec::Wvtt,
                 language: language.map(str::to_string),
             },
+            descriptor.map(str::to_string),
         )
     }
 
     #[test]
     fn text_track_id_is_text_fourcc_language() {
-        assert_eq!(text_track(Some("und")).id(), "text_wvtt_und");
+        assert_eq!(text_track(Some("und"), None).id(), "text_wvtt_und");
     }
 
     #[test]
     fn text_language_falls_back_to_und_when_file_has_none() {
-        assert_eq!(text_track(None).language(), "und");
+        assert_eq!(text_track(None, None).language(), "und");
+    }
+
+    #[test]
+    fn descriptor_language_wins_over_probed_language() {
+        assert_eq!(text_track(Some("eng"), Some("nld")).language(), "nld");
+    }
+
+    #[test]
+    fn probed_language_applies_without_a_descriptor() {
+        assert_eq!(text_track(Some("eng"), None).language(), "eng");
+    }
+
+    #[test]
+    fn text_track_id_uses_the_effective_language() {
+        assert_eq!(text_track(Some("eng"), Some("nld")).id(), "text_wvtt_nld");
+    }
+
+    #[test]
+    fn to_model_round_trips_the_effective_language() {
+        let track = text_track(Some("eng"), Some("nld"));
+        let TrackModel::Text(m) = track.to_model("asset.json") else {
+            panic!("expected a text model");
+        };
+        assert_eq!(m.language, "nld");
+        assert_eq!(m.id, "text_wvtt_nld");
     }
 
     fn video_track(timescale: u32, duration: u64, seg_durations: &[u64]) -> VideoTrack {
