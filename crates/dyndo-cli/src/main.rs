@@ -139,8 +139,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let raw = op.read(&input).await?;
                     let text = String::from_utf8(raw.to_vec())
                         .map_err(|e| format!("input is not valid UTF-8: {e}"))?;
-                    let vtt = dyndo_core::text::parse(&text)?;
-                    let bytes = dyndo_core::text::wvtt::pack(&vtt, segment_duration_ms, &language)?;
+                    let mut subtitle = dyndo_core::text::parse(&text)?;
+                    subtitle.language = language;
+                    let bytes = dyndo_core::text::wvtt::pack(&subtitle, segment_duration_ms)?;
                     op.write(&output, bytes).await?;
                     println!("wrote {output}");
                 }

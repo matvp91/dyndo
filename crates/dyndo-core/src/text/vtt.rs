@@ -1,25 +1,19 @@
-//! WebVTT document parsing: `&str` → [`WebVtt`].
+//! WebVTT document parsing: `&str` → [`Subtitle`].
 
 use super::error::CoreTextError;
-use super::vtt_cue::{parse_timestamp, VttCue};
+use super::subtitle::{Cue, Subtitle};
 
-/// A parsed WebVTT document.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WebVtt {
-    /// The document preamble — the `WEBVTT` signature line, any header text, and
-    /// `STYLE`/`REGION` blocks (everything before the first cue), verbatim.
-    /// Becomes the `vttC` configuration payload.
-    pub config: String,
-    /// The cues, sorted by `(start_ms, end_ms)`.
-    pub cues: Vec<VttCue>,
-}
-
-/// Parse a WebVTT document into a [`WebVtt`].
+/// Parse a WebVTT document into a [`Subtitle`].
+///
+/// Recognizes the `WEBVTT` signature, cue timing lines, and multi-line payloads;
+/// the optional cue id line and any cue settings are recognized but discarded,
+/// as are header/`STYLE`/`REGION`/`NOTE` blocks. `language` is initialized to
+/// `"und"`.
 ///
 /// # Errors
-/// Returns [`CoreTextError::Vtt`] if the `WEBVTT` signature is missing, a
-/// timestamp is malformed, or a cue's end precedes its start.
-pub fn parse(input: &str) -> Result<WebVtt, CoreTextError> {
+/// [`CoreTextError::Vtt`] if the signature is missing, a timestamp is malformed,
+/// or a cue's end precedes its start.
+pub fn parse(input: &str) -> Result<Subtitle, CoreTextError> {
     let input = input.strip_prefix('\u{feff}').unwrap_or(input);
     let normalized = input.replace("\r\n", "\n").replace('\r', "\n");
 
@@ -32,24 +26,19 @@ pub fn parse(input: &str) -> Result<WebVtt, CoreTextError> {
         return Err(CoreTextError::Vtt("missing WEBVTT signature".into()));
     }
 
-    let blocks = split_blocks(&normalized);
-    let first_cue = blocks.iter().position(|b| is_cue(b));
-
-    let (config, cue_blocks): (String, &[String]) = match first_cue {
-        Some(i) => (blocks[..i].join("\n\n"), &blocks[i..]),
-        None => (blocks.join("\n\n"), &[]),
-    };
-
     let mut cues = Vec::new();
-    for block in cue_blocks {
-        if is_cue(block) {
-            cues.push(parse_cue(block)?);
+    for block in split_blocks(&normalized) {
+        if is_cue(&block) {
+            cues.push(parse_cue(&block)?);
         }
-        // Non-cue blocks between cues (e.g. NOTE comments) are skipped.
+        // Non-cue blocks (header, STYLE/REGION, NOTE) are ignored.
     }
     cues.sort_by_key(|c| (c.start_ms, c.end_ms));
 
-    Ok(WebVtt { config, cues })
+    Ok(Subtitle {
+        language: "und".to_string(),
+        cues,
+    })
 }
 
 /// Split into blocks separated by one or more blank lines.
@@ -77,16 +66,16 @@ fn is_cue(block: &str) -> bool {
     !block.starts_with("NOTE") && block.lines().any(|l| l.contains("-->"))
 }
 
-fn parse_cue(block: &str) -> Result<VttCue, CoreTextError> {
+fn parse_cue(block: &str) -> Result<Cue, CoreTextError> {
     let mut lines = block.lines();
     let first = lines.next().unwrap_or("");
-    let (id, timing) = if first.contains("-->") {
-        (None, first)
+    let timing = if first.contains("-->") {
+        first
     } else {
-        let timing = lines
+        // First line is the cue id — recognized but discarded.
+        lines
             .next()
-            .ok_or_else(|| CoreTextError::Vtt("cue id without a timing line".into()))?;
-        (Some(first.to_string()), timing)
+            .ok_or_else(|| CoreTextError::Vtt("cue id without a timing line".into()))?
     };
 
     let (start_raw, rest) = timing
@@ -94,13 +83,9 @@ fn parse_cue(block: &str) -> Result<VttCue, CoreTextError> {
         .ok_or_else(|| CoreTextError::Vtt("timing line has no '-->'".into()))?;
     let start_ms = parse_timestamp(start_raw.trim())?;
 
-    let rest = rest.trim_start();
-    let mut it = rest.splitn(2, char::is_whitespace);
-    let end_ms = parse_timestamp(it.next().unwrap_or("").trim())?;
-    let settings = it
-        .next()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty());
+    // The end timestamp is the first token after `-->`; trailing settings dropped.
+    let end_token = rest.split_whitespace().next().unwrap_or("");
+    let end_ms = parse_timestamp(end_token)?;
 
     if end_ms < start_ms {
         return Err(CoreTextError::Vtt(format!(
@@ -108,14 +93,40 @@ fn parse_cue(block: &str) -> Result<VttCue, CoreTextError> {
         )));
     }
 
-    let payload = lines.collect::<Vec<_>>().join("\n");
-    Ok(VttCue {
-        id,
+    let text = lines.collect::<Vec<_>>().join("\n");
+    Ok(Cue {
         start_ms,
         end_ms,
-        settings,
-        payload,
+        text,
     })
+}
+
+/// Parse a WebVTT timestamp (`HH:MM:SS.mmm` or `MM:SS.mmm`) into milliseconds.
+fn parse_timestamp(s: &str) -> Result<u64, CoreTextError> {
+    let err = || CoreTextError::Vtt(format!("invalid timestamp {s:?}"));
+    let (hms, millis) = s.split_once('.').ok_or_else(err)?;
+    if millis.len() != 3 {
+        return Err(err());
+    }
+    let ms: u64 = millis.parse().map_err(|_| err())?;
+    let parts: Vec<&str> = hms.split(':').collect();
+    let (h, m, sec) = match parts.as_slice() {
+        [h, m, sec] => (
+            h.parse::<u64>().map_err(|_| err())?,
+            m.parse::<u64>().map_err(|_| err())?,
+            sec.parse::<u64>().map_err(|_| err())?,
+        ),
+        [m, sec] => (
+            0,
+            m.parse::<u64>().map_err(|_| err())?,
+            sec.parse::<u64>().map_err(|_| err())?,
+        ),
+        _ => return Err(err()),
+    };
+    if m >= 60 || sec >= 60 {
+        return Err(err());
+    }
+    Ok((h * 3600 + m * 60 + sec) * 1000 + ms)
 }
 
 #[cfg(test)]
@@ -129,65 +140,85 @@ mod tests {
 
     #[test]
     fn parses_a_single_cue() {
-        let v = parse("WEBVTT\n\n00:00.000 --> 00:02.000\nHello").unwrap();
-        assert_eq!(v.config, "WEBVTT");
-        assert_eq!(v.cues.len(), 1);
-        assert_eq!(v.cues[0].id, None);
-        assert_eq!(v.cues[0].start_ms, 0);
-        assert_eq!(v.cues[0].end_ms, 2000);
-        assert_eq!(v.cues[0].settings, None);
-        assert_eq!(v.cues[0].payload, "Hello");
+        let s = parse("WEBVTT\n\n00:00.000 --> 00:02.000\nHello").unwrap();
+        assert_eq!(s.language, "und");
+        assert_eq!(s.cues.len(), 1);
+        assert_eq!(s.cues[0].start_ms, 0);
+        assert_eq!(s.cues[0].end_ms, 2000);
+        assert_eq!(s.cues[0].text, "Hello");
     }
 
     #[test]
-    fn captures_cue_id_and_settings() {
-        let v = parse("WEBVTT\n\nintro\n00:00.000 --> 00:02.000 align:start line:90%\nHi").unwrap();
-        assert_eq!(v.cues[0].id.as_deref(), Some("intro"));
-        assert_eq!(v.cues[0].settings.as_deref(), Some("align:start line:90%"));
-        assert_eq!(v.cues[0].payload, "Hi");
+    fn ignores_cue_id_and_settings() {
+        let s = parse("WEBVTT\n\nintro\n00:00.000 --> 00:02.000 align:start line:90%\nHi").unwrap();
+        assert_eq!(s.cues.len(), 1);
+        assert_eq!(s.cues[0].start_ms, 0);
+        assert_eq!(s.cues[0].end_ms, 2000);
+        assert_eq!(s.cues[0].text, "Hi");
     }
 
     #[test]
-    fn joins_multiline_payload() {
-        let v = parse("WEBVTT\n\n00:00.000 --> 00:02.000\nline one\nline two").unwrap();
-        assert_eq!(v.cues[0].payload, "line one\nline two");
+    fn joins_multiline_text() {
+        let s = parse("WEBVTT\n\n00:00.000 --> 00:02.000\nline one\nline two").unwrap();
+        assert_eq!(s.cues[0].text, "line one\nline two");
     }
 
     #[test]
-    fn captures_style_block_into_config() {
-        let doc = "WEBVTT\n\nSTYLE\n::cue { color: yellow }\n\n00:00.000 --> 00:01.000\nx";
-        let v = parse(doc).unwrap();
-        assert_eq!(v.config, "WEBVTT\n\nSTYLE\n::cue { color: yellow }");
-        assert_eq!(v.cues.len(), 1);
-    }
-
-    #[test]
-    fn skips_note_blocks_between_cues() {
-        let doc = "WEBVTT\n\n00:00.000 --> 00:01.000\na\n\nNOTE this is a comment\n\n00:02.000 --> 00:03.000\nb";
-        let v = parse(doc).unwrap();
-        assert_eq!(v.cues.len(), 2);
-        assert_eq!(v.cues[0].payload, "a");
-        assert_eq!(v.cues[1].payload, "b");
+    fn ignores_style_and_note_blocks() {
+        let doc =
+            "WEBVTT\n\nSTYLE\n::cue { color: yellow }\n\nNOTE hello\n\n00:00.000 --> 00:01.000\nx";
+        let s = parse(doc).unwrap();
+        assert_eq!(s.cues.len(), 1);
+        assert_eq!(s.cues[0].text, "x");
     }
 
     #[test]
     fn normalizes_crlf_and_bom() {
         let doc = "\u{feff}WEBVTT\r\n\r\n00:00.000 --> 00:01.000\r\nx\r\n";
-        let v = parse(doc).unwrap();
-        assert_eq!(v.config, "WEBVTT");
-        assert_eq!(v.cues[0].payload, "x");
+        let s = parse(doc).unwrap();
+        assert_eq!(s.cues[0].text, "x");
     }
 
     #[test]
     fn sorts_out_of_order_cues() {
         let doc = "WEBVTT\n\n00:05.000 --> 00:06.000\nlate\n\n00:01.000 --> 00:02.000\nearly";
-        let v = parse(doc).unwrap();
-        assert_eq!(v.cues[0].payload, "early");
-        assert_eq!(v.cues[1].payload, "late");
+        let s = parse(doc).unwrap();
+        assert_eq!(s.cues[0].text, "early");
+        assert_eq!(s.cues[1].text, "late");
     }
 
     #[test]
     fn rejects_end_before_start() {
         assert!(parse("WEBVTT\n\n00:05.000 --> 00:02.000\nx").is_err());
+    }
+
+    #[test]
+    fn parses_full_hh_mm_ss_mmm() {
+        assert_eq!(parse_timestamp("01:02:03.456").unwrap(), 3_723_456);
+    }
+
+    #[test]
+    fn parses_mm_ss_mmm() {
+        assert_eq!(parse_timestamp("00:05.000").unwrap(), 5_000);
+    }
+
+    #[test]
+    fn rejects_missing_millis() {
+        assert!(parse_timestamp("00:05").is_err());
+    }
+
+    #[test]
+    fn rejects_non_three_digit_millis() {
+        assert!(parse_timestamp("00:05.5").is_err());
+    }
+
+    #[test]
+    fn rejects_out_of_range_seconds() {
+        assert!(parse_timestamp("00:75.000").is_err());
+    }
+
+    #[test]
+    fn rejects_garbage() {
+        assert!(parse_timestamp("abc").is_err());
     }
 }

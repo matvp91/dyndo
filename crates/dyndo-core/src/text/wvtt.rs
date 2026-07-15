@@ -1,7 +1,4 @@
-//! Pack a parsed WebVTT document into a fragmented CMAF `wvtt` track
-//! (ISO/IEC 14496-30).
-
-use std::collections::BTreeSet;
+//! Pack a [`Subtitle`] into a fragmented CMAF `wvtt` track (ISO/IEC 14496-30).
 
 use mp4_atom::{
     Codec, Dinf, Dref, Encode, Ftyp, Hdlr, Mdat, Mdhd, Mdia, Mfhd, Minf, Moof, Moov, Mvex, Mvhd,
@@ -10,96 +7,11 @@ use mp4_atom::{
 };
 
 use super::error::CoreTextError;
-use super::vtt::WebVtt;
-use super::vtt_cue::VttCue;
+use super::subtitle::Subtitle;
+use super::subtitle_chunk::{self, SubtitleChunk};
 
-/// Media timescale for packed tracks. WebVTT is millisecond-precise, so ms map
-/// 1:1 to media units.
+/// Media timescale for packed tracks (ms map 1:1 to media units).
 const TIMESCALE: u32 = 1000;
-
-/// One presentation interval of the tiled timeline: a contiguous span during
-/// which a fixed set of cues (possibly none) is active.
-struct Sample {
-    start_ms: u64,
-    duration_ms: u64,
-    cues: Vec<SampleCue>,
-}
-
-/// One cue as it appears in a single [`Sample`].
-struct SampleCue {
-    /// `Some` when the cue is split across more than one sample; fragments of
-    /// the same original cue share this id (emitted as a `vsid` box).
-    source_id: Option<i32>,
-    id: Option<String>,
-    settings: Option<String>,
-    payload: String,
-}
-
-/// Tile `cues` into a gapless, non-overlapping, presentation-ordered sample
-/// stream. `segment_duration_ms` seeds the boundary set with the segment grid so
-/// no sample ever straddles a segment boundary.
-fn build_samples(cues: &[VttCue], segment_duration_ms: u64) -> Vec<Sample> {
-    if cues.is_empty() {
-        return Vec::new();
-    }
-    let track_end = cues.iter().map(|c| c.end_ms).max().unwrap_or(0);
-
-    let mut bounds: BTreeSet<u64> = BTreeSet::new();
-    bounds.insert(0);
-    bounds.insert(track_end);
-    for c in cues {
-        bounds.insert(c.start_ms);
-        bounds.insert(c.end_ms);
-    }
-    if segment_duration_ms > 0 {
-        let mut t = segment_duration_ms;
-        while t < track_end {
-            bounds.insert(t);
-            t += segment_duration_ms;
-        }
-    }
-    let bounds: Vec<u64> = bounds.into_iter().collect();
-
-    // Fragment count per cue → assign a source id only to cues that span >1 sample.
-    let mut frag_count = vec![0usize; cues.len()];
-    for w in bounds.windows(2) {
-        for (i, c) in cues.iter().enumerate() {
-            if c.start_ms <= w[0] && c.end_ms >= w[1] {
-                frag_count[i] += 1;
-            }
-        }
-    }
-    let mut source_ids: Vec<Option<i32>> = vec![None; cues.len()];
-    let mut next_id: i32 = 1;
-    for (i, count) in frag_count.iter().enumerate() {
-        if *count > 1 {
-            source_ids[i] = Some(next_id);
-            next_id += 1;
-        }
-    }
-
-    let mut samples = Vec::with_capacity(bounds.len().saturating_sub(1));
-    for w in bounds.windows(2) {
-        let (t0, t1) = (w[0], w[1]);
-        let mut sample_cues = Vec::new();
-        for (i, c) in cues.iter().enumerate() {
-            if c.start_ms <= t0 && c.end_ms >= t1 {
-                sample_cues.push(SampleCue {
-                    source_id: source_ids[i],
-                    id: c.id.clone(),
-                    settings: c.settings.clone(),
-                    payload: c.payload.clone(),
-                });
-            }
-        }
-        samples.push(Sample {
-            start_ms: t0,
-            duration_ms: t1 - t0,
-            cues: sample_cues,
-        });
-    }
-    samples
-}
 
 /// Append a box `[u32 size][fourcc][body]` (size includes the 8-byte header).
 fn push_box(out: &mut Vec<u8>, fourcc: &[u8; 4], body: &[u8]) {
@@ -109,84 +21,75 @@ fn push_box(out: &mut Vec<u8>, fourcc: &[u8; 4], body: &[u8]) {
     out.extend_from_slice(body);
 }
 
-/// Encode a sample's media-data bytes: a `vtte` for an empty sample, otherwise
-/// one `vttc` per cue (`vsid` → `iden` → `sttg` → `payl`).
-fn encode_sample(sample: &Sample) -> Vec<u8> {
-    let mut out = Vec::new();
-    if sample.cues.is_empty() {
-        push_box(&mut out, b"vtte", &[]);
-        return out;
-    }
-    for cue in &sample.cues {
-        let mut body = Vec::new();
-        if let Some(sid) = cue.source_id {
-            push_box(&mut body, b"vsid", &sid.to_be_bytes());
-        }
-        if let Some(id) = &cue.id {
-            push_box(&mut body, b"iden", id.as_bytes());
-        }
-        if let Some(settings) = &cue.settings {
-            push_box(&mut body, b"sttg", settings.as_bytes());
-        }
-        push_box(&mut body, b"payl", cue.payload.as_bytes());
-        push_box(&mut out, b"vttc", &body);
-    }
-    out
-}
-
 fn wvtt_err(e: mp4_atom::Error) -> CoreTextError {
     CoreTextError::Wvtt(e.to_string())
 }
 
-/// Pack a parsed WebVTT document into a fragmented CMAF `wvtt` track.
+/// The first sample's start time (= chunk start), or 0 if the chunk is empty.
+fn chunk_start(chunk: &SubtitleChunk) -> u64 {
+    chunk.cues.first().map(|c| c.start_ms).unwrap_or(0)
+}
+
+/// Group a chunk's cues into samples (consecutive cues sharing `[start, end]`)
+/// and return the `trun` entries, the concatenated `mdat` bytes, and the chunk's
+/// total duration. A lone empty-`text` cue → one `vtte`; otherwise one
+/// `vttc{payl}` per cue.
+fn encode_chunk(chunk: &SubtitleChunk) -> (Vec<TrunEntry>, Vec<u8>, u64) {
+    let cues = &chunk.cues;
+    let mut entries = Vec::new();
+    let mut mdat = Vec::new();
+    let mut duration = 0u64;
+
+    let mut i = 0;
+    while i < cues.len() {
+        let (start, end) = (cues[i].start_ms, cues[i].end_ms);
+        let mut j = i;
+        while j < cues.len() && cues[j].start_ms == start && cues[j].end_ms == end {
+            j += 1;
+        }
+        let group = &cues[i..j];
+
+        let mut bytes = Vec::new();
+        if group.len() == 1 && group[0].text.is_empty() {
+            push_box(&mut bytes, b"vtte", &[]);
+        } else {
+            for c in group {
+                let mut body = Vec::new();
+                push_box(&mut body, b"payl", c.text.as_bytes());
+                push_box(&mut bytes, b"vttc", &body);
+            }
+        }
+
+        let sample_duration = end - start;
+        entries.push(TrunEntry {
+            duration: Some(sample_duration as u32),
+            size: Some(bytes.len() as u32),
+            flags: None,
+            cts: None,
+        });
+        duration += sample_duration;
+        mdat.extend_from_slice(&bytes);
+        i = j;
+    }
+    (entries, mdat, duration)
+}
+
+/// Pack a `Subtitle` into a fragmented CMAF `wvtt` track.
 ///
-/// Produces `ftyp` · `moov` · `sidx` · then, per `segment_duration_ms` segment,
-/// `styp` · `moof` · `mdat`, implementing the ISO 14496-30 sample model.
-/// `language` is an ISO-639-2 code stored in `mdhd`.
+/// Chunks the cues (via [`subtitle_chunk::chunk`]) into `chunk_duration_ms`
+/// windows, then emits `ftyp` · `moov` · `sidx` · per-chunk `styp` · `moof` ·
+/// `mdat`. The `Subtitle`'s `language` is written into the track's `mdhd`.
 ///
 /// # Errors
-/// Returns [`CoreTextError::Wvtt`] if any box fails to encode.
-pub fn pack(
-    vtt: &WebVtt,
-    segment_duration_ms: u64,
-    language: &str,
-) -> Result<Vec<u8>, CoreTextError> {
-    let samples = build_samples(&vtt.cues, segment_duration_ms);
-    let track_duration: u64 = samples.iter().map(|s| s.duration_ms).sum();
+/// [`CoreTextError::Wvtt`] if any box fails to encode.
+pub fn pack(subtitle: &Subtitle, chunk_duration_ms: u64) -> Result<Vec<u8>, CoreTextError> {
+    let chunks = subtitle_chunk::chunk(subtitle, chunk_duration_ms);
+    let track_duration = subtitle.cues.iter().map(|c| c.end_ms).max().unwrap_or(0);
 
-    // Group consecutive samples by segment index. No sample straddles a
-    // boundary, so a change in `start_ms / seg` starts a new segment.
-    let seg = segment_duration_ms.max(1);
-    let mut segments: Vec<Vec<&Sample>> = Vec::new();
-    let mut cur_idx: Option<u64> = None;
-    for s in &samples {
-        let idx = s.start_ms / seg;
-        if Some(idx) != cur_idx {
-            segments.push(Vec::new());
-            cur_idx = Some(idx);
-        }
-        segments.last_mut().expect("just pushed").push(s);
-    }
-
-    // Build each segment's styp+moof+mdat bytes; record size + duration for sidx.
     let mut media = Vec::new();
     let mut seg_refs: Vec<SegmentReference> = Vec::new();
-    for (i, group) in segments.iter().enumerate() {
-        let seg_start = group[0].start_ms;
-        let seg_duration: u64 = group.iter().map(|s| s.duration_ms).sum();
-
-        let mut mdat_data = Vec::new();
-        let mut entries = Vec::with_capacity(group.len());
-        for s in group {
-            let bytes = encode_sample(s);
-            entries.push(TrunEntry {
-                duration: Some(s.duration_ms as u32),
-                size: Some(bytes.len() as u32),
-                flags: None,
-                cts: None,
-            });
-            mdat_data.extend_from_slice(&bytes);
-        }
+    for (i, chunk) in chunks.iter().enumerate() {
+        let (entries, mdat_data, seg_duration) = encode_chunk(chunk);
 
         let mut moof = Moof {
             mfhd: Mfhd {
@@ -199,7 +102,7 @@ pub fn pack(
                     ..Default::default()
                 },
                 tfdt: Some(Tfdt {
-                    base_media_decode_time: seg_start,
+                    base_media_decode_time: chunk_start(chunk),
                 }),
                 trun: vec![Trun {
                     data_offset: Some(0),
@@ -208,7 +111,6 @@ pub fn pack(
                 ..Default::default()
             }],
         };
-        // data_offset points from the moof start to the mdat payload.
         let mut scratch = Vec::new();
         moof.encode(&mut scratch).map_err(wvtt_err)?;
         moof.traf[0].trun[0].data_offset = Some((scratch.len() + 8) as i32);
@@ -242,7 +144,7 @@ pub fn pack(
             data_reference_index: 1,
         },
         config: VttC {
-            config: vtt.config.clone(),
+            config: "WEBVTT\n".to_string(),
         },
         label: None,
         btrt: None,
@@ -274,7 +176,7 @@ pub fn pack(
                 mdhd: Mdhd {
                     timescale: TIMESCALE,
                     duration: track_duration,
-                    language: language.to_string(),
+                    language: subtitle.language.clone(),
                     ..Default::default()
                 },
                 hdlr: Hdlr {
@@ -330,135 +232,28 @@ pub fn pack(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn cue(start_ms: u64, end_ms: u64, payload: &str) -> VttCue {
-        VttCue {
-            id: None,
-            start_ms,
-            end_ms,
-            settings: None,
-            payload: payload.into(),
-        }
-    }
-
-    fn sample(cues: Vec<SampleCue>) -> Sample {
-        Sample {
-            start_ms: 0,
-            duration_ms: 100,
-            cues,
-        }
-    }
-
-    #[test]
-    fn empty_document_yields_no_samples() {
-        assert!(build_samples(&[], 4000).is_empty());
-    }
-
-    #[test]
-    fn sequential_cues_get_gap_fill_and_no_source_id() {
-        let cues = vec![cue(0, 1000, "A"), cue(2000, 3000, "B")];
-        let s = build_samples(&cues, 100_000);
-        // Intervals: [0,1000)=A, [1000,2000)=gap, [2000,3000)=B.
-        assert_eq!(s.len(), 3);
-        assert_eq!(s[0].cues.len(), 1);
-        assert_eq!(s[0].cues[0].payload, "A");
-        assert_eq!(s[0].cues[0].source_id, None);
-        assert!(s[1].cues.is_empty());
-        assert_eq!(s[1].duration_ms, 1000);
-        assert_eq!(s[2].cues[0].payload, "B");
-    }
-
-    #[test]
-    fn overlapping_cues_split_with_shared_source_id() {
-        let cues = vec![cue(0, 5000, "A"), cue(3000, 8000, "B")];
-        let s = build_samples(&cues, 100_000);
-        // Intervals: [0,3000)=A, [3000,5000)=A+B, [5000,8000)=B.
-        assert_eq!(s.len(), 3);
-        assert_eq!(s[0].cues.len(), 1);
-        assert_eq!(s[1].cues.len(), 2);
-        assert_eq!(s[2].cues.len(), 1);
-        let a0 = s[0].cues[0].source_id.unwrap();
-        let a1 = s[1]
-            .cues
-            .iter()
-            .find(|c| c.payload == "A")
-            .unwrap()
-            .source_id
-            .unwrap();
-        assert_eq!(a0, a1);
-        let b1 = s[1]
-            .cues
-            .iter()
-            .find(|c| c.payload == "B")
-            .unwrap()
-            .source_id
-            .unwrap();
-        let b2 = s[2].cues[0].source_id.unwrap();
-        assert_eq!(b1, b2);
-        assert_ne!(a0, b1);
-    }
-
-    #[test]
-    fn cue_crossing_segment_boundary_splits_with_shared_source_id() {
-        let cues = vec![cue(2000, 6000, "A")];
-        let s = build_samples(&cues, 4000);
-        // Intervals: [0,2000)=gap, [2000,4000)=A, [4000,6000)=A (split at seg 4000).
-        assert_eq!(s.len(), 3);
-        assert!(s[0].cues.is_empty());
-        assert_eq!(s[1].cues[0].payload, "A");
-        assert_eq!(s[2].cues[0].payload, "A");
-        assert_eq!(
-            s[1].cues[0].source_id.unwrap(),
-            s[2].cues[0].source_id.unwrap()
-        );
-    }
-
-    #[test]
-    fn empty_sample_encodes_as_vtte() {
-        let bytes = encode_sample(&sample(vec![]));
-        assert_eq!(bytes, vec![0, 0, 0, 8, b'v', b't', b't', b'e']);
-    }
-
-    #[test]
-    fn cue_sample_encodes_vttc_with_payl() {
-        let bytes = encode_sample(&sample(vec![SampleCue {
-            source_id: None,
-            id: None,
-            settings: None,
-            payload: "Hi".into(),
-        }]));
-        let mut expected = Vec::new();
-        expected.extend_from_slice(&18u32.to_be_bytes()); // vttc: 8 + payl(10)
-        expected.extend_from_slice(b"vttc");
-        expected.extend_from_slice(&10u32.to_be_bytes()); // payl: 8 + 2
-        expected.extend_from_slice(b"payl");
-        expected.extend_from_slice(b"Hi");
-        assert_eq!(bytes, expected);
-    }
-
-    #[test]
-    fn cue_sample_orders_boxes_and_embeds_source_id() {
-        let bytes = encode_sample(&sample(vec![SampleCue {
-            source_id: Some(7),
-            id: Some("c1".into()),
-            settings: Some("align:start".into()),
-            payload: "Hi".into(),
-        }]));
-        let pos = |fourcc: &[u8; 4]| bytes.windows(4).position(|w| w == fourcc).unwrap();
-        assert!(pos(b"vsid") < pos(b"iden"));
-        assert!(pos(b"iden") < pos(b"sttg"));
-        assert!(pos(b"sttg") < pos(b"payl"));
-        let vsid = pos(b"vsid");
-        assert_eq!(&bytes[vsid + 4..vsid + 8], &7i32.to_be_bytes());
-    }
+    use crate::text::subtitle::Cue;
 
     #[test]
     fn pack_round_trips_through_mp4_atom() {
         use mp4_atom::{Any, Codec, DecodeMaybe, FourCC};
 
-        let doc = "WEBVTT\n\n00:00.000 --> 00:02.000\nHello\n\n00:05.000 --> 00:07.000\nWorld";
-        let vtt = crate::text::parse(doc).unwrap();
-        let bytes = pack(&vtt, 4000, "und").unwrap();
+        let subtitle = Subtitle {
+            language: "eng".to_string(),
+            cues: vec![
+                Cue {
+                    start_ms: 0,
+                    end_ms: 2000,
+                    text: "Hello".into(),
+                },
+                Cue {
+                    start_ms: 5000,
+                    end_ms: 7000,
+                    text: "World".into(),
+                },
+            ],
+        };
+        let bytes = pack(&subtitle, 4000).unwrap();
 
         let mut buf = bytes.as_slice();
         let mut kinds = Vec::new();
@@ -479,14 +274,35 @@ mod tests {
         assert_eq!(kinds[3], FourCC::new(b"styp"));
 
         let moov = moov.unwrap();
+        assert_eq!(moov.trak[0].mdia.mdhd.language, "eng");
         assert!(matches!(
             moov.trak[0].mdia.minf.stbl.stsd.codecs[0],
             Codec::Wvtt(_)
         ));
 
-        // Cues 0-2s and 5-7s with 4s segments span 0-7s → segments [0,4) and [4,7).
+        // 0-2s and 5-7s over 4s windows → windows [0,4) and [4,7) → 2 chunks.
         let seg_count = kinds.iter().filter(|k| **k == FourCC::new(b"styp")).count();
         assert_eq!(seg_count, 2);
         assert_eq!(sidx.unwrap().references.len(), seg_count);
+    }
+
+    #[test]
+    fn cue_sample_is_vttc_payl_and_gap_is_vtte() {
+        let subtitle = Subtitle {
+            language: "und".to_string(),
+            cues: vec![Cue {
+                start_ms: 1000,
+                end_ms: 2000,
+                text: "Hi".into(),
+            }],
+        };
+        // One chunk; timeline [0,2000): gap [0,1000), cue [1000,2000).
+        let bytes = pack(&subtitle, 100_000).unwrap();
+        assert!(bytes.windows(4).any(|w| w == b"vtte"));
+        assert!(bytes.windows(4).any(|w| w == b"vttc"));
+        assert!(bytes.windows(4).any(|w| w == b"payl"));
+        assert!(!bytes.windows(4).any(|w| w == b"vsid"));
+        assert!(!bytes.windows(4).any(|w| w == b"iden"));
+        assert!(!bytes.windows(4).any(|w| w == b"sttg"));
     }
 }
