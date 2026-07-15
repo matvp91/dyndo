@@ -398,26 +398,10 @@ pub enum AnyTrack {
 }
 
 impl AnyTrack {
-    /// Wrap a probe result into the matching concrete track. `text_language`
-    /// is the descriptor's language for text tracks (`None` on the
-    /// descriptor-less [`Asset::add_track`] path); other media types ignore it.
-    fn from_probe(
-        path: String,
-        cmaf_header: CmafHeader,
-        cmaf_metadata: CmafMetadata,
-        text_language: Option<String>,
-    ) -> AnyTrack {
-        match cmaf_metadata {
-            CmafMetadata::Video(m) => AnyTrack::Video(VideoTrack::new(path, cmaf_header, m)),
-            CmafMetadata::Audio(m) => AnyTrack::Audio(AudioTrack::new(path, cmaf_header, m)),
-            CmafMetadata::Text(m) => {
-                AnyTrack::Text(TextTrack::new(path, cmaf_header, m, text_language))
-            }
-        }
-    }
-
     /// Build the track by parsing the CMAF header at `model`'s path (resolved
-    /// against the descriptor's own `descriptor_path`) through `op`.
+    /// against the descriptor's own `descriptor_path`) through `op`. For text
+    /// tracks, the descriptor's non-empty `language` becomes the override (a
+    /// hand-edited empty string falls through to the probed value).
     ///
     /// # Errors
     /// Propagates any [`CoreError`] from reading or parsing the track, or a
@@ -431,30 +415,26 @@ impl AnyTrack {
     ) -> Result<AnyTrack, CoreError> {
         let path = path::resolve(descriptor_path, model.path());
         let (cmaf_header, cmaf_metadata) = cmaf::probe(op, &path).await?;
-        let agree = matches!(
-            (model, &cmaf_metadata),
-            (TrackModel::Video(_), CmafMetadata::Video(_))
-                | (TrackModel::Audio(_), CmafMetadata::Audio(_))
-                | (TrackModel::Text(_), CmafMetadata::Text(_))
-        );
-        if !agree {
-            return Err(CoreError::Container(format!(
+        match (model, cmaf_metadata) {
+            (TrackModel::Video(_), CmafMetadata::Video(m)) => {
+                Ok(AnyTrack::Video(VideoTrack::new(path, cmaf_header, m)))
+            }
+            (TrackModel::Audio(_), CmafMetadata::Audio(m)) => {
+                Ok(AnyTrack::Audio(AudioTrack::new(path, cmaf_header, m)))
+            }
+            (TrackModel::Text(t), CmafMetadata::Text(m)) => {
+                let language = (!t.language.is_empty()).then(|| t.language.clone());
+                Ok(AnyTrack::Text(TextTrack::new(
+                    path,
+                    cmaf_header,
+                    m,
+                    language,
+                )))
+            }
+            _ => Err(CoreError::Container(format!(
                 "track at {path}: descriptor type and CMAF type disagree"
-            )));
+            ))),
         }
-        // The descriptor's text language overrides the probed one; a
-        // hand-edited empty string falls through to the probe instead of
-        // winning with "".
-        let text_language = match model {
-            TrackModel::Text(t) if !t.language.is_empty() => Some(t.language.clone()),
-            _ => None,
-        };
-        Ok(AnyTrack::from_probe(
-            path,
-            cmaf_header,
-            cmaf_metadata,
-            text_language,
-        ))
     }
 }
 
@@ -515,7 +495,18 @@ impl Asset {
     ) -> Result<(), CoreError> {
         let path = path::resolve(descriptor_path, file_path);
         let (cmaf_header, cmaf_metadata) = cmaf::probe(op, &path).await?;
-        self.push_track(AnyTrack::from_probe(path, cmaf_header, cmaf_metadata, None));
+        match cmaf_metadata {
+            CmafMetadata::Video(m) => self
+                .video_tracks
+                .push(VideoTrack::new(path, cmaf_header, m)),
+            CmafMetadata::Audio(m) => self
+                .audio_tracks
+                .push(AudioTrack::new(path, cmaf_header, m)),
+            CmafMetadata::Text(m) => {
+                self.text_tracks
+                    .push(TextTrack::new(path, cmaf_header, m, None))
+            }
+        }
         Ok(())
     }
 
