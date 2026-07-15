@@ -7,7 +7,7 @@ use relative_path::RelativePath;
 use crate::cmaf::{
     self, AudioCmafMetadata, CmafHeader, Metadata, TextCmafMetadata, VideoCmafMetadata,
 };
-use crate::model::{AssetModel, AudioTrackModel, TrackModel, VideoTrackModel};
+use crate::model::{AssetModel, AudioTrackModel, TextTrackModel, TrackModel, VideoTrackModel};
 use crate::CoreError;
 
 /// A dyndo asset: its tracks and where the descriptor was sourced from.
@@ -84,6 +84,8 @@ pub enum AnyTrack {
     Video(VideoTrack),
     /// An audio track.
     Audio(AudioTrack),
+    /// A text track.
+    Text(TextTrack),
 }
 
 /// Behaviour shared by every track kind: how it is built from its wire model,
@@ -182,7 +184,7 @@ impl Track for VideoTrack {
         let (cmaf_header, cmaf_metadata) = cmaf::probe(op, &path).await?;
         let Metadata::Video(cmaf_metadata) = cmaf_metadata else {
             return Err(CoreError::Container(format!(
-                "descriptor declares a video track at {path} but its CMAF is audio"
+                "track at {path}: descriptor type and CMAF type disagree"
             )));
         };
         Ok(VideoTrack {
@@ -226,7 +228,7 @@ impl Track for AudioTrack {
         let (cmaf_header, cmaf_metadata) = cmaf::probe(op, &path).await?;
         let Metadata::Audio(cmaf_metadata) = cmaf_metadata else {
             return Err(CoreError::Container(format!(
-                "descriptor declares an audio track at {path} but its CMAF is video"
+                "track at {path}: descriptor type and CMAF type disagree"
             )));
         };
         Ok(AudioTrack {
@@ -259,6 +261,49 @@ impl Track for AudioTrack {
     }
 }
 
+impl Track for TextTrack {
+    type Model = TextTrackModel;
+
+    async fn from_model(
+        op: &Operator,
+        model: &TextTrackModel,
+        descriptor_path: &str,
+    ) -> Result<TextTrack, CoreError> {
+        let path = resolve(descriptor_path, &model.path);
+        let (cmaf_header, cmaf_metadata) = cmaf::probe(op, &path).await?;
+        let Metadata::Text(cmaf_metadata) = cmaf_metadata else {
+            return Err(CoreError::Container(format!(
+                "track at {path}: descriptor type and CMAF type disagree"
+            )));
+        };
+        Ok(TextTrack {
+            path,
+            cmaf_header,
+            cmaf_metadata,
+        })
+    }
+
+    fn id(&self) -> String {
+        format!(
+            "text_{}_{}",
+            self.cmaf_metadata.codec.fourcc(),
+            self.cmaf_metadata.language
+        )
+    }
+
+    fn mime_type(&self) -> &'static str {
+        "application/mp4"
+    }
+
+    fn path(&self) -> &str {
+        &self.path
+    }
+
+    fn cmaf_header(&self) -> &CmafHeader {
+        &self.cmaf_header
+    }
+}
+
 impl Track for AnyTrack {
     type Model = TrackModel;
 
@@ -274,6 +319,9 @@ impl Track for AnyTrack {
             TrackModel::Audio(a) => {
                 AnyTrack::Audio(AudioTrack::from_model(op, a, descriptor_path).await?)
             }
+            TrackModel::Text(t) => {
+                AnyTrack::Text(TextTrack::from_model(op, t, descriptor_path).await?)
+            }
         })
     }
 
@@ -281,6 +329,7 @@ impl Track for AnyTrack {
         match self {
             AnyTrack::Video(t) => t.id(),
             AnyTrack::Audio(t) => t.id(),
+            AnyTrack::Text(t) => t.id(),
         }
     }
 
@@ -288,6 +337,7 @@ impl Track for AnyTrack {
         match self {
             AnyTrack::Video(t) => t.mime_type(),
             AnyTrack::Audio(t) => t.mime_type(),
+            AnyTrack::Text(t) => t.mime_type(),
         }
     }
 
@@ -295,6 +345,7 @@ impl Track for AnyTrack {
         match self {
             AnyTrack::Video(t) => t.path(),
             AnyTrack::Audio(t) => t.path(),
+            AnyTrack::Text(t) => t.path(),
         }
     }
 
@@ -302,6 +353,7 @@ impl Track for AnyTrack {
         match self {
             AnyTrack::Video(t) => t.cmaf_header(),
             AnyTrack::Audio(t) => t.cmaf_header(),
+            AnyTrack::Text(t) => t.cmaf_header(),
         }
     }
 }
@@ -312,9 +364,9 @@ impl Asset {
         Asset::default()
     }
 
-    /// Parse the CMAF file at `file_path` and add it as the video or audio track
-    /// its `hdlr` box declares. `descriptor_path` resolves `file_path` relative
-    /// to the descriptor. Tracks carry no ordering guarantee.
+    /// Parse the CMAF file at `file_path` and add it as the video, audio, or
+    /// text track its `hdlr` box declares. `descriptor_path` resolves `file_path`
+    /// relative to the descriptor. Tracks carry no ordering guarantee.
     ///
     /// # Errors
     /// Propagates any [`CoreError`] from reading or parsing the track.
@@ -371,6 +423,11 @@ impl Asset {
                         .audio_tracks
                         .push(AudioTrack::from_model(op, a, &path).await?);
                 }
+                TrackModel::Text(t) => {
+                    asset
+                        .text_tracks
+                        .push(TextTrack::from_model(op, t, &path).await?);
+                }
             }
         }
         asset.path = path;
@@ -409,12 +466,27 @@ impl AudioTrack {
     }
 }
 
+impl TextTrack {
+    /// Project to the wire [`TrackModel`], relativizing the stored (resolved)
+    /// path back to a file path relative to the descriptor `descriptor_path`.
+    fn to_model(&self, descriptor_path: &str) -> TrackModel {
+        TrackModel::Text(TextTrackModel {
+            id: self.id(),
+            path: relativize(descriptor_path, &self.path),
+            fourcc: self.cmaf_metadata.codec.fourcc().to_string(),
+            timescale: self.cmaf_header.timescale,
+            language: self.cmaf_metadata.language.clone(),
+        })
+    }
+}
+
 impl From<&Asset> for AssetModel {
     fn from(asset: &Asset) -> AssetModel {
         let video = asset.video_tracks.iter().map(|t| t.to_model(&asset.path));
         let audio = asset.audio_tracks.iter().map(|t| t.to_model(&asset.path));
+        let text = asset.text_tracks.iter().map(|t| t.to_model(&asset.path));
         AssetModel {
-            tracks: video.chain(audio).collect(),
+            tracks: video.chain(audio).chain(text).collect(),
         }
     }
 }
@@ -448,7 +520,34 @@ fn units_to_ms(units: u64, timescale: u32) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::codec::VideoCodec;
+    use crate::codec::{TextCodec, VideoCodec};
+
+    fn text_track(language: &str) -> TextTrack {
+        TextTrack {
+            path: String::new(),
+            cmaf_header: CmafHeader {
+                timescale: 1000,
+                duration: 0,
+                bandwidth: 0,
+                earliest_presentation_time: 0,
+                init_segment: Segment {
+                    offset: 0,
+                    size: 0,
+                    duration: 0,
+                },
+                segments: Vec::new(),
+            },
+            cmaf_metadata: TextCmafMetadata {
+                codec: TextCodec::Wvtt,
+                language: language.to_string(),
+            },
+        }
+    }
+
+    #[test]
+    fn text_track_id_is_text_fourcc_language() {
+        assert_eq!(text_track("und").id(), "text_wvtt_und");
+    }
 
     fn video_track(timescale: u32, duration: u64, seg_durations: &[u64]) -> VideoTrack {
         VideoTrack {

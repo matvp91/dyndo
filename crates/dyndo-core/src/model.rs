@@ -45,6 +45,8 @@ pub enum TrackModel {
     Video(VideoTrackModel),
     /// An audio track, with sample rate, channels, and language.
     Audio(AudioTrackModel),
+    /// A text track, with language.
+    Text(TextTrackModel),
 }
 
 impl TrackModel {
@@ -53,6 +55,7 @@ impl TrackModel {
         match self {
             TrackModel::Video(v) => &v.id,
             TrackModel::Audio(a) => &a.id,
+            TrackModel::Text(t) => &t.id,
         }
     }
 
@@ -61,6 +64,7 @@ impl TrackModel {
         match self {
             TrackModel::Video(v) => &v.path,
             TrackModel::Audio(a) => &a.path,
+            TrackModel::Text(t) => &t.path,
         }
     }
 }
@@ -100,4 +104,19 @@ pub struct AudioTrackModel {
     /// ISO-639-2 language code; omitted from the JSON when `None`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub language: Option<String>,
+}
+
+/// The text-track fields of the wire model (`asset.json`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TextTrackModel {
+    /// Representation id (see [`TrackModel::id`]).
+    pub id: String,
+    /// Source path of the track file, relative to the descriptor.
+    pub path: String,
+    /// Sample-entry fourcc (e.g. `"wvtt"`).
+    pub fourcc: String,
+    /// Units per second for durations in this track.
+    pub timescale: u32,
+    /// ISO-639-2 language code (`"und"` when unspecified).
+    pub language: String,
 }
