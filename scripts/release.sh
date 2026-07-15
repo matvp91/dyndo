@@ -94,8 +94,11 @@ main() {
 
   git -C "$ROOT" add "${MANIFESTS[@]}" "$ROOT/Cargo.lock"
   git -C "$ROOT" commit -m "release: $next"
-  git -C "$ROOT" tag "$tag"
-  git -C "$ROOT" push --follow-tags origin main
+  # Annotated tag (carries metadata; `git push --follow-tags` and `git describe`
+  # ignore lightweight tags). Push the branch and tag explicitly so the tag
+  # always reaches the remote — that push is what triggers the release workflow.
+  git -C "$ROOT" tag -a "$tag" -m "release $next"
+  git -C "$ROOT" push origin main "$tag"
 
   echo "Pushed $tag. Track the release workflow under the repo's Actions tab."
 }
