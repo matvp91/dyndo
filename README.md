@@ -11,7 +11,7 @@ sources once into a tiny JSON descriptor; the server then generates DASH and HLS
 manifests and serves CMAF segments _on the fly_, straight from the original
 files via HTTP byte-range reads.
 
-> [!NOTE] `dyndo` is in early development (`0.2.0`). Both DASH and HLS are
+> [!NOTE] `dyndo` is in early development (`0.3.0`). Both DASH and HLS are
 > implemented, served from the same CMAF sources.
 
 ## 📖 Documentation
