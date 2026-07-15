@@ -20,15 +20,6 @@ fn push_box(out: &mut Vec<u8>, fourcc: &[u8; 4], body: &[u8]) {
     out.extend_from_slice(body);
 }
 
-fn wvtt_err(e: mp4_atom::Error) -> CoreTextError {
-    CoreTextError::Wvtt(e.to_string())
-}
-
-/// The first sample's start time (= chunk start), or 0 if the chunk is empty.
-fn chunk_start(chunk: &SubtitleChunk) -> u64 {
-    chunk.cues.first().map(|c| c.start_ms).unwrap_or(0)
-}
-
 /// Group a chunk's cues into samples (consecutive cues sharing `[start, end]`)
 /// and return the `trun` entries, the concatenated `mdat` bytes, and the chunk's
 /// total duration. A lone empty-`text` cue → one `vtte`; otherwise one
@@ -101,7 +92,7 @@ pub fn pack(subtitle: &Subtitle, chunk_duration_ms: u64) -> Result<Vec<u8>, Core
                     ..Default::default()
                 },
                 tfdt: Some(Tfdt {
-                    base_media_decode_time: chunk_start(chunk),
+                    base_media_decode_time: chunk.cues.first().map(|c| c.start_ms).unwrap_or(0),
                 }),
                 trun: vec![Trun {
                     data_offset: Some(0),
@@ -111,7 +102,8 @@ pub fn pack(subtitle: &Subtitle, chunk_duration_ms: u64) -> Result<Vec<u8>, Core
             }],
         };
         let mut scratch = Vec::new();
-        moof.encode(&mut scratch).map_err(wvtt_err)?;
+        moof.encode(&mut scratch)
+            .map_err(|e| CoreTextError::Wvtt(e.to_string()))?;
         moof.traf[0].trun[0].data_offset = Some((scratch.len() + 8) as i32);
 
         let mut seg_bytes = Vec::new();
@@ -121,11 +113,12 @@ pub fn pack(subtitle: &Subtitle, chunk_duration_ms: u64) -> Result<Vec<u8>, Core
             compatible_brands: vec![b"msdh".into(), b"msix".into(), b"cmfs".into()],
         }
         .encode(&mut seg_bytes)
-        .map_err(wvtt_err)?;
-        moof.encode(&mut seg_bytes).map_err(wvtt_err)?;
+        .map_err(|e| CoreTextError::Wvtt(e.to_string()))?;
+        moof.encode(&mut seg_bytes)
+            .map_err(|e| CoreTextError::Wvtt(e.to_string()))?;
         Mdat { data: mdat_data }
             .encode(&mut seg_bytes)
-            .map_err(wvtt_err)?;
+            .map_err(|e| CoreTextError::Wvtt(e.to_string()))?;
 
         seg_refs.push(SegmentReference {
             reference_type: false,
@@ -221,9 +214,11 @@ pub fn pack(subtitle: &Subtitle, chunk_duration_ms: u64) -> Result<Vec<u8>, Core
         compatible_brands: vec![b"iso6".into(), b"cmfc".into(), b"cmft".into()],
     }
     .encode(&mut out)
-    .map_err(wvtt_err)?;
-    moov.encode(&mut out).map_err(wvtt_err)?;
-    sidx.encode(&mut out).map_err(wvtt_err)?;
+    .map_err(|e| CoreTextError::Wvtt(e.to_string()))?;
+    moov.encode(&mut out)
+        .map_err(|e| CoreTextError::Wvtt(e.to_string()))?;
+    sidx.encode(&mut out)
+        .map_err(|e| CoreTextError::Wvtt(e.to_string()))?;
     out.extend_from_slice(&media);
     Ok(out)
 }
