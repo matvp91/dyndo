@@ -4,6 +4,7 @@
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
+use bytes::Bytes;
 use mp4_atom::{
     AsyncReadAtom, AsyncReadFrom, Atom, FourCC, Header as BoxHeader, Mdhd, Moof, Moov, Sidx,
 };
@@ -15,15 +16,16 @@ use crate::asset::Segment;
 use crate::codec::{AudioCodec, TextCodec, VideoCodec};
 use crate::CoreError;
 
-/// Read `len` bytes of `path` starting at `offset`, through `op`.
+/// Read `len` bytes of `path` starting at `offset`, through `op`. Returns
+/// [`Bytes`] so a contiguous read is handed to the caller without copying.
 pub(crate) async fn read_range(
     op: &Operator,
     path: &str,
     offset: u64,
     len: u64,
-) -> Result<Vec<u8>, CoreError> {
+) -> Result<Bytes, CoreError> {
     let buf = op.read_with(path).range(offset..offset + len).await?;
-    Ok(buf.to_vec())
+    Ok(buf.to_bytes())
 }
 
 /// An [`AsyncRead`] that tallies every byte read through it, so the streamed
@@ -409,8 +411,8 @@ mod tests {
             duration: 0,
             duration_ms: 4000,
         }];
-        let subs = subtitle.expand(&segments);
-        let bytes = crate::text::wvtt::pack(subs, segments).unwrap();
+        let windows = subtitle.expand(&segments);
+        let bytes = crate::text::wvtt::pack(&subtitle.language, &windows, &segments).unwrap();
 
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("subs.mp4"), &bytes).unwrap();

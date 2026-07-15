@@ -1,4 +1,6 @@
-//! Pack a [`Subtitle`] into a fragmented CMAF `wvtt` track (ISO/IEC 14496-30).
+//! Pack per-segment cue windows (see
+//! [`Subtitle::expand`](super::subtitle::Subtitle::expand)) into a fragmented
+//! CMAF `wvtt` track (ISO/IEC 14496-30).
 
 use mp4_atom::{
     Codec, Dinf, Dref, Encode, Ftyp, Hdlr, Mdat, Mdhd, Mdia, Mfhd, Minf, Moof, Moov, Mvex, Mvhd,
@@ -7,23 +9,25 @@ use mp4_atom::{
 };
 
 use super::error::CoreTextError;
-use super::subtitle::{Cue, Subtitle};
+use super::subtitle::Cue;
 use crate::asset::Segment;
 
 /// Media timescale for packed tracks (ms map 1:1 to media units).
 const TIMESCALE: u32 = 1000;
 
-/// Append a box `[u32 size][fourcc][body]` (size includes the 8-byte header).
-fn push_box(out: &mut Vec<u8>, fourcc: &[u8; 4], body: &[u8]) {
-    let size = (8 + body.len()) as u32;
+/// Append a box header `[u32 size][fourcc]` for a body of `body_len` bytes
+/// (size includes the 8-byte header); the caller writes the body itself.
+fn push_header(out: &mut Vec<u8>, fourcc: [u8; 4], body_len: usize) {
+    let size = (8 + body_len) as u32;
     out.extend_from_slice(&size.to_be_bytes());
-    out.extend_from_slice(fourcc);
-    out.extend_from_slice(body);
+    out.extend_from_slice(&fourcc);
 }
 
 /// Group `cues` into samples (consecutive cues sharing `[start, end]`) and
 /// return the `trun` entries plus the concatenated `mdat` bytes. A lone
-/// empty-`text` cue → one `vtte`; otherwise one `vttc{payl}` per cue.
+/// empty-`text` cue → one `vtte`; otherwise one `vttc{payl}` per cue. Box
+/// sizes are known from the text lengths, so samples are written straight
+/// into `mdat` (entry sizes are length deltas) with no per-sample scratch.
 fn encode_samples(cues: &[Cue]) -> (Vec<TrunEntry>, Vec<u8>) {
     let mut entries = Vec::new();
     let mut mdat = Vec::new();
@@ -37,51 +41,66 @@ fn encode_samples(cues: &[Cue]) -> (Vec<TrunEntry>, Vec<u8>) {
         }
         let group = &cues[i..j];
 
-        let mut bytes = Vec::new();
+        let sample_start = mdat.len();
         if group.len() == 1 && group[0].text.is_empty() {
-            push_box(&mut bytes, b"vtte", &[]);
+            push_header(&mut mdat, *b"vtte", 0);
         } else {
             for c in group {
-                let mut body = Vec::new();
-                push_box(&mut body, b"payl", c.text.as_bytes());
-                push_box(&mut bytes, b"vttc", &body);
+                // A vttc wrapping a single payl box that holds the cue text.
+                push_header(&mut mdat, *b"vttc", 8 + c.text.len());
+                push_header(&mut mdat, *b"payl", c.text.len());
+                mdat.extend_from_slice(c.text.as_bytes());
             }
         }
 
         entries.push(TrunEntry {
             duration: Some((end - start) as u32),
-            size: Some(bytes.len() as u32),
+            size: Some((mdat.len() - sample_start) as u32),
             flags: None,
             cts: None,
         });
-        mdat.extend_from_slice(&bytes);
         i = j;
     }
     (entries, mdat)
 }
 
-/// Pack per-segment `subtitles` into a fragmented CMAF `wvtt` track — one CMAF
-/// segment per `(subtitle, segment)` pair (equal length by construction; see
-/// [`Subtitle::expand`]). Per-sample durations come from cue extents;
-/// per-segment decode time and `sidx` duration come from `segment.duration_ms`.
-/// The `mdhd` language is taken from the first subtitle (`"und"` if empty).
+/// Pack per-segment cue `windows` into a fragmented CMAF `wvtt` track — one
+/// CMAF segment per `(window, segment)` pair (equal length by construction;
+/// see [`Subtitle::expand`](super::subtitle::Subtitle::expand)). Per-sample
+/// durations come from cue extents; per-segment decode time and `sidx`
+/// duration come from `segment.duration_ms`. `language` is written into the
+/// track's `mdhd`.
 ///
 /// Emits `ftyp` · `moov` · `sidx` · then per segment `styp` · `moof` · `mdat`.
 ///
 /// # Errors
 /// [`CoreTextError::Wvtt`] if any box fails to encode.
-pub fn pack(subtitles: Vec<Subtitle>, segments: Vec<Segment>) -> Result<Vec<u8>, CoreTextError> {
+pub fn pack(
+    language: &str,
+    windows: &[Vec<Cue>],
+    segments: &[Segment],
+) -> Result<Vec<u8>, CoreTextError> {
     let track_duration: u64 = segments.iter().map(|s| s.duration_ms).sum();
-    let language = subtitles
-        .first()
-        .map(|s| s.language.clone())
-        .unwrap_or_else(|| "und".to_string());
+
+    // The styp is identical for every segment: encode it once and splice the
+    // bytes in per segment.
+    let mut styp_bytes = Vec::new();
+    Styp {
+        major_brand: b"msdh".into(),
+        minor_version: 0,
+        compatible_brands: vec![b"msdh".into(), b"msix".into(), b"cmfs".into()],
+    }
+    .encode(&mut styp_bytes)
+    .map_err(|e| CoreTextError::Wvtt(e.to_string()))?;
 
     let mut media = Vec::new();
     let mut seg_refs: Vec<SegmentReference> = Vec::new();
     let mut decode_time = 0u64;
-    for (i, (sub, seg)) in subtitles.iter().zip(&segments).enumerate() {
-        let (entries, mdat_data) = encode_samples(&sub.cues);
+    // Scratch for the moof pre-encode that sizes `data_offset`; reused across
+    // segments so only the first iteration allocates.
+    let mut scratch = Vec::new();
+    for (i, (cues, seg)) in windows.iter().zip(segments).enumerate() {
+        let (entries, mdat_data) = encode_samples(cues);
 
         let mut moof = Moof {
             mfhd: Mfhd {
@@ -105,35 +124,30 @@ pub fn pack(subtitles: Vec<Subtitle>, segments: Vec<Segment>) -> Result<Vec<u8>,
                 ..Default::default()
             }],
         };
-        let mut scratch = Vec::new();
+        scratch.clear();
         moof.encode(&mut scratch)
             .map_err(|e| CoreTextError::Wvtt(e.to_string()))?;
         moof.traf[0].trun[0].data_offset = Some((scratch.len() + 8) as i32);
 
-        let mut seg_bytes = Vec::new();
-        Styp {
-            major_brand: b"msdh".into(),
-            minor_version: 0,
-            compatible_brands: vec![b"msdh".into(), b"msix".into(), b"cmfs".into()],
-        }
-        .encode(&mut seg_bytes)
-        .map_err(|e| CoreTextError::Wvtt(e.to_string()))?;
-        moof.encode(&mut seg_bytes)
+        // Encode the segment straight into `media`; its sidx reference size is
+        // the length delta, so no per-segment buffer is assembled and copied.
+        let seg_start = media.len();
+        media.extend_from_slice(&styp_bytes);
+        moof.encode(&mut media)
             .map_err(|e| CoreTextError::Wvtt(e.to_string()))?;
         Mdat { data: mdat_data }
-            .encode(&mut seg_bytes)
+            .encode(&mut media)
             .map_err(|e| CoreTextError::Wvtt(e.to_string()))?;
 
         seg_refs.push(SegmentReference {
             reference_type: false,
-            reference_size: seg_bytes.len() as u32,
+            reference_size: (media.len() - seg_start) as u32,
             subsegment_duration: seg.duration_ms as u32,
             starts_with_sap: true,
             sap_type: 1,
             sap_delta_time: 0,
         });
         decode_time += seg.duration_ms;
-        media.extend_from_slice(&seg_bytes);
     }
 
     let sample_entry = Wvtt {
@@ -173,7 +187,7 @@ pub fn pack(subtitles: Vec<Subtitle>, segments: Vec<Segment>) -> Result<Vec<u8>,
                 mdhd: Mdhd {
                     timescale: TIMESCALE,
                     duration: track_duration,
-                    language,
+                    language: language.to_string(),
                     ..Default::default()
                 },
                 hdlr: Hdlr {
@@ -231,6 +245,7 @@ pub fn pack(subtitles: Vec<Subtitle>, segments: Vec<Segment>) -> Result<Vec<u8>,
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::text::subtitle::Subtitle;
 
     fn seg_ms(duration_ms: u64) -> Segment {
         Segment {
@@ -262,8 +277,8 @@ mod tests {
         };
         // Two 4000ms segments (a video timeline): windows [0,4000) and [4000,8000).
         let segments = vec![seg_ms(4000), seg_ms(4000)];
-        let subs = subtitle.expand(&segments);
-        let bytes = pack(subs, segments).unwrap();
+        let windows = subtitle.expand(&segments);
+        let bytes = pack(&subtitle.language, &windows, &segments).unwrap();
 
         let mut buf = bytes.as_slice();
         let mut kinds = Vec::new();
@@ -308,8 +323,8 @@ mod tests {
         };
         // One 2000ms segment: [0,1000) gap, [1000,2000) cue.
         let segments = vec![seg_ms(2000)];
-        let subs = subtitle.expand(&segments);
-        let bytes = pack(subs, segments).unwrap();
+        let windows = subtitle.expand(&segments);
+        let bytes = pack(&subtitle.language, &windows, &segments).unwrap();
         assert!(bytes.windows(4).any(|w| w == b"vtte"));
         assert!(bytes.windows(4).any(|w| w == b"vttc"));
         assert!(bytes.windows(4).any(|w| w == b"payl"));

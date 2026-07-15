@@ -1,6 +1,8 @@
 //! The domain `Asset`: video and audio tracks plus where the descriptor was
 //! sourced from. Built from the model in [`crate::model`].
 
+use bytes::Bytes;
+use futures_util::future::try_join_all;
 use opendal::Operator;
 
 use crate::cmaf::{
@@ -111,7 +113,7 @@ impl<M> Track<M> {
     ///
     /// # Errors
     /// Propagates any [`CoreError`] from the underlying read.
-    pub async fn init_segment_bytes(&self, op: &Operator) -> Result<Vec<u8>, CoreError> {
+    pub async fn init_segment_bytes(&self, op: &Operator) -> Result<Bytes, CoreError> {
         let s = self.cmaf_header().init_segment;
         cmaf::read_range(op, self.path(), s.offset, s.size).await
     }
@@ -125,7 +127,7 @@ impl<M> Track<M> {
         &self,
         op: &Operator,
         time: u64,
-    ) -> Result<Option<Vec<u8>>, CoreError> {
+    ) -> Result<Option<Bytes>, CoreError> {
         let mut t = self.cmaf_header().earliest_presentation_time;
         for seg in &self.cmaf_header().segments {
             if t == time {
@@ -330,6 +332,21 @@ impl Asset {
     ) -> Result<(), CoreError> {
         let path = path::resolve(descriptor_path, file_path);
         let (cmaf_header, cmaf_metadata) = cmaf::probe(op, &path).await?;
+        self.push_track(Track {
+            path,
+            cmaf_header,
+            cmaf_metadata,
+        });
+        Ok(())
+    }
+
+    /// File a parsed track under the vec for its media type.
+    fn push_track(&mut self, track: AnyTrack) {
+        let Track {
+            path,
+            cmaf_header,
+            cmaf_metadata,
+        } = track;
         match cmaf_metadata {
             Metadata::Video(cmaf_metadata) => self.video_tracks.push(VideoTrack {
                 path,
@@ -347,40 +364,33 @@ impl Asset {
                 cmaf_metadata,
             }),
         }
-        Ok(())
     }
 
     /// Build an [`Asset`] from its wire [`AssetModel`], parsing every track's
-    /// CMAF header. `path` is the descriptor's own path, used to resolve each
-    /// track's relative path.
+    /// CMAF header. Tracks are independent, so all are probed concurrently.
+    /// `path` is the descriptor's own path, used to resolve each track's
+    /// relative path.
     ///
     /// # Errors
-    /// Propagates any [`CoreError`] from reading or parsing a track.
+    /// Propagates any [`CoreError`] from reading or parsing a track, including
+    /// the [`CoreError::Container`] mismatch when a file's media type
+    /// contradicts its descriptor entry (see [`Track::from_model`]).
     pub async fn from_model(
         op: &Operator,
         model: AssetModel,
         path: impl Into<String>,
     ) -> Result<Asset, CoreError> {
         let path = path.into();
+        let tracks = try_join_all(
+            model
+                .tracks
+                .iter()
+                .map(|track| AnyTrack::from_model(op, track, &path)),
+        )
+        .await?;
         let mut asset = Asset::new();
-        for track in &model.tracks {
-            match track {
-                TrackModel::Video(v) => {
-                    asset
-                        .video_tracks
-                        .push(VideoTrack::from_model(op, v, &path).await?);
-                }
-                TrackModel::Audio(a) => {
-                    asset
-                        .audio_tracks
-                        .push(AudioTrack::from_model(op, a, &path).await?);
-                }
-                TrackModel::Text(t) => {
-                    asset
-                        .text_tracks
-                        .push(TextTrack::from_model(op, t, &path).await?);
-                }
-            }
+        for track in tracks {
+            asset.push_track(track);
         }
         asset.path = path;
         Ok(asset)

@@ -9,6 +9,7 @@ workspace = true
 [dependencies]
 bytes = "1"
 dash-mpd = { version = "0.20", default-features = false }
+futures-util = { version = "0.3", default-features = false, features = ["alloc"] }
 hls_m3u8 = "0.7"
 mp4-atom = { version = "0.12.1", features = ["tokio"] }
 opendal = { version = "0.58.0", default-features = false, features = ["services-fs"] }

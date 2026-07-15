@@ -571,6 +571,7 @@ version = "0.1.0"
 dependencies = [
  "bytes",
  "dash-mpd",
+ "futures-util",
  "hls_m3u8",
  "mp4-atom",
  "opendal",

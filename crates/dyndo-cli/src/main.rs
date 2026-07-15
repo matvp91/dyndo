@@ -146,34 +146,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     // First video track's segment timeline (error if no video).
                     let model = AssetModel::read(&op, &asset).await?;
                     let mut asset_obj = Asset::from_model(&op, model, &asset).await?;
-                    let segments = asset_obj
+                    let segments = &asset_obj
                         .video_tracks
                         .first()
                         .ok_or_else(|| {
                             "pack: asset has no video track to align subtitles to".to_string()
                         })?
                         .cmaf_header
-                        .segments
-                        .clone();
+                        .segments;
 
                     // Parse → expand → pack.
                     let raw = op.read(&input).await?;
                     let text = String::from_utf8(raw.to_vec())
                         .map_err(|e| format!("input is not valid UTF-8: {e}"))?;
-                    let mut subtitle = dyndo_core::text::vtt::parse(&text)?;
-                    subtitle.language = if language.is_empty() {
+                    let subtitle = dyndo_core::text::vtt::parse(&text)?;
+                    let language = if language.is_empty() {
                         "und".to_string()
                     } else {
                         language
                     };
-                    let subs = subtitle.expand(&segments);
-                    let bytes = dyndo_core::text::wvtt::pack(subs, segments)?;
+                    let windows = subtitle.expand(segments);
+                    let bytes = dyndo_core::text::wvtt::pack(&language, &windows, segments)?;
 
                     // Text ids are header-free (text_{fourcc}_{language}), so the
                     // name is known before writing. Mirrors
                     // dyndo_core::asset::TextCmafMetadata::id; packing is always wvtt.
-                    let out = format!("text_wvtt_{}.mp4", subtitle.language);
-                    let id = format!("text_wvtt_{}", subtitle.language);
+                    let out = format!("text_wvtt_{language}.mp4");
+                    let id = format!("text_wvtt_{language}");
                     let dest = dyndo_core::path::resolve(&asset, &out);
                     op.write(&dest, bytes).await?;
 
