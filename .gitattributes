@@ -1,0 +1,5 @@
+# Shell scripts carry a `#!/usr/bin/env bash` shebang and must use LF endings.
+# CRLF (which git's core.autocrlf=true would smudge in on checkout) makes the
+# loader look for `bash\r` and fail with "env: bash\r: No such file or
+# directory". `eol=lf` overrides autocrlf for these files on every clone.
+*.sh text eol=lf
