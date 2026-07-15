@@ -4,7 +4,7 @@ use hls_m3u8::tags::{ExtXMap, ExtXMedia, VariantStream};
 use hls_m3u8::types::{Channels, MediaType, PlaylistType, StreamData, UFloat};
 use hls_m3u8::{MasterPlaylist, MediaPlaylist, MediaSegment};
 
-use crate::asset::{AudioTrack, Segment, Track, VideoTrack};
+use crate::asset::{AudioTrack, Segment, TextTrack, Track, VideoTrack};
 
 /// Build the VOD media playlist for `track`: an `EXT-X-MAP` init on the first
 /// segment, then one segment per (sub)segment named by its running presentation
@@ -67,33 +67,91 @@ struct AudioGroup<'a> {
     tracks: Vec<&'a AudioTrack>,
 }
 
+/// Every text track lives in one `EXT-X-MEDIA:TYPE=SUBTITLES` group that all
+/// variants reference. Unlike [`AudioGroup`], a subtitle group contributes
+/// nothing to a variant's `CODECS`/`BANDWIDTH` and never expands the variant set
+/// — so an asset has at most *one* (hence `Option`, not a `Vec`), and it is just
+/// an id and its renditions.
+struct SubtitleGroup<'a> {
+    /// `GROUP-ID` = the codec fourcc (`"wvtt"`).
+    id: &'static str,
+    /// The group's renditions, in first-seen order.
+    tracks: Vec<&'a TextTrack>,
+}
+
 /// Build the multivariant playlist. Video tracks become `EXT-X-STREAM-INF`
 /// variants (one per audio group, cartesian); audio tracks become `EXT-X-MEDIA`
 /// renditions. With no video, audio tracks are the variants (no group); with no
-/// audio, variants carry no `AUDIO`.
+/// audio, variants carry no `AUDIO`. Text tracks become `EXT-X-MEDIA:TYPE=SUBTITLES`
+/// renditions in one group that every variant references.
 pub(crate) fn build_master(
     videos: &[VideoTrack],
     audios: &[AudioTrack],
+    texts: &[TextTrack],
 ) -> MasterPlaylist<'static> {
-    let groups = group_by_codec(audios);
+    let groups = audio_group(audios);
+    let subtitles = subtitle_group(texts);
+    // The subtitle group id every variant references (`None` when no text).
+    let subs = subtitles.as_ref().map(|g| g.id);
 
-    let (media, variants): (Vec<ExtXMedia<'static>>, Vec<VariantStream<'static>>) =
-        if videos.is_empty() {
-            (Vec::new(), audios.iter().map(audio_variant).collect())
-        } else {
-            (audio_media(&groups), video_variants(videos, &groups))
-        };
+    // Audio and subtitles are both `EXT-X-MEDIA` renditions and accumulate into
+    // `media` the same way. Audio does so only when there is video; with no
+    // video the audio tracks are themselves the variants instead.
+    let mut media: Vec<ExtXMedia<'static>> = Vec::new();
+    let variants: Vec<VariantStream<'static>> = if videos.is_empty() {
+        audios.iter().map(|t| audio_variant(t, subs)).collect()
+    } else {
+        media.extend(audio_media(&groups));
+        video_variants(videos, &groups, subs)
+    };
+    media.extend(subtitle_media(subtitles.as_ref()));
 
     let mut b = MasterPlaylist::builder();
     b.media(media);
     b.variant_streams(variants);
     b.has_independent_segments(true);
     b.build()
-        .expect("every variant references a defined audio group")
+        .expect("every variant references a defined audio or subtitle group")
+}
+
+/// The single subtitle group for `texts` (`GROUP-ID` = the codec fourcc), or
+/// `None` when the asset has no text tracks.
+fn subtitle_group(texts: &[TextTrack]) -> Option<SubtitleGroup<'_>> {
+    let id = texts.first()?.cmaf_metadata.codec.fourcc();
+    Some(SubtitleGroup {
+        id,
+        tracks: texts.iter().collect(),
+    })
+}
+
+/// One `EXT-X-MEDIA:TYPE=SUBTITLES` per rendition in the group (empty when the
+/// asset has no text). No rendition is default or autoselected, so the player
+/// never forces subtitles on — the viewer enables them explicitly.
+fn subtitle_media(group: Option<&SubtitleGroup>) -> Vec<ExtXMedia<'static>> {
+    let Some(group) = group else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for t in &group.tracks {
+        let m = &t.cmaf_metadata;
+        let mut b = ExtXMedia::builder();
+        b.media_type(MediaType::Subtitles);
+        b.group_id(group.id);
+        b.name(m.language.clone());
+        b.language(m.language.clone());
+        b.uri(format!("{}.m3u8", t.id()));
+        b.is_default(false);
+        b.is_autoselect(false);
+        out.push(
+            b.build()
+                .expect("subtitle media always has a type, group id, name, and uri"),
+        );
+    }
+    out
 }
 
 /// Group audio tracks by codec fourcc, preserving first-seen order.
-fn group_by_codec(audios: &[AudioTrack]) -> Vec<AudioGroup<'_>> {
+fn audio_group(audios: &[AudioTrack]) -> Vec<AudioGroup<'_>> {
     let mut groups: Vec<AudioGroup> = Vec::new();
     for t in audios {
         let fourcc = t.cmaf_metadata.codec.fourcc();
@@ -139,17 +197,22 @@ fn audio_media(groups: &[AudioGroup]) -> Vec<ExtXMedia<'static>> {
 }
 
 /// Every video track × every audio group (or just the video track when there
-/// are no groups).
-fn video_variants(videos: &[VideoTrack], groups: &[AudioGroup]) -> Vec<VariantStream<'static>> {
+/// are no groups). `subs` is the subtitle group id every variant references, if
+/// the asset has text tracks.
+fn video_variants(
+    videos: &[VideoTrack],
+    groups: &[AudioGroup],
+    subs: Option<&'static str>,
+) -> Vec<VariantStream<'static>> {
     let mut out = Vec::new();
     for v in videos {
         let (num, den) = v.cmaf_metadata.frame_rate;
         let fr = (num != 0).then(|| num as f32 / den as f32);
         if groups.is_empty() {
-            out.push(video_variant(v, fr, None));
+            out.push(video_variant(v, fr, None, subs));
         } else {
             for g in groups {
-                out.push(video_variant(v, fr, Some(g)));
+                out.push(video_variant(v, fr, Some(g), subs));
             }
         }
     }
@@ -160,6 +223,7 @@ fn video_variant(
     v: &VideoTrack,
     fr: Option<f32>,
     group: Option<&AudioGroup>,
+    subs: Option<&'static str>,
 ) -> VariantStream<'static> {
     let m = &v.cmaf_metadata;
     let mut codecs = vec![m.codec.rfc6381()];
@@ -173,7 +237,7 @@ fn video_variant(
         uri: format!("{}.m3u8", v.id()).into(),
         frame_rate: fr.map(UFloat::new),
         audio,
-        subtitles: None,
+        subtitles: subs.map(Into::into),
         closed_captions: None,
         stream_data: StreamData::builder()
             .bandwidth(bandwidth)
@@ -184,14 +248,15 @@ fn video_variant(
     }
 }
 
-/// A standalone audio variant, used only when the asset has no video.
-fn audio_variant(t: &AudioTrack) -> VariantStream<'static> {
+/// A standalone audio variant, used only when the asset has no video. `subs` is
+/// the subtitle group it references, if the asset has text tracks.
+fn audio_variant(t: &AudioTrack, subs: Option<&'static str>) -> VariantStream<'static> {
     let m = &t.cmaf_metadata;
     VariantStream::ExtXStreamInf {
         uri: format!("{}.m3u8", t.id()).into(),
         frame_rate: None,
         audio: None,
-        subtitles: None,
+        subtitles: subs.map(Into::into),
         closed_captions: None,
         stream_data: StreamData::builder()
             .bandwidth(t.cmaf_header.bandwidth as u64)
@@ -204,8 +269,8 @@ fn audio_variant(t: &AudioTrack) -> VariantStream<'static> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cmaf::{AudioCmafMetadata, CmafHeader, VideoCmafMetadata};
-    use crate::codec::{AudioCodec, VideoCodec};
+    use crate::cmaf::{AudioCmafMetadata, CmafHeader, TextCmafMetadata, VideoCmafMetadata};
+    use crate::codec::{AudioCodec, TextCodec, VideoCodec};
 
     /// A [`CmafHeader`] with `bandwidth` and one `Segment` per entry in `segs`
     /// (each carrying only a duration; offsets/sizes are irrelevant to playlists).
@@ -265,6 +330,101 @@ mod tests {
                 language: lang.to_string(),
             },
         }
+    }
+
+    fn text_track(lang: &str, bandwidth: u32, segs: &[u64]) -> TextTrack {
+        TextTrack {
+            path: String::new(),
+            cmaf_header: cmaf_header(1000, bandwidth, segs),
+            cmaf_metadata: TextCmafMetadata {
+                codec: TextCodec::Wvtt,
+                language: lang.to_string(),
+            },
+        }
+    }
+
+    /// The single line describing a media rendition of the given `type_attr`
+    /// (e.g. `TYPE=SUBTITLES`), for asserting per-rendition attributes.
+    fn media_line<'a>(playlist: &'a str, type_attr: &str) -> &'a str {
+        playlist
+            .lines()
+            .find(|l| l.contains(type_attr))
+            .expect("a matching #EXT-X-MEDIA line")
+    }
+
+    #[test]
+    fn master_advertises_subtitle_group_and_variant_attribute() {
+        let v = video_track(1080, 4_000_000, &[180_000]);
+        let a = audio_track(
+            AudioCodec::Aac {
+                audio_object_type: 2,
+            },
+            "nld",
+            2,
+            128_000,
+            &[96_000],
+        );
+        let t = text_track("eng", 256, &[4000]);
+        let tid = t.id();
+        let m = build_master(&[v], &[a], &[t]).to_string();
+
+        assert!(m.contains("#EXT-X-MEDIA:TYPE=SUBTITLES"), "{m}");
+        assert!(m.contains("GROUP-ID=\"wvtt\""), "{m}");
+        assert!(m.contains("LANGUAGE=\"eng\""), "{m}");
+        assert!(m.contains(&format!("URI=\"{tid}.m3u8\"")), "{m}");
+        // The video variant references the subtitle group.
+        assert!(m.contains("SUBTITLES=\"wvtt\""), "{m}");
+
+        // "Neither": the subtitle rendition is neither DEFAULT nor AUTOSELECT
+        // (scoped to the subtitle line — audio renditions do carry AUTOSELECT).
+        let sub = media_line(&m, "TYPE=SUBTITLES");
+        assert!(!sub.contains("DEFAULT="), "{sub}");
+        assert!(!sub.contains("AUTOSELECT="), "{sub}");
+
+        // wvtt is not advertised in the variant CODECS (it does, correctly,
+        // appear in the SUBTITLES attribute — so scope the check to CODECS).
+        let inf = m
+            .lines()
+            .find(|l| l.starts_with("#EXT-X-STREAM-INF"))
+            .expect("a stream-inf line");
+        let codecs = inf
+            .split("CODECS=\"")
+            .nth(1)
+            .and_then(|s| s.split('"').next())
+            .expect("a CODECS attribute");
+        assert!(!codecs.contains("wvtt"), "{codecs}");
+    }
+
+    #[test]
+    fn audio_only_variant_references_subtitle_group() {
+        // No video: audio tracks are the variants, and they must still carry the
+        // subtitle group reference.
+        let a = audio_track(
+            AudioCodec::Aac {
+                audio_object_type: 2,
+            },
+            "nld",
+            2,
+            128_000,
+            &[96_000],
+        );
+        let t = text_track("eng", 256, &[4000]);
+        let m = build_master(&[], &[a], &[t]).to_string();
+
+        assert!(m.contains("#EXT-X-MEDIA:TYPE=SUBTITLES"), "{m}");
+        assert!(m.contains("SUBTITLES=\"wvtt\""), "{m}");
+    }
+
+    #[test]
+    fn video_only_variant_references_subtitle_group() {
+        // No audio group at all, but the variant still references subtitles.
+        let v = video_track(1080, 4_000_000, &[180_000]);
+        let t = text_track("eng", 256, &[4000]);
+        let m = build_master(&[v], &[], &[t]).to_string();
+
+        assert!(m.contains("#EXT-X-MEDIA:TYPE=SUBTITLES"), "{m}");
+        assert!(m.contains("SUBTITLES=\"wvtt\""), "{m}");
+        assert!(!m.contains("TYPE=AUDIO"), "{m}");
     }
 
     #[test]
@@ -332,7 +492,7 @@ mod tests {
             &[96_000],
         );
         let (vid, aid) = (v.id(), a.id());
-        let m = build_master(&[v], &[a]).to_string();
+        let m = build_master(&[v], &[a], &[]).to_string();
 
         assert!(m.contains("#EXT-X-INDEPENDENT-SEGMENTS"), "{m}");
         assert!(m.contains("#EXT-X-MEDIA:TYPE=AUDIO"), "{m}");
@@ -360,7 +520,7 @@ mod tests {
             128_000,
             &[96_000],
         );
-        let m = build_master(&[v1, v2], &[a]).to_string();
+        let m = build_master(&[v1, v2], &[a], &[]).to_string();
 
         assert_eq!(m.matches("#EXT-X-STREAM-INF").count(), 2, "{m}");
         assert_eq!(m.matches("#EXT-X-MEDIA:TYPE=AUDIO").count(), 1, "{m}");
@@ -380,7 +540,7 @@ mod tests {
             &[96_000],
         );
         let ec3 = audio_track(AudioCodec::Ec3, "nld", 6, 384_000, &[96_000]);
-        let m = build_master(&[v], &[aac, ec3]).to_string();
+        let m = build_master(&[v], &[aac, ec3], &[]).to_string();
 
         assert_eq!(m.matches("#EXT-X-STREAM-INF").count(), 2, "{m}");
         assert_eq!(m.matches("#EXT-X-MEDIA:TYPE=AUDIO").count(), 2, "{m}");
@@ -393,7 +553,7 @@ mod tests {
     #[test]
     fn video_only_has_no_audio_group() {
         let v = video_track(1080, 4_000_000, &[180_000]);
-        let m = build_master(&[v], &[]).to_string();
+        let m = build_master(&[v], &[], &[]).to_string();
 
         assert!(m.contains("#EXT-X-STREAM-INF"), "{m}");
         assert!(!m.contains("#EXT-X-MEDIA"), "{m}");
@@ -411,7 +571,7 @@ mod tests {
             128_000,
             &[96_000],
         );
-        let m = build_master(&[], &[a]).to_string();
+        let m = build_master(&[], &[a], &[]).to_string();
 
         assert!(m.contains("#EXT-X-STREAM-INF"), "{m}");
         assert!(!m.contains("#EXT-X-MEDIA"), "{m}");
@@ -443,7 +603,7 @@ mod tests {
             96_000,
             &[96_000],
         );
-        let m = build_master(&[v], &[a_nld, a_eng]).to_string();
+        let m = build_master(&[v], &[a_nld, a_eng], &[]).to_string();
 
         // Two renditions in the single "mp4a" group.
         assert_eq!(m.matches("#EXT-X-MEDIA:TYPE=AUDIO").count(), 2, "{m}");

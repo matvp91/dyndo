@@ -14,5 +14,5 @@ pub fn generate_media<T: Track>(track: &T) -> String {
 /// `EXT-X-STREAM-INF` per video variant and one `EXT-X-MEDIA` audio rendition
 /// per audio track, grouped by audio codec.
 pub fn generate_master(asset: &Asset) -> String {
-    build::build_master(&asset.video_tracks, &asset.audio_tracks).to_string()
+    build::build_master(&asset.video_tracks, &asset.audio_tracks, &asset.text_tracks).to_string()
 }

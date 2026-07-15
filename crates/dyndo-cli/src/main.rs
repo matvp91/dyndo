@@ -108,7 +108,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 dyndo_core::hls::generate_master(&asset).into_bytes(),
             )
             .await?;
-            let count = asset.video_tracks.len() + asset.audio_tracks.len();
+            let count =
+                asset.video_tracks.len() + asset.audio_tracks.len() + asset.text_tracks.len();
             for t in &asset.video_tracks {
                 op.write(
                     &format!("{output}/{}.m3u8", t.id()),
@@ -117,6 +118,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .await?;
             }
             for t in &asset.audio_tracks {
+                op.write(
+                    &format!("{output}/{}.m3u8", t.id()),
+                    dyndo_core::hls::generate_media(t).into_bytes(),
+                )
+                .await?;
+            }
+            for t in &asset.text_tracks {
                 op.write(
                     &format!("{output}/{}.m3u8", t.id()),
                     dyndo_core::hls::generate_media(t).into_bytes(),

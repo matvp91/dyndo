@@ -1,17 +1,18 @@
 use std::time::Duration;
 
 use dash_mpd::{
-    AdaptationSet, AudioChannelConfiguration, Period, Representation, SegmentTemplate,
+    AdaptationSet, AudioChannelConfiguration, Period, Representation, Role, SegmentTemplate,
     SegmentTimeline, MPD, S,
 };
 
-use crate::asset::{AudioTrack, Segment, Track, VideoTrack};
+use crate::asset::{AudioTrack, Segment, TextTrack, Track, VideoTrack};
 
 const INIT_TEMPLATE: &str = "$RepresentationID$/init.mp4";
 const MEDIA_TEMPLATE: &str = "$RepresentationID$/$Time$.m4s";
 const MPD_XMLNS: &str = "urn:mpeg:dash:schema:mpd:2011";
 const MPD_PROFILE: &str = "urn:mpeg:dash:profile:isoff-live:2011";
 const AUDIO_CHANNEL_CONFIG_SCHEME: &str = "urn:mpeg:dash:23003:3:audio_channel_configuration:2011";
+const ROLE_SCHEME: &str = "urn:mpeg:dash:role:2011";
 
 fn frame_rate_str(fr: (u32, u32)) -> String {
     if fr.1 == 1 {
@@ -97,6 +98,22 @@ fn audio_representation(track: &AudioTrack) -> Representation {
     }
 }
 
+/// A text `Representation` carries no dimensions or channel configuration; the
+/// shared base (id, bandwidth, `codecs`, segment template) is all it needs.
+fn text_representation(track: &TextTrack) -> Representation {
+    base_representation(track, track.cmaf_metadata.codec.rfc6381())
+}
+
+/// The DASH `Role` that marks a text `AdaptationSet` as translated-dialogue
+/// subtitles (as opposed to SDH captions).
+fn subtitle_role() -> Vec<Role> {
+    vec![Role {
+        schemeIdUri: ROLE_SCHEME.to_string(),
+        value: Some("subtitle".to_string()),
+        ..Default::default()
+    }]
+}
+
 /// Group track indices by a key, preserving first-seen order of keys and members.
 fn group_by_key<T, K: PartialEq>(items: &[T], key: impl Fn(&T) -> K) -> Vec<(K, Vec<usize>)> {
     let mut groups: Vec<(K, Vec<usize>)> = Vec::new();
@@ -110,12 +127,15 @@ fn group_by_key<T, K: PartialEq>(items: &[T], key: impl Fn(&T) -> K) -> Vec<(K, 
     groups
 }
 
-/// Build one `AdaptationSet` from a group of like representations.
+/// Build one `AdaptationSet` from a group of like representations. `roles` are
+/// the DASH `Role` descriptors for the set (e.g. a `subtitle` role for text);
+/// video and audio sets pass none.
 fn adaptation_set(
     id: usize,
     content_type: &str,
     mime: &str,
     lang: Option<String>,
+    roles: Vec<Role>,
     representations: Vec<Representation>,
 ) -> AdaptationSet {
     AdaptationSet {
@@ -125,6 +145,7 @@ fn adaptation_set(
         lang,
         segmentAlignment: Some(true),
         startWithSAP: Some(1),
+        Role: roles,
         representations,
         ..Default::default()
     }
@@ -132,7 +153,7 @@ fn adaptation_set(
 
 /// Build the raw static VOD `MPD`: one `AdaptationSet` per video codec fourcc,
 /// then one per audio `(fourcc, language)`, each track becoming a `Representation`.
-fn mpd(videos: &[VideoTrack], audios: &[AudioTrack]) -> MPD {
+fn mpd(videos: &[VideoTrack], audios: &[AudioTrack], texts: &[TextTrack]) -> MPD {
     let mut adaptations = Vec::new();
     let mut set_id = 0;
 
@@ -146,6 +167,7 @@ fn mpd(videos: &[VideoTrack], audios: &[AudioTrack]) -> MPD {
             "video",
             "video/mp4",
             None,
+            Vec::new(),
             representations,
         ));
         set_id += 1;
@@ -165,6 +187,27 @@ fn mpd(videos: &[VideoTrack], audios: &[AudioTrack]) -> MPD {
             "audio",
             "audio/mp4",
             Some(lang),
+            Vec::new(),
+            representations,
+        ));
+        set_id += 1;
+    }
+    for ((_fourcc, lang), idxs) in group_by_key(texts, |t| {
+        (
+            t.cmaf_metadata.codec.fourcc(),
+            t.cmaf_metadata.language.clone(),
+        )
+    }) {
+        let representations = idxs
+            .iter()
+            .map(|&i| text_representation(&texts[i]))
+            .collect();
+        adaptations.push(adaptation_set(
+            set_id,
+            "text",
+            "application/mp4",
+            Some(lang),
+            subtitle_role(),
             representations,
         ));
         set_id += 1;
@@ -181,12 +224,14 @@ fn mpd(videos: &[VideoTrack], audios: &[AudioTrack]) -> MPD {
         .iter()
         .map(|t| t.max_segment_duration_ms())
         .chain(audios.iter().map(|t| t.max_segment_duration_ms()))
+        .chain(texts.iter().map(|t| t.max_segment_duration_ms()))
         .max()
         .unwrap_or(0);
     let media_duration_ms = videos
         .iter()
         .map(|t| t.duration_ms())
         .chain(audios.iter().map(|t| t.duration_ms()))
+        .chain(texts.iter().map(|t| t.duration_ms()))
         .max()
         .unwrap_or(0);
 
@@ -203,8 +248,13 @@ fn mpd(videos: &[VideoTrack], audios: &[AudioTrack]) -> MPD {
 
 /// Assemble the final `MPD`, optionally hoisting shared `SegmentTemplate` content
 /// up to the `AdaptationSet` level.
-pub(crate) fn build_mpd(videos: &[VideoTrack], audios: &[AudioTrack], compact: bool) -> MPD {
-    let mut m = mpd(videos, audios);
+pub(crate) fn build_mpd(
+    videos: &[VideoTrack],
+    audios: &[AudioTrack],
+    texts: &[TextTrack],
+    compact: bool,
+) -> MPD {
+    let mut m = mpd(videos, audios, texts);
     if compact {
         super::compact::compact(&mut m);
     }
@@ -214,6 +264,8 @@ pub(crate) fn build_mpd(videos: &[VideoTrack], audios: &[AudioTrack], compact: b
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cmaf::{CmafHeader, TextCmafMetadata};
+    use crate::codec::TextCodec;
 
     fn seg(duration: u64) -> Segment {
         Segment {
@@ -221,6 +273,55 @@ mod tests {
             size: 0,
             duration,
         }
+    }
+
+    fn text_track(language: &str) -> TextTrack {
+        TextTrack {
+            path: String::new(),
+            cmaf_header: CmafHeader {
+                timescale: 1000,
+                duration: 4000,
+                bandwidth: 256,
+                earliest_presentation_time: 0,
+                init_segment: seg(0),
+                segments: vec![seg(4000)],
+            },
+            cmaf_metadata: TextCmafMetadata {
+                codec: TextCodec::Wvtt,
+                language: language.to_string(),
+            },
+        }
+    }
+
+    #[test]
+    fn mpd_advertises_text_adaptation_set_with_subtitle_role() {
+        let m = mpd(&[], &[], &[text_track("eng")]);
+        let text = m.periods[0]
+            .adaptations
+            .iter()
+            .find(|a| a.contentType.as_deref() == Some("text"))
+            .expect("a text AdaptationSet");
+
+        assert_eq!(text.mimeType.as_deref(), Some("application/mp4"));
+        assert_eq!(text.lang.as_deref(), Some("eng"));
+        assert_eq!(text.Role.len(), 1);
+        assert_eq!(text.Role[0].schemeIdUri, ROLE_SCHEME);
+        assert_eq!(text.Role[0].value.as_deref(), Some("subtitle"));
+
+        let rep = &text.representations[0];
+        assert_eq!(rep.id.as_deref(), Some("text_wvtt_eng"));
+        assert_eq!(rep.codecs.as_deref(), Some("wvtt"));
+    }
+
+    #[test]
+    fn mpd_emits_one_text_adaptation_set_per_language() {
+        let m = mpd(&[], &[], &[text_track("eng"), text_track("nld")]);
+        let text_sets = m.periods[0]
+            .adaptations
+            .iter()
+            .filter(|a| a.contentType.as_deref() == Some("text"))
+            .count();
+        assert_eq!(text_sets, 2);
     }
 
     #[test]

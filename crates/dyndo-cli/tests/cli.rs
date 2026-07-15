@@ -177,6 +177,83 @@ fn generates_hls_playlists_from_asset_json() {
 }
 
 #[test]
+fn advertises_text_track_in_dash_and_hls() {
+    let dir = tempfile::tempdir().unwrap();
+    stage(
+        dir.path(),
+        &[
+            "video_avc_1080.mp4",
+            "audio_aac_nl_2.mp4",
+            "text_sample.vtt",
+        ],
+    );
+
+    // Pack the subtitle source into a wvtt CMAF track, then index all three.
+    assert!(dyndo(dir.path())
+        .args([
+            "pack",
+            "-i",
+            "text_sample.vtt",
+            "-o",
+            "subs.mp4",
+            "-l",
+            "eng"
+        ])
+        .status()
+        .unwrap()
+        .success());
+    assert!(dyndo(dir.path())
+        .args([
+            "index",
+            "-i",
+            "video_avc_1080.mp4",
+            "-i",
+            "audio_aac_nl_2.mp4",
+            "-i",
+            "subs.mp4",
+            "-o",
+            "asset.json",
+        ])
+        .status()
+        .unwrap()
+        .success());
+
+    // HLS: the master advertises the subtitle group and a text media playlist
+    // is written alongside the video/audio ones.
+    assert!(dyndo(dir.path())
+        .args(["hls", "-i", "asset.json", "-o", "hls"])
+        .status()
+        .unwrap()
+        .success());
+
+    let master = fs::read_to_string(dir.path().join("hls/index.m3u8")).unwrap();
+    assert!(master.contains("#EXT-X-MEDIA:TYPE=SUBTITLES"), "{master}");
+    assert!(master.contains("SUBTITLES=\"wvtt\""), "{master}");
+
+    let names: Vec<String> = fs::read_dir(dir.path().join("hls"))
+        .unwrap()
+        .map(|e| e.unwrap().file_name().into_string().unwrap())
+        .collect();
+    let text_playlist = names
+        .iter()
+        .find(|n| n.starts_with("text_wvtt_") && n.ends_with(".m3u8"))
+        .expect("a text media playlist");
+    let media = fs::read_to_string(dir.path().join("hls").join(text_playlist)).unwrap();
+    assert!(media.contains("#EXT-X-PLAYLIST-TYPE:VOD"), "{media}");
+    assert!(media.contains("#EXT-X-MAP:URI="), "{media}");
+
+    // DASH: the text AdaptationSet carries the subtitle role.
+    assert!(dyndo(dir.path())
+        .args(["dash", "-i", "asset.json", "-o", "stream.mpd"])
+        .status()
+        .unwrap()
+        .success());
+    let xml = fs::read_to_string(dir.path().join("stream.mpd")).unwrap();
+    assert!(xml.contains("contentType=\"text\""), "{xml}");
+    assert!(xml.contains("value=\"subtitle\""), "{xml}");
+}
+
+#[test]
 fn indexes_wvtt_text_track() {
     let dir = tempfile::tempdir().unwrap();
     stage(dir.path(), &["text_sample.vtt"]);
