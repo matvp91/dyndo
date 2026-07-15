@@ -1,10 +1,15 @@
 //! A lightweight parse of a CMAF track's header region into a [`CmafHeader`] and
 //! [`Metadata`], reading byte ranges through an operator.
 
-use std::io::Cursor;
+use std::pin::Pin;
+use std::task::{Context, Poll};
 
-use mp4_atom::{Atom, FourCC, Header as BoxHeader, Mdhd, Moof, Moov, ReadAtom, ReadFrom, Sidx};
+use mp4_atom::{
+    AsyncReadAtom, AsyncReadFrom, Atom, FourCC, Header as BoxHeader, Mdhd, Moof, Moov, Sidx,
+};
 use opendal::Operator;
+use tokio::io::{AsyncRead, AsyncReadExt, ReadBuf};
+use tokio_util::compat::FuturesAsyncReadCompatExt;
 
 use crate::asset::Segment;
 use crate::codec::{AudioCodec, VideoCodec};
@@ -21,16 +26,48 @@ pub(crate) async fn read(
     Ok(buf.to_vec())
 }
 
-/// Fetch a box body and decode it into atom `A`.
-async fn atom<A: ReadAtom>(
-    op: &Operator,
-    path: &str,
-    bh: &BoxHeader,
-    body_start: u64,
-    body_len: u64,
-) -> Result<A, CoreError> {
-    let body = read(op, path, body_start, body_len).await?;
-    A::read_atom(bh, &mut Cursor::new(&body[..])).map_err(|e| CoreError::Container(e.to_string()))
+/// An [`AsyncRead`] that tallies every byte read through it, so the streamed
+/// parse can record absolute box offsets (`moov`/`sidx` end) without seeking.
+struct CountingReader<R> {
+    inner: R,
+    count: u64,
+}
+
+impl<R> CountingReader<R> {
+    fn new(inner: R) -> Self {
+        Self { inner, count: 0 }
+    }
+
+    /// Total bytes read through this reader so far.
+    fn count(&self) -> u64 {
+        self.count
+    }
+}
+
+impl<R: AsyncRead + Unpin> AsyncRead for CountingReader<R> {
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<std::io::Result<()>> {
+        let before = buf.filled().len();
+        let poll = Pin::new(&mut self.inner).poll_read(cx, buf);
+        if let Poll::Ready(Ok(())) = &poll {
+            self.count += (buf.filled().len() - before) as u64;
+        }
+        poll
+    }
+}
+
+/// Read and discard `len` bytes from `r`, erroring if the stream ends early.
+async fn skip<R: AsyncRead + Unpin>(r: &mut R, len: u64) -> Result<(), CoreError> {
+    let copied = tokio::io::copy(&mut r.take(len), &mut tokio::io::sink())
+        .await
+        .map_err(|e| CoreError::Container(e.to_string()))?;
+    if copied != len {
+        return Err(CoreError::Container("truncated box body".into()));
+    }
+    Ok(())
 }
 
 /// Scan the `moov`/`sidx`/first-`moof` boxes of the CMAF track at `path` and
@@ -40,43 +77,56 @@ async fn atom<A: ReadAtom>(
 /// # Errors
 /// Propagates any [`CoreError`] if a required box is missing, cannot be read
 /// or parsed, or if the track's codec is unsupported.
-pub async fn header(
-    op: &Operator,
-    path: &str,
-) -> Result<(CmafHeader, Metadata), CoreError> {
-    let mut offset = 0u64;
+pub async fn header(op: &Operator, path: &str) -> Result<(CmafHeader, Metadata), CoreError> {
+    let reader = op
+        .reader(path)
+        .await?
+        .into_futures_async_read(..)
+        .await?
+        .compat();
+    let mut r = CountingReader::new(reader);
+
     let mut moov: Option<Moov> = None;
     let mut sidx: Option<Sidx> = None;
-    let mut first_moof: Option<Moof> = None;
+    let first_moof: Moof;
     let mut moov_end = 0u64;
     let mut sidx_end = 0u64;
 
-    while moov.is_none() || sidx.is_none() || first_moof.is_none() {
-        let head = read(op, path, offset, 16).await?;
-        let mut cursor = Cursor::new(&head[..]);
-        let bh =
-            BoxHeader::read_from(&mut cursor).map_err(|e| CoreError::Container(e.to_string()))?;
-        let body_start = offset + cursor.position();
+    loop {
+        let bh = BoxHeader::read_from(&mut r)
+            .await
+            .map_err(|e| CoreError::Container(e.to_string()))?;
         let body_len =
             bh.size
                 .ok_or_else(|| CoreError::Container("box has no size".into()))? as u64;
-        let box_end = body_start + body_len;
 
         if bh.kind == Moov::KIND {
-            moov = Some(atom(op, path, &bh, body_start, body_len).await?);
-            moov_end = box_end;
+            moov = Some(
+                Moov::read_atom(&bh, &mut r)
+                    .await
+                    .map_err(|e| CoreError::Container(e.to_string()))?,
+            );
+            moov_end = r.count();
         } else if bh.kind == Sidx::KIND {
-            sidx = Some(atom(op, path, &bh, body_start, body_len).await?);
-            sidx_end = box_end;
-        } else if bh.kind == Moof::KIND && first_moof.is_none() {
-            first_moof = Some(atom(op, path, &bh, body_start, body_len).await?);
+            sidx = Some(
+                Sidx::read_atom(&bh, &mut r)
+                    .await
+                    .map_err(|e| CoreError::Container(e.to_string()))?,
+            );
+            sidx_end = r.count();
+        } else if bh.kind == Moof::KIND {
+            // The first `moof` ends the header region; `mdat` follows it.
+            first_moof = Moof::read_atom(&bh, &mut r)
+                .await
+                .map_err(|e| CoreError::Container(e.to_string()))?;
+            break;
+        } else {
+            skip(&mut r, body_len).await?;
         }
-        offset = box_end;
     }
 
-    let moov = moov.expect("present: the loop exits only once all three boxes are set");
-    let sidx = sidx.expect("present: the loop exits only once all three boxes are set");
-    let first_moof = first_moof.expect("present: the loop exits only once all three boxes are set");
+    let moov = moov.ok_or_else(|| CoreError::Container("missing moov before first moof".into()))?;
+    let sidx = sidx.ok_or_else(|| CoreError::Container("missing sidx before first moof".into()))?;
 
     let segments = segments(&sidx, sidx_end);
     let duration = segments.iter().map(|s| s.duration).sum();
@@ -247,6 +297,20 @@ pub struct AudioCmafMetadata {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn counting_reader_tracks_bytes_read() {
+        let data = [1u8, 2, 3, 4, 5, 6, 7, 8];
+        let mut r = CountingReader::new(&data[..]);
+
+        let mut first = [0u8; 3];
+        r.read_exact(&mut first).await.unwrap();
+        assert_eq!(r.count(), 3);
+
+        let mut rest = Vec::new();
+        r.read_to_end(&mut rest).await.unwrap();
+        assert_eq!(r.count(), 8);
+    }
 
     #[test]
     fn gcd_of_coprime_numbers_is_one() {
