@@ -76,7 +76,8 @@ async fn skip<R: AsyncRead + Unpin>(r: &mut R, len: u64) -> Result<(), CoreError
 ///
 /// # Errors
 /// Propagates any [`CoreError`] if a required box is missing, cannot be read
-/// or parsed, or if the track's codec is unsupported.
+/// or parsed, if the track's media handler is neither video (`vide`) nor audio
+/// (`soun`), or if the track's codec is unsupported.
 pub async fn probe(op: &Operator, path: &str) -> Result<(CmafHeader, Metadata), CoreError> {
     let reader = op
         .reader(path)
@@ -138,7 +139,8 @@ pub async fn probe(op: &Operator, path: &str) -> Result<(CmafHeader, Metadata), 
 
     let mdia = &moov.trak[0].mdia;
     let codecs = &mdia.minf.stbl.stsd.codecs;
-    let metadata = if mdia.hdlr.handler == FourCC::new(b"vide") {
+    let handler = mdia.hdlr.handler;
+    let metadata = if handler == FourCC::new(b"vide") {
         let (codec, visual) = VideoCodec::from_codecs(codecs)?;
         let sample_duration = first_sample_duration(&moof, &moov);
         Metadata::Video(VideoCmafMetadata {
@@ -147,7 +149,7 @@ pub async fn probe(op: &Operator, path: &str) -> Result<(CmafHeader, Metadata), 
             height: visual.height as u32,
             frame_rate: frame_rate_ratio(sample_duration, sidx.timescale),
         })
-    } else {
+    } else if handler == FourCC::new(b"soun") {
         let (codec, audio) = AudioCodec::from_codecs(codecs)?;
         Metadata::Audio(AudioCmafMetadata {
             codec,
@@ -155,6 +157,10 @@ pub async fn probe(op: &Operator, path: &str) -> Result<(CmafHeader, Metadata), 
             channels: audio.channel_count,
             language: language_code(&mdia.mdhd),
         })
+    } else {
+        return Err(CoreError::Container(format!(
+            "unrecognized media handler {handler}"
+        )));
     };
 
     let header = CmafHeader {
