@@ -2,12 +2,12 @@
 //! sourced from. Built from the model in [`crate::model`].
 
 use opendal::Operator;
-use relative_path::RelativePath;
 
 use crate::cmaf::{
     self, AudioCmafMetadata, CmafHeader, Metadata, TextCmafMetadata, VideoCmafMetadata,
 };
 use crate::model::{AssetModel, AudioTrackModel, TextTrackModel, TrackModel, VideoTrackModel};
+use crate::utils::path;
 use crate::CoreError;
 
 /// A dyndo asset: its tracks and where the descriptor was sourced from.
@@ -164,7 +164,7 @@ impl<M: TrackMetadata> Track<M> {
         model: &M::Model,
         descriptor_path: &str,
     ) -> Result<Track<M>, CoreError> {
-        let path = resolve(descriptor_path, M::model_path(model));
+        let path = path::resolve(descriptor_path, M::model_path(model));
         let (cmaf_header, cmaf_metadata) = cmaf::probe(op, &path).await?;
         let Some(cmaf_metadata) = M::from_probe(model, cmaf_metadata) else {
             return Err(CoreError::Container(format!(
@@ -324,7 +324,7 @@ impl Asset {
         file_path: &str,
         descriptor_path: &str,
     ) -> Result<(), CoreError> {
-        let path = resolve(descriptor_path, file_path);
+        let path = path::resolve(descriptor_path, file_path);
         let (cmaf_header, cmaf_metadata) = cmaf::probe(op, &path).await?;
         match cmaf_metadata {
             Metadata::Video(cmaf_metadata) => self.video_tracks.push(VideoTrack {
@@ -389,7 +389,7 @@ impl VideoTrack {
     fn to_model(&self, descriptor_path: &str) -> TrackModel {
         TrackModel::Video(VideoTrackModel {
             id: self.id(),
-            path: relativize(descriptor_path, &self.path),
+            path: path::relativize(descriptor_path, &self.path),
             fourcc: self.cmaf_metadata.codec.fourcc().to_string(),
             timescale: self.cmaf_header.timescale,
             width: self.cmaf_metadata.width,
@@ -404,7 +404,7 @@ impl AudioTrack {
     fn to_model(&self, descriptor_path: &str) -> TrackModel {
         TrackModel::Audio(AudioTrackModel {
             id: self.id(),
-            path: relativize(descriptor_path, &self.path),
+            path: path::relativize(descriptor_path, &self.path),
             fourcc: self.cmaf_metadata.codec.fourcc().to_string(),
             timescale: self.cmaf_header.timescale,
             sample_rate: self.cmaf_metadata.sample_rate,
@@ -420,7 +420,7 @@ impl TextTrack {
     fn to_model(&self, descriptor_path: &str) -> TrackModel {
         TrackModel::Text(TextTrackModel {
             id: self.id(),
-            path: relativize(descriptor_path, &self.path),
+            path: path::relativize(descriptor_path, &self.path),
             fourcc: self.cmaf_metadata.codec.fourcc().to_string(),
             timescale: self.cmaf_header.timescale,
             language: self.cmaf_metadata.language.clone(),
@@ -437,27 +437,6 @@ impl From<&Asset> for AssetModel {
             tracks: video.chain(audio).chain(text).collect(),
         }
     }
-}
-
-/// Resolve a descriptor-relative `file_path` against the descriptor's own
-/// `descriptor_path`, yielding the track file's resolved storage path.
-fn resolve(descriptor_path: &str, file_path: &str) -> String {
-    RelativePath::new(descriptor_path)
-        .parent()
-        .expect("descriptor path always has a parent")
-        .join(file_path)
-        .normalize()
-        .into_string()
-}
-
-/// Relativize a resolved storage `path` back to a `file_path` relative to the
-/// descriptor's own `descriptor_path`.
-fn relativize(descriptor_path: &str, path: &str) -> String {
-    RelativePath::new(descriptor_path)
-        .parent()
-        .expect("descriptor path always has a parent")
-        .relative(path)
-        .into_string()
 }
 
 /// Convert a count of `timescale`-units to milliseconds, truncating toward zero.
