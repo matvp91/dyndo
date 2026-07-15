@@ -85,7 +85,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             asset.path = output;
             AssetModel::from(&asset).write(&op, &asset.path).await?;
-            let tracks = asset.video_tracks.len() + asset.audio_tracks.len();
+            let tracks =
+                asset.video_tracks.len() + asset.audio_tracks.len() + asset.text_tracks.len();
             println!("wrote {} ({tracks} tracks)", asset.path);
         }
         Command::Dash {

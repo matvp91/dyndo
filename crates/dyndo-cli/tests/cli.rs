@@ -177,6 +177,32 @@ fn generates_hls_playlists_from_asset_json() {
 }
 
 #[test]
+fn indexes_wvtt_text_track() {
+    let dir = tempfile::tempdir().unwrap();
+    stage(dir.path(), &["text_sample.vtt"]);
+
+    assert!(dyndo(dir.path())
+        .args(["pack", "-i", "text_sample.vtt", "-o", "subs.mp4"])
+        .status()
+        .unwrap()
+        .success());
+
+    assert!(dyndo(dir.path())
+        .args(["index", "-i", "subs.mp4", "-o", "asset.json"])
+        .status()
+        .unwrap()
+        .success());
+
+    let json: serde_json::Value =
+        serde_json::from_slice(&fs::read(dir.path().join("asset.json")).unwrap()).unwrap();
+    let tracks = json["tracks"].as_array().unwrap();
+    assert_eq!(tracks.len(), 1);
+    assert_eq!(tracks[0]["type"], "text");
+    assert_eq!(tracks[0]["fourcc"], "wvtt");
+    assert_eq!(tracks[0]["path"], "subs.mp4");
+}
+
+#[test]
 fn pack_vtt_writes_wvtt_cmaf_track() {
     let dir = tempfile::tempdir().unwrap();
     stage(dir.path(), &["sample.vtt"]);
