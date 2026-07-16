@@ -6,6 +6,8 @@ use dyndo_core::model::AssetModel;
 use opendal::Operator;
 use opendal::services::Fs;
 
+mod descriptor;
+
 /// dyndo — dynamic media packaging for adaptive streaming.
 #[derive(Parser)]
 #[command(name = "dyndo", version, about)]
@@ -16,12 +18,14 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Build an asset.json descriptor from one or more CMAF files. Inputs are
-    /// track paths relative to the output descriptor's directory.
+    /// Build or update an asset.json descriptor from one or more track
+    /// descriptors. Each descriptor is `<path>[,language=..][,role=..]`, where
+    /// the path is relative to the output descriptor's directory. When the
+    /// output already exists, tracks are merged into it (upsert by source path).
     Index {
-        /// Input CMAF file (repeatable, one track each).
-        #[arg(short, long = "input", required = true)]
-        input: Vec<String>,
+        /// Track descriptor(s): `<path>[,language=..][,role=..]`, one per track.
+        #[arg(required = true)]
+        inputs: Vec<String>,
         /// Output descriptor path.
         #[arg(short, long = "output", default_value = "asset.json")]
         output: String,
@@ -76,16 +80,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
     let op = operator()?;
     match cli.command {
-        Command::Index { input, output } => {
-            let mut asset = Asset::new();
-            for path in &input {
-                asset.upsert_track(&op, path, &output, None, None).await?;
+        Command::Index { inputs, output } => {
+            let mut asset = if op.exists(&output).await? {
+                let model = AssetModel::read(&op, &output).await?;
+                Asset::from_model(&op, model, &output).await?
+            } else {
+                let mut a = Asset::new();
+                a.path = output.clone();
+                a
+            };
+            for input in &inputs {
+                let d = descriptor::TrackDescriptor::parse(input)?;
+                asset
+                    .upsert_track(
+                        &op,
+                        &d.path,
+                        &output,
+                        d.language.as_deref(),
+                        d.role.as_deref(),
+                    )
+                    .await?;
             }
-            asset.path = output;
-            AssetModel::from(&asset).write(&op, &asset.path).await?;
+            AssetModel::from(&asset).write(&op, &output).await?;
             let tracks =
                 asset.video_tracks.len() + asset.audio_tracks.len() + asset.text_tracks.len();
-            println!("wrote {} ({tracks} tracks)", asset.path);
+            println!("wrote {output} ({tracks} tracks)");
         }
         Command::Dash {
             input,

@@ -26,9 +26,7 @@ fn writes_asset_json_for_video_and_audio() {
     let status = dyndo(dir.path())
         .args([
             "index",
-            "-i",
             "video_avc_1080.mp4",
-            "-i",
             "audio_aac_nl_2.mp4",
             "-o",
             "asset.json",
@@ -57,9 +55,7 @@ fn generates_mpd_from_asset_json() {
         dyndo(dir.path())
             .args([
                 "index",
-                "-i",
                 "video_avc_1080.mp4",
-                "-i",
                 "audio_aac_nl_2.mp4",
                 "-o",
                 "asset.json",
@@ -93,9 +89,7 @@ fn dash_compact_flag_hoists_segment_template() {
         dyndo(dir.path())
             .args([
                 "index",
-                "-i",
                 "video_avc_1080.mp4",
-                "-i",
                 "audio_aac_nl_2.mp4",
                 "-o",
                 "asset.json",
@@ -142,9 +136,7 @@ fn generates_hls_playlists_from_asset_json() {
         dyndo(dir.path())
             .args([
                 "index",
-                "-i",
                 "video_avc_1080.mp4",
-                "-i",
                 "audio_aac_nl_2.mp4",
                 "-o",
                 "asset.json",
@@ -212,9 +204,7 @@ fn advertises_text_track_in_dash_and_hls() {
         dyndo(dir.path())
             .args([
                 "index",
-                "-i",
                 "video_avc_1080.mp4",
-                "-i",
                 "audio_aac_nl_2.mp4",
                 "-o",
                 "asset.json",
@@ -284,7 +274,7 @@ fn indexes_wvtt_text_track() {
 
     assert!(
         dyndo(dir.path())
-            .args(["index", "-i", "video_avc_1080.mp4", "-o", "asset.json"])
+            .args(["index", "video_avc_1080.mp4", "-o", "asset.json"])
             .status()
             .unwrap()
             .success()
@@ -308,7 +298,7 @@ fn indexes_wvtt_text_track() {
     // Index the packed wvtt file on its own into a fresh descriptor.
     assert!(
         dyndo(dir.path())
-            .args(["index", "-i", "text_wvtt_eng.mp4", "-o", "text.json"])
+            .args(["index", "text_wvtt_eng.mp4", "-o", "text.json"])
             .status()
             .unwrap()
             .success()
@@ -331,7 +321,7 @@ fn pack_aligns_subtitles_to_video_and_updates_asset() {
     // Index the video so pack has a timeline to align to.
     assert!(
         dyndo(dir.path())
-            .args(["index", "-i", "video_avc_1080.mp4", "-o", "asset.json"])
+            .args(["index", "video_avc_1080.mp4", "-o", "asset.json"])
             .status()
             .unwrap()
             .success()
@@ -373,7 +363,7 @@ fn pack_empty_language_normalizes_to_und() {
     // Index the video so pack has a timeline to align to.
     assert!(
         dyndo(dir.path())
-            .args(["index", "-i", "video_avc_1080.mp4", "-o", "asset.json"])
+            .args(["index", "video_avc_1080.mp4", "-o", "asset.json"])
             .status()
             .unwrap()
             .success()
@@ -419,7 +409,7 @@ fn manual_language_edit_in_asset_json_overrides_probed_language() {
     // wvtt file's mdhd and asset.json now say "eng".
     assert!(
         dyndo(dir.path())
-            .args(["index", "-i", "video_avc_1080.mp4", "-o", "asset.json"])
+            .args(["index", "video_avc_1080.mp4", "-o", "asset.json"])
             .status()
             .unwrap()
             .success()
@@ -501,7 +491,7 @@ fn pack_without_a_video_track_fails() {
     // An audio-only asset has no video timeline to align to.
     assert!(
         dyndo(dir.path())
-            .args(["index", "-i", "audio_aac_nl_2.mp4", "-o", "asset.json"])
+            .args(["index", "audio_aac_nl_2.mp4", "-o", "asset.json"])
             .status()
             .unwrap()
             .success()
