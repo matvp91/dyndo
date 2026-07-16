@@ -86,6 +86,41 @@ impl Segmentation {
     }
 }
 
+/// Group a track's raw CMAF fragments into served segments: whole fragments
+/// are accumulated greedily until a group reaches
+/// `segmentation.min_segment_length_ms`; the final group may be shorter
+/// (short tail). Fragments are contiguous byte ranges, so a group is the
+/// first fragment's offset with summed sizes and durations. The close test
+/// compares `units * 1000 >= ms * timescale` in u128 — exact, no ms
+/// truncation. Summing `duration_ms` keeps per-track totals drift-free
+/// because group boundaries are a subset of the raw drift-free boundaries.
+fn group_segments(raw: &[Segment], timescale: u32, segmentation: &Segmentation) -> Vec<Segment> {
+    let min_ms = match segmentation.min_segment_length_ms {
+        Some(ms) if ms > 0 => ms,
+        _ => return raw.to_vec(),
+    };
+    let min_target = min_ms as u128 * timescale as u128;
+
+    let mut out = Vec::new();
+    let mut start = 0;
+    let mut group_units = 0u64;
+    for (end, seg) in raw.iter().enumerate().map(|(i, s)| (i + 1, s)) {
+        group_units += seg.duration;
+        let long_enough = group_units as u128 * 1000 >= min_target;
+        if long_enough || end == raw.len() {
+            out.push(Segment {
+                offset: raw[start].offset,
+                size: raw[start..end].iter().map(|s| s.size).sum(),
+                duration: group_units,
+                duration_ms: raw[start..end].iter().map(|s| s.duration_ms).sum(),
+            });
+            start = end;
+            group_units = 0;
+        }
+    }
+    out
+}
+
 mod sealed {
     use crate::cmaf::CmafHeader;
 
@@ -899,5 +934,102 @@ mod tests {
             .await
             .unwrap_err();
         assert!(matches!(err, CoreError::InvalidDescriptor(_)));
+    }
+
+    /// A contiguous fragment run: `durations` in timescale units, each fragment
+    /// 10 bytes, starting at byte 100 (mirroring data after an init segment).
+    fn frags(timescale: u32, durations: &[u64]) -> Vec<Segment> {
+        let mut offset = 100;
+        let (mut acc_units, mut acc_ms) = (0u64, 0u64);
+        durations
+            .iter()
+            .map(|&d| {
+                acc_units += d;
+                let boundary_ms = units_to_ms(acc_units, timescale);
+                let s = Segment {
+                    offset,
+                    size: 10,
+                    duration: d,
+                    duration_ms: boundary_ms - acc_ms,
+                };
+                acc_ms = boundary_ms;
+                offset += 10;
+                s
+            })
+            .collect()
+    }
+
+    fn min_len(ms: u64) -> Segmentation {
+        Segmentation::new(Some(ms), Vec::new()).unwrap()
+    }
+
+    #[test]
+    fn grouping_is_a_noop_without_a_minimum() {
+        let raw = frags(90000, &[172800, 172800]);
+        assert_eq!(group_segments(&raw, 90000, &Segmentation::default()), raw);
+        assert_eq!(group_segments(&raw, 90000, &min_len(0)), raw);
+    }
+
+    #[test]
+    fn a_minimum_below_every_fragment_is_a_noop() {
+        // 1.92s GOPs, min 0.5s: every fragment already satisfies the minimum.
+        let raw = frags(90000, &[172800; 3]);
+        assert_eq!(group_segments(&raw, 90000, &min_len(500)), raw);
+    }
+
+    #[test]
+    fn grouping_pairs_fragments_to_reach_the_minimum() {
+        // 1.92s GOPs, min 3s -> 3.84s pairs.
+        let raw = frags(90000, &[172800; 4]);
+        let out = group_segments(&raw, 90000, &min_len(3000));
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[0].duration, 345600);
+        assert_eq!(out[0].offset, 100);
+        assert_eq!(out[0].size, 20);
+        assert_eq!(out[1].offset, 120);
+    }
+
+    #[test]
+    fn a_group_closes_exactly_at_the_minimum() {
+        // 1s fragments @ min 2s -> exact 2s groups, not 3s.
+        let raw = frags(90000, &[90000; 4]);
+        let out = group_segments(&raw, 90000, &min_len(2000));
+        assert_eq!(
+            out.iter().map(|s| s.duration).collect::<Vec<_>>(),
+            vec![180000, 180000]
+        );
+    }
+
+    #[test]
+    fn the_track_tail_may_be_shorter_than_the_minimum() {
+        let raw = frags(90000, &[172800, 172800, 122400]);
+        let out = group_segments(&raw, 90000, &min_len(3000));
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[1].duration, 122400); // 1.36s tail, alone
+    }
+
+    #[test]
+    fn a_minimum_beyond_the_track_makes_one_segment() {
+        let raw = frags(90000, &[172800; 3]);
+        let out = group_segments(&raw, 90000, &min_len(3_600_000));
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].duration, 518400);
+        assert_eq!(out[0].size, 30);
+    }
+
+    #[test]
+    fn grouping_an_empty_track_yields_nothing() {
+        assert!(group_segments(&[], 90000, &min_len(3000)).is_empty());
+    }
+
+    #[test]
+    fn grouped_duration_ms_stays_drift_free() {
+        // timescale 3, six 1-unit fragments (1/3s each), min 600ms -> groups of
+        // 2 (2/3s = 666.67ms exact). Drift-free totals: 666+667+667 = 2000.
+        let raw = frags(3, &[1, 1, 1, 1, 1, 1]);
+        let out = group_segments(&raw, 3, &min_len(600));
+        let ms: Vec<u64> = out.iter().map(|s| s.duration_ms).collect();
+        assert_eq!(ms.iter().sum::<u64>(), 2000);
+        assert_eq!(ms, vec![666, 667, 667]);
     }
 }
