@@ -11,16 +11,31 @@ The file is pretty-printed JSON and safe to read, diff, and hand-edit.
 
 ## Top-level structure
 
-A descriptor is an object with a single `tracks` array:
+A descriptor is an object with a `tracks` array and two optional segmentation
+fields:
 
 ```json
 {
+  "min_segment_length": 3000,
+  "segment_boundaries": [683640],
   "tracks": [ /* track objects */ ]
 }
 ```
 
 Track order is not significant to the server. The CLI groups tracks by type
 (video, then audio, then text).
+
+## Segmentation
+
+Both fields are optional and control how each track's CMAF fragments are
+grouped into served segments. Grouping is applied when manifests and segments
+are served — the CMAF files are never modified, so these fields can be edited
+at any time.
+
+| Field | Type | Description |
+|---|---|---|
+| `min_segment_length` | integer *(optional)* | Minimum length of a served segment, in **milliseconds**. Whole fragments (for video: GOPs) are grouped until a segment reaches at least this length — fragment boundaries are never split. Omitted or `0`: every fragment is served as its own segment. The last segment before a splice point or the end of the track may be shorter. |
+| `segment_boundaries` | array of integers *(optional)* | Splice points, in **milliseconds** from the start of the presentation, e.g. for ad insertion. A served segment never spans one, so a segment edge exists at every splice point. Treated as a set: order and duplicates don't matter. Each point is snapped per track to the nearest fragment boundary (audio fragment rasters cannot hit arbitrary millisecond positions); an exact tie snaps earlier. |
 
 ## Track object
 
@@ -165,7 +180,9 @@ An asset with one video, one audio, and one subtitle track:
 ## A note on hand-editing
 
 The descriptor is safe to edit, but `id` and most fields are read from the
-source at index time and describe it accurately. The `language` override on text
-tracks is the field intended for hand-editing. If you change a source file, re-run
-[`index`](./cli/index.md) rather than editing metadata by hand, so the recorded
-values continue to match the media.
+source at index time and describe it accurately. The fields intended for
+hand-editing are the `language` override on text tracks and the top-level
+[segmentation fields](#segmentation) (`min_segment_length`,
+`segment_boundaries`), which only shape serving and never contradict the media.
+If you change a source file, re-run [`index`](./cli/index.md) rather than
+editing metadata by hand, so the recorded values continue to match the media.

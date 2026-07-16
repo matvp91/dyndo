@@ -9,7 +9,8 @@ pub mod dash;
 mod error;
 pub mod hls;
 pub mod model;
-pub mod path;
+pub mod path_utils;
+mod segment_utils;
 pub mod text;
 
 pub use error::CoreError;

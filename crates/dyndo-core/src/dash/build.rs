@@ -60,7 +60,13 @@ fn segment_template(timescale: u32, pto: u64, segments: &[Segment]) -> SegmentTe
 /// The fields every representation shares: id, bandwidth, codecs, and the
 /// segment template. Per-media-type builders add their own dimensions or audio
 /// configuration.
-fn base_representation(track: &impl Track, codecs: String) -> Representation {
+fn base_representation(
+    track: &impl Track,
+    codecs: String,
+    segment_boundaries_ms: &[u64],
+    min_segment_length_ms: u64,
+) -> Representation {
+    let segments = track.segments(segment_boundaries_ms, min_segment_length_ms);
     Representation {
         id: Some(track.id()),
         bandwidth: Some(track.bandwidth() as u64),
@@ -68,22 +74,35 @@ fn base_representation(track: &impl Track, codecs: String) -> Representation {
         SegmentTemplate: Some(segment_template(
             track.timescale(),
             track.earliest_presentation_time(),
-            track.segments(),
+            &segments,
         )),
         ..Default::default()
     }
 }
 
-fn video_representation(track: &VideoTrack) -> Representation {
+fn video_representation(
+    track: &VideoTrack,
+    segment_boundaries_ms: &[u64],
+    min_segment_length_ms: u64,
+) -> Representation {
     Representation {
         width: Some(track.width() as u64),
         height: Some(track.height() as u64),
         frameRate: (track.frame_rate().0 != 0).then(|| frame_rate_str(track.frame_rate())),
-        ..base_representation(track, track.codec().rfc6381())
+        ..base_representation(
+            track,
+            track.codec().rfc6381(),
+            segment_boundaries_ms,
+            min_segment_length_ms,
+        )
     }
 }
 
-fn audio_representation(track: &AudioTrack) -> Representation {
+fn audio_representation(
+    track: &AudioTrack,
+    segment_boundaries_ms: &[u64],
+    min_segment_length_ms: u64,
+) -> Representation {
     Representation {
         audioSamplingRate: Some(track.sample_rate().to_string()),
         AudioChannelConfiguration: vec![AudioChannelConfiguration {
@@ -91,14 +110,28 @@ fn audio_representation(track: &AudioTrack) -> Representation {
             value: Some(track.channels().to_string()),
             ..Default::default()
         }],
-        ..base_representation(track, track.codec().rfc6381())
+        ..base_representation(
+            track,
+            track.codec().rfc6381(),
+            segment_boundaries_ms,
+            min_segment_length_ms,
+        )
     }
 }
 
 /// A text `Representation` carries no dimensions or channel configuration; the
 /// shared base (id, bandwidth, `codecs`, segment template) is all it needs.
-fn text_representation(track: &TextTrack) -> Representation {
-    base_representation(track, track.codec().rfc6381())
+fn text_representation(
+    track: &TextTrack,
+    segment_boundaries_ms: &[u64],
+    min_segment_length_ms: u64,
+) -> Representation {
+    base_representation(
+        track,
+        track.codec().rfc6381(),
+        segment_boundaries_ms,
+        min_segment_length_ms,
+    )
 }
 
 /// The DASH `Role` that marks a text `AdaptationSet` as translated-dialogue
@@ -150,14 +183,22 @@ fn adaptation_set(
 
 /// Build the raw static VOD `MPD`: one `AdaptationSet` per video codec fourcc,
 /// then one per audio `(fourcc, language)`, each track becoming a `Representation`.
-fn mpd(videos: &[VideoTrack], audios: &[AudioTrack], texts: &[TextTrack]) -> MPD {
+fn mpd(
+    videos: &[VideoTrack],
+    audios: &[AudioTrack],
+    texts: &[TextTrack],
+    segment_boundaries_ms: &[u64],
+    min_segment_length_ms: u64,
+) -> MPD {
     let mut adaptations = Vec::new();
     let mut set_id = 0;
 
     for (_fourcc, idxs) in group_by_key(videos, |t| t.codec().fourcc()) {
         let representations = idxs
             .iter()
-            .map(|&i| video_representation(&videos[i]))
+            .map(|&i| {
+                video_representation(&videos[i], segment_boundaries_ms, min_segment_length_ms)
+            })
             .collect();
         adaptations.push(adaptation_set(
             set_id,
@@ -174,7 +215,9 @@ fn mpd(videos: &[VideoTrack], audios: &[AudioTrack], texts: &[TextTrack]) -> MPD
     {
         let representations = idxs
             .iter()
-            .map(|&i| audio_representation(&audios[i]))
+            .map(|&i| {
+                audio_representation(&audios[i], segment_boundaries_ms, min_segment_length_ms)
+            })
             .collect();
         adaptations.push(adaptation_set(
             set_id,
@@ -191,7 +234,7 @@ fn mpd(videos: &[VideoTrack], audios: &[AudioTrack], texts: &[TextTrack]) -> MPD
     {
         let representations = idxs
             .iter()
-            .map(|&i| text_representation(&texts[i]))
+            .map(|&i| text_representation(&texts[i], segment_boundaries_ms, min_segment_length_ms))
             .collect();
         adaptations.push(adaptation_set(
             set_id,
@@ -213,9 +256,17 @@ fn mpd(videos: &[VideoTrack], audios: &[AudioTrack], texts: &[TextTrack]) -> MPD
 
     let min_buffer_ms = videos
         .iter()
-        .map(|t| t.max_segment_duration_ms())
-        .chain(audios.iter().map(|t| t.max_segment_duration_ms()))
-        .chain(texts.iter().map(|t| t.max_segment_duration_ms()))
+        .map(|t| t.max_segment_duration_ms(segment_boundaries_ms, min_segment_length_ms))
+        .chain(
+            audios
+                .iter()
+                .map(|t| t.max_segment_duration_ms(segment_boundaries_ms, min_segment_length_ms)),
+        )
+        .chain(
+            texts
+                .iter()
+                .map(|t| t.max_segment_duration_ms(segment_boundaries_ms, min_segment_length_ms)),
+        )
         .max()
         .unwrap_or(0);
     let media_duration_ms = videos
@@ -243,9 +294,17 @@ pub(crate) fn build_mpd(
     videos: &[VideoTrack],
     audios: &[AudioTrack],
     texts: &[TextTrack],
+    segment_boundaries_ms: &[u64],
+    min_segment_length_ms: u64,
     compact: bool,
 ) -> MPD {
-    let mut m = mpd(videos, audios, texts);
+    let mut m = mpd(
+        videos,
+        audios,
+        texts,
+        segment_boundaries_ms,
+        min_segment_length_ms,
+    );
     if compact {
         super::compact::compact(&mut m);
     }
@@ -267,16 +326,17 @@ mod tests {
         }
     }
 
-    fn text_track(language: &str) -> TextTrack {
+    fn text_track_with_segments(language: &str, segments: Vec<Segment>) -> TextTrack {
+        let duration = segments.iter().map(|s| s.duration).sum();
         TextTrack::new(
             String::new(),
             CmafHeader {
                 timescale: 1000,
-                duration: 4000,
+                duration,
                 bandwidth: 256,
                 earliest_presentation_time: 0,
                 init_segment: seg(0),
-                segments: vec![seg(4000)],
+                segments,
             },
             TextCmafMetadata {
                 codec: TextCodec::Wvtt,
@@ -286,9 +346,13 @@ mod tests {
         )
     }
 
+    fn text_track(language: &str) -> TextTrack {
+        text_track_with_segments(language, vec![seg(4000)])
+    }
+
     #[test]
     fn mpd_advertises_text_adaptation_set_with_subtitle_role() {
-        let m = mpd(&[], &[], &[text_track("eng")]);
+        let m = mpd(&[], &[], &[text_track("eng")], &[], 0);
         let text = m.periods[0]
             .adaptations
             .iter()
@@ -308,7 +372,7 @@ mod tests {
 
     #[test]
     fn mpd_emits_one_text_adaptation_set_per_language() {
-        let m = mpd(&[], &[], &[text_track("eng"), text_track("nld")]);
+        let m = mpd(&[], &[], &[text_track("eng"), text_track("nld")], &[], 0);
         let text_sets = m.periods[0]
             .adaptations
             .iter()
@@ -363,5 +427,29 @@ mod tests {
         let items = ["a", "b", "a"];
         let groups = group_by_key(&items, |s| s.to_string());
         assert_eq!(groups[0].1, vec![0, 2]);
+    }
+
+    #[test]
+    fn mpd_timeline_groups_segments_by_the_policy() {
+        let track = text_track_with_segments("eng", vec![seg(1000); 4]);
+        let m = mpd(&[], &[], &[track], &[], 2000);
+        let tmpl = m.periods[0].adaptations[0].representations[0]
+            .SegmentTemplate
+            .as_ref()
+            .unwrap();
+        let timeline = tmpl.SegmentTimeline.as_ref().unwrap();
+        assert_eq!(timeline.segments.len(), 1);
+        assert_eq!(timeline.segments[0].d, 2000);
+        assert_eq!(timeline.segments[0].r, Some(1)); // two 2s segments
+    }
+
+    #[test]
+    fn mpd_min_buffer_time_reflects_grouped_segments() {
+        let track = text_track_with_segments("eng", vec![seg(1000); 4]);
+        let m = mpd(&[], &[], &[track], &[], 2000);
+        assert_eq!(
+            m.minBufferTime,
+            Some(std::time::Duration::from_millis(2000))
+        );
     }
 }

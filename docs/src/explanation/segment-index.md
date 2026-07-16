@@ -64,6 +64,12 @@ Per-segment millisecond durations are computed from cumulative timescale
 boundaries rather than by rounding each segment independently, so a track's
 per-segment durations sum exactly to its total — no accumulated rounding drift.
 
+By default every `sidx` reference becomes one served segment. The descriptor's
+optional [segmentation fields](../reference/asset-json.md#segmentation)
+(`min_segment_length`, `segment_boundaries`) group consecutive references into
+larger served segments at serve time — contiguous byte ranges merge into one —
+without touching the source file or the index itself.
+
 ## Why an 800 MB file parses like an 8 MB one
 
 The header region — `moov` + `sidx` + first `moof` — is a fixed, small part of

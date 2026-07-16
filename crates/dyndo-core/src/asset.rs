@@ -11,7 +11,8 @@ use crate::cmaf::{
 };
 use crate::codec::{AudioCodec, TextCodec, VideoCodec};
 use crate::model::{AssetModel, AudioTrackModel, TextTrackModel, TrackModel, VideoTrackModel};
-use crate::path;
+use crate::path_utils;
+use crate::segment_utils::{group_segments, units_to_ms};
 
 /// A dyndo asset: its tracks and where the descriptor was sourced from.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -22,6 +23,12 @@ pub struct Asset {
     pub audio_tracks: Vec<AudioTrack>,
     /// The asset's text tracks, in no particular order.
     pub text_tracks: Vec<TextTrack>,
+    /// Minimum length of a served segment, in milliseconds, from the
+    /// descriptor. `0` serves each CMAF fragment as its own segment.
+    pub min_segment_length_ms: u64,
+    /// Splice points, in milliseconds from the start of the presentation,
+    /// from the descriptor. A served segment never spans one.
+    pub segment_boundaries_ms: Vec<u64>,
     /// Path of the source descriptor (`asset.json`), used to resolve each
     /// track's relative path.
     pub path: String,
@@ -99,9 +106,18 @@ pub trait Track: sealed::HasHeader {
         self.header().earliest_presentation_time
     }
 
-    /// The track's (sub)segments, in presentation order.
-    fn segments(&self) -> &[Segment] {
-        &self.header().segments
+    /// The track's served (sub)segments, in presentation order: the raw CMAF
+    /// fragments grouped to at least `min_segment_length_ms`, never across a
+    /// splice point in `segment_boundaries_ms` (`0` and an empty slice = one
+    /// segment per fragment). Manifest builders and the segment route must
+    /// receive the same policy or advertised segment times will not resolve.
+    fn segments(&self, segment_boundaries_ms: &[u64], min_segment_length_ms: u64) -> Vec<Segment> {
+        group_segments(
+            &self.header().segments,
+            self.timescale(),
+            segment_boundaries_ms,
+            min_segment_length_ms,
+        )
     }
 
     /// This track's total presentation duration, in milliseconds.
@@ -109,10 +125,14 @@ pub trait Track: sealed::HasHeader {
         units_to_ms(self.header().duration, self.header().timescale)
     }
 
-    /// The longest (sub)segment in this track, in milliseconds (0 if it has
-    /// none).
-    fn max_segment_duration_ms(&self) -> u64 {
-        self.segments()
+    /// The longest served (sub)segment in this track, in milliseconds (0 if it
+    /// has none), under the same grouping policy as [`Track::segments`].
+    fn max_segment_duration_ms(
+        &self,
+        segment_boundaries_ms: &[u64],
+        min_segment_length_ms: u64,
+    ) -> u64 {
+        self.segments(segment_boundaries_ms, min_segment_length_ms)
             .iter()
             .map(|s| s.duration_ms)
             .max()
@@ -129,13 +149,21 @@ pub trait Track: sealed::HasHeader {
     }
 
     /// Read the media (sub)segment starting at presentation `time` through
-    /// `op`, or `None` if no segment starts exactly there.
+    /// `op`, or `None` if no segment starts exactly there. `time` is matched
+    /// against the served segments — pass the same grouping policy the
+    /// manifest was built with.
     ///
     /// # Errors
     /// Propagates any [`CoreError`] from the underlying read.
-    async fn segment_bytes(&self, op: &Operator, time: u64) -> Result<Option<Bytes>, CoreError> {
+    async fn segment_bytes(
+        &self,
+        op: &Operator,
+        time: u64,
+        segment_boundaries_ms: &[u64],
+        min_segment_length_ms: u64,
+    ) -> Result<Option<Bytes>, CoreError> {
         let mut t = self.earliest_presentation_time();
-        for seg in self.segments() {
+        for seg in self.segments(segment_boundaries_ms, min_segment_length_ms) {
             if t == time {
                 return Ok(Some(
                     cmaf::read_range(op, self.path_str(), seg.offset, seg.size).await?,
@@ -200,7 +228,7 @@ impl VideoTrack {
     fn to_model(&self, descriptor_path: &str) -> TrackModel {
         TrackModel::Video(VideoTrackModel {
             id: self.id(),
-            path: path::relativize(descriptor_path, &self.path),
+            path: path_utils::relativize(descriptor_path, &self.path),
             fourcc: self.codec().fourcc().to_string(),
             timescale: self.timescale(),
             width: self.width(),
@@ -290,7 +318,7 @@ impl AudioTrack {
     fn to_model(&self, descriptor_path: &str) -> TrackModel {
         TrackModel::Audio(AudioTrackModel {
             id: self.id(),
-            path: path::relativize(descriptor_path, &self.path),
+            path: path_utils::relativize(descriptor_path, &self.path),
             fourcc: self.codec().fourcc().to_string(),
             timescale: self.timescale(),
             sample_rate: self.sample_rate(),
@@ -381,7 +409,7 @@ impl TextTrack {
     fn to_model(&self, descriptor_path: &str) -> TrackModel {
         TrackModel::Text(TextTrackModel {
             id: self.id(),
-            path: path::relativize(descriptor_path, &self.path),
+            path: path_utils::relativize(descriptor_path, &self.path),
             fourcc: self.codec().fourcc().to_string(),
             timescale: self.timescale(),
             language: self.language().to_string(),
@@ -440,7 +468,7 @@ impl AnyTrack {
         model: &TrackModel,
         descriptor_path: &str,
     ) -> Result<AnyTrack, CoreError> {
-        let path = path::resolve(descriptor_path, model.path());
+        let path = path_utils::resolve(descriptor_path, model.path());
         let (cmaf_header, cmaf_metadata) = cmaf::probe(op, &path).await?;
         match (model, cmaf_metadata) {
             (TrackModel::Video(v), CmafMetadata::Video(m)) => Ok(AnyTrack::Video(VideoTrack::new(
@@ -523,7 +551,7 @@ impl Asset {
         file_path: &str,
         descriptor_path: &str,
     ) -> Result<(), CoreError> {
-        let path = path::resolve(descriptor_path, file_path);
+        let path = path_utils::resolve(descriptor_path, file_path);
         let (cmaf_header, cmaf_metadata) = cmaf::probe(op, &path).await?;
         match cmaf_metadata {
             CmafMetadata::Video(m) => {
@@ -577,6 +605,8 @@ impl Asset {
         for track in tracks {
             asset.push_track(track);
         }
+        asset.min_segment_length_ms = model.min_segment_length_ms;
+        asset.segment_boundaries_ms = model.segment_boundaries_ms;
         asset.path = path;
         Ok(asset)
     }
@@ -588,14 +618,11 @@ impl From<&Asset> for AssetModel {
         let audio = asset.audio_tracks.iter().map(|t| t.to_model(&asset.path));
         let text = asset.text_tracks.iter().map(|t| t.to_model(&asset.path));
         AssetModel {
+            min_segment_length_ms: asset.min_segment_length_ms,
+            segment_boundaries_ms: asset.segment_boundaries_ms.clone(),
             tracks: video.chain(audio).chain(text).collect(),
         }
     }
-}
-
-/// Convert a count of `timescale`-units to milliseconds, truncating toward zero.
-pub(crate) fn units_to_ms(units: u64, timescale: u32) -> u64 {
-    (units as u128 * 1000 / timescale as u128) as u64
 }
 
 #[cfg(test)]
@@ -782,13 +809,91 @@ mod tests {
     fn max_segment_duration_ms_is_the_longest_segment() {
         // @48_000: 48_000→1000 ms, 96_000→2000 ms, 24_000→500 ms
         assert_eq!(
-            video_track(48_000, 0, &[48_000, 96_000, 24_000]).max_segment_duration_ms(),
+            video_track(48_000, 0, &[48_000, 96_000, 24_000]).max_segment_duration_ms(&[], 0),
             2000
         );
     }
 
     #[test]
     fn max_segment_duration_ms_is_zero_without_segments() {
-        assert_eq!(video_track(48_000, 0, &[]).max_segment_duration_ms(), 0);
+        assert_eq!(
+            video_track(48_000, 0, &[]).max_segment_duration_ms(&[], 0),
+            0
+        );
+    }
+
+    #[test]
+    fn asset_round_trips_the_grouping_fields_into_the_model() {
+        let mut asset = Asset::new();
+        asset.min_segment_length_ms = 3000;
+        asset.segment_boundaries_ms = vec![683640];
+        let model = AssetModel::from(&asset);
+        assert_eq!(model.min_segment_length_ms, 3000);
+        assert_eq!(model.segment_boundaries_ms, vec![683640]);
+    }
+
+    #[tokio::test]
+    async fn from_model_carries_the_grouping_fields_onto_the_asset() {
+        use opendal::services::Fs;
+
+        // With no tracks, from_model performs no I/O — any operator works.
+        let dir = tempfile::tempdir().unwrap();
+        let op = Operator::new(Fs::default().root(dir.path().to_str().unwrap())).unwrap();
+        let model = AssetModel {
+            min_segment_length_ms: 3000,
+            segment_boundaries_ms: vec![683640],
+            tracks: Vec::new(),
+        };
+        let asset = Asset::from_model(&op, model, "asset.json").await.unwrap();
+        assert_eq!(asset.min_segment_length_ms, 3000);
+        assert_eq!(asset.segment_boundaries_ms, vec![683640]);
+    }
+
+    #[tokio::test]
+    async fn every_advertised_segment_resolves_to_its_grouped_bytes() {
+        use opendal::services::Fs;
+
+        // A fake track file: 100 distinguishable bytes; two 10-byte fragments
+        // at offsets 20 and 30 that the policy merges into one 20-byte segment.
+        let dir = tempfile::tempdir().unwrap();
+        let bytes: Vec<u8> = (0..100).collect();
+        std::fs::write(dir.path().join("t.mp4"), &bytes).unwrap();
+        let op = Operator::new(Fs::default().root(dir.path().to_str().unwrap())).unwrap();
+
+        let mut h = header(1000, 2000, &[1000, 1000]);
+        h.segments[0].offset = 20;
+        h.segments[0].size = 10;
+        h.segments[1].offset = 30;
+        h.segments[1].size = 10;
+        let track = TextTrack::new(
+            "t.mp4".to_string(),
+            h,
+            TextCmafMetadata {
+                codec: TextCodec::Wvtt,
+                language: None,
+            },
+            None,
+        );
+
+        // The manifest advertises segments by running presentation time; every
+        // advertised time must resolve through segment_bytes with the same
+        // policy.
+        let mut time = track.earliest_presentation_time();
+        for seg in track.segments(&[], 2000) {
+            let got = track
+                .segment_bytes(&op, time, &[], 2000)
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(got.len() as u64, seg.size);
+            time += seg.duration;
+        }
+        // And the merged segment is the two fragments' bytes, contiguous.
+        let got = track
+            .segment_bytes(&op, track.earliest_presentation_time(), &[], 2000)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(&got[..], &bytes[20..40]);
     }
 }

@@ -7,15 +7,21 @@ use hls_m3u8::{MasterPlaylist, MediaPlaylist, MediaSegment};
 use crate::asset::{AudioTrack, Segment, TextTrack, Track, VideoTrack};
 
 /// Build the VOD media playlist for `track`: an `EXT-X-MAP` init on the first
-/// segment, then one segment per (sub)segment named by its running presentation
-/// time. `EXT-X-TARGETDURATION` is the longest segment in whole seconds.
-pub(crate) fn build_media(track: &impl Track) -> MediaPlaylist<'static> {
+/// segment, then one segment per served (sub)segment named by its running
+/// presentation time. `EXT-X-TARGETDURATION` is the longest segment in whole
+/// seconds.
+pub(crate) fn build_media(
+    track: &impl Track,
+    segment_boundaries_ms: &[u64],
+    min_segment_length_ms: u64,
+) -> MediaPlaylist<'static> {
     let repr = track.id();
     let timescale = track.timescale();
+    let segs = track.segments(segment_boundaries_ms, min_segment_length_ms);
 
     let mut time = track.earliest_presentation_time();
-    let mut segments: Vec<MediaSegment<'static>> = Vec::with_capacity(track.segments().len());
-    for (i, seg) in track.segments().iter().enumerate() {
+    let mut segments: Vec<MediaSegment<'static>> = Vec::with_capacity(segs.len());
+    for (i, seg) in segs.iter().enumerate() {
         let mut b = MediaSegment::builder();
         b.uri(format!("{repr}/{time}.m4s"));
         b.duration(Duration::from_secs_f64(
@@ -33,10 +39,7 @@ pub(crate) fn build_media(track: &impl Track) -> MediaPlaylist<'static> {
 
     let mut b = MediaPlaylist::builder();
     b.media_sequence(0);
-    b.target_duration(Duration::from_secs(target_duration(
-        track.segments(),
-        timescale,
-    )));
+    b.target_duration(Duration::from_secs(target_duration(&segs, timescale)));
     b.playlist_type(PlaylistType::Vod);
     b.has_end_list(true);
     b.segments(segments);
@@ -436,7 +439,7 @@ mod tests {
         // 90_000 timescale; segments 2s, 2s, 1s → presentation times 0, 180000, 360000.
         let track = video_track(720, 128_000, &[180_000, 180_000, 90_000]);
         let repr = track.id();
-        let m = build_media(&track).to_string();
+        let m = build_media(&track, &[], 0).to_string();
 
         assert!(m.contains("#EXT-X-PLAYLIST-TYPE:VOD"), "{m}");
         assert!(m.contains("#EXT-X-TARGETDURATION:2"), "{m}");
@@ -457,6 +460,20 @@ mod tests {
     }
 
     #[test]
+    fn media_playlist_groups_segments_by_the_policy() {
+        // Four 1s fragments @ 90_000, min 2s -> two 2s served segments named
+        // by their running presentation times 0 and 180000.
+        let track = video_track(720, 128_000, &[90_000; 4]);
+        let repr = track.id();
+        let m = build_media(&track, &[], 2000).to_string();
+
+        assert_eq!(m.matches("#EXTINF").count(), 2, "{m}");
+        assert!(m.contains("#EXT-X-TARGETDURATION:2"), "{m}");
+        assert!(m.contains(&format!("{repr}/0.m4s")), "{m}");
+        assert!(m.contains(&format!("{repr}/180000.m4s")), "{m}");
+    }
+
+    #[test]
     fn media_segment_uris_reflect_nonzero_presentation_time() {
         // Nonzero eps: the first segment starts at eps, not 0. 90_000 timescale;
         // eps 45000, segments 2s, 1s → presentation times 45000, 225000.
@@ -466,7 +483,7 @@ mod tests {
         };
         let track = VideoTrack::new(String::new(), header, video_metadata(720), None);
         let repr = track.id();
-        let m = build_media(&track).to_string();
+        let m = build_media(&track, &[], 0).to_string();
 
         // First segment named by eps itself, not 0.
         assert!(m.contains(&format!("{repr}/45000.m4s")), "{m}");
@@ -482,7 +499,7 @@ mod tests {
         // 135_000 units @ 90_000 = 1.5s → ceil → 2 (proves .ceil() rounds up
         // rather than truncating to 1).
         let track = video_track(720, 128_000, &[135_000]);
-        let m = build_media(&track).to_string();
+        let m = build_media(&track, &[], 0).to_string();
         assert!(m.contains("#EXT-X-TARGETDURATION:2"), "{m}");
     }
 
