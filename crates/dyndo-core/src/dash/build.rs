@@ -1,8 +1,8 @@
 use std::time::Duration;
 
 use dash_mpd::{
-    AdaptationSet, AudioChannelConfiguration, Period, Representation, Role, SegmentTemplate,
-    SegmentTimeline, MPD, S,
+    AdaptationSet, AudioChannelConfiguration, MPD, Period, Representation, Role, S,
+    SegmentTemplate, SegmentTimeline,
 };
 
 use crate::asset::{AudioTrack, Segment, TextTrack, Track, VideoTrack};

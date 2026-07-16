@@ -4,7 +4,7 @@
 //! `SegmentTemplate` fields from its `AdaptationSet` (ISO/IEC 23009-1), so the
 //! hoisted manifest stays equivalent to the input while emitting less XML.
 
-use dash_mpd::{AdaptationSet, SegmentTemplate, MPD};
+use dash_mpd::{AdaptationSet, MPD, SegmentTemplate};
 
 pub(crate) fn compact(mpd: &mut MPD) {
     for period in &mut mpd.periods {
@@ -136,10 +136,11 @@ mod tests {
         };
         hoist_shared_template(&mut set);
         assert!(set.SegmentTemplate.is_some());
-        assert!(set
-            .representations
-            .iter()
-            .all(|r| r.SegmentTemplate.is_none()));
+        assert!(
+            set.representations
+                .iter()
+                .all(|r| r.SegmentTemplate.is_none())
+        );
     }
 
     #[test]

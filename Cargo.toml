@@ -4,7 +4,7 @@ members = ["crates/dyndo-core", "crates/dyndo-cli", "crates/dyndo-server"]
 
 [workspace.package]
 version = "0.3.0"
-edition = "2021"
+edition = "2024"
 rust-version = "1.97"
 
 [workspace.lints.rust]
