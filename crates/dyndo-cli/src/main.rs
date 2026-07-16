@@ -114,7 +114,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     &format!("{output}/{}.m3u8", t.id()),
                     dyndo_core::hls::generate_media(
                         t,
-                        Some(&asset.segment_boundaries_ms),
+                        &asset.segment_boundaries_ms,
                         asset.min_segment_length_ms,
                     )
                     .into_bytes(),
@@ -126,7 +126,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     &format!("{output}/{}.m3u8", t.id()),
                     dyndo_core::hls::generate_media(
                         t,
-                        Some(&asset.segment_boundaries_ms),
+                        &asset.segment_boundaries_ms,
                         asset.min_segment_length_ms,
                     )
                     .into_bytes(),
@@ -138,7 +138,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     &format!("{output}/{}.m3u8", t.id()),
                     dyndo_core::hls::generate_media(
                         t,
-                        Some(&asset.segment_boundaries_ms),
+                        &asset.segment_boundaries_ms,
                         asset.min_segment_length_ms,
                     )
                     .into_bytes(),
@@ -170,7 +170,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .ok_or_else(|| {
                             "pack: asset has no video track to align subtitles to".to_string()
                         })?
-                        .segments(None, None);
+                        .segments(&[], 0);
 
                     // Parse → expand → pack.
                     let raw = op.read(&input).await?;

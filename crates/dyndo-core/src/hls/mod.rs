@@ -9,8 +9,8 @@ use crate::asset::{Asset, Track};
 /// pass the same grouping policy the segment route uses.
 pub fn generate_media(
     track: &impl Track,
-    segment_boundaries_ms: Option<&[u64]>,
-    min_segment_length_ms: Option<u64>,
+    segment_boundaries_ms: &[u64],
+    min_segment_length_ms: u64,
 ) -> String {
     build::build_media(track, segment_boundaries_ms, min_segment_length_ms).to_string()
 }

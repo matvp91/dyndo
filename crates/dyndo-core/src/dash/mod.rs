@@ -19,7 +19,7 @@ pub fn generate_mpd(asset: &Asset, compact: bool) -> String {
         &asset.video_tracks,
         &asset.audio_tracks,
         &asset.text_tracks,
-        Some(&asset.segment_boundaries_ms),
+        &asset.segment_boundaries_ms,
         asset.min_segment_length_ms,
         compact,
     );

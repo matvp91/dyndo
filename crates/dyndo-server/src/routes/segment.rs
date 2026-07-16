@@ -44,7 +44,7 @@ pub(super) async fn media_segment(
         .segment_bytes(
             op,
             time,
-            Some(&model.segment_boundaries_ms),
+            &model.segment_boundaries_ms,
             model.min_segment_length_ms,
         )
         .await?

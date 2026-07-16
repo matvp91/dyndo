@@ -63,8 +63,8 @@ fn segment_template(timescale: u32, pto: u64, segments: &[Segment]) -> SegmentTe
 fn base_representation(
     track: &impl Track,
     codecs: String,
-    segment_boundaries_ms: Option<&[u64]>,
-    min_segment_length_ms: Option<u64>,
+    segment_boundaries_ms: &[u64],
+    min_segment_length_ms: u64,
 ) -> Representation {
     let segments = track.segments(segment_boundaries_ms, min_segment_length_ms);
     Representation {
@@ -82,8 +82,8 @@ fn base_representation(
 
 fn video_representation(
     track: &VideoTrack,
-    segment_boundaries_ms: Option<&[u64]>,
-    min_segment_length_ms: Option<u64>,
+    segment_boundaries_ms: &[u64],
+    min_segment_length_ms: u64,
 ) -> Representation {
     Representation {
         width: Some(track.width() as u64),
@@ -100,8 +100,8 @@ fn video_representation(
 
 fn audio_representation(
     track: &AudioTrack,
-    segment_boundaries_ms: Option<&[u64]>,
-    min_segment_length_ms: Option<u64>,
+    segment_boundaries_ms: &[u64],
+    min_segment_length_ms: u64,
 ) -> Representation {
     Representation {
         audioSamplingRate: Some(track.sample_rate().to_string()),
@@ -123,8 +123,8 @@ fn audio_representation(
 /// shared base (id, bandwidth, `codecs`, segment template) is all it needs.
 fn text_representation(
     track: &TextTrack,
-    segment_boundaries_ms: Option<&[u64]>,
-    min_segment_length_ms: Option<u64>,
+    segment_boundaries_ms: &[u64],
+    min_segment_length_ms: u64,
 ) -> Representation {
     base_representation(
         track,
@@ -187,8 +187,8 @@ fn mpd(
     videos: &[VideoTrack],
     audios: &[AudioTrack],
     texts: &[TextTrack],
-    segment_boundaries_ms: Option<&[u64]>,
-    min_segment_length_ms: Option<u64>,
+    segment_boundaries_ms: &[u64],
+    min_segment_length_ms: u64,
 ) -> MPD {
     let mut adaptations = Vec::new();
     let mut set_id = 0;
@@ -294,8 +294,8 @@ pub(crate) fn build_mpd(
     videos: &[VideoTrack],
     audios: &[AudioTrack],
     texts: &[TextTrack],
-    segment_boundaries_ms: Option<&[u64]>,
-    min_segment_length_ms: Option<u64>,
+    segment_boundaries_ms: &[u64],
+    min_segment_length_ms: u64,
     compact: bool,
 ) -> MPD {
     let mut m = mpd(
@@ -352,7 +352,7 @@ mod tests {
 
     #[test]
     fn mpd_advertises_text_adaptation_set_with_subtitle_role() {
-        let m = mpd(&[], &[], &[text_track("eng")], None, None);
+        let m = mpd(&[], &[], &[text_track("eng")], &[], 0);
         let text = m.periods[0]
             .adaptations
             .iter()
@@ -372,13 +372,7 @@ mod tests {
 
     #[test]
     fn mpd_emits_one_text_adaptation_set_per_language() {
-        let m = mpd(
-            &[],
-            &[],
-            &[text_track("eng"), text_track("nld")],
-            None,
-            None,
-        );
+        let m = mpd(&[], &[], &[text_track("eng"), text_track("nld")], &[], 0);
         let text_sets = m.periods[0]
             .adaptations
             .iter()
@@ -438,7 +432,7 @@ mod tests {
     #[test]
     fn mpd_timeline_groups_segments_by_the_policy() {
         let track = text_track_with_segments("eng", vec![seg(1000); 4]);
-        let m = mpd(&[], &[], &[track], None, Some(2000));
+        let m = mpd(&[], &[], &[track], &[], 2000);
         let tmpl = m.periods[0].adaptations[0].representations[0]
             .SegmentTemplate
             .as_ref()
@@ -452,7 +446,7 @@ mod tests {
     #[test]
     fn mpd_min_buffer_time_reflects_grouped_segments() {
         let track = text_track_with_segments("eng", vec![seg(1000); 4]);
-        let m = mpd(&[], &[], &[track], None, Some(2000));
+        let m = mpd(&[], &[], &[track], &[], 2000);
         assert_eq!(
             m.minBufferTime,
             Some(std::time::Duration::from_millis(2000))

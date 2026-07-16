@@ -12,8 +12,8 @@ use crate::asset::{AudioTrack, Segment, TextTrack, Track, VideoTrack};
 /// seconds.
 pub(crate) fn build_media(
     track: &impl Track,
-    segment_boundaries_ms: Option<&[u64]>,
-    min_segment_length_ms: Option<u64>,
+    segment_boundaries_ms: &[u64],
+    min_segment_length_ms: u64,
 ) -> MediaPlaylist<'static> {
     let repr = track.id();
     let timescale = track.timescale();
@@ -439,7 +439,7 @@ mod tests {
         // 90_000 timescale; segments 2s, 2s, 1s → presentation times 0, 180000, 360000.
         let track = video_track(720, 128_000, &[180_000, 180_000, 90_000]);
         let repr = track.id();
-        let m = build_media(&track, None, None).to_string();
+        let m = build_media(&track, &[], 0).to_string();
 
         assert!(m.contains("#EXT-X-PLAYLIST-TYPE:VOD"), "{m}");
         assert!(m.contains("#EXT-X-TARGETDURATION:2"), "{m}");
@@ -465,7 +465,7 @@ mod tests {
         // by their running presentation times 0 and 180000.
         let track = video_track(720, 128_000, &[90_000; 4]);
         let repr = track.id();
-        let m = build_media(&track, None, Some(2000)).to_string();
+        let m = build_media(&track, &[], 2000).to_string();
 
         assert_eq!(m.matches("#EXTINF").count(), 2, "{m}");
         assert!(m.contains("#EXT-X-TARGETDURATION:2"), "{m}");
@@ -483,7 +483,7 @@ mod tests {
         };
         let track = VideoTrack::new(String::new(), header, video_metadata(720), None);
         let repr = track.id();
-        let m = build_media(&track, None, None).to_string();
+        let m = build_media(&track, &[], 0).to_string();
 
         // First segment named by eps itself, not 0.
         assert!(m.contains(&format!("{repr}/45000.m4s")), "{m}");
@@ -499,7 +499,7 @@ mod tests {
         // 135_000 units @ 90_000 = 1.5s → ceil → 2 (proves .ceil() rounds up
         // rather than truncating to 1).
         let track = video_track(720, 128_000, &[135_000]);
-        let m = build_media(&track, None, None).to_string();
+        let m = build_media(&track, &[], 0).to_string();
         assert!(m.contains("#EXT-X-TARGETDURATION:2"), "{m}");
     }
 

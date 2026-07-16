@@ -6,19 +6,24 @@ use serde::{Deserialize, Serialize};
 
 use crate::CoreError;
 
+/// `skip_serializing_if` helper: the wire omits a zero `min_segment_length`.
+fn is_zero(v: &u64) -> bool {
+    *v == 0
+}
+
 /// The serializable descriptor (`asset.json`): a list of tracks plus the
 /// optional serve-time segmentation policy.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AssetModel {
     /// Minimum length of a served segment, in milliseconds (wire:
-    /// `min_segment_length`). `None` serves each CMAF fragment as its own
-    /// segment; `0` behaves like `None`.
+    /// `min_segment_length`). `0` (or an absent field — deserialization
+    /// normalizes the two) serves each CMAF fragment as its own segment.
     #[serde(
         rename = "min_segment_length",
         default,
-        skip_serializing_if = "Option::is_none"
+        skip_serializing_if = "is_zero"
     )]
-    pub min_segment_length_ms: Option<u64>,
+    pub min_segment_length_ms: u64,
     /// Splice points, in milliseconds from the start of the presentation
     /// (wire: `segment_boundaries`). Served segments never span one. Treated
     /// as a set: order and duplicates don't matter.
@@ -147,7 +152,7 @@ mod tests {
     #[test]
     fn descriptor_without_grouping_fields_parses_with_defaults() {
         let m: AssetModel = serde_json::from_str(r#"{"tracks": []}"#).unwrap();
-        assert_eq!(m.min_segment_length_ms, None);
+        assert_eq!(m.min_segment_length_ms, 0);
         assert!(m.segment_boundaries_ms.is_empty());
     }
 
@@ -157,14 +162,14 @@ mod tests {
             r#"{"min_segment_length": 3000, "segment_boundaries": [683640], "tracks": []}"#,
         )
         .unwrap();
-        assert_eq!(m.min_segment_length_ms, Some(3000));
+        assert_eq!(m.min_segment_length_ms, 3000);
         assert_eq!(m.segment_boundaries_ms, vec![683640]);
     }
 
     #[test]
     fn grouping_fields_round_trip_through_json() {
         let m = AssetModel {
-            min_segment_length_ms: Some(3000),
+            min_segment_length_ms: 3000,
             segment_boundaries_ms: vec![683640],
             tracks: Vec::new(),
         };
@@ -175,7 +180,7 @@ mod tests {
     #[test]
     fn default_grouping_fields_are_omitted_from_json() {
         let m = AssetModel {
-            min_segment_length_ms: None,
+            min_segment_length_ms: 0,
             segment_boundaries_ms: Vec::new(),
             tracks: Vec::new(),
         };

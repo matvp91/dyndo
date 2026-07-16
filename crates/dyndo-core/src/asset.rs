@@ -24,8 +24,8 @@ pub struct Asset {
     /// The asset's text tracks, in no particular order.
     pub text_tracks: Vec<TextTrack>,
     /// Minimum length of a served segment, in milliseconds, from the
-    /// descriptor. `None` (or 0) serves each CMAF fragment as its own segment.
-    pub min_segment_length_ms: Option<u64>,
+    /// descriptor. `0` serves each CMAF fragment as its own segment.
+    pub min_segment_length_ms: u64,
     /// Splice points, in milliseconds from the start of the presentation,
     /// from the descriptor. A served segment never spans one.
     pub segment_boundaries_ms: Vec<u64>,
@@ -108,14 +108,10 @@ pub trait Track: sealed::HasHeader {
 
     /// The track's served (sub)segments, in presentation order: the raw CMAF
     /// fragments grouped to at least `min_segment_length_ms`, never across a
-    /// splice point in `segment_boundaries_ms` (both `None` = one segment per
-    /// fragment). Manifest builders and the segment route must receive the
-    /// same policy or advertised segment times will not resolve.
-    fn segments(
-        &self,
-        segment_boundaries_ms: Option<&[u64]>,
-        min_segment_length_ms: Option<u64>,
-    ) -> Vec<Segment> {
+    /// splice point in `segment_boundaries_ms` (`0` and an empty slice = one
+    /// segment per fragment). Manifest builders and the segment route must
+    /// receive the same policy or advertised segment times will not resolve.
+    fn segments(&self, segment_boundaries_ms: &[u64], min_segment_length_ms: u64) -> Vec<Segment> {
         group_segments(
             &self.header().segments,
             self.timescale(),
@@ -133,8 +129,8 @@ pub trait Track: sealed::HasHeader {
     /// has none), under the same grouping policy as [`Track::segments`].
     fn max_segment_duration_ms(
         &self,
-        segment_boundaries_ms: Option<&[u64]>,
-        min_segment_length_ms: Option<u64>,
+        segment_boundaries_ms: &[u64],
+        min_segment_length_ms: u64,
     ) -> u64 {
         self.segments(segment_boundaries_ms, min_segment_length_ms)
             .iter()
@@ -163,8 +159,8 @@ pub trait Track: sealed::HasHeader {
         &self,
         op: &Operator,
         time: u64,
-        segment_boundaries_ms: Option<&[u64]>,
-        min_segment_length_ms: Option<u64>,
+        segment_boundaries_ms: &[u64],
+        min_segment_length_ms: u64,
     ) -> Result<Option<Bytes>, CoreError> {
         let mut t = self.earliest_presentation_time();
         for seg in self.segments(segment_boundaries_ms, min_segment_length_ms) {
@@ -813,7 +809,7 @@ mod tests {
     fn max_segment_duration_ms_is_the_longest_segment() {
         // @48_000: 48_000→1000 ms, 96_000→2000 ms, 24_000→500 ms
         assert_eq!(
-            video_track(48_000, 0, &[48_000, 96_000, 24_000]).max_segment_duration_ms(None, None),
+            video_track(48_000, 0, &[48_000, 96_000, 24_000]).max_segment_duration_ms(&[], 0),
             2000
         );
     }
@@ -821,7 +817,7 @@ mod tests {
     #[test]
     fn max_segment_duration_ms_is_zero_without_segments() {
         assert_eq!(
-            video_track(48_000, 0, &[]).max_segment_duration_ms(None, None),
+            video_track(48_000, 0, &[]).max_segment_duration_ms(&[], 0),
             0
         );
     }
@@ -829,10 +825,10 @@ mod tests {
     #[test]
     fn asset_round_trips_the_grouping_fields_into_the_model() {
         let mut asset = Asset::new();
-        asset.min_segment_length_ms = Some(3000);
+        asset.min_segment_length_ms = 3000;
         asset.segment_boundaries_ms = vec![683640];
         let model = AssetModel::from(&asset);
-        assert_eq!(model.min_segment_length_ms, Some(3000));
+        assert_eq!(model.min_segment_length_ms, 3000);
         assert_eq!(model.segment_boundaries_ms, vec![683640]);
     }
 
@@ -844,12 +840,12 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let op = Operator::new(Fs::default().root(dir.path().to_str().unwrap())).unwrap();
         let model = AssetModel {
-            min_segment_length_ms: Some(3000),
+            min_segment_length_ms: 3000,
             segment_boundaries_ms: vec![683640],
             tracks: Vec::new(),
         };
         let asset = Asset::from_model(&op, model, "asset.json").await.unwrap();
-        assert_eq!(asset.min_segment_length_ms, Some(3000));
+        assert_eq!(asset.min_segment_length_ms, 3000);
         assert_eq!(asset.segment_boundaries_ms, vec![683640]);
     }
 
@@ -883,9 +879,9 @@ mod tests {
         // advertised time must resolve through segment_bytes with the same
         // policy.
         let mut time = track.earliest_presentation_time();
-        for seg in track.segments(None, Some(2000)) {
+        for seg in track.segments(&[], 2000) {
             let got = track
-                .segment_bytes(&op, time, None, Some(2000))
+                .segment_bytes(&op, time, &[], 2000)
                 .await
                 .unwrap()
                 .unwrap();
@@ -894,7 +890,7 @@ mod tests {
         }
         // And the merged segment is the two fragments' bytes, contiguous.
         let got = track
-            .segment_bytes(&op, track.earliest_presentation_time(), None, Some(2000))
+            .segment_bytes(&op, track.earliest_presentation_time(), &[], 2000)
             .await
             .unwrap()
             .unwrap();
