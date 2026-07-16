@@ -92,7 +92,7 @@ paths are resolved relative to the output descriptor's directory, so from the
 repository root they're just the file names inside `assets/`:
 
 ```bash
-dyndo index -i video.mp4 -i audio.mp4 -o assets/asset.json
+dyndo index video.mp4 audio.mp4 -o assets/asset.json
 ```
 
 ```text

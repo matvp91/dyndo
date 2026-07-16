@@ -1,29 +1,48 @@
 # dyndo index
 
-Build an `asset.json` descriptor from one or more CMAF files. Each input file
-becomes one track.
+Build or update an `asset.json` descriptor from one or more CMAF files. Each
+input becomes one track. When the output already exists, tracks are merged into
+it rather than overwriting.
 
 ## Synopsis
 
 ```text
-dyndo index [OPTIONS] --input <INPUT>
+dyndo index [OPTIONS] <INPUTS>...
 ```
 
 ## Options
 
 | Option | Description | Default |
 |---|---|---|
-| `-i, --input <INPUT>` | Input CMAF file. Repeatable — pass once per track. | *(required)* |
+| `<INPUTS>...` | Track descriptor(s), one per track: `<path>[,language=..][,role=..]`. Positional, at least one required. | *(required)* |
 | `-o, --output <OUTPUT>` | Output descriptor path. | `asset.json` |
 | `-h, --help` | Print help. | |
 
+## Descriptor syntax
+
+Each input is a comma-separated descriptor whose **first field is the file
+path**; the remaining fields are `key=value` overrides:
+
+- `language` — ISO-639-2 code; overrides the language probed from the file.
+  Audio and text only.
+- `role` — the track's purpose; never probed, so this is the only way to set it.
+  Audio and text only. Audio: `main`, `alternate`, `commentary`, `dub`,
+  `description`, `enhanced-audio-intelligibility`. Text: `subtitle`, `caption`,
+  `forced-subtitle`.
+
+A bare `video.mp4` is the zero-override case. A video input with `language`/
+`role`, an unknown field, a `role` invalid for the track's type, or a `path=`
+first field each abort the run.
+
 ## Description
 
-For each `--input`, `index` reads the file's CMAF header region, determines
-whether it is a video, audio, or text track from its media handler, extracts the
-codec and per-type metadata, and records a track entry in the descriptor. It
-then writes the descriptor to `--output` as pretty-printed JSON and prints a
-summary:
+For each input, `index` reads the file's CMAF header region, determines whether
+it is a video, audio, or text track from its media handler, extracts the codec
+and per-type metadata, applies any `language`/`role` overrides, and records a
+track entry. If `--output` already exists it is loaded first and each input is
+**upserted by source path** — a new path is appended, an already-listed path is
+replaced in place. The descriptor is written to `--output` as pretty-printed
+JSON with a summary:
 
 ```text
 wrote asset.json (3 tracks)
@@ -47,20 +66,26 @@ Text tracks are not indexed directly from `.vtt` here — use
 
 ## Examples
 
-Index a multi-rendition asset:
+Index a multi-rendition asset, tagging the audio:
 
 ```bash
 dyndo index \
-  -i video_1080.mp4 \
-  -i video_720.mp4 \
-  -i audio_en.mp4 \
+  video_1080.mp4 \
+  video_720.mp4 \
+  audio_en.mp4,language=eng,role=main \
   -o asset.json
+```
+
+Add a track to an existing descriptor (merges by path):
+
+```bash
+dyndo index audio_fr.mp4,language=fra,role=dub -o asset.json
 ```
 
 Write the descriptor into a subdirectory (inputs resolve relative to it):
 
 ```bash
-dyndo index -i video.mp4 -i audio.mp4 -o out/asset.json
+dyndo index video.mp4 audio.mp4 -o out/asset.json
 ```
 
 ## See also

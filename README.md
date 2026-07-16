@@ -46,7 +46,7 @@ cargo build
 make install
 
 # Index your CMAF sources into a descriptor under ./assets
-dyndo index -i video.mp4 -i audio.mp4 -o assets/asset.json
+dyndo index video.mp4 audio.mp4 -o assets/asset.json
 
 # Serve it as DASH + HLS from ./assets on :8080
 make run
