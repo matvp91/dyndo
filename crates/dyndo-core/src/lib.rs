@@ -10,6 +10,7 @@ mod error;
 pub mod hls;
 pub mod model;
 pub mod path_utils;
+pub mod role;
 mod segment_utils;
 pub mod text;
 
