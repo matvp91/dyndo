@@ -22,6 +22,9 @@ pub struct Asset {
     pub audio_tracks: Vec<AudioTrack>,
     /// The asset's text tracks, in no particular order.
     pub text_tracks: Vec<TextTrack>,
+    /// Serve-time segmentation policy from the descriptor (see
+    /// [`Segmentation`]). Default: no grouping.
+    pub segmentation: Segmentation,
     /// Path of the source descriptor (`asset.json`), used to resolve each
     /// track's relative path.
     pub path: String,
@@ -606,6 +609,12 @@ impl Asset {
         path: impl Into<String>,
     ) -> Result<Asset, CoreError> {
         let path = path.into();
+        // Validate the policy before probing any track: a broken descriptor
+        // should fail fast, not after N reads.
+        let segmentation = Segmentation::new(
+            model.min_segment_length_ms,
+            model.segment_boundaries_ms.clone(),
+        )?;
         let tracks = try_join_all(
             model
                 .tracks
@@ -617,6 +626,7 @@ impl Asset {
         for track in tracks {
             asset.push_track(track);
         }
+        asset.segmentation = segmentation;
         asset.path = path;
         Ok(asset)
     }
@@ -628,8 +638,8 @@ impl From<&Asset> for AssetModel {
         let audio = asset.audio_tracks.iter().map(|t| t.to_model(&asset.path));
         let text = asset.text_tracks.iter().map(|t| t.to_model(&asset.path));
         AssetModel {
-            min_segment_length_ms: None,
-            segment_boundaries_ms: Vec::new(),
+            min_segment_length_ms: asset.segmentation.min_segment_length_ms,
+            segment_boundaries_ms: asset.segmentation.segment_boundaries_ms.clone(),
             tracks: video.chain(audio).chain(text).collect(),
         }
     }
@@ -862,5 +872,32 @@ mod tests {
     #[test]
     fn segmentation_rejects_a_zero_boundary() {
         assert!(Segmentation::new(None, vec![0, 1000]).is_err());
+    }
+
+    #[test]
+    fn asset_round_trips_segmentation_into_the_model() {
+        let mut asset = Asset::new();
+        asset.segmentation = Segmentation::new(Some(3000), vec![683640]).unwrap();
+        let model = AssetModel::from(&asset);
+        assert_eq!(model.min_segment_length_ms, Some(3000));
+        assert_eq!(model.segment_boundaries_ms, vec![683640]);
+    }
+
+    #[tokio::test]
+    async fn from_model_rejects_invalid_boundaries_before_probing() {
+        use opendal::services::Fs;
+
+        // With no tracks, from_model performs no I/O — any operator works.
+        let dir = tempfile::tempdir().unwrap();
+        let op = Operator::new(Fs::default().root(dir.path().to_str().unwrap())).unwrap();
+        let model = AssetModel {
+            min_segment_length_ms: Some(3000),
+            segment_boundaries_ms: vec![2000, 1000],
+            tracks: Vec::new(),
+        };
+        let err = Asset::from_model(&op, model, "asset.json")
+            .await
+            .unwrap_err();
+        assert!(matches!(err, CoreError::InvalidDescriptor(_)));
     }
 }
