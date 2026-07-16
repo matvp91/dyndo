@@ -107,4 +107,6 @@ The script bumps all three crate versions in lockstep, commits
 [`.github/workflows/release.yml`](.github/workflows/release.yml), which verifies
 the tag matches `Cargo.toml`, re-runs the CI gate, builds `dyndo` and
 `dyndo-server` for Linux and macOS, and publishes a GitHub Release with the
-binaries and a `SHA256SUMS` file.
+binaries and a `SHA256SUMS` file. The same tag push also builds and publishes a
+multi-arch (`linux/amd64` + `linux/arm64`) `dyndo-server` image to Docker Hub,
+tagged `:<version>`, `:<major>.<minor>`, and `:latest`.
