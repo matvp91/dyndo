@@ -503,3 +503,148 @@ fn pack_without_a_video_track_fails() {
         .unwrap();
     assert!(!status.success(), "pack should fail without a video track");
 }
+
+#[test]
+fn index_sets_language_and_role_on_audio() {
+    let dir = tempfile::tempdir().unwrap();
+    stage(dir.path(), &["video_avc_1080.mp4", "audio_aac_nl_2.mp4"]);
+
+    assert!(
+        dyndo(dir.path())
+            .args([
+                "index",
+                "video_avc_1080.mp4",
+                "audio_aac_nl_2.mp4,language=fra,role=commentary",
+                "-o",
+                "asset.json",
+            ])
+            .status()
+            .unwrap()
+            .success()
+    );
+
+    let json: serde_json::Value =
+        serde_json::from_slice(&fs::read(dir.path().join("asset.json")).unwrap()).unwrap();
+    let audio = json["tracks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["type"] == "audio")
+        .expect("an audio track");
+    assert_eq!(audio["language"], "fra"); // probed nld, overridden
+    assert_eq!(audio["role"], "commentary");
+}
+
+#[test]
+fn index_appends_a_new_track_to_an_existing_descriptor() {
+    let dir = tempfile::tempdir().unwrap();
+    stage(dir.path(), &["video_avc_1080.mp4", "audio_aac_nl_2.mp4"]);
+
+    assert!(
+        dyndo(dir.path())
+            .args(["index", "video_avc_1080.mp4", "-o", "asset.json"])
+            .status()
+            .unwrap()
+            .success()
+    );
+    assert!(
+        dyndo(dir.path())
+            .args(["index", "audio_aac_nl_2.mp4", "-o", "asset.json"])
+            .status()
+            .unwrap()
+            .success()
+    );
+
+    let json: serde_json::Value =
+        serde_json::from_slice(&fs::read(dir.path().join("asset.json")).unwrap()).unwrap();
+    let tracks = json["tracks"].as_array().unwrap();
+    assert_eq!(tracks.len(), 2, "second index should append, not overwrite");
+    assert!(tracks.iter().any(|t| t["type"] == "video"));
+    assert!(tracks.iter().any(|t| t["type"] == "audio"));
+}
+
+#[test]
+fn index_upserts_an_existing_path_in_place() {
+    let dir = tempfile::tempdir().unwrap();
+    stage(dir.path(), &["audio_aac_nl_2.mp4"]);
+
+    // First index: no role.
+    assert!(
+        dyndo(dir.path())
+            .args(["index", "audio_aac_nl_2.mp4", "-o", "asset.json"])
+            .status()
+            .unwrap()
+            .success()
+    );
+    // Re-index the same path, now declaring a role.
+    assert!(
+        dyndo(dir.path())
+            .args(["index", "audio_aac_nl_2.mp4,role=main", "-o", "asset.json"])
+            .status()
+            .unwrap()
+            .success()
+    );
+
+    let json: serde_json::Value =
+        serde_json::from_slice(&fs::read(dir.path().join("asset.json")).unwrap()).unwrap();
+    let tracks = json["tracks"].as_array().unwrap();
+    assert_eq!(tracks.len(), 1, "same path should replace, not duplicate");
+    assert_eq!(tracks[0]["role"], "main");
+}
+
+#[test]
+fn index_rejects_role_on_video() {
+    let dir = tempfile::tempdir().unwrap();
+    stage(dir.path(), &["video_avc_1080.mp4"]);
+    assert!(
+        !dyndo(dir.path())
+            .args(["index", "video_avc_1080.mp4,role=main", "-o", "asset.json"])
+            .status()
+            .unwrap()
+            .success()
+    );
+}
+
+#[test]
+fn index_rejects_a_text_role_on_audio() {
+    let dir = tempfile::tempdir().unwrap();
+    stage(dir.path(), &["audio_aac_nl_2.mp4"]);
+    assert!(
+        !dyndo(dir.path())
+            .args([
+                "index",
+                "audio_aac_nl_2.mp4,role=subtitle",
+                "-o",
+                "asset.json"
+            ])
+            .status()
+            .unwrap()
+            .success()
+    );
+}
+
+#[test]
+fn index_rejects_an_unknown_field() {
+    let dir = tempfile::tempdir().unwrap();
+    stage(dir.path(), &["audio_aac_nl_2.mp4"]);
+    assert!(
+        !dyndo(dir.path())
+            .args(["index", "audio_aac_nl_2.mp4,codec=aac", "-o", "asset.json"])
+            .status()
+            .unwrap()
+            .success()
+    );
+}
+
+#[test]
+fn index_rejects_path_used_as_a_key() {
+    let dir = tempfile::tempdir().unwrap();
+    stage(dir.path(), &["video_avc_1080.mp4"]);
+    assert!(
+        !dyndo(dir.path())
+            .args(["index", "path=video_avc_1080.mp4", "-o", "asset.json"])
+            .status()
+            .unwrap()
+            .success()
+    );
+}
