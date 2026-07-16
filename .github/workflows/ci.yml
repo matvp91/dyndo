@@ -33,9 +33,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
+      # Installs the exact toolchain pinned in rust-toolchain.toml
+      # (components rustfmt+clippy come from that file too).
+      - name: Install pinned toolchain
+        run: rustup toolchain install && rustup show active-toolchain
       - uses: Swatinem/rust-cache@v2
       - run: make lint
 
@@ -44,7 +45,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Install pinned toolchain
+        run: rustup toolchain install && rustup show active-toolchain
       - uses: Swatinem/rust-cache@v2
       - run: make test
 
@@ -53,7 +55,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Install pinned toolchain
+        run: rustup toolchain install && rustup show active-toolchain
       - uses: Swatinem/rust-cache@v2
       - run: make doc
 
@@ -62,6 +65,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Install pinned toolchain
+        run: rustup toolchain install && rustup show active-toolchain
       - uses: Swatinem/rust-cache@v2
       - run: make build

@@ -39,9 +39,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
+      # Installs the exact toolchain pinned in rust-toolchain.toml
+      # (components rustfmt+clippy come from that file too).
+      - name: Install pinned toolchain
+        run: rustup toolchain install && rustup show active-toolchain
       # Pinned nightly for rustfmt (rustfmt.toml uses group_imports); keep in
       # sync with the Makefile NIGHTLY variable and ci.yml.
       - uses: dtolnay/rust-toolchain@master
@@ -70,9 +71,13 @@ jobs:
             target: x86_64-apple-darwin
     steps:
       - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
+      # Installs the pinned toolchain from rust-toolchain.toml, then adds the
+      # cross-compile target for this matrix leg.
+      - name: Install pinned toolchain
+        run: |
+          rustup toolchain install
+          rustup target add ${{ matrix.target }}
+          rustup show active-toolchain
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
