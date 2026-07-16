@@ -40,6 +40,52 @@ async fn parses_video_avc_fixture() {
 }
 
 #[tokio::test]
+async fn parses_video_hvc1_fixture() {
+    let op = fixtures_op();
+    let (h, m) = cmaf::probe(&op, "video_hvc1_240.mp4").await.unwrap();
+
+    assert_eq!(h.timescale, 12_800);
+    assert_eq!(h.duration, 51_200);
+    assert_eq!(h.bandwidth, 57_686);
+    assert_eq!(h.earliest_presentation_time, 0);
+    assert_eq!(h.init_segment.offset, 0);
+    assert_eq!(h.init_segment.size, 3_200);
+    assert_eq!(h.segments.len(), 4);
+    let first = h.segments.first().unwrap();
+    assert_eq!(first.offset, 3_288);
+    assert_eq!(first.size, 7_123);
+    assert_eq!(first.duration, 12_800);
+
+    let CmafMetadata::Video(v) = m else {
+        panic!("expected a video track");
+    };
+    assert_eq!(v.codec.fourcc().to_string(), "hvc1");
+    assert_eq!(v.codec.rfc6381(), "hvc1.1.6.L60.90");
+    assert_eq!(v.width, 320);
+    assert_eq!(v.height, 240);
+    assert_eq!(v.frame_rate, (25, 1));
+}
+
+#[tokio::test]
+async fn parses_video_hev1_fixture() {
+    let op = fixtures_op();
+    let (h, m) = cmaf::probe(&op, "video_hev1_240.mp4").await.unwrap();
+
+    assert_eq!(h.timescale, 12_800);
+    assert_eq!(h.init_segment.size, 3_200);
+    assert_eq!(h.segments.len(), 4);
+
+    let CmafMetadata::Video(v) = m else {
+        panic!("expected a video track");
+    };
+    // Same stream as the hvc1 fixture, tagged hev1: only the fourcc/prefix differ.
+    assert_eq!(v.codec.fourcc().to_string(), "hev1");
+    assert_eq!(v.codec.rfc6381(), "hev1.1.6.L60.90");
+    assert_eq!(v.width, 320);
+    assert_eq!(v.height, 240);
+}
+
+#[tokio::test]
 async fn parses_audio_aac_fixture() {
     let op = fixtures_op();
     let (h, m) = cmaf::probe(&op, "audio_aac_nl_2.mp4").await.unwrap();
@@ -62,4 +108,73 @@ async fn parses_audio_aac_fixture() {
     assert_eq!(a.sample_rate, 48_000);
     assert_eq!(a.channels, 2);
     assert_eq!(a.language.as_deref(), Some("nld"));
+}
+
+#[tokio::test]
+async fn parses_video_av1_fixture() {
+    let op = fixtures_op();
+    let (h, m) = cmaf::probe(&op, "video_av1_240.mp4").await.unwrap();
+
+    assert_eq!(h.timescale, 12_800);
+    assert_eq!(h.duration, 25_600);
+    assert_eq!(h.bandwidth, 65_256);
+    assert_eq!(h.init_segment.size, 783);
+    assert_eq!(h.segments.len(), 2);
+    let first = h.segments.first().unwrap();
+    assert_eq!(first.offset, 847);
+    assert_eq!(first.size, 8_342);
+    assert_eq!(first.duration, 12_800);
+
+    let CmafMetadata::Video(v) = m else {
+        panic!("expected a video track");
+    };
+    assert_eq!(v.codec.fourcc().to_string(), "av01");
+    assert_eq!(v.codec.rfc6381(), "av01.0.00M.08");
+    assert_eq!(v.width, 320);
+    assert_eq!(v.height, 240);
+    assert_eq!(v.frame_rate, (25, 1));
+}
+
+#[tokio::test]
+async fn parses_audio_ac3_fixture() {
+    let op = fixtures_op();
+    let (h, m) = cmaf::probe(&op, "audio_ac3_1.mp4").await.unwrap();
+
+    assert_eq!(h.timescale, 48_000);
+    assert_eq!(h.duration, 144_128);
+    assert_eq!(h.bandwidth, 193_204);
+    assert_eq!(h.init_segment.size, 725);
+    assert_eq!(h.segments.len(), 3);
+    let first = h.segments.first().unwrap();
+    assert_eq!(first.offset, 801);
+    assert_eq!(first.size, 24_684);
+    assert_eq!(first.duration, 48_896);
+
+    let CmafMetadata::Audio(a) = m else {
+        panic!("expected an audio track");
+    };
+    assert_eq!(a.codec.fourcc().to_string(), "ac-3");
+    assert_eq!(a.codec.rfc6381(), "ac-3");
+    assert_eq!(a.sample_rate, 48_000);
+    assert_eq!(a.channels, 1);
+    assert_eq!(a.language.as_deref(), Some("und"));
+}
+
+#[tokio::test]
+async fn parses_audio_ec3_fixture() {
+    let op = fixtures_op();
+    let (h, m) = cmaf::probe(&op, "audio_ec3_1.mp4").await.unwrap();
+
+    assert_eq!(h.timescale, 48_000);
+    assert_eq!(h.init_segment.size, 727);
+    assert_eq!(h.segments.len(), 3);
+
+    let CmafMetadata::Audio(a) = m else {
+        panic!("expected an audio track");
+    };
+    assert_eq!(a.codec.fourcc().to_string(), "ec-3");
+    assert_eq!(a.codec.rfc6381(), "ec-3");
+    assert_eq!(a.sample_rate, 48_000);
+    assert_eq!(a.channels, 1);
+    assert_eq!(a.language.as_deref(), Some("und"));
 }
