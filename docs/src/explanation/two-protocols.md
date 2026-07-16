@@ -55,6 +55,17 @@ That is why the same `<repr>/<time>.m4s` value appears in both a DASH
 `SegmentTimeline` `$Time$` and an HLS media-playlist URI: they are computed from
 the same running sum of segment durations.
 
+## Roles render per protocol, from one source
+
+A track's *role* — its author-declared purpose, such as a commentary audio track
+or a forced-subtitle text track — is recorded once in the descriptor and then
+rendered into whatever each protocol uses to express it. DASH emits `Role` and
+`Accessibility` descriptors; HLS emits `DEFAULT`/`AUTOSELECT`/`FORCED` flags and
+`CHARACTERISTICS` attributes. As with segments, there is one source of truth —
+the descriptor's `role` — and two renderings of it, so the two manifests describe
+the same track the same way. See the [DASH](../reference/cli/dash.md) and
+[HLS](../reference/cli/hls.md) references for the per-protocol output.
+
 ## Consequences
 
 - **Adding a protocol is adding a manifest generator**, not a second copy of the

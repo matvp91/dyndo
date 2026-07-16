@@ -57,6 +57,12 @@ hls/
 - Audio renditions are grouped by codec fourcc (`GROUP-ID`). Two audio tracks
   sharing a fourcc but differing in codec profile (for example AAC-LC vs
   HE-AAC) collapse into one group whose `CODECS` reflects the first track seen.
+- Track roles drive rendition selection and accessibility signalling: the
+  default audio rendition is the first `main`-role track (or the first audio
+  track when none is `main`), opt-in audio roles are not auto-selected, a
+  `forced-subtitle` text track is `AUTOSELECT=YES,FORCED=YES`, and accessibility
+  roles carry `CHARACTERISTICS` attributes. See the
+  [Track roles reference](../roles.md).
 - The `#EXT-X-INDEPENDENT-SEGMENTS` tag is emitted in the multivariant playlist.
 
 ## See also

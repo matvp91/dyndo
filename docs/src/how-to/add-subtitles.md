@@ -69,6 +69,22 @@ Because the output filename and `id` are derived from the language,
 `pack`-ing the same language again overwrites the previous track cleanly instead
 of creating a duplicate.
 
+## Give the subtitle a role
+
+`pack` creates the track with a language but **no role**, so by default it is
+advertised as a plain `subtitle`. To mark it as closed captions (SDH) or a
+forced-narrative track, re-index the packed file with a `role`. Because `index`
+merges by source path, this updates the existing track in place:
+
+```bash
+dyndo pack -i captions_en.vtt -a asset.json -l eng   # wrote text_wvtt_eng.mp4
+dyndo index text_wvtt_eng.mp4,role=caption -o asset.json
+```
+
+Valid text roles are `subtitle`, `caption`, and `forced-subtitle`. Each changes
+how the track is signalled in both manifests — see
+[Label tracks with roles](./label-roles.md).
+
 ## Correct a subtitle's language after the fact
 
 The language stored in `asset.json` wins over whatever the file itself declares.
@@ -79,6 +95,8 @@ language recorded inside the file.) This override is described in the
 
 ## Next steps
 
+- Mark subtitles as captions or forced narrative:
+  [Label tracks with roles](./label-roles.md).
 - Serve the asset (subtitles included):
   [Run and configure the server](./run-the-server.md).
 - See exactly what `pack` accepts:

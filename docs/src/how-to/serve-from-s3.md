@@ -6,9 +6,43 @@ instead of the local filesystem. Nothing about your assets changes — the same
 `asset.json` and CMAF files work unmodified, because paths inside a descriptor
 are relative and backend-agnostic.
 
-## Switch the backend to S3
+Backed by S3 the server is **stateless**: there's no volume to mount, and all
+configuration comes through environment variables.
 
-Set `store: s3` and add an `s3:` section to `config.yaml`:
+## Run against S3
+
+Select the `s3` store and give it a bucket, region, endpoint, and credentials:
+
+```bash
+docker run --rm -p 8080:8080 \
+  -e DYNDO_STORE=s3 \
+  -e DYNDO_S3__BUCKET=my-assets \
+  -e DYNDO_S3__REGION=eu-west-1 \
+  -e DYNDO_S3__ENDPOINT=https://s3.eu-west-1.amazonaws.com \
+  -e AWS_ACCESS_KEY_ID=AKIA... \
+  -e AWS_SECRET_ACCESS_KEY=... \
+  matvp91/dyndo-server
+```
+
+- `DYNDO_S3__BUCKET` is **required** — the server fails to start without it.
+- `DYNDO_S3__REGION` and `DYNDO_S3__ENDPOINT` identify the S3 service.
+- Every S3 setting maps to a `DYNDO_S3__*` variable (double underscore between
+  segments, single underscores preserved within a name), so
+  `DYNDO_S3__ACCESS_KEY_ID` sets `s3.access_key_id`.
+
+With `store: s3`, an asset at key `asset.json` is served exactly as it is from
+local disk:
+
+```text
+http://localhost:8080/asset.json/dash/index.mpd
+```
+
+Set `DYNDO_S3__ROOT` to prepend a key prefix if your assets live under a
+subdirectory of the bucket.
+
+## The same, from a config file
+
+If you'd rather keep settings in a file, the equivalent `config.yaml` is:
 
 ```yaml
 store: s3
@@ -24,46 +58,25 @@ s3:
   root: /
 ```
 
-- `bucket` is **required** — the operator fails to build without it.
-- `region` and `endpoint` identify the S3 service.
-- `root` is a prefix prepended to every object key; use it to serve assets from
-  a subdirectory of the bucket.
+Mount it and point the server at it with `DYNDO_CONFIG` — see
+[Deploy with Docker](./deploy-with-docker.md#use-a-config-file-instead-of-environment-variables).
 
-With `store: s3`, an asset at key `asset.json` is served exactly as before:
+## Credentials
 
-```text
-http://localhost:8080/asset.json/dash/index.mpd
-```
-
-## Provide credentials
-
-Credentials do not have to live in `config.yaml`. The S3 backend picks up the
-standard AWS environment variables, so you can keep secrets out of the file:
-
-```bash
-export AWS_ACCESS_KEY_ID=AKIA…
-export AWS_SECRET_ACCESS_KEY=…
-make run
-```
-
-You can also set them through dyndo's own configuration if you prefer. Because
-every S3 setting maps to a `DYNDO_S3__*` environment variable (double underscore
-between segments, single underscores preserved within a name), credentials can
-be injected per environment:
-
-```bash
-DYNDO_S3__ACCESS_KEY_ID=AKIA… DYNDO_S3__SECRET_ACCESS_KEY=… make run
-```
+The S3 backend reads the standard AWS environment variables
+(`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`), so credentials never have to live
+in `config.yaml`. You can also supply them through dyndo's own configuration
+(`DYNDO_S3__ACCESS_KEY_ID`, `DYNDO_S3__SECRET_ACCESS_KEY`).
 
 > Prefer the AWS environment variables or a secrets manager for credentials in
-> production; keep `config.yaml` free of secrets so it can be checked in.
+> production; keep any checked-in `config.yaml` free of secrets.
 
 ## Verify the backend
 
 If the selected store is misconfigured — an `s3` store with no `bucket`, or an
 `fs` store with no `root` — the server fails at startup while building the
-storage operator, rather than returning errors per request. A clean start means
-the backend is wired up correctly.
+storage operator, rather than returning errors per request. A clean
+`listening on …` line means the backend is wired up correctly.
 
 ## Next steps
 
@@ -71,3 +84,4 @@ the backend is wired up correctly.
   [Configuration reference](../reference/server/configuration.md).
 - General server operation:
   [Run and configure the server](./run-the-server.md).
+- Container recipes: [Deploy with Docker](./deploy-with-docker.md).

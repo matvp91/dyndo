@@ -33,8 +33,13 @@ derived from the source's `sidx`. Segment URLs use the `$RepresentationID$` and
 `$Time$` template variables — `<id>/init.mp4` and `<id>/<time>.m4s` — matching
 the [server's segment routes](../server/routes.md).
 
-Text tracks are emitted with a `subtitle` `Role`; audio and text `AdaptationSet`s
-carry a `lang` attribute.
+Audio and text `AdaptationSet`s carry a `lang` attribute, and tracks are grouped
+into sets by `(codec, language, role)`. A track's role becomes a `Role`
+descriptor (scheme `urn:mpeg:dash:role:2011`); the `description` and
+`enhanced-audio-intelligibility` audio roles additionally emit an
+`Accessibility` descriptor. A text track with no role defaults to
+`Role@value="subtitle"`. See the [Track roles reference](../roles.md) for the
+exact mapping.
 
 ## The `--compact` flag
 

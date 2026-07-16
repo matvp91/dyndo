@@ -1,8 +1,8 @@
 # Getting started
 
 This tutorial takes you from an empty directory to a **playing adaptive stream**
-served by dyndo. Along the way you'll build the tools, create a pair of CMAF
-sources, index them into an `asset.json`, and start the server.
+served by dyndo. Along the way you'll install the CLI, create a pair of CMAF
+sources, index them into an `asset.json`, and start the server as a container.
 
 You don't need to know anything about CMAF, DASH, or HLS to follow along — we'll
 create everything from scratch. By the end you'll have a running server
@@ -13,40 +13,31 @@ Set aside about 15 minutes.
 
 ## What you'll need
 
-- A stable [Rust toolchain](https://www.rust-lang.org/tools/install) (Rust
-  1.97 or newer) with `cargo`.
-- [`git`](https://git-scm.com/), to clone the repository.
+- The **`dyndo` CLI** — you'll install it in step 1, no Rust toolchain required.
 - [`ffmpeg`](https://ffmpeg.org/), used **only** to create the sample media in
   step 2. If you already have CMAF files, you can skip that step.
+- [Docker](https://docs.docker.com/get-docker/), to run the server in step 4.
 
-## Step 1: Build dyndo
+Work in a fresh directory of your choice; every command below is run from there.
 
-> Only need the `dyndo` CLI? The [one-line installer](./install-cli.md) gives
-> you a prebuilt binary. This tutorial builds from source because it also
-> needs `dyndo-server`.
+## Step 1: Install the CLI
 
-Clone the repository and build both binaries:
-
-```bash
-git clone https://github.com/matvp91/dyndo.git
-cd dyndo
-cargo build
-```
-
-Install the `dyndo` CLI onto your `PATH` so you can call it by name:
+Install the prebuilt `dyndo` CLI with the one-line installer:
 
 ```bash
-make install   # installs `dyndo` into ~/.cargo/bin
+curl -fsSL https://matvp91.github.io/dyndo/install.sh | bash
 ```
 
-Check that it works — it prints its name and version:
+Open a new terminal so the updated `PATH` takes effect, then check it works — it
+prints its name and version:
 
 ```bash
 dyndo --version
 ```
 
-> If `dyndo` isn't found, make sure `~/.cargo/bin` is on your `PATH`. You can
-> always run the CLI without installing it: `cargo run -p dyndo-cli -- --version`.
+> Prefer not to use the installer, or on a platform it doesn't cover? See
+> [Install the CLI](./install-cli.md) for options, or
+> [Build from source](../how-to/build-from-source.md).
 
 ## Step 2: Create two CMAF sources
 
@@ -65,9 +56,9 @@ ffmpeg -f lavfi -i "testsrc=size=1280x720:rate=25:duration=10" \
 ```
 
 Now repackage each track into its own CMAF file, into an `assets/` directory —
-that's where the server looks for descriptors by default. The
-`+global_sidx` flag is the important one: it writes a **single** segment index
-covering the whole file, which is what dyndo reads.
+that's the directory you'll hand to the server in step 4. The `+global_sidx`
+flag is the important one: it writes a **single** segment index covering the
+whole file, which is what dyndo reads.
 
 ```bash
 mkdir -p assets
@@ -87,9 +78,10 @@ You now have two CMAF sources under `assets/`.
 
 ## Step 3: Index the sources
 
-Turn your two files into an `asset.json` descriptor. Each `-i` adds one track;
-paths are resolved relative to the output descriptor's directory, so from the
-repository root they're just the file names inside `assets/`:
+Turn your two files into an `asset.json` descriptor. Each positional argument
+adds one track; paths are resolved relative to the output descriptor's
+directory, so from your working directory they're just the file names inside
+`assets/`:
 
 ```bash
 dyndo index video.mp4 audio.mp4 -o assets/asset.json
@@ -138,24 +130,35 @@ include the measured bitrate, which depends on your exact encode.)
 
 ## Step 4: Start the server
 
-From the repository root:
+Run `dyndo-server` from Docker Hub, mounting your `assets/` directory into the
+container:
 
 ```bash
-make run
+docker run --rm -p 8080:8080 \
+  -e DYNDO_FS__ROOT=/assets \
+  -v "$PWD/assets:/assets:ro" \
+  matvp91/dyndo-server
 ```
 
 ```text
 dyndo-server listening on http://0.0.0.0:8080
 ```
 
-The server reads descriptors from `./assets` (set in the repository's
-`config.yaml`) and exposes each one as **both** a DASH and an HLS stream. Leave
-it running and open a second terminal for the next step.
+- `-v "$PWD/assets:/assets:ro"` mounts your descriptor and its CMAF sources into
+  the container, read-only.
+- `-e DYNDO_FS__ROOT=/assets` points the server's storage root at that mount.
+- `-p 8080:8080` publishes the port to your host.
+
+The server exposes each descriptor it finds as **both** a DASH and an HLS stream.
+Leave it running and open a second terminal for the next step. (For everything
+Docker can do here — pinning a version, using a config file, serving from S3 —
+see [Deploy with Docker](../how-to/deploy-with-docker.md).)
 
 ## Step 5: Play the stream
 
-Your asset is `assets/asset.json`, so its path relative to the assets root is
-just `asset.json`. First, confirm the DASH manifest is being served:
+Your descriptor is at `assets/asset.json`, and the storage root is that
+`assets/` directory, so its path relative to the root is just `asset.json`.
+First, confirm the DASH manifest is being served:
 
 ```bash
 curl http://localhost:8080/asset.json/dash/index.mpd
@@ -194,10 +197,10 @@ When you're done, stop the server with `Ctrl-C`.
 
 In a few minutes you:
 
-1. built the `dyndo` CLI and `dyndo-server`;
+1. installed the `dyndo` CLI;
 2. produced two CMAF sources;
 3. **indexed** them into a tiny `asset.json` descriptor; and
-4. **served** that descriptor as a live DASH and HLS stream.
+4. **served** that descriptor as a live DASH and HLS stream with Docker.
 
 That index-then-serve split is the core of dyndo: index once, serve many
 protocols, and never duplicate your media.
@@ -206,8 +209,10 @@ protocols, and never duplicate your media.
 
 - Add subtitles to the stream you just built:
   [Add a subtitle track](../how-to/add-subtitles.md).
-- Run the server as a container instead of from source:
-  [Deploy with Docker](../how-to/deploy-with-docker.md).
+- Label audio and subtitle tracks so players present them correctly:
+  [Label tracks with roles](../how-to/label-roles.md).
+- Everything Docker can do — pin a version, mount a config file, run in
+  production: [Deploy with Docker](../how-to/deploy-with-docker.md).
 - Serve your media from object storage instead of local disk:
   [Serve media from S3](../how-to/serve-from-s3.md).
 - Understand what just happened under the hood:
