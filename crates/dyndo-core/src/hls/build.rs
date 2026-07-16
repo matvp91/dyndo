@@ -5,6 +5,7 @@ use hls_m3u8::types::{Channels, MediaType, PlaylistType, StreamData, UFloat};
 use hls_m3u8::{MasterPlaylist, MediaPlaylist, MediaSegment};
 
 use crate::asset::{AudioTrack, Segment, TextTrack, Track, VideoTrack};
+use crate::role::{AudioRole, TextRole};
 
 /// Build the VOD media playlist for `track`: an `EXT-X-MAP` init on the first
 /// segment, then one segment per served (sub)segment named by its running
@@ -65,7 +66,8 @@ struct AudioGroup<'a> {
     codec: String,
     /// The highest-bandwidth member's bandwidth, added to a variant's `BANDWIDTH`.
     max_bandwidth: u32,
-    /// The group's renditions in first-seen order; the first is the default.
+    /// The group's renditions in first-seen order; the default is chosen by
+    /// [`audio_media`] (first `main`-role rendition, else the first).
     tracks: Vec<&'a AudioTrack>,
 }
 
@@ -116,6 +118,40 @@ pub(crate) fn build_master(
         .expect("every variant references a defined audio or subtitle group")
 }
 
+/// Audio roles the viewer opts into deliberately — never auto-selected on a
+/// language match.
+fn is_opt_in_audio(role: Option<AudioRole>) -> bool {
+    matches!(
+        role,
+        Some(
+            AudioRole::Commentary
+                | AudioRole::Description
+                | AudioRole::EnhancedAudioIntelligibility
+        )
+    )
+}
+
+/// The `CHARACTERISTICS` UTI(s) for an audio role, if any.
+fn audio_characteristics(role: Option<AudioRole>) -> Option<&'static str> {
+    match role {
+        Some(AudioRole::Description) => Some("public.accessibility.describes-video"),
+        Some(AudioRole::EnhancedAudioIntelligibility) => {
+            Some("public.accessibility.enhances-speech-intelligibility")
+        }
+        _ => None,
+    }
+}
+
+/// The `CHARACTERISTICS` UTI(s) for a text role, if any.
+fn subtitle_characteristics(role: Option<TextRole>) -> Option<&'static str> {
+    match role {
+        Some(TextRole::Caption) => Some(
+            "public.accessibility.transcribes-spoken-dialog,public.accessibility.describes-music-and-sound",
+        ),
+        _ => None,
+    }
+}
+
 /// The single subtitle group for `texts` (`GROUP-ID` = the codec fourcc), or
 /// `None` when the asset has no text tracks.
 fn subtitle_group(texts: &[TextTrack]) -> Option<SubtitleGroup<'_>> {
@@ -127,14 +163,17 @@ fn subtitle_group(texts: &[TextTrack]) -> Option<SubtitleGroup<'_>> {
 }
 
 /// One `EXT-X-MEDIA:TYPE=SUBTITLES` per rendition in the group (empty when the
-/// asset has no text). No rendition is default or autoselected, so the player
-/// never forces subtitles on — the viewer enables them explicitly.
+/// asset has no text). Subtitles and captions are neither default nor
+/// autoselected — the viewer enables them explicitly — while a forced-subtitle
+/// rendition is autoselected and `FORCED`. Captions carry the SDH
+/// `CHARACTERISTICS` UTIs.
 fn subtitle_media(group: Option<&SubtitleGroup>) -> Vec<ExtXMedia<'static>> {
     let Some(group) = group else {
         return Vec::new();
     };
     let mut out = Vec::new();
     for t in &group.tracks {
+        let forced = t.role() == Some(TextRole::ForcedSubtitle);
         let mut b = ExtXMedia::builder();
         b.media_type(MediaType::Subtitles);
         b.group_id(group.id);
@@ -142,7 +181,11 @@ fn subtitle_media(group: Option<&SubtitleGroup>) -> Vec<ExtXMedia<'static>> {
         b.language(t.language().to_string());
         b.uri(format!("{}.m3u8", t.id()));
         b.is_default(false);
-        b.is_autoselect(false);
+        b.is_autoselect(forced);
+        b.is_forced(forced);
+        if let Some(c) = subtitle_characteristics(t.role()) {
+            b.characteristics(c);
+        }
         out.push(
             b.build()
                 .expect("subtitle media always has a type, group id, name, and uri"),
@@ -172,21 +215,35 @@ fn audio_group(audios: &[AudioTrack]) -> Vec<AudioGroup<'_>> {
     groups
 }
 
-/// One `EXT-X-MEDIA` per audio track. The first rendition in each group is the
-/// group default.
+/// One `EXT-X-MEDIA` per audio track. The group default is its first `main`-role
+/// rendition, or the first rendition when no member declares `main` — so a
+/// role-free group keeps the historical "first is default" behavior. Roles the
+/// viewer opts into (commentary, description, enhanced intelligibility) are not
+/// auto-selected, and accessibility roles carry a `CHARACTERISTICS` UTI.
 fn audio_media(groups: &[AudioGroup]) -> Vec<ExtXMedia<'static>> {
     let mut out = Vec::new();
     for g in groups {
+        let default_idx = g
+            .tracks
+            .iter()
+            .position(|t| t.role() == Some(AudioRole::Main))
+            .unwrap_or(0);
         for (i, &t) in g.tracks.iter().enumerate() {
+            let is_default = i == default_idx;
             let mut b = ExtXMedia::builder();
             b.media_type(MediaType::Audio);
             b.group_id(g.id);
             b.name(t.language().to_string());
             b.language(t.language().to_string());
             b.uri(format!("{}.m3u8", t.id()));
-            b.is_default(i == 0);
-            b.is_autoselect(true);
+            b.is_default(is_default);
+            // Opt-in roles are not auto-selected — unless this rendition is the
+            // group default, since DEFAULT=YES requires AUTOSELECT=YES.
+            b.is_autoselect(is_default || !is_opt_in_audio(t.role()));
             b.channels(Channels::new(t.channels() as u64));
+            if let Some(c) = audio_characteristics(t.role()) {
+                b.characteristics(c);
+            }
             out.push(
                 b.build()
                     .expect("audio media always has a type, group id, and name"),
@@ -269,6 +326,7 @@ mod tests {
     use super::*;
     use crate::cmaf::{AudioCmafMetadata, CmafHeader, TextCmafMetadata, VideoCmafMetadata};
     use crate::codec::{AudioCodec, TextCodec, VideoCodec};
+    use crate::role::{AudioRole, TextRole};
 
     /// A [`CmafHeader`] with `bandwidth` and one `Segment` per entry in `segs`
     /// (each carrying only a duration; offsets/sizes are irrelevant to playlists).
@@ -640,5 +698,126 @@ mod tests {
         assert_eq!(m.matches("#EXT-X-STREAM-INF").count(), 1, "{m}");
         // BANDWIDTH = video 4_000_000 + group max audio 128_000 = 4_128_000.
         assert!(m.contains("BANDWIDTH=4128000"), "{m}");
+    }
+
+    fn audio_track_role(lang: &str, bandwidth: u32, role: Option<AudioRole>) -> AudioTrack {
+        let model = crate::model::AudioTrackModel {
+            id: format!("audio_{lang}_{bandwidth}"),
+            path: String::new(),
+            fourcc: "mp4a".to_string(),
+            timescale: 48_000,
+            sample_rate: 48_000,
+            channels: 2,
+            language: Some(lang.to_string()),
+            role,
+        };
+        AudioTrack::new(
+            String::new(),
+            cmaf_header(48_000, bandwidth, &[96_000]),
+            AudioCmafMetadata {
+                codec: AudioCodec::Aac {
+                    audio_object_type: 2,
+                },
+                sample_rate: 48_000,
+                channels: 2,
+                language: lang.to_string(),
+            },
+            Some(&model),
+        )
+    }
+
+    fn text_track_role(lang: &str, role: Option<TextRole>) -> TextTrack {
+        let model = crate::model::TextTrackModel {
+            id: format!("text_wvtt_{lang}"),
+            path: String::new(),
+            fourcc: "wvtt".to_string(),
+            timescale: 1000,
+            language: lang.to_string(),
+            role,
+        };
+        TextTrack::new(
+            String::new(),
+            cmaf_header(1000, 256, &[4000]),
+            TextCmafMetadata {
+                codec: TextCodec::Wvtt,
+                language: Some(lang.to_string()),
+            },
+            Some(&model),
+        )
+    }
+
+    /// The `#EXT-X-MEDIA` line whose `NAME` attribute equals `name`.
+    fn media_line_named<'a>(playlist: &'a str, name: &str) -> &'a str {
+        playlist
+            .lines()
+            .find(|l| l.contains("#EXT-X-MEDIA") && l.contains(&format!("NAME=\"{name}\"")))
+            .expect("a matching #EXT-X-MEDIA line")
+    }
+
+    #[test]
+    fn audio_main_role_becomes_default_even_when_not_first() {
+        let v = video_track(1080, 4_000_000, &[180_000]);
+        let alt = audio_track_role("eng", 128_000, Some(AudioRole::Alternate));
+        let main = audio_track_role("nld", 128_000, Some(AudioRole::Main));
+        let m = build_master(&[v], &[alt, main], &[]).to_string();
+
+        // Exactly one default, and it is the nld (main) rendition.
+        assert_eq!(m.matches("DEFAULT=YES").count(), 1, "{m}");
+        let nld = media_line_named(&m, "nld");
+        assert!(nld.contains("DEFAULT=YES"), "{nld}");
+        let eng = media_line_named(&m, "eng");
+        assert!(!eng.contains("DEFAULT=YES"), "{eng}");
+    }
+
+    #[test]
+    fn audio_commentary_is_not_autoselected() {
+        let v = video_track(1080, 4_000_000, &[180_000]);
+        let main = audio_track_role("nld", 128_000, Some(AudioRole::Main));
+        let comm = audio_track_role("eng", 128_000, Some(AudioRole::Commentary));
+        let m = build_master(&[v], &[main, comm], &[]).to_string();
+
+        let eng = media_line_named(&m, "eng");
+        assert!(!eng.contains("AUTOSELECT=YES"), "{eng}");
+        assert!(!eng.contains("DEFAULT=YES"), "{eng}");
+    }
+
+    #[test]
+    fn audio_description_has_characteristic_and_no_autoselect() {
+        let v = video_track(1080, 4_000_000, &[180_000]);
+        let main = audio_track_role("nld", 128_000, Some(AudioRole::Main));
+        let desc = audio_track_role("eng", 128_000, Some(AudioRole::Description));
+        let m = build_master(&[v], &[main, desc], &[]).to_string();
+
+        let eng = media_line_named(&m, "eng");
+        assert!(
+            eng.contains("CHARACTERISTICS=\"public.accessibility.describes-video\""),
+            "{eng}"
+        );
+        assert!(!eng.contains("AUTOSELECT=YES"), "{eng}");
+    }
+
+    #[test]
+    fn forced_subtitle_is_forced_and_autoselected() {
+        let v = video_track(1080, 4_000_000, &[180_000]);
+        let t = text_track_role("eng", Some(TextRole::ForcedSubtitle));
+        let m = build_master(&[v], &[], &[t]).to_string();
+
+        let sub = media_line(&m, "TYPE=SUBTITLES");
+        assert!(sub.contains("FORCED=YES"), "{sub}");
+        assert!(sub.contains("AUTOSELECT=YES"), "{sub}");
+    }
+
+    #[test]
+    fn caption_subtitle_has_sdh_characteristics() {
+        let v = video_track(1080, 4_000_000, &[180_000]);
+        let t = text_track_role("eng", Some(TextRole::Caption));
+        let m = build_master(&[v], &[], &[t]).to_string();
+
+        let sub = media_line(&m, "TYPE=SUBTITLES");
+        assert!(
+            sub.contains("CHARACTERISTICS=\"public.accessibility.transcribes-spoken-dialog,public.accessibility.describes-music-and-sound\""),
+            "{sub}"
+        );
+        assert!(!sub.contains("FORCED=YES"), "{sub}");
     }
 }
