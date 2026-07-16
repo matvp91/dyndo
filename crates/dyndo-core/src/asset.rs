@@ -628,6 +628,8 @@ impl From<&Asset> for AssetModel {
         let audio = asset.audio_tracks.iter().map(|t| t.to_model(&asset.path));
         let text = asset.text_tracks.iter().map(|t| t.to_model(&asset.path));
         AssetModel {
+            min_segment_length_ms: None,
+            segment_boundaries_ms: Vec::new(),
             tracks: video.chain(audio).chain(text).collect(),
         }
     }

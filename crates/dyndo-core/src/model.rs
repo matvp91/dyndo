@@ -6,9 +6,29 @@ use serde::{Deserialize, Serialize};
 
 use crate::CoreError;
 
-/// The serializable descriptor (`asset.json`): a list of tracks.
+/// The serializable descriptor (`asset.json`): a list of tracks plus the
+/// optional serve-time segmentation policy.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AssetModel {
+    /// Minimum length of a served segment, in milliseconds (wire:
+    /// `min_segment_length`). `None` serves each CMAF fragment as its own
+    /// segment; `0` behaves like `None`.
+    #[serde(
+        rename = "min_segment_length",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub min_segment_length_ms: Option<u64>,
+    /// Splice points, in milliseconds from the start of the presentation
+    /// (wire: `segment_boundaries`). Served segments never span one. Must be
+    /// strictly ascending and non-zero (validated by
+    /// [`Segmentation::new`](crate::asset::Segmentation::new)).
+    #[serde(
+        rename = "segment_boundaries",
+        default,
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub segment_boundaries_ms: Vec<u64>,
     /// The asset's tracks, in descriptor order.
     pub tracks: Vec<TrackModel>,
 }
@@ -119,4 +139,49 @@ pub struct TextTrackModel {
     pub timescale: u32,
     /// ISO-639-2 language code (`"und"` when unspecified).
     pub language: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn descriptor_without_grouping_fields_parses_with_defaults() {
+        let m: AssetModel = serde_json::from_str(r#"{"tracks": []}"#).unwrap();
+        assert_eq!(m.min_segment_length_ms, None);
+        assert!(m.segment_boundaries_ms.is_empty());
+    }
+
+    #[test]
+    fn grouping_fields_parse_from_their_wire_names_in_ms() {
+        let m: AssetModel = serde_json::from_str(
+            r#"{"min_segment_length": 3000, "segment_boundaries": [683640], "tracks": []}"#,
+        )
+        .unwrap();
+        assert_eq!(m.min_segment_length_ms, Some(3000));
+        assert_eq!(m.segment_boundaries_ms, vec![683640]);
+    }
+
+    #[test]
+    fn grouping_fields_round_trip_through_json() {
+        let m = AssetModel {
+            min_segment_length_ms: Some(3000),
+            segment_boundaries_ms: vec![683640],
+            tracks: Vec::new(),
+        };
+        let json = serde_json::to_string(&m).unwrap();
+        assert_eq!(serde_json::from_str::<AssetModel>(&json).unwrap(), m);
+    }
+
+    #[test]
+    fn default_grouping_fields_are_omitted_from_json() {
+        let m = AssetModel {
+            min_segment_length_ms: None,
+            segment_boundaries_ms: Vec::new(),
+            tracks: Vec::new(),
+        };
+        let json = serde_json::to_string(&m).unwrap();
+        assert!(!json.contains("min_segment_length"));
+        assert!(!json.contains("segment_boundaries"));
+    }
 }
