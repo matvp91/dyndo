@@ -33,6 +33,10 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: Build book
         run: mdbook build docs
+      # Serve the installer from the site root:
+      #   curl -fsSL https://matvp91.github.io/dyndo/install.sh | bash
+      - name: Add install script to site
+        run: cp scripts/install.sh docs/book/install.sh
       # Only the main-branch build feeds a Pages deploy.
       - name: Upload Pages artifact
         if: github.ref == 'refs/heads/main'
