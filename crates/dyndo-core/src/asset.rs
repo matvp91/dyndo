@@ -43,6 +43,46 @@ pub struct Segment {
     pub duration_ms: u64,
 }
 
+/// Serve-time segmentation policy from the descriptor: how a track's raw CMAF
+/// fragments are grouped into served segments. `Default` (no minimum, no
+/// boundaries) leaves every fragment as its own segment.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Segmentation {
+    /// Minimum length of a served segment, in milliseconds. Whole fragments
+    /// are accumulated until a group reaches this; `None` (or 0) disables
+    /// grouping. The last group before a splice point or the track end may be
+    /// shorter.
+    pub min_segment_length_ms: Option<u64>,
+    /// Splice points, in milliseconds from the start of the presentation.
+    /// A served segment never spans one (ad-insertion cut points).
+    pub segment_boundaries_ms: Vec<u64>,
+}
+
+impl Segmentation {
+    /// Build a policy, validating that `segment_boundaries_ms` is strictly
+    /// ascending and non-zero.
+    ///
+    /// # Errors
+    /// [`CoreError::InvalidDescriptor`] when the boundaries are unsorted,
+    /// duplicated, or contain 0 — a broken descriptor, not something to
+    /// silently repair.
+    pub fn new(
+        min_segment_length_ms: Option<u64>,
+        segment_boundaries_ms: Vec<u64>,
+    ) -> Result<Segmentation, CoreError> {
+        let ascending = segment_boundaries_ms.windows(2).all(|w| w[0] < w[1]);
+        if !ascending || segment_boundaries_ms.first() == Some(&0) {
+            return Err(CoreError::InvalidDescriptor(
+                "segment_boundaries must be strictly ascending and non-zero".to_string(),
+            ));
+        }
+        Ok(Segmentation {
+            min_segment_length_ms,
+            segment_boundaries_ms,
+        })
+    }
+}
+
 mod sealed {
     use crate::cmaf::CmafHeader;
 
@@ -790,5 +830,35 @@ mod tests {
     #[test]
     fn max_segment_duration_ms_is_zero_without_segments() {
         assert_eq!(video_track(48_000, 0, &[]).max_segment_duration_ms(), 0);
+    }
+
+    #[test]
+    fn segmentation_accepts_ascending_boundaries() {
+        let s = Segmentation::new(Some(3000), vec![1000, 2000]).unwrap();
+        assert_eq!(s.min_segment_length_ms, Some(3000));
+        assert_eq!(s.segment_boundaries_ms, vec![1000, 2000]);
+    }
+
+    #[test]
+    fn segmentation_accepts_empty_boundaries_and_no_min() {
+        assert_eq!(
+            Segmentation::new(None, Vec::new()).unwrap(),
+            Segmentation::default()
+        );
+    }
+
+    #[test]
+    fn segmentation_rejects_unsorted_boundaries() {
+        assert!(Segmentation::new(None, vec![2000, 1000]).is_err());
+    }
+
+    #[test]
+    fn segmentation_rejects_duplicate_boundaries() {
+        assert!(Segmentation::new(None, vec![1000, 1000]).is_err());
+    }
+
+    #[test]
+    fn segmentation_rejects_a_zero_boundary() {
+        assert!(Segmentation::new(None, vec![0, 1000]).is_err());
     }
 }

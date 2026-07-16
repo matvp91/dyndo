@@ -12,6 +12,10 @@ pub enum CoreError {
     /// The descriptor JSON could not be (de)serialized.
     #[error("invalid descriptor JSON: {0}")]
     Descriptor(#[from] serde_json::Error),
+    /// The descriptor parsed as JSON but its content is invalid (e.g.
+    /// unsorted `segment_boundaries`).
+    #[error("invalid descriptor: {0}")]
+    InvalidDescriptor(String),
     /// A CMAF box could not be read or was structurally invalid.
     #[error("malformed CMAF container: {0}")]
     Container(String),
