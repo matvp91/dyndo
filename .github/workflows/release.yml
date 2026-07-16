@@ -26,7 +26,7 @@ jobs:
       - id: v
         run: |
           tag="${GITHUB_REF_NAME}"                       # e.g. v0.2.0
-          cargo_version="$(sed -n 's/^version = "\(.*\)"/\1/p' crates/dyndo-cli/Cargo.toml | head -n1 | tr -d '\r')"
+          cargo_version="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n1 | tr -d '\r')"
           if [[ "$tag" != "v${cargo_version}" ]]; then
             echo "::error::tag ${tag} does not match Cargo.toml version ${cargo_version} (expected v${cargo_version})"
             exit 1

@@ -2,6 +2,11 @@
 resolver = "2"
 members = ["crates/dyndo-core", "crates/dyndo-cli", "crates/dyndo-server"]
 
+[workspace.package]
+version = "0.3.0"
+edition = "2021"
+rust-version = "1.97"
+
 [workspace.lints.rust]
 future_incompatible = "warn"
 nonstandard_style = "deny"
