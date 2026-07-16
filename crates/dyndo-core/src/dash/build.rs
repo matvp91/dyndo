@@ -1,11 +1,12 @@
 use std::time::Duration;
 
 use dash_mpd::{
-    AdaptationSet, AudioChannelConfiguration, MPD, Period, Representation, Role, S,
+    Accessibility, AdaptationSet, AudioChannelConfiguration, MPD, Period, Representation, Role, S,
     SegmentTemplate, SegmentTimeline,
 };
 
 use crate::asset::{AudioTrack, Segment, TextTrack, Track, VideoTrack};
+use crate::role::{AudioRole, TextRole};
 
 const INIT_TEMPLATE: &str = "$RepresentationID$/init.mp4";
 const MEDIA_TEMPLATE: &str = "$RepresentationID$/$Time$.m4s";
@@ -13,6 +14,7 @@ const MPD_XMLNS: &str = "urn:mpeg:dash:schema:mpd:2011";
 const MPD_PROFILE: &str = "urn:mpeg:dash:profile:isoff-live:2011";
 const AUDIO_CHANNEL_CONFIG_SCHEME: &str = "urn:mpeg:dash:23003:3:audio_channel_configuration:2011";
 const ROLE_SCHEME: &str = "urn:mpeg:dash:role:2011";
+const AUDIO_PURPOSE_SCHEME: &str = "urn:tva:metadata:cs:AudioPurposeCS:2007";
 
 fn frame_rate_str(fr: (u32, u32)) -> String {
     if fr.1 == 1 {
@@ -134,13 +136,39 @@ fn text_representation(
     )
 }
 
-/// The DASH `Role` that marks a text `AdaptationSet` as translated-dialogue
-/// subtitles (as opposed to SDH captions).
-fn subtitle_role() -> Vec<Role> {
-    vec![Role {
+/// A single `Role` descriptor in the standard role scheme.
+fn role_element(value: &str) -> Role {
+    Role {
         schemeIdUri: ROLE_SCHEME.to_string(),
-        value: Some("subtitle".to_string()),
+        value: Some(value.to_string()),
         ..Default::default()
+    }
+}
+
+/// The `Role`(s) for a text track. An unset role defaults to `subtitle`,
+/// preserving the previous hardcoded behavior.
+fn text_roles(role: Option<TextRole>) -> Vec<Role> {
+    vec![role_element(role.map_or("subtitle", TextRole::as_str))]
+}
+
+/// The `Role`(s) for an audio track. An unset role emits none.
+fn audio_roles(role: Option<AudioRole>) -> Vec<Role> {
+    role.map(|r| vec![role_element(r.as_str())])
+        .unwrap_or_default()
+}
+
+/// The `Accessibility` descriptor(s) for an audio track — present only for the
+/// audio-description and enhanced-intelligibility roles (AudioPurposeCS).
+fn audio_accessibility(role: Option<AudioRole>) -> Vec<Accessibility> {
+    let value = match role {
+        Some(AudioRole::Description) => "1",
+        Some(AudioRole::EnhancedAudioIntelligibility) => "8",
+        _ => return Vec::new(),
+    };
+    vec![Accessibility {
+        schemeIdUri: AUDIO_PURPOSE_SCHEME.to_string(),
+        value: Some(value.to_string()),
+        id: None,
     }]
 }
 
@@ -157,15 +185,16 @@ fn group_by_key<T, K: PartialEq>(items: &[T], key: impl Fn(&T) -> K) -> Vec<(K, 
     groups
 }
 
-/// Build one `AdaptationSet` from a group of like representations. `roles` are
-/// the DASH `Role` descriptors for the set (e.g. a `subtitle` role for text);
-/// video and audio sets pass none.
+/// Build one `AdaptationSet` from a group of like representations. `roles` and
+/// `accessibility` are the DASH `Role`/`Accessibility` descriptors for the set
+/// (derived from the group's track role); video sets pass none.
 fn adaptation_set(
     id: usize,
     content_type: &str,
     mime: &str,
     lang: Option<String>,
     roles: Vec<Role>,
+    accessibility: Vec<Accessibility>,
     representations: Vec<Representation>,
 ) -> AdaptationSet {
     AdaptationSet {
@@ -175,6 +204,7 @@ fn adaptation_set(
         lang,
         segmentAlignment: Some(true),
         startWithSAP: Some(1),
+        Accessibility: accessibility,
         Role: roles,
         representations,
         ..Default::default()
@@ -182,7 +212,8 @@ fn adaptation_set(
 }
 
 /// Build the raw static VOD `MPD`: one `AdaptationSet` per video codec fourcc,
-/// then one per audio `(fourcc, language)`, each track becoming a `Representation`.
+/// then one per audio `(fourcc, language, role)` and per text
+/// `(fourcc, language, role)`, each track becoming a `Representation`.
 fn mpd(
     videos: &[VideoTrack],
     audios: &[AudioTrack],
@@ -206,13 +237,14 @@ fn mpd(
             "video/mp4",
             None,
             Vec::new(),
+            Vec::new(),
             representations,
         ));
         set_id += 1;
     }
-    for ((_fourcc, lang), idxs) in
-        group_by_key(audios, |t| (t.codec().fourcc(), t.language().to_string()))
-    {
+    for ((_fourcc, lang, role), idxs) in group_by_key(audios, |t| {
+        (t.codec().fourcc(), t.language().to_string(), t.role())
+    }) {
         let representations = idxs
             .iter()
             .map(|&i| {
@@ -224,14 +256,15 @@ fn mpd(
             "audio",
             "audio/mp4",
             Some(lang),
-            Vec::new(),
+            audio_roles(role),
+            audio_accessibility(role),
             representations,
         ));
         set_id += 1;
     }
-    for ((_fourcc, lang), idxs) in
-        group_by_key(texts, |t| (t.codec().fourcc(), t.language().to_string()))
-    {
+    for ((_fourcc, lang, role), idxs) in group_by_key(texts, |t| {
+        (t.codec().fourcc(), t.language().to_string(), t.role())
+    }) {
         let representations = idxs
             .iter()
             .map(|&i| text_representation(&texts[i], segment_boundaries_ms, min_segment_length_ms))
@@ -241,7 +274,8 @@ fn mpd(
             "text",
             "application/mp4",
             Some(lang),
-            subtitle_role(),
+            text_roles(role),
+            Vec::new(),
             representations,
         ));
         set_id += 1;
@@ -314,8 +348,9 @@ pub(crate) fn build_mpd(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cmaf::{CmafHeader, TextCmafMetadata};
-    use crate::codec::TextCodec;
+    use crate::cmaf::{AudioCmafMetadata, CmafHeader, TextCmafMetadata};
+    use crate::codec::{AudioCodec, TextCodec};
+    use crate::role::{AudioRole, TextRole};
 
     fn seg(duration: u64) -> Segment {
         Segment {
@@ -451,5 +486,151 @@ mod tests {
             m.minBufferTime,
             Some(std::time::Duration::from_millis(2000))
         );
+    }
+
+    fn text_track_role(language: &str, role: TextRole) -> TextTrack {
+        let model = crate::model::TextTrackModel {
+            id: format!("text_wvtt_{language}"),
+            path: String::new(),
+            fourcc: "wvtt".to_string(),
+            timescale: 1000,
+            language: language.to_string(),
+            role: Some(role),
+        };
+        TextTrack::new(
+            String::new(),
+            CmafHeader {
+                timescale: 1000,
+                duration: 4000,
+                bandwidth: 256,
+                earliest_presentation_time: 0,
+                init_segment: seg(0),
+                segments: vec![seg(4000)],
+            },
+            TextCmafMetadata {
+                codec: TextCodec::Wvtt,
+                language: Some(language.to_string()),
+            },
+            Some(&model),
+        )
+    }
+
+    fn audio_track_role(language: &str, role: Option<AudioRole>) -> AudioTrack {
+        let model = crate::model::AudioTrackModel {
+            id: format!("audio_{language}"),
+            path: String::new(),
+            fourcc: "mp4a".to_string(),
+            timescale: 48_000,
+            sample_rate: 48_000,
+            channels: 2,
+            language: Some(language.to_string()),
+            role,
+        };
+        AudioTrack::new(
+            String::new(),
+            CmafHeader {
+                timescale: 48_000,
+                duration: 96_000,
+                bandwidth: 128_000,
+                earliest_presentation_time: 0,
+                init_segment: seg(0),
+                segments: vec![seg(96_000)],
+            },
+            AudioCmafMetadata {
+                codec: AudioCodec::Aac {
+                    audio_object_type: 2,
+                },
+                sample_rate: 48_000,
+                channels: 2,
+                language: language.to_string(),
+            },
+            Some(&model),
+        )
+    }
+
+    fn text_set<'a>(m: &'a MPD, lang: &str) -> &'a AdaptationSet {
+        m.periods[0]
+            .adaptations
+            .iter()
+            .filter(|a| a.contentType.as_deref() == Some("text"))
+            .find(|a| a.lang.as_deref() == Some(lang))
+            .expect("a text AdaptationSet for the language")
+    }
+
+    fn audio_set(m: &MPD) -> &AdaptationSet {
+        m.periods[0]
+            .adaptations
+            .iter()
+            .find(|a| a.contentType.as_deref() == Some("audio"))
+            .expect("an audio AdaptationSet")
+    }
+
+    #[test]
+    fn caption_text_gets_caption_role() {
+        let m = mpd(
+            &[],
+            &[],
+            &[text_track_role("eng", TextRole::Caption)],
+            &[],
+            0,
+        );
+        let set = text_set(&m, "eng");
+        assert_eq!(set.Role.len(), 1);
+        assert_eq!(set.Role[0].value.as_deref(), Some("caption"));
+    }
+
+    #[test]
+    fn forced_text_gets_forced_subtitle_role() {
+        let m = mpd(
+            &[],
+            &[],
+            &[text_track_role("eng", TextRole::ForcedSubtitle)],
+            &[],
+            0,
+        );
+        let set = text_set(&m, "eng");
+        assert_eq!(set.Role[0].value.as_deref(), Some("forced-subtitle"));
+    }
+
+    #[test]
+    fn same_language_subtitle_and_caption_are_two_sets() {
+        let texts = [
+            text_track_role("eng", TextRole::Subtitle),
+            text_track_role("eng", TextRole::Caption),
+        ];
+        let m = mpd(&[], &[], &texts, &[], 0);
+        let count = m.periods[0]
+            .adaptations
+            .iter()
+            .filter(|a| a.contentType.as_deref() == Some("text"))
+            .count();
+        assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn audio_description_gets_role_and_accessibility() {
+        let m = mpd(
+            &[],
+            &[audio_track_role("eng", Some(AudioRole::Description))],
+            &[],
+            &[],
+            0,
+        );
+        let set = audio_set(&m);
+        assert_eq!(set.Role[0].value.as_deref(), Some("description"));
+        assert_eq!(set.Accessibility.len(), 1);
+        assert_eq!(
+            set.Accessibility[0].schemeIdUri,
+            "urn:tva:metadata:cs:AudioPurposeCS:2007"
+        );
+        assert_eq!(set.Accessibility[0].value.as_deref(), Some("1"));
+    }
+
+    #[test]
+    fn audio_without_role_has_no_role_element() {
+        let m = mpd(&[], &[audio_track_role("eng", None)], &[], &[], 0);
+        let set = audio_set(&m);
+        assert!(set.Role.is_empty());
+        assert!(set.Accessibility.is_empty());
     }
 }
