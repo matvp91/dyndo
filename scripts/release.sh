@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Cut a dyndo release: bump all workspace crate versions in lockstep, commit,
-# tag, and push. Pushing the tag triggers .github/workflows/release.yml, which
-# verifies, builds, and publishes the GitHub Release.
+# Cut a dyndo release: bump the workspace version, commit, tag, and push.
+# Pushing the tag triggers .github/workflows/release.yml, which verifies,
+# builds, and publishes the GitHub Release.
 #
 # Usage: scripts/release.sh
 set -euo pipefail
@@ -9,16 +9,12 @@ set -euo pipefail
 # Repo root (this script lives in scripts/).
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-# dyndo-cli is the source-of-truth manifest for the current version.
-CLI_MANIFEST="$ROOT/crates/dyndo-cli/Cargo.toml"
-# All manifests bumped in lockstep.
-MANIFESTS=(
-  "$ROOT/crates/dyndo-core/Cargo.toml"
-  "$ROOT/crates/dyndo-cli/Cargo.toml"
-  "$ROOT/crates/dyndo-server/Cargo.toml"
-)
+# The root manifest's [workspace.package] is the source of truth for the
+# version; the crates inherit it via `version.workspace = true`.
+WORKSPACE_MANIFEST="$ROOT/Cargo.toml"
 
-# Print the [package] version from a Cargo.toml (the first `version = "..."`).
+# Print the workspace version from the root Cargo.toml (the first
+# `version = "..."` line, which is the [workspace.package] one).
 # `tr -d '\r'` guards against a CRLF-checked-out manifest (e.g. core.autocrlf),
 # so the version never carries a trailing carriage return.
 read_current_version() {
@@ -40,23 +36,15 @@ version_gt() {
   ((a3 > b3))
 }
 
-# Rewrite only the [package] version line of a single manifest. Portable (no
-# `sed -i`, which differs between GNU and BSD/macOS): the `1,/^version = /`
-# range stops at the first version line, so dependency `version = "..."` entries
-# further down are untouched.
+# Rewrite only the [workspace.package] version line of the root manifest.
+# Portable (no `sed -i`, which differs between GNU and BSD/macOS): the
+# `1,/^version = /` range stops at the first version line, so any other
+# `version = "..."` entries further down are untouched.
 bump_manifest() {
   local manifest="$1" version="$2" tmp
   tmp="$(mktemp)"
   sed "1,/^version = /s/^version = \".*\"/version = \"$version\"/" "$manifest" >"$tmp"
   mv "$tmp" "$manifest"
-}
-
-# Rewrite all workspace manifests to $1.
-bump_manifests() {
-  local m
-  for m in "${MANIFESTS[@]}"; do
-    bump_manifest "$m" "$1"
-  done
 }
 
 main() {
@@ -67,7 +55,7 @@ main() {
     || { echo "error: working tree is dirty; commit or stash first" >&2; exit 1; }
 
   local current
-  current="$(read_current_version "$CLI_MANIFEST")"
+  current="$(read_current_version "$WORKSPACE_MANIFEST")"
   is_semver "$current" \
     || { echo "error: current version '$current' is not X.Y.Z" >&2; exit 1; }
 
@@ -89,10 +77,10 @@ main() {
   [[ "$(git -C "$ROOT" rev-parse HEAD)" == "$(git -C "$ROOT" rev-parse origin/main)" ]] \
     || { echo "error: local main differs from origin/main; pull/push first" >&2; exit 1; }
 
-  bump_manifests "$next"
+  bump_manifest "$WORKSPACE_MANIFEST" "$next"
   ( cd "$ROOT" && cargo update --workspace --quiet )
 
-  git -C "$ROOT" add "${MANIFESTS[@]}" "$ROOT/Cargo.lock"
+  git -C "$ROOT" add "$WORKSPACE_MANIFEST" "$ROOT/Cargo.lock"
   git -C "$ROOT" commit -m "release: $next"
   # Annotated tag (carries metadata; `git push --follow-tags` and `git describe`
   # ignore lightweight tags). Push the branch and tag explicitly so the tag
