@@ -326,16 +326,17 @@ mod tests {
         }
     }
 
-    fn text_track(language: &str) -> TextTrack {
+    fn text_track_with_segments(language: &str, segments: Vec<Segment>) -> TextTrack {
+        let duration = segments.iter().map(|s| s.duration).sum();
         TextTrack::new(
             String::new(),
             CmafHeader {
                 timescale: 1000,
-                duration: 4000,
+                duration,
                 bandwidth: 256,
                 earliest_presentation_time: 0,
                 init_segment: seg(0),
-                segments: vec![seg(4000)],
+                segments,
             },
             TextCmafMetadata {
                 codec: TextCodec::Wvtt,
@@ -343,6 +344,10 @@ mod tests {
             },
             None,
         )
+    }
+
+    fn text_track(language: &str) -> TextTrack {
+        text_track_with_segments(language, vec![seg(4000)])
     }
 
     #[test]
@@ -428,5 +433,29 @@ mod tests {
         let items = ["a", "b", "a"];
         let groups = group_by_key(&items, |s| s.to_string());
         assert_eq!(groups[0].1, vec![0, 2]);
+    }
+
+    #[test]
+    fn mpd_timeline_groups_segments_by_the_policy() {
+        let track = text_track_with_segments("eng", vec![seg(1000); 4]);
+        let m = mpd(&[], &[], &[track], None, Some(2000));
+        let tmpl = m.periods[0].adaptations[0].representations[0]
+            .SegmentTemplate
+            .as_ref()
+            .unwrap();
+        let timeline = tmpl.SegmentTimeline.as_ref().unwrap();
+        assert_eq!(timeline.segments.len(), 1);
+        assert_eq!(timeline.segments[0].d, 2000);
+        assert_eq!(timeline.segments[0].r, Some(1)); // two 2s segments
+    }
+
+    #[test]
+    fn mpd_min_buffer_time_reflects_grouped_segments() {
+        let track = text_track_with_segments("eng", vec![seg(1000); 4]);
+        let m = mpd(&[], &[], &[track], None, Some(2000));
+        assert_eq!(
+            m.minBufferTime,
+            Some(std::time::Duration::from_millis(2000))
+        );
     }
 }

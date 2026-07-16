@@ -1120,4 +1120,52 @@ mod tests {
         };
         assert_eq!(p(&video, 90000), p(&text, 1000));
     }
+
+    #[tokio::test]
+    async fn every_advertised_segment_resolves_to_its_grouped_bytes() {
+        use opendal::services::Fs;
+
+        // A fake track file: 100 distinguishable bytes; two 10-byte fragments
+        // at offsets 20 and 30 that the policy merges into one 20-byte segment.
+        let dir = tempfile::tempdir().unwrap();
+        let bytes: Vec<u8> = (0..100).collect();
+        std::fs::write(dir.path().join("t.mp4"), &bytes).unwrap();
+        let op = Operator::new(Fs::default().root(dir.path().to_str().unwrap())).unwrap();
+
+        let mut h = header(1000, 2000, &[1000, 1000]);
+        h.segments[0].offset = 20;
+        h.segments[0].size = 10;
+        h.segments[1].offset = 30;
+        h.segments[1].size = 10;
+        let track = TextTrack::new(
+            "t.mp4".to_string(),
+            h,
+            TextCmafMetadata {
+                codec: TextCodec::Wvtt,
+                language: None,
+            },
+            None,
+        );
+
+        // The manifest advertises segments by running presentation time; every
+        // advertised time must resolve through segment_bytes with the same
+        // policy.
+        let mut time = track.earliest_presentation_time();
+        for seg in track.segments(None, Some(2000)) {
+            let got = track
+                .segment_bytes(&op, time, None, Some(2000))
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(got.len() as u64, seg.size);
+            time += seg.duration;
+        }
+        // And the merged segment is the two fragments' bytes, contiguous.
+        let got = track
+            .segment_bytes(&op, track.earliest_presentation_time(), None, Some(2000))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(&got[..], &bytes[20..40]);
+    }
 }

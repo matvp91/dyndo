@@ -460,6 +460,20 @@ mod tests {
     }
 
     #[test]
+    fn media_playlist_groups_segments_by_the_policy() {
+        // Four 1s fragments @ 90_000, min 2s -> two 2s served segments named
+        // by their running presentation times 0 and 180000.
+        let track = video_track(720, 128_000, &[90_000; 4]);
+        let repr = track.id();
+        let m = build_media(&track, None, Some(2000)).to_string();
+
+        assert_eq!(m.matches("#EXTINF").count(), 2, "{m}");
+        assert!(m.contains("#EXT-X-TARGETDURATION:2"), "{m}");
+        assert!(m.contains(&format!("{repr}/0.m4s")), "{m}");
+        assert!(m.contains(&format!("{repr}/180000.m4s")), "{m}");
+    }
+
+    #[test]
     fn media_segment_uris_reflect_nonzero_presentation_time() {
         // Nonzero eps: the first segment starts at eps, not 0. 90_000 timescale;
         // eps 45000, segments 2s, 1s → presentation times 45000, 225000.
