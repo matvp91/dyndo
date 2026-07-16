@@ -13,6 +13,7 @@
 - [Generate manifests without the server](./how-to/offline-manifests.md)
 - [Run and configure the server](./how-to/run-the-server.md)
 - [Serve media from S3](./how-to/serve-from-s3.md)
+- [Deploy with Docker](./how-to/deploy-with-docker.md)
 
 # Reference
 
