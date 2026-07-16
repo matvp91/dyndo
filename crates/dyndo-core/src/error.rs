@@ -15,6 +15,10 @@ pub enum CoreError {
     /// A CMAF box could not be read or was structurally invalid.
     #[error("malformed CMAF container: {0}")]
     Container(String),
+    /// A track parameter override (`language`/`role`) that does not apply to
+    /// the track's media type, or a role value outside the type's vocabulary.
+    #[error("invalid track parameter: {0}")]
+    TrackParam(String),
     /// No supported codec was found for the track's [`MediaType`].
     #[error("unsupported {0} codec")]
     UnsupportedCodec(MediaType),

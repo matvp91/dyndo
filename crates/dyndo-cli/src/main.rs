@@ -6,6 +6,8 @@ use dyndo_core::model::AssetModel;
 use opendal::Operator;
 use opendal::services::Fs;
 
+mod descriptor;
+
 /// dyndo — dynamic media packaging for adaptive streaming.
 #[derive(Parser)]
 #[command(name = "dyndo", version, about)]
@@ -16,12 +18,14 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Build an asset.json descriptor from one or more CMAF files. Inputs are
-    /// track paths relative to the output descriptor's directory.
+    /// Build or update an asset.json descriptor from one or more track
+    /// descriptors. Each descriptor is `<path>[,language=..][,role=..]`, where
+    /// the path is relative to the output descriptor's directory. When the
+    /// output already exists, tracks are merged into it (upsert by source path).
     Index {
-        /// Input CMAF file (repeatable, one track each).
-        #[arg(short, long = "input", required = true)]
-        input: Vec<String>,
+        /// Track descriptor(s): `<path>[,language=..][,role=..]`, one per track.
+        #[arg(required = true)]
+        inputs: Vec<String>,
         /// Output descriptor path.
         #[arg(short, long = "output", default_value = "asset.json")]
         output: String,
@@ -76,16 +80,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
     let op = operator()?;
     match cli.command {
-        Command::Index { input, output } => {
-            let mut asset = Asset::new();
-            for path in &input {
-                asset.add_track(&op, path, &output).await?;
+        Command::Index { inputs, output } => {
+            let mut asset = if op.exists(&output).await? {
+                let model = AssetModel::read(&op, &output).await?;
+                Asset::from_model(&op, model, &output).await?
+            } else {
+                let mut a = Asset::new();
+                a.path = output.clone();
+                a
+            };
+            for input in &inputs {
+                let d = descriptor::TrackDescriptor::parse(input)?;
+                asset
+                    .upsert_track(
+                        &op,
+                        &d.path,
+                        &output,
+                        d.language.as_deref(),
+                        d.role.as_deref(),
+                    )
+                    .await?;
             }
-            asset.path = output;
-            AssetModel::from(&asset).write(&op, &asset.path).await?;
+            AssetModel::from(&asset).write(&op, &output).await?;
             let tracks =
                 asset.video_tracks.len() + asset.audio_tracks.len() + asset.text_tracks.len();
-            println!("wrote {} ({tracks} tracks)", asset.path);
+            println!("wrote {output} ({tracks} tracks)");
         }
         Command::Dash {
             input,
@@ -188,14 +207,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     // name is known before writing. Mirrors
                     // dyndo_core::asset::TextTrack::id; packing is always wvtt.
                     let out = format!("text_wvtt_{language}.mp4");
-                    let id = format!("text_wvtt_{language}");
                     let dest = dyndo_core::path_utils::resolve(&asset, &out);
                     op.write(&dest, bytes).await?;
 
-                    // Add to the model (add_track probes the file), replacing any
-                    // stale same-id entry, then rewrite the descriptor.
-                    asset_obj.text_tracks.retain(|t| t.id() != id);
-                    asset_obj.add_track(&op, &out, &asset).await?;
+                    // Upsert the packed file into the descriptor by path (the
+                    // shared index seam), replacing any stale same-path entry,
+                    // then rewrite the descriptor.
+                    asset_obj
+                        .upsert_track(&op, &out, &asset, Some(language.as_str()), None)
+                        .await?;
                     AssetModel::from(&asset_obj).write(&op, &asset).await?;
                     println!("wrote {out}; updated {asset}");
                 }

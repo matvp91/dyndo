@@ -26,9 +26,7 @@ fn writes_asset_json_for_video_and_audio() {
     let status = dyndo(dir.path())
         .args([
             "index",
-            "-i",
             "video_avc_1080.mp4",
-            "-i",
             "audio_aac_nl_2.mp4",
             "-o",
             "asset.json",
@@ -57,9 +55,7 @@ fn generates_mpd_from_asset_json() {
         dyndo(dir.path())
             .args([
                 "index",
-                "-i",
                 "video_avc_1080.mp4",
-                "-i",
                 "audio_aac_nl_2.mp4",
                 "-o",
                 "asset.json",
@@ -93,9 +89,7 @@ fn dash_compact_flag_hoists_segment_template() {
         dyndo(dir.path())
             .args([
                 "index",
-                "-i",
                 "video_avc_1080.mp4",
-                "-i",
                 "audio_aac_nl_2.mp4",
                 "-o",
                 "asset.json",
@@ -142,9 +136,7 @@ fn generates_hls_playlists_from_asset_json() {
         dyndo(dir.path())
             .args([
                 "index",
-                "-i",
                 "video_avc_1080.mp4",
-                "-i",
                 "audio_aac_nl_2.mp4",
                 "-o",
                 "asset.json",
@@ -212,9 +204,7 @@ fn advertises_text_track_in_dash_and_hls() {
         dyndo(dir.path())
             .args([
                 "index",
-                "-i",
                 "video_avc_1080.mp4",
-                "-i",
                 "audio_aac_nl_2.mp4",
                 "-o",
                 "asset.json",
@@ -284,7 +274,7 @@ fn indexes_wvtt_text_track() {
 
     assert!(
         dyndo(dir.path())
-            .args(["index", "-i", "video_avc_1080.mp4", "-o", "asset.json"])
+            .args(["index", "video_avc_1080.mp4", "-o", "asset.json"])
             .status()
             .unwrap()
             .success()
@@ -308,7 +298,7 @@ fn indexes_wvtt_text_track() {
     // Index the packed wvtt file on its own into a fresh descriptor.
     assert!(
         dyndo(dir.path())
-            .args(["index", "-i", "text_wvtt_eng.mp4", "-o", "text.json"])
+            .args(["index", "text_wvtt_eng.mp4", "-o", "text.json"])
             .status()
             .unwrap()
             .success()
@@ -331,7 +321,7 @@ fn pack_aligns_subtitles_to_video_and_updates_asset() {
     // Index the video so pack has a timeline to align to.
     assert!(
         dyndo(dir.path())
-            .args(["index", "-i", "video_avc_1080.mp4", "-o", "asset.json"])
+            .args(["index", "video_avc_1080.mp4", "-o", "asset.json"])
             .status()
             .unwrap()
             .success()
@@ -373,7 +363,7 @@ fn pack_empty_language_normalizes_to_und() {
     // Index the video so pack has a timeline to align to.
     assert!(
         dyndo(dir.path())
-            .args(["index", "-i", "video_avc_1080.mp4", "-o", "asset.json"])
+            .args(["index", "video_avc_1080.mp4", "-o", "asset.json"])
             .status()
             .unwrap()
             .success()
@@ -419,7 +409,7 @@ fn manual_language_edit_in_asset_json_overrides_probed_language() {
     // wvtt file's mdhd and asset.json now say "eng".
     assert!(
         dyndo(dir.path())
-            .args(["index", "-i", "video_avc_1080.mp4", "-o", "asset.json"])
+            .args(["index", "video_avc_1080.mp4", "-o", "asset.json"])
             .status()
             .unwrap()
             .success()
@@ -501,7 +491,7 @@ fn pack_without_a_video_track_fails() {
     // An audio-only asset has no video timeline to align to.
     assert!(
         dyndo(dir.path())
-            .args(["index", "-i", "audio_aac_nl_2.mp4", "-o", "asset.json"])
+            .args(["index", "audio_aac_nl_2.mp4", "-o", "asset.json"])
             .status()
             .unwrap()
             .success()
@@ -512,4 +502,149 @@ fn pack_without_a_video_track_fails() {
         .status()
         .unwrap();
     assert!(!status.success(), "pack should fail without a video track");
+}
+
+#[test]
+fn index_sets_language_and_role_on_audio() {
+    let dir = tempfile::tempdir().unwrap();
+    stage(dir.path(), &["video_avc_1080.mp4", "audio_aac_nl_2.mp4"]);
+
+    assert!(
+        dyndo(dir.path())
+            .args([
+                "index",
+                "video_avc_1080.mp4",
+                "audio_aac_nl_2.mp4,language=fra,role=commentary",
+                "-o",
+                "asset.json",
+            ])
+            .status()
+            .unwrap()
+            .success()
+    );
+
+    let json: serde_json::Value =
+        serde_json::from_slice(&fs::read(dir.path().join("asset.json")).unwrap()).unwrap();
+    let audio = json["tracks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["type"] == "audio")
+        .expect("an audio track");
+    assert_eq!(audio["language"], "fra"); // probed nld, overridden
+    assert_eq!(audio["role"], "commentary");
+}
+
+#[test]
+fn index_appends_a_new_track_to_an_existing_descriptor() {
+    let dir = tempfile::tempdir().unwrap();
+    stage(dir.path(), &["video_avc_1080.mp4", "audio_aac_nl_2.mp4"]);
+
+    assert!(
+        dyndo(dir.path())
+            .args(["index", "video_avc_1080.mp4", "-o", "asset.json"])
+            .status()
+            .unwrap()
+            .success()
+    );
+    assert!(
+        dyndo(dir.path())
+            .args(["index", "audio_aac_nl_2.mp4", "-o", "asset.json"])
+            .status()
+            .unwrap()
+            .success()
+    );
+
+    let json: serde_json::Value =
+        serde_json::from_slice(&fs::read(dir.path().join("asset.json")).unwrap()).unwrap();
+    let tracks = json["tracks"].as_array().unwrap();
+    assert_eq!(tracks.len(), 2, "second index should append, not overwrite");
+    assert!(tracks.iter().any(|t| t["type"] == "video"));
+    assert!(tracks.iter().any(|t| t["type"] == "audio"));
+}
+
+#[test]
+fn index_upserts_an_existing_path_in_place() {
+    let dir = tempfile::tempdir().unwrap();
+    stage(dir.path(), &["audio_aac_nl_2.mp4"]);
+
+    // First index: no role.
+    assert!(
+        dyndo(dir.path())
+            .args(["index", "audio_aac_nl_2.mp4", "-o", "asset.json"])
+            .status()
+            .unwrap()
+            .success()
+    );
+    // Re-index the same path, now declaring a role.
+    assert!(
+        dyndo(dir.path())
+            .args(["index", "audio_aac_nl_2.mp4,role=main", "-o", "asset.json"])
+            .status()
+            .unwrap()
+            .success()
+    );
+
+    let json: serde_json::Value =
+        serde_json::from_slice(&fs::read(dir.path().join("asset.json")).unwrap()).unwrap();
+    let tracks = json["tracks"].as_array().unwrap();
+    assert_eq!(tracks.len(), 1, "same path should replace, not duplicate");
+    assert_eq!(tracks[0]["role"], "main");
+}
+
+#[test]
+fn index_rejects_role_on_video() {
+    let dir = tempfile::tempdir().unwrap();
+    stage(dir.path(), &["video_avc_1080.mp4"]);
+    assert!(
+        !dyndo(dir.path())
+            .args(["index", "video_avc_1080.mp4,role=main", "-o", "asset.json"])
+            .status()
+            .unwrap()
+            .success()
+    );
+}
+
+#[test]
+fn index_rejects_a_text_role_on_audio() {
+    let dir = tempfile::tempdir().unwrap();
+    stage(dir.path(), &["audio_aac_nl_2.mp4"]);
+    assert!(
+        !dyndo(dir.path())
+            .args([
+                "index",
+                "audio_aac_nl_2.mp4,role=subtitle",
+                "-o",
+                "asset.json"
+            ])
+            .status()
+            .unwrap()
+            .success()
+    );
+}
+
+#[test]
+fn index_rejects_an_unknown_field() {
+    let dir = tempfile::tempdir().unwrap();
+    stage(dir.path(), &["audio_aac_nl_2.mp4"]);
+    assert!(
+        !dyndo(dir.path())
+            .args(["index", "audio_aac_nl_2.mp4,codec=aac", "-o", "asset.json"])
+            .status()
+            .unwrap()
+            .success()
+    );
+}
+
+#[test]
+fn index_rejects_path_used_as_a_key() {
+    let dir = tempfile::tempdir().unwrap();
+    stage(dir.path(), &["video_avc_1080.mp4"]);
+    assert!(
+        !dyndo(dir.path())
+            .args(["index", "path=video_avc_1080.mp4", "-o", "asset.json"])
+            .status()
+            .unwrap()
+            .success()
+    );
 }

@@ -47,6 +47,20 @@ impl AudioRole {
             AudioRole::EnhancedAudioIntelligibility => "enhanced-audio-intelligibility",
         }
     }
+
+    /// Parse a DASH `Role@value` string into an [`AudioRole`], or `None` if it
+    /// is not one of this type's values. The inverse of [`AudioRole::as_str`].
+    pub fn from_value(s: &str) -> Option<AudioRole> {
+        match s {
+            "main" => Some(AudioRole::Main),
+            "alternate" => Some(AudioRole::Alternate),
+            "commentary" => Some(AudioRole::Commentary),
+            "dub" => Some(AudioRole::Dub),
+            "description" => Some(AudioRole::Description),
+            "enhanced-audio-intelligibility" => Some(AudioRole::EnhancedAudioIntelligibility),
+            _ => None,
+        }
+    }
 }
 
 impl TextRole {
@@ -56,6 +70,17 @@ impl TextRole {
             TextRole::Subtitle => "subtitle",
             TextRole::Caption => "caption",
             TextRole::ForcedSubtitle => "forced-subtitle",
+        }
+    }
+
+    /// Parse a DASH `Role@value` string into a [`TextRole`], or `None` if it is
+    /// not one of this type's values. The inverse of [`TextRole::as_str`].
+    pub fn from_value(s: &str) -> Option<TextRole> {
+        match s {
+            "subtitle" => Some(TextRole::Subtitle),
+            "caption" => Some(TextRole::Caption),
+            "forced-subtitle" => Some(TextRole::ForcedSubtitle),
+            _ => None,
         }
     }
 }
@@ -121,5 +146,35 @@ mod tests {
                 format!("\"{}\"", r.as_str())
             );
         }
+    }
+
+    #[test]
+    fn from_value_is_the_inverse_of_as_str() {
+        for r in [
+            AudioRole::Main,
+            AudioRole::Alternate,
+            AudioRole::Commentary,
+            AudioRole::Dub,
+            AudioRole::Description,
+            AudioRole::EnhancedAudioIntelligibility,
+        ] {
+            assert_eq!(AudioRole::from_value(r.as_str()), Some(r));
+        }
+        for r in [
+            TextRole::Subtitle,
+            TextRole::Caption,
+            TextRole::ForcedSubtitle,
+        ] {
+            assert_eq!(TextRole::from_value(r.as_str()), Some(r));
+        }
+    }
+
+    #[test]
+    fn from_value_rejects_unknown_and_cross_type_values() {
+        assert_eq!(AudioRole::from_value("karaoke"), None);
+        assert_eq!(AudioRole::from_value(""), None);
+        // "subtitle" is a text role, not an audio role, and vice versa.
+        assert_eq!(AudioRole::from_value("subtitle"), None);
+        assert_eq!(TextRole::from_value("main"), None);
     }
 }
