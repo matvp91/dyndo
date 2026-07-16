@@ -568,33 +568,68 @@ impl Asset {
         Asset::default()
     }
 
-    /// Parse the CMAF file at `file_path` and add it as the video, audio, or
-    /// text track its `hdlr` box declares. `descriptor_path` resolves
-    /// `file_path` relative to the descriptor. Tracks carry no ordering
+    /// Probe the CMAF file at `file_path` and upsert it as the video, audio,
+    /// or text track its `hdlr` box declares. `descriptor_path` resolves
+    /// `file_path` relative to the descriptor. Any track already present with
+    /// the same resolved path is replaced — for merge purposes a track's
+    /// identity is its source path. `language`/`role` are optional descriptor
+    /// overrides (a non-empty `language` overrides the probed value; `role` is
+    /// resolved against the probed media type). Tracks carry no ordering
     /// guarantee.
     ///
     /// # Errors
-    /// Propagates any [`CoreError`] from reading or parsing the track.
-    pub async fn add_track(
+    /// Propagates any [`CoreError`] from reading or parsing the track; returns
+    /// [`CoreError::TrackParam`] when `language`/`role` is supplied for a video
+    /// track, or `role` is not a valid value for the track's media type.
+    pub async fn upsert_track(
         &mut self,
         op: &Operator,
         file_path: &str,
         descriptor_path: &str,
+        language: Option<&str>,
+        role: Option<&str>,
     ) -> Result<(), CoreError> {
         let path = path_utils::resolve(descriptor_path, file_path);
         let (cmaf_header, cmaf_metadata) = cmaf::probe(op, &path).await?;
+
+        // Identity for merge is the source path: drop any prior entry for it.
+        self.video_tracks.retain(|t| t.path() != path);
+        self.audio_tracks.retain(|t| t.path() != path);
+        self.text_tracks.retain(|t| t.path() != path);
+
         match cmaf_metadata {
             CmafMetadata::Video(m) => {
+                if language.is_some() || role.is_some() {
+                    return Err(CoreError::TrackParam(
+                        "video tracks take no language or role".to_string(),
+                    ));
+                }
                 self.video_tracks
-                    .push(VideoTrack::new(path, cmaf_header, m, None))
+                    .push(VideoTrack::new(path, cmaf_header, m, None));
             }
             CmafMetadata::Audio(m) => {
-                self.audio_tracks
-                    .push(AudioTrack::new(path, cmaf_header, m, None))
+                let mut t = AudioTrack::new(path, cmaf_header, m, None);
+                if let Some(l) = language.filter(|l| !l.is_empty()) {
+                    t.language_descriptor = Some(l.to_string());
+                }
+                if let Some(r) = role {
+                    t.role_descriptor = Some(AudioRole::from_value(r).ok_or_else(|| {
+                        CoreError::TrackParam(format!("unknown audio role {r:?}"))
+                    })?);
+                }
+                self.audio_tracks.push(t);
             }
             CmafMetadata::Text(m) => {
-                self.text_tracks
-                    .push(TextTrack::new(path, cmaf_header, m, None))
+                let mut t = TextTrack::new(path, cmaf_header, m, None);
+                if let Some(l) = language.filter(|l| !l.is_empty()) {
+                    t.language_descriptor = Some(l.to_string());
+                }
+                if let Some(r) = role {
+                    t.role_descriptor = Some(TextRole::from_value(r).ok_or_else(|| {
+                        CoreError::TrackParam(format!("unknown text role {r:?}"))
+                    })?);
+                }
+                self.text_tracks.push(t);
             }
         }
         Ok(())
@@ -996,5 +1031,81 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(&got[..], &bytes[20..40]);
+    }
+
+    /// The workspace fixtures dir, addressable under an Fs operator rooted here.
+    const FIXTURES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../tests/fixtures");
+
+    /// An operator rooted at the fixtures dir, for read-only probe tests.
+    fn fixture_op() -> Operator {
+        use opendal::services::Fs;
+        Operator::new(Fs::default().root(FIXTURES)).unwrap()
+    }
+
+    #[tokio::test]
+    async fn upsert_track_replaces_the_same_path_instead_of_duplicating() {
+        let op = fixture_op();
+        let mut asset = Asset::new();
+        asset
+            .upsert_track(&op, "audio_aac_nl_2.mp4", "asset.json", None, None)
+            .await
+            .unwrap();
+        asset
+            .upsert_track(&op, "audio_aac_nl_2.mp4", "asset.json", None, Some("main"))
+            .await
+            .unwrap();
+        assert_eq!(asset.audio_tracks.len(), 1);
+        assert_eq!(
+            asset.audio_tracks[0].role(),
+            Some(crate::role::AudioRole::Main)
+        );
+    }
+
+    #[tokio::test]
+    async fn upsert_track_applies_language_and_role_overrides_to_audio() {
+        let op = fixture_op();
+        let mut asset = Asset::new();
+        asset
+            .upsert_track(
+                &op,
+                "audio_aac_nl_2.mp4",
+                "asset.json",
+                Some("fra"),
+                Some("commentary"),
+            )
+            .await
+            .unwrap();
+        let t = &asset.audio_tracks[0];
+        assert_eq!(t.language(), "fra"); // probed nld, overridden to fra
+        assert_eq!(t.role(), Some(crate::role::AudioRole::Commentary));
+    }
+
+    #[tokio::test]
+    async fn upsert_track_rejects_language_or_role_on_video() {
+        let op = fixture_op();
+        let mut asset = Asset::new();
+        let err = asset
+            .upsert_track(&op, "video_avc_1080.mp4", "asset.json", None, Some("main"))
+            .await
+            .unwrap_err();
+        assert!(matches!(err, CoreError::TrackParam(_)), "{err:?}");
+    }
+
+    #[tokio::test]
+    async fn upsert_track_rejects_a_role_invalid_for_the_media_type() {
+        let op = fixture_op();
+        let mut asset = Asset::new();
+        // "subtitle" is a text role; it is not valid on an audio track.
+        let err = asset
+            .upsert_track(
+                &op,
+                "audio_aac_nl_2.mp4",
+                "asset.json",
+                None,
+                Some("subtitle"),
+            )
+            .await
+            .unwrap_err();
+        assert!(matches!(err, CoreError::TrackParam(_)), "{err:?}");
     }
 }

@@ -79,7 +79,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Command::Index { input, output } => {
             let mut asset = Asset::new();
             for path in &input {
-                asset.add_track(&op, path, &output).await?;
+                asset.upsert_track(&op, path, &output, None, None).await?;
             }
             asset.path = output;
             AssetModel::from(&asset).write(&op, &asset.path).await?;
@@ -188,14 +188,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     // name is known before writing. Mirrors
                     // dyndo_core::asset::TextTrack::id; packing is always wvtt.
                     let out = format!("text_wvtt_{language}.mp4");
-                    let id = format!("text_wvtt_{language}");
                     let dest = dyndo_core::path_utils::resolve(&asset, &out);
                     op.write(&dest, bytes).await?;
 
-                    // Add to the model (add_track probes the file), replacing any
-                    // stale same-id entry, then rewrite the descriptor.
-                    asset_obj.text_tracks.retain(|t| t.id() != id);
-                    asset_obj.add_track(&op, &out, &asset).await?;
+                    // Upsert the packed file into the descriptor by path (the
+                    // shared index seam), replacing any stale same-path entry,
+                    // then rewrite the descriptor.
+                    asset_obj
+                        .upsert_track(&op, &out, &asset, Some(language.as_str()), None)
+                        .await?;
                     AssetModel::from(&asset_obj).write(&op, &asset).await?;
                     println!("wrote {out}; updated {asset}");
                 }
