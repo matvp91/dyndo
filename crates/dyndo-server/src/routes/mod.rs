@@ -11,6 +11,7 @@ mod transport;
 use axum::{
     Router,
     extract::{Path, State},
+    http::StatusCode,
     response::Response,
     routing::get,
 };
@@ -28,9 +29,16 @@ const PROTOCOLS: &[&str] = &["dash", "hls"];
 pub(crate) fn build_router(op: Operator) -> Router {
     let cors = CorsLayer::new().allow_origin(Any).allow_methods(Any);
     Router::new()
+        .route("/health", get(health))
         .route("/{*path}", get(dispatch))
         .with_state(op)
         .layer(cors)
+}
+
+/// Liveness probe. Static routes win over the catch-all, so this never shadows
+/// a streaming route (those always carry a `/{protocol}/` infix).
+async fn health() -> StatusCode {
+    StatusCode::OK
 }
 
 /// Route the catch-all tail to the right handler.
