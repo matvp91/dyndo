@@ -5,9 +5,14 @@ mod build;
 use crate::asset::{Asset, Track};
 
 /// Build the HLS media playlist for a single `track`: a VOD playlist with an
-/// `EXT-X-MAP` init segment and one media segment per (sub)segment.
-pub fn generate_media(track: &impl Track) -> String {
-    build::build_media(track).to_string()
+/// `EXT-X-MAP` init segment and one media segment per served (sub)segment —
+/// pass the same grouping policy the segment route uses.
+pub fn generate_media(
+    track: &impl Track,
+    segment_boundaries_ms: Option<&[u64]>,
+    min_segment_length_ms: Option<u64>,
+) -> String {
+    build::build_media(track, segment_boundaries_ms, min_segment_length_ms).to_string()
 }
 
 /// Build the HLS multivariant (master) playlist for `asset`: one

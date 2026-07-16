@@ -20,9 +20,8 @@ pub struct AssetModel {
     )]
     pub min_segment_length_ms: Option<u64>,
     /// Splice points, in milliseconds from the start of the presentation
-    /// (wire: `segment_boundaries`). Served segments never span one. Must be
-    /// strictly ascending and non-zero (validated by
-    /// [`Segmentation::new`](crate::asset::Segmentation::new)).
+    /// (wire: `segment_boundaries`). Served segments never span one. Treated
+    /// as a set: order and duplicates don't matter.
     #[serde(
         rename = "segment_boundaries",
         default,

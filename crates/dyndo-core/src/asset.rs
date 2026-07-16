@@ -22,9 +22,12 @@ pub struct Asset {
     pub audio_tracks: Vec<AudioTrack>,
     /// The asset's text tracks, in no particular order.
     pub text_tracks: Vec<TextTrack>,
-    /// Serve-time segmentation policy from the descriptor (see
-    /// [`Segmentation`]). Default: no grouping.
-    pub segmentation: Segmentation,
+    /// Minimum length of a served segment, in milliseconds, from the
+    /// descriptor. `None` (or 0) serves each CMAF fragment as its own segment.
+    pub min_segment_length_ms: Option<u64>,
+    /// Splice points, in milliseconds from the start of the presentation,
+    /// from the descriptor. A served segment never spans one.
+    pub segment_boundaries_ms: Vec<u64>,
     /// Path of the source descriptor (`asset.json`), used to resolve each
     /// track's relative path.
     pub path: String,
@@ -46,46 +49,6 @@ pub struct Segment {
     pub duration_ms: u64,
 }
 
-/// Serve-time segmentation policy from the descriptor: how a track's raw CMAF
-/// fragments are grouped into served segments. `Default` (no minimum, no
-/// boundaries) leaves every fragment as its own segment.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct Segmentation {
-    /// Minimum length of a served segment, in milliseconds. Whole fragments
-    /// are accumulated until a group reaches this; `None` (or 0) disables
-    /// grouping. The last group before a splice point or the track end may be
-    /// shorter.
-    pub min_segment_length_ms: Option<u64>,
-    /// Splice points, in milliseconds from the start of the presentation.
-    /// A served segment never spans one (ad-insertion cut points).
-    pub segment_boundaries_ms: Vec<u64>,
-}
-
-impl Segmentation {
-    /// Build a policy, validating that `segment_boundaries_ms` is strictly
-    /// ascending and non-zero.
-    ///
-    /// # Errors
-    /// [`CoreError::InvalidDescriptor`] when the boundaries are unsorted,
-    /// duplicated, or contain 0 — a broken descriptor, not something to
-    /// silently repair.
-    pub fn new(
-        min_segment_length_ms: Option<u64>,
-        segment_boundaries_ms: Vec<u64>,
-    ) -> Result<Segmentation, CoreError> {
-        let ascending = segment_boundaries_ms.windows(2).all(|w| w[0] < w[1]);
-        if !ascending || segment_boundaries_ms.first() == Some(&0) {
-            return Err(CoreError::InvalidDescriptor(
-                "segment_boundaries must be strictly ascending and non-zero".to_string(),
-            ));
-        }
-        Ok(Segmentation {
-            min_segment_length_ms,
-            segment_boundaries_ms,
-        })
-    }
-}
-
 /// Group a track's raw CMAF fragments into served segments. Splice points
 /// (`segment_boundaries_ms`) partition the fragments — a served segment never
 /// spans one — and within each partition whole fragments are accumulated
@@ -95,8 +58,13 @@ impl Segmentation {
 /// durations. All comparisons are exact u128 integer math (`units * 1000` vs
 /// `ms * timescale`); summing `duration_ms` keeps per-track totals drift-free
 /// because group boundaries are a subset of the raw drift-free boundaries.
-fn group_segments(raw: &[Segment], timescale: u32, segmentation: &Segmentation) -> Vec<Segment> {
-    let min_ms = match segmentation.min_segment_length_ms {
+fn group_segments(
+    raw: &[Segment],
+    timescale: u32,
+    segment_boundaries_ms: Option<&[u64]>,
+    min_segment_length_ms: Option<u64>,
+) -> Vec<Segment> {
+    let min_ms = match min_segment_length_ms {
         Some(ms) if ms > 0 => ms,
         _ => return raw.to_vec(),
     };
@@ -108,7 +76,7 @@ fn group_segments(raw: &[Segment], timescale: u32, segmentation: &Segmentation) 
     for s in raw {
         cum.push(cum[cum.len() - 1] + s.duration);
     }
-    let cuts = snap_cuts(&cum, timescale, &segmentation.segment_boundaries_ms);
+    let cuts = snap_cuts(&cum, timescale, segment_boundaries_ms.unwrap_or(&[]));
 
     let mut out = Vec::new();
     let mut start = 0;
@@ -136,8 +104,9 @@ fn group_segments(raw: &[Segment], timescale: u32, segmentation: &Segmentation) 
 /// Snap each splice point to the nearest fragment boundary, returned as
 /// ascending, deduplicated indices into the cumulative-units table `cum`
 /// (index 0 = track start — a no-op cut, as is `cum.len() - 1`, the track
-/// end). Exact integer comparison in u128; a tie snaps earlier. Snapping is
-/// monotone over ascending input, so `dedup` alone suffices.
+/// end). Exact integer comparison in u128; a tie snaps earlier. Splice points
+/// are a set: order and duplicates in the descriptor don't matter, so the
+/// result is sorted rather than the input rejected.
 fn snap_cuts(cum: &[u64], timescale: u32, boundaries_ms: &[u64]) -> Vec<usize> {
     let mut cuts: Vec<usize> = boundaries_ms
         .iter()
@@ -155,6 +124,7 @@ fn snap_cuts(cum: &[u64], timescale: u32, boundaries_ms: &[u64]) -> Vec<usize> {
             }
         })
         .collect();
+    cuts.sort_unstable();
     cuts.dedup();
     cuts
 }
@@ -215,9 +185,22 @@ pub trait Track: sealed::HasHeader {
         self.header().earliest_presentation_time
     }
 
-    /// The track's (sub)segments, in presentation order.
-    fn segments(&self) -> &[Segment] {
-        &self.header().segments
+    /// The track's served (sub)segments, in presentation order: the raw CMAF
+    /// fragments grouped to at least `min_segment_length_ms`, never across a
+    /// splice point in `segment_boundaries_ms` (both `None` = one segment per
+    /// fragment). Manifest builders and the segment route must receive the
+    /// same policy or advertised segment times will not resolve.
+    fn segments(
+        &self,
+        segment_boundaries_ms: Option<&[u64]>,
+        min_segment_length_ms: Option<u64>,
+    ) -> Vec<Segment> {
+        group_segments(
+            &self.header().segments,
+            self.timescale(),
+            segment_boundaries_ms,
+            min_segment_length_ms,
+        )
     }
 
     /// This track's total presentation duration, in milliseconds.
@@ -225,10 +208,14 @@ pub trait Track: sealed::HasHeader {
         units_to_ms(self.header().duration, self.header().timescale)
     }
 
-    /// The longest (sub)segment in this track, in milliseconds (0 if it has
-    /// none).
-    fn max_segment_duration_ms(&self) -> u64 {
-        self.segments()
+    /// The longest served (sub)segment in this track, in milliseconds (0 if it
+    /// has none), under the same grouping policy as [`Track::segments`].
+    fn max_segment_duration_ms(
+        &self,
+        segment_boundaries_ms: Option<&[u64]>,
+        min_segment_length_ms: Option<u64>,
+    ) -> u64 {
+        self.segments(segment_boundaries_ms, min_segment_length_ms)
             .iter()
             .map(|s| s.duration_ms)
             .max()
@@ -245,13 +232,21 @@ pub trait Track: sealed::HasHeader {
     }
 
     /// Read the media (sub)segment starting at presentation `time` through
-    /// `op`, or `None` if no segment starts exactly there.
+    /// `op`, or `None` if no segment starts exactly there. `time` is matched
+    /// against the served segments — pass the same grouping policy the
+    /// manifest was built with.
     ///
     /// # Errors
     /// Propagates any [`CoreError`] from the underlying read.
-    async fn segment_bytes(&self, op: &Operator, time: u64) -> Result<Option<Bytes>, CoreError> {
+    async fn segment_bytes(
+        &self,
+        op: &Operator,
+        time: u64,
+        segment_boundaries_ms: Option<&[u64]>,
+        min_segment_length_ms: Option<u64>,
+    ) -> Result<Option<Bytes>, CoreError> {
         let mut t = self.earliest_presentation_time();
-        for seg in self.segments() {
+        for seg in self.segments(segment_boundaries_ms, min_segment_length_ms) {
             if t == time {
                 return Ok(Some(
                     cmaf::read_range(op, self.path_str(), seg.offset, seg.size).await?,
@@ -682,12 +677,6 @@ impl Asset {
         path: impl Into<String>,
     ) -> Result<Asset, CoreError> {
         let path = path.into();
-        // Validate the policy before probing any track: a broken descriptor
-        // should fail fast, not after N reads.
-        let segmentation = Segmentation::new(
-            model.min_segment_length_ms,
-            model.segment_boundaries_ms.clone(),
-        )?;
         let tracks = try_join_all(
             model
                 .tracks
@@ -699,7 +688,8 @@ impl Asset {
         for track in tracks {
             asset.push_track(track);
         }
-        asset.segmentation = segmentation;
+        asset.min_segment_length_ms = model.min_segment_length_ms;
+        asset.segment_boundaries_ms = model.segment_boundaries_ms;
         asset.path = path;
         Ok(asset)
     }
@@ -711,8 +701,8 @@ impl From<&Asset> for AssetModel {
         let audio = asset.audio_tracks.iter().map(|t| t.to_model(&asset.path));
         let text = asset.text_tracks.iter().map(|t| t.to_model(&asset.path));
         AssetModel {
-            min_segment_length_ms: asset.segmentation.min_segment_length_ms,
-            segment_boundaries_ms: asset.segmentation.segment_boundaries_ms.clone(),
+            min_segment_length_ms: asset.min_segment_length_ms,
+            segment_boundaries_ms: asset.segment_boundaries_ms.clone(),
             tracks: video.chain(audio).chain(text).collect(),
         }
     }
@@ -907,57 +897,31 @@ mod tests {
     fn max_segment_duration_ms_is_the_longest_segment() {
         // @48_000: 48_000→1000 ms, 96_000→2000 ms, 24_000→500 ms
         assert_eq!(
-            video_track(48_000, 0, &[48_000, 96_000, 24_000]).max_segment_duration_ms(),
+            video_track(48_000, 0, &[48_000, 96_000, 24_000]).max_segment_duration_ms(None, None),
             2000
         );
     }
 
     #[test]
     fn max_segment_duration_ms_is_zero_without_segments() {
-        assert_eq!(video_track(48_000, 0, &[]).max_segment_duration_ms(), 0);
-    }
-
-    #[test]
-    fn segmentation_accepts_ascending_boundaries() {
-        let s = Segmentation::new(Some(3000), vec![1000, 2000]).unwrap();
-        assert_eq!(s.min_segment_length_ms, Some(3000));
-        assert_eq!(s.segment_boundaries_ms, vec![1000, 2000]);
-    }
-
-    #[test]
-    fn segmentation_accepts_empty_boundaries_and_no_min() {
         assert_eq!(
-            Segmentation::new(None, Vec::new()).unwrap(),
-            Segmentation::default()
+            video_track(48_000, 0, &[]).max_segment_duration_ms(None, None),
+            0
         );
     }
 
     #[test]
-    fn segmentation_rejects_unsorted_boundaries() {
-        assert!(Segmentation::new(None, vec![2000, 1000]).is_err());
-    }
-
-    #[test]
-    fn segmentation_rejects_duplicate_boundaries() {
-        assert!(Segmentation::new(None, vec![1000, 1000]).is_err());
-    }
-
-    #[test]
-    fn segmentation_rejects_a_zero_boundary() {
-        assert!(Segmentation::new(None, vec![0, 1000]).is_err());
-    }
-
-    #[test]
-    fn asset_round_trips_segmentation_into_the_model() {
+    fn asset_round_trips_the_grouping_fields_into_the_model() {
         let mut asset = Asset::new();
-        asset.segmentation = Segmentation::new(Some(3000), vec![683640]).unwrap();
+        asset.min_segment_length_ms = Some(3000);
+        asset.segment_boundaries_ms = vec![683640];
         let model = AssetModel::from(&asset);
         assert_eq!(model.min_segment_length_ms, Some(3000));
         assert_eq!(model.segment_boundaries_ms, vec![683640]);
     }
 
     #[tokio::test]
-    async fn from_model_rejects_invalid_boundaries_before_probing() {
+    async fn from_model_carries_the_grouping_fields_onto_the_asset() {
         use opendal::services::Fs;
 
         // With no tracks, from_model performs no I/O — any operator works.
@@ -965,13 +929,12 @@ mod tests {
         let op = Operator::new(Fs::default().root(dir.path().to_str().unwrap())).unwrap();
         let model = AssetModel {
             min_segment_length_ms: Some(3000),
-            segment_boundaries_ms: vec![2000, 1000],
+            segment_boundaries_ms: vec![683640],
             tracks: Vec::new(),
         };
-        let err = Asset::from_model(&op, model, "asset.json")
-            .await
-            .unwrap_err();
-        assert!(matches!(err, CoreError::InvalidDescriptor(_)));
+        let asset = Asset::from_model(&op, model, "asset.json").await.unwrap();
+        assert_eq!(asset.min_segment_length_ms, Some(3000));
+        assert_eq!(asset.segment_boundaries_ms, vec![683640]);
     }
 
     /// A contiguous fragment run: `durations` in timescale units, each fragment
@@ -997,29 +960,25 @@ mod tests {
             .collect()
     }
 
-    fn min_len(ms: u64) -> Segmentation {
-        Segmentation::new(Some(ms), Vec::new()).unwrap()
-    }
-
     #[test]
     fn grouping_is_a_noop_without_a_minimum() {
         let raw = frags(90000, &[172800, 172800]);
-        assert_eq!(group_segments(&raw, 90000, &Segmentation::default()), raw);
-        assert_eq!(group_segments(&raw, 90000, &min_len(0)), raw);
+        assert_eq!(group_segments(&raw, 90000, None, None), raw);
+        assert_eq!(group_segments(&raw, 90000, None, Some(0)), raw);
     }
 
     #[test]
     fn a_minimum_below_every_fragment_is_a_noop() {
         // 1.92s GOPs, min 0.5s: every fragment already satisfies the minimum.
         let raw = frags(90000, &[172800; 3]);
-        assert_eq!(group_segments(&raw, 90000, &min_len(500)), raw);
+        assert_eq!(group_segments(&raw, 90000, None, Some(500)), raw);
     }
 
     #[test]
     fn grouping_pairs_fragments_to_reach_the_minimum() {
         // 1.92s GOPs, min 3s -> 3.84s pairs.
         let raw = frags(90000, &[172800; 4]);
-        let out = group_segments(&raw, 90000, &min_len(3000));
+        let out = group_segments(&raw, 90000, None, Some(3000));
         assert_eq!(out.len(), 2);
         assert_eq!(out[0].duration, 345600);
         assert_eq!(out[0].offset, 100);
@@ -1031,7 +990,7 @@ mod tests {
     fn a_group_closes_exactly_at_the_minimum() {
         // 1s fragments @ min 2s -> exact 2s groups, not 3s.
         let raw = frags(90000, &[90000; 4]);
-        let out = group_segments(&raw, 90000, &min_len(2000));
+        let out = group_segments(&raw, 90000, None, Some(2000));
         assert_eq!(
             out.iter().map(|s| s.duration).collect::<Vec<_>>(),
             vec![180000, 180000]
@@ -1041,7 +1000,7 @@ mod tests {
     #[test]
     fn the_track_tail_may_be_shorter_than_the_minimum() {
         let raw = frags(90000, &[172800, 172800, 122400]);
-        let out = group_segments(&raw, 90000, &min_len(3000));
+        let out = group_segments(&raw, 90000, None, Some(3000));
         assert_eq!(out.len(), 2);
         assert_eq!(out[1].duration, 122400); // 1.36s tail, alone
     }
@@ -1049,7 +1008,7 @@ mod tests {
     #[test]
     fn a_minimum_beyond_the_track_makes_one_segment() {
         let raw = frags(90000, &[172800; 3]);
-        let out = group_segments(&raw, 90000, &min_len(3_600_000));
+        let out = group_segments(&raw, 90000, None, Some(3_600_000));
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].duration, 518400);
         assert_eq!(out[0].size, 30);
@@ -1057,7 +1016,7 @@ mod tests {
 
     #[test]
     fn grouping_an_empty_track_yields_nothing() {
-        assert!(group_segments(&[], 90000, &min_len(3000)).is_empty());
+        assert!(group_segments(&[], 90000, None, Some(3000)).is_empty());
     }
 
     #[test]
@@ -1065,14 +1024,10 @@ mod tests {
         // timescale 3, six 1-unit fragments (1/3s each), min 600ms -> groups of
         // 2 (2/3s = 666.67ms exact). Drift-free totals: 666+667+667 = 2000.
         let raw = frags(3, &[1, 1, 1, 1, 1, 1]);
-        let out = group_segments(&raw, 3, &min_len(600));
+        let out = group_segments(&raw, 3, None, Some(600));
         let ms: Vec<u64> = out.iter().map(|s| s.duration_ms).collect();
         assert_eq!(ms.iter().sum::<u64>(), 2000);
         assert_eq!(ms, vec![666, 667, 667]);
-    }
-
-    fn policy(min_ms: u64, boundaries: &[u64]) -> Segmentation {
-        Segmentation::new(Some(min_ms), boundaries.to_vec()).unwrap()
     }
 
     #[test]
@@ -1080,7 +1035,7 @@ mod tests {
         // Four 1.92s GOPs, splice exactly at 3.84s: without the cut min 5s
         // would span it; with it, both partitions close at the splice.
         let raw = frags(90000, &[172800; 4]);
-        let out = group_segments(&raw, 90000, &policy(5000, &[3840]));
+        let out = group_segments(&raw, 90000, Some(&[3840]), Some(5000));
         assert_eq!(out.len(), 2);
         assert_eq!(out[0].duration, 345600);
         assert_eq!(out[1].duration, 345600);
@@ -1090,7 +1045,7 @@ mod tests {
     fn a_conditioning_fragment_before_a_splice_becomes_a_short_segment() {
         // The real-asset shape scaled down: 2x1.92s + 0.12s | splice | 1.8s + 1.92s.
         let raw = frags(90000, &[172800, 172800, 10800, 162000, 172800]);
-        let out = group_segments(&raw, 90000, &policy(3000, &[3960]));
+        let out = group_segments(&raw, 90000, Some(&[3960]), Some(3000));
         let durs: Vec<u64> = out.iter().map(|s| s.duration).collect();
         assert_eq!(durs, vec![345600, 10800, 334800]); // 3.84s, 0.12s tail, 3.72s
     }
@@ -1099,7 +1054,7 @@ mod tests {
     fn a_splice_snaps_to_the_nearest_fragment_boundary() {
         // Boundaries at 0/1.92/3.84s; splice at 2.0s is nearer 1.92 than 3.84.
         let raw = frags(90000, &[172800, 172800]);
-        let out = group_segments(&raw, 90000, &policy(4000, &[2000]));
+        let out = group_segments(&raw, 90000, Some(&[2000]), Some(4000));
         let durs: Vec<u64> = out.iter().map(|s| s.duration).collect();
         assert_eq!(durs, vec![172800, 172800]);
     }
@@ -1108,7 +1063,7 @@ mod tests {
     fn an_exact_tie_snaps_earlier() {
         // 2s fragments; splice at 3.0s ties between 2s and 4s -> snaps to 2s.
         let raw = frags(90000, &[180000, 180000, 180000]);
-        let out = group_segments(&raw, 90000, &policy(10_000, &[3000]));
+        let out = group_segments(&raw, 90000, Some(&[3000]), Some(10_000));
         let durs: Vec<u64> = out.iter().map(|s| s.duration).collect();
         assert_eq!(durs, vec![180000, 360000]);
     }
@@ -1116,7 +1071,7 @@ mod tests {
     #[test]
     fn a_splice_beyond_the_track_is_a_noop() {
         let raw = frags(90000, &[172800; 2]);
-        let out = group_segments(&raw, 90000, &policy(5000, &[999_000]));
+        let out = group_segments(&raw, 90000, Some(&[999_000]), Some(5000));
         assert_eq!(out.len(), 1);
     }
 
@@ -1124,15 +1079,25 @@ mod tests {
     fn two_splices_snapping_to_one_boundary_cut_once() {
         // Both 1.90s and 1.94s snap to the 1.92s boundary.
         let raw = frags(90000, &[172800; 4]);
-        let out = group_segments(&raw, 90000, &policy(5000, &[1900, 1940]));
+        let out = group_segments(&raw, 90000, Some(&[1900, 1940]), Some(5000));
         let durs: Vec<u64> = out.iter().map(|s| s.duration).collect();
         assert_eq!(durs, vec![172800, 518400]);
     }
 
     #[test]
+    fn boundary_order_does_not_matter() {
+        // Splice points are a set; unsorted input cuts at the same points.
+        let raw = frags(90000, &[172800; 6]);
+        let sorted = group_segments(&raw, 90000, Some(&[1920, 5760]), Some(9000));
+        let unsorted = group_segments(&raw, 90000, Some(&[5760, 1920]), Some(9000));
+        assert_eq!(sorted, unsorted);
+        assert_eq!(sorted.len(), 3);
+    }
+
+    #[test]
     fn boundaries_without_a_minimum_leave_fragments_as_is() {
         let raw = frags(90000, &[172800; 4]);
-        let out = group_segments(&raw, 90000, &Segmentation::new(None, vec![3840]).unwrap());
+        let out = group_segments(&raw, 90000, Some(&[3840]), None);
         assert_eq!(out, raw);
     }
 
@@ -1145,7 +1110,7 @@ mod tests {
         let text = frags(1000, &[1920, 1920, 120, 1800, 1920]);
         let p = |ts_frags: &[Segment], ts: u32| -> Vec<u128> {
             let mut acc = 0u128;
-            group_segments(ts_frags, ts, &policy(3000, &[3960]))
+            group_segments(ts_frags, ts, Some(&[3960]), Some(3000))
                 .iter()
                 .map(|s| {
                     acc += s.duration as u128 * 1000 / ts as u128;

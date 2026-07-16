@@ -60,7 +60,13 @@ fn segment_template(timescale: u32, pto: u64, segments: &[Segment]) -> SegmentTe
 /// The fields every representation shares: id, bandwidth, codecs, and the
 /// segment template. Per-media-type builders add their own dimensions or audio
 /// configuration.
-fn base_representation(track: &impl Track, codecs: String) -> Representation {
+fn base_representation(
+    track: &impl Track,
+    codecs: String,
+    segment_boundaries_ms: Option<&[u64]>,
+    min_segment_length_ms: Option<u64>,
+) -> Representation {
+    let segments = track.segments(segment_boundaries_ms, min_segment_length_ms);
     Representation {
         id: Some(track.id()),
         bandwidth: Some(track.bandwidth() as u64),
@@ -68,22 +74,35 @@ fn base_representation(track: &impl Track, codecs: String) -> Representation {
         SegmentTemplate: Some(segment_template(
             track.timescale(),
             track.earliest_presentation_time(),
-            track.segments(),
+            &segments,
         )),
         ..Default::default()
     }
 }
 
-fn video_representation(track: &VideoTrack) -> Representation {
+fn video_representation(
+    track: &VideoTrack,
+    segment_boundaries_ms: Option<&[u64]>,
+    min_segment_length_ms: Option<u64>,
+) -> Representation {
     Representation {
         width: Some(track.width() as u64),
         height: Some(track.height() as u64),
         frameRate: (track.frame_rate().0 != 0).then(|| frame_rate_str(track.frame_rate())),
-        ..base_representation(track, track.codec().rfc6381())
+        ..base_representation(
+            track,
+            track.codec().rfc6381(),
+            segment_boundaries_ms,
+            min_segment_length_ms,
+        )
     }
 }
 
-fn audio_representation(track: &AudioTrack) -> Representation {
+fn audio_representation(
+    track: &AudioTrack,
+    segment_boundaries_ms: Option<&[u64]>,
+    min_segment_length_ms: Option<u64>,
+) -> Representation {
     Representation {
         audioSamplingRate: Some(track.sample_rate().to_string()),
         AudioChannelConfiguration: vec![AudioChannelConfiguration {
@@ -91,14 +110,28 @@ fn audio_representation(track: &AudioTrack) -> Representation {
             value: Some(track.channels().to_string()),
             ..Default::default()
         }],
-        ..base_representation(track, track.codec().rfc6381())
+        ..base_representation(
+            track,
+            track.codec().rfc6381(),
+            segment_boundaries_ms,
+            min_segment_length_ms,
+        )
     }
 }
 
 /// A text `Representation` carries no dimensions or channel configuration; the
 /// shared base (id, bandwidth, `codecs`, segment template) is all it needs.
-fn text_representation(track: &TextTrack) -> Representation {
-    base_representation(track, track.codec().rfc6381())
+fn text_representation(
+    track: &TextTrack,
+    segment_boundaries_ms: Option<&[u64]>,
+    min_segment_length_ms: Option<u64>,
+) -> Representation {
+    base_representation(
+        track,
+        track.codec().rfc6381(),
+        segment_boundaries_ms,
+        min_segment_length_ms,
+    )
 }
 
 /// The DASH `Role` that marks a text `AdaptationSet` as translated-dialogue
@@ -150,14 +183,22 @@ fn adaptation_set(
 
 /// Build the raw static VOD `MPD`: one `AdaptationSet` per video codec fourcc,
 /// then one per audio `(fourcc, language)`, each track becoming a `Representation`.
-fn mpd(videos: &[VideoTrack], audios: &[AudioTrack], texts: &[TextTrack]) -> MPD {
+fn mpd(
+    videos: &[VideoTrack],
+    audios: &[AudioTrack],
+    texts: &[TextTrack],
+    segment_boundaries_ms: Option<&[u64]>,
+    min_segment_length_ms: Option<u64>,
+) -> MPD {
     let mut adaptations = Vec::new();
     let mut set_id = 0;
 
     for (_fourcc, idxs) in group_by_key(videos, |t| t.codec().fourcc()) {
         let representations = idxs
             .iter()
-            .map(|&i| video_representation(&videos[i]))
+            .map(|&i| {
+                video_representation(&videos[i], segment_boundaries_ms, min_segment_length_ms)
+            })
             .collect();
         adaptations.push(adaptation_set(
             set_id,
@@ -174,7 +215,9 @@ fn mpd(videos: &[VideoTrack], audios: &[AudioTrack], texts: &[TextTrack]) -> MPD
     {
         let representations = idxs
             .iter()
-            .map(|&i| audio_representation(&audios[i]))
+            .map(|&i| {
+                audio_representation(&audios[i], segment_boundaries_ms, min_segment_length_ms)
+            })
             .collect();
         adaptations.push(adaptation_set(
             set_id,
@@ -191,7 +234,7 @@ fn mpd(videos: &[VideoTrack], audios: &[AudioTrack], texts: &[TextTrack]) -> MPD
     {
         let representations = idxs
             .iter()
-            .map(|&i| text_representation(&texts[i]))
+            .map(|&i| text_representation(&texts[i], segment_boundaries_ms, min_segment_length_ms))
             .collect();
         adaptations.push(adaptation_set(
             set_id,
@@ -213,9 +256,17 @@ fn mpd(videos: &[VideoTrack], audios: &[AudioTrack], texts: &[TextTrack]) -> MPD
 
     let min_buffer_ms = videos
         .iter()
-        .map(|t| t.max_segment_duration_ms())
-        .chain(audios.iter().map(|t| t.max_segment_duration_ms()))
-        .chain(texts.iter().map(|t| t.max_segment_duration_ms()))
+        .map(|t| t.max_segment_duration_ms(segment_boundaries_ms, min_segment_length_ms))
+        .chain(
+            audios
+                .iter()
+                .map(|t| t.max_segment_duration_ms(segment_boundaries_ms, min_segment_length_ms)),
+        )
+        .chain(
+            texts
+                .iter()
+                .map(|t| t.max_segment_duration_ms(segment_boundaries_ms, min_segment_length_ms)),
+        )
         .max()
         .unwrap_or(0);
     let media_duration_ms = videos
@@ -243,9 +294,17 @@ pub(crate) fn build_mpd(
     videos: &[VideoTrack],
     audios: &[AudioTrack],
     texts: &[TextTrack],
+    segment_boundaries_ms: Option<&[u64]>,
+    min_segment_length_ms: Option<u64>,
     compact: bool,
 ) -> MPD {
-    let mut m = mpd(videos, audios, texts);
+    let mut m = mpd(
+        videos,
+        audios,
+        texts,
+        segment_boundaries_ms,
+        min_segment_length_ms,
+    );
     if compact {
         super::compact::compact(&mut m);
     }
@@ -288,7 +347,7 @@ mod tests {
 
     #[test]
     fn mpd_advertises_text_adaptation_set_with_subtitle_role() {
-        let m = mpd(&[], &[], &[text_track("eng")]);
+        let m = mpd(&[], &[], &[text_track("eng")], None, None);
         let text = m.periods[0]
             .adaptations
             .iter()
@@ -308,7 +367,13 @@ mod tests {
 
     #[test]
     fn mpd_emits_one_text_adaptation_set_per_language() {
-        let m = mpd(&[], &[], &[text_track("eng"), text_track("nld")]);
+        let m = mpd(
+            &[],
+            &[],
+            &[text_track("eng"), text_track("nld")],
+            None,
+            None,
+        );
         let text_sets = m.periods[0]
             .adaptations
             .iter()

@@ -45,6 +45,10 @@ pub(super) async fn hls_media(
 ) -> Result<Response, ServerError> {
     let model = AssetModel::read(op, asset_path).await?;
     let track = AnyTrack::from_model(op, find_source(&model, repr)?, asset_path).await?;
-    let playlist = dyndo_core::hls::generate_media(&track);
+    let playlist = dyndo_core::hls::generate_media(
+        &track,
+        Some(&model.segment_boundaries_ms),
+        model.min_segment_length_ms,
+    );
     Ok(([(CONTENT_TYPE, HLS_CONTENT_TYPE)], playlist).into_response())
 }

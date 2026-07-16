@@ -112,21 +112,36 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             for t in &asset.video_tracks {
                 op.write(
                     &format!("{output}/{}.m3u8", t.id()),
-                    dyndo_core::hls::generate_media(t).into_bytes(),
+                    dyndo_core::hls::generate_media(
+                        t,
+                        Some(&asset.segment_boundaries_ms),
+                        asset.min_segment_length_ms,
+                    )
+                    .into_bytes(),
                 )
                 .await?;
             }
             for t in &asset.audio_tracks {
                 op.write(
                     &format!("{output}/{}.m3u8", t.id()),
-                    dyndo_core::hls::generate_media(t).into_bytes(),
+                    dyndo_core::hls::generate_media(
+                        t,
+                        Some(&asset.segment_boundaries_ms),
+                        asset.min_segment_length_ms,
+                    )
+                    .into_bytes(),
                 )
                 .await?;
             }
             for t in &asset.text_tracks {
                 op.write(
                     &format!("{output}/{}.m3u8", t.id()),
-                    dyndo_core::hls::generate_media(t).into_bytes(),
+                    dyndo_core::hls::generate_media(
+                        t,
+                        Some(&asset.segment_boundaries_ms),
+                        asset.min_segment_length_ms,
+                    )
+                    .into_bytes(),
                 )
                 .await?;
             }
@@ -144,6 +159,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             match ext.as_deref() {
                 Some("vtt") => {
                     // First video track's segment timeline (error if no video).
+                    // Packed at raw fragment granularity (no grouping policy):
+                    // serve-time grouping regroups text and video to identical
+                    // boundaries, and the packed file survives policy edits.
                     let model = AssetModel::read(&op, &asset).await?;
                     let mut asset_obj = Asset::from_model(&op, model, &asset).await?;
                     let segments = asset_obj
@@ -152,7 +170,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .ok_or_else(|| {
                             "pack: asset has no video track to align subtitles to".to_string()
                         })?
-                        .segments();
+                        .segments(None, None);
 
                     // Parse → expand → pack.
                     let raw = op.read(&input).await?;
@@ -164,8 +182,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     } else {
                         language
                     };
-                    let windows = subtitle.expand(segments);
-                    let bytes = dyndo_core::text::wvtt::pack(&language, &windows, segments)?;
+                    let windows = subtitle.expand(&segments);
+                    let bytes = dyndo_core::text::wvtt::pack(&language, &windows, &segments)?;
 
                     // Text ids are header-free (text_{fourcc}_{language}), so the
                     // name is known before writing. Mirrors
