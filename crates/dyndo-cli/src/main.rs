@@ -49,12 +49,11 @@ enum Command {
         #[arg(short, long = "output", default_value = "hls")]
         output: String,
     },
-    /// Pack a source subtitle file into a CMAF text track aligned to the first
-    /// video track of an asset, writing it as `<id>.mp4` beside the descriptor and
-    /// adding it to the asset. The input extension selects the packer
-    /// (currently: `.vtt` → `wvtt`).
+    /// Package a raw media payload into its container format.
+    /// The input extension selects the appropriate packer
+    /// (currently: `.vtt` → `wvtt` for CMAF text tracks).
     Pack {
-        /// Input source file (currently `.vtt`).
+        /// Input source file.
         #[arg(short, long = "input")]
         input: String,
         /// Asset descriptor to align to and update.
