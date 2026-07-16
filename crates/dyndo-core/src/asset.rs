@@ -12,6 +12,7 @@ use crate::cmaf::{
 use crate::codec::{AudioCodec, TextCodec, VideoCodec};
 use crate::model::{AssetModel, AudioTrackModel, TextTrackModel, TrackModel, VideoTrackModel};
 use crate::path_utils;
+use crate::role::{AudioRole, TextRole};
 use crate::segment_utils::{group_segments, units_to_ms};
 
 /// A dyndo asset: its tracks and where the descriptor was sourced from.
@@ -272,6 +273,7 @@ pub struct AudioTrack {
     cmaf_header: CmafHeader,
     cmaf_metadata: AudioCmafMetadata,
     id_descriptor: Option<String>,
+    role_descriptor: Option<AudioRole>,
 }
 
 impl AudioTrack {
@@ -290,6 +292,7 @@ impl AudioTrack {
             cmaf_header,
             cmaf_metadata,
             id_descriptor: model.map(|m| m.id.clone()),
+            role_descriptor: model.and_then(|m| m.role),
         }
     }
 
@@ -313,6 +316,12 @@ impl AudioTrack {
         &self.cmaf_metadata.language
     }
 
+    /// The track's declared purpose, or `None` when the descriptor omits it.
+    /// Never probed from the CMAF header.
+    pub fn role(&self) -> Option<AudioRole> {
+        self.role_descriptor
+    }
+
     /// Project to the wire [`TrackModel`], relativizing the stored (resolved)
     /// path back to a file path relative to the descriptor `descriptor_path`.
     fn to_model(&self, descriptor_path: &str) -> TrackModel {
@@ -324,6 +333,7 @@ impl AudioTrack {
             sample_rate: self.sample_rate(),
             channels: self.channels(),
             language: Some(self.cmaf_metadata.language.clone()),
+            role: self.role(),
         })
     }
 }
@@ -365,6 +375,7 @@ pub struct TextTrack {
     cmaf_metadata: TextCmafMetadata,
     id_descriptor: Option<String>,
     language_descriptor: Option<String>,
+    role_descriptor: Option<TextRole>,
 }
 
 impl TextTrack {
@@ -387,6 +398,7 @@ impl TextTrack {
             id_descriptor: model.map(|m| m.id.clone()),
             language_descriptor: model
                 .and_then(|m| (!m.language.is_empty()).then(|| m.language.clone())),
+            role_descriptor: model.and_then(|m| m.role),
         }
     }
 
@@ -404,6 +416,12 @@ impl TextTrack {
             .unwrap_or("und")
     }
 
+    /// The track's declared purpose, or `None` when the descriptor omits it.
+    /// Never probed from the CMAF header.
+    pub fn role(&self) -> Option<TextRole> {
+        self.role_descriptor
+    }
+
     /// Project to the wire [`TrackModel`], relativizing the stored (resolved)
     /// path back to a file path relative to the descriptor `descriptor_path`.
     fn to_model(&self, descriptor_path: &str) -> TrackModel {
@@ -413,6 +431,7 @@ impl TextTrack {
             fourcc: self.codec().fourcc().to_string(),
             timescale: self.timescale(),
             language: self.language().to_string(),
+            role: self.role(),
         })
     }
 }
@@ -661,6 +680,7 @@ mod tests {
             fourcc: "wvtt".to_string(),
             timescale: 1000,
             language: language.to_string(),
+            role: Some(crate::role::TextRole::Caption),
         }
     }
 
@@ -720,6 +740,75 @@ mod tests {
         assert_eq!(m.id, "text_wvtt_nld");
     }
 
+    #[test]
+    fn audio_role_is_none_without_a_descriptor() {
+        let track = AudioTrack::new(
+            String::new(),
+            header(48_000, 0, &[]),
+            AudioCmafMetadata {
+                codec: crate::codec::AudioCodec::Aac {
+                    audio_object_type: 2,
+                },
+                sample_rate: 48_000,
+                channels: 2,
+                language: "nld".to_string(),
+            },
+            None,
+        );
+        assert_eq!(track.role(), None);
+    }
+
+    #[test]
+    fn audio_to_model_preserves_descriptor_role() {
+        let model = AudioTrackModel {
+            id: "a".to_string(),
+            path: String::new(),
+            fourcc: "mp4a".to_string(),
+            timescale: 48_000,
+            sample_rate: 48_000,
+            channels: 2,
+            language: Some("nld".to_string()),
+            role: Some(crate::role::AudioRole::Description),
+        };
+        let track = AudioTrack::new(
+            String::new(),
+            header(48_000, 0, &[]),
+            AudioCmafMetadata {
+                codec: crate::codec::AudioCodec::Aac {
+                    audio_object_type: 2,
+                },
+                sample_rate: 48_000,
+                channels: 2,
+                language: "nld".to_string(),
+            },
+            Some(&model),
+        );
+        assert_eq!(track.role(), Some(crate::role::AudioRole::Description));
+        let TrackModel::Audio(m) = track.to_model("asset.json") else {
+            panic!("expected an audio model");
+        };
+        assert_eq!(m.role, Some(crate::role::AudioRole::Description));
+    }
+
+    #[test]
+    fn text_to_model_preserves_descriptor_role() {
+        let model = text_model("text_wvtt_eng", "eng");
+        let track = TextTrack::new(
+            String::new(),
+            header(1000, 0, &[]),
+            TextCmafMetadata {
+                codec: TextCodec::Wvtt,
+                language: Some("eng".to_string()),
+            },
+            Some(&model),
+        );
+        assert_eq!(track.role(), Some(crate::role::TextRole::Caption));
+        let TrackModel::Text(m) = track.to_model("asset.json") else {
+            panic!("expected a text model");
+        };
+        assert_eq!(m.role, Some(crate::role::TextRole::Caption));
+    }
+
     fn video_track(timescale: u32, duration: u64, seg_durations: &[u64]) -> VideoTrack {
         VideoTrack::new(
             String::new(),
@@ -776,6 +865,7 @@ mod tests {
             sample_rate: 48_000,
             channels: 2,
             language: Some("nld".to_string()),
+            role: None,
         };
         let track = AudioTrack::new(
             String::new(),

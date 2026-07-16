@@ -5,6 +5,7 @@ use opendal::Operator;
 use serde::{Deserialize, Serialize};
 
 use crate::CoreError;
+use crate::role::{AudioRole, TextRole};
 
 /// `skip_serializing_if` helper: the wire omits a zero `min_segment_length`.
 fn is_zero(v: &u64) -> bool {
@@ -128,6 +129,9 @@ pub struct AudioTrackModel {
     /// ISO-639-2 language code; omitted from the JSON when `None`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub language: Option<String>,
+    /// The track's purpose, if declared (wire: `role`). Omitted when `None`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub role: Option<AudioRole>,
 }
 
 /// The text-track fields of the wire model (`asset.json`).
@@ -143,6 +147,9 @@ pub struct TextTrackModel {
     pub timescale: u32,
     /// ISO-639-2 language code (`"und"` when unspecified).
     pub language: String,
+    /// The track's purpose, if declared (wire: `role`). Omitted when `None`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub role: Option<TextRole>,
 }
 
 #[cfg(test)]
@@ -187,5 +194,44 @@ mod tests {
         let json = serde_json::to_string(&m).unwrap();
         assert!(!json.contains("min_segment_length"));
         assert!(!json.contains("segment_boundaries"));
+    }
+
+    #[test]
+    fn audio_model_round_trips_role() {
+        let json = r#"{"type":"audio","id":"a","path":"a.mp4","fourcc":"mp4a","timescale":48000,"sample_rate":48000,"channels":2,"role":"commentary"}"#;
+        let TrackModel::Audio(a) = serde_json::from_str(json).unwrap() else {
+            panic!("expected an audio model");
+        };
+        assert_eq!(a.role, Some(crate::role::AudioRole::Commentary));
+        let s = serde_json::to_string(&TrackModel::Audio(a)).unwrap();
+        assert!(s.contains(r#""role":"commentary""#), "{s}");
+    }
+
+    #[test]
+    fn text_model_round_trips_role() {
+        let json = r#"{"type":"text","id":"t","path":"t.mp4","fourcc":"wvtt","timescale":1000,"language":"eng","role":"forced-subtitle"}"#;
+        let TrackModel::Text(t) = serde_json::from_str(json).unwrap() else {
+            panic!("expected a text model");
+        };
+        assert_eq!(t.role, Some(crate::role::TextRole::ForcedSubtitle));
+    }
+
+    #[test]
+    fn model_without_role_parses_and_omits_it() {
+        // An audio entry that predates the role field still parses; role is None.
+        let json = r#"{"type":"audio","id":"a","path":"a.mp4","fourcc":"mp4a","timescale":48000,"sample_rate":48000,"channels":2}"#;
+        let TrackModel::Audio(a) = serde_json::from_str(json).unwrap() else {
+            panic!("expected an audio model");
+        };
+        assert_eq!(a.role, None);
+        let s = serde_json::to_string(&TrackModel::Audio(a)).unwrap();
+        assert!(!s.contains("role"), "{s}");
+    }
+
+    #[test]
+    fn audio_model_rejects_a_text_only_role() {
+        // "caption" is a TextRole; it must not deserialize into an audio entry.
+        let json = r#"{"type":"audio","id":"a","path":"a.mp4","fourcc":"mp4a","timescale":48000,"sample_rate":48000,"channels":2,"role":"caption"}"#;
+        assert!(serde_json::from_str::<TrackModel>(json).is_err());
     }
 }
