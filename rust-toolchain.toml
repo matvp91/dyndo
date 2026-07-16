@@ -2,7 +2,7 @@
 # reproducible: a new stable release can't introduce a lint that breaks the
 # build without a deliberate bump here. CI installs this same toolchain (the
 # stable jobs run `rustup toolchain install`, which reads this file), so a
-# bump is: change `channel` here, update the `FROM rust:X.Y.Z-trixie-slim`
+# bump is: change `channel` here, update the `FROM rust:X.Y.Z-slim-trixie`
 # line in Dockerfile to match, keep `rust-version` in Cargo.toml
 # [workspace.package] in lockstep, then run the full gate
 # (make fmt-check lint test doc). Formatting runs on a pinned nightly instead
