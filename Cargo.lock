@@ -632,7 +632,7 @@ checksum = "d0881ea181b1df73ff77ffaaf9c7544ecc11e82fba9b5f27b262a3c73a332555"
 
 [[package]]
 name = "dyndo-cli"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "clap",
  "dyndo-core",
@@ -644,7 +644,7 @@ dependencies = [
 
 [[package]]
 name = "dyndo-core"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "bytes",
  "dash-mpd",
@@ -664,7 +664,7 @@ dependencies = [
 
 [[package]]
 name = "dyndo-server"
-version = "0.3.3"
+version = "0.3.4"
 dependencies = [
  "axum",
  "dyndo-core",
