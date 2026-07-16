@@ -157,7 +157,7 @@ pub async fn probe(op: &Operator, path: &str) -> Result<(CmafHeader, CmafMetadat
             codec,
             sample_rate: audio.sample_rate.integer() as u32,
             channels: audio.channel_count,
-            language: language_code(&mdia.mdhd),
+            language: optional_language_code(&mdia.mdhd),
         })
     } else if handler == FourCC::new(b"text") {
         let codec = TextCodec::from_codecs(codecs)?;
@@ -247,15 +247,6 @@ fn first_sample_duration(moof: &Moof, moov: &Moov) -> u32 {
         .unwrap_or(0)
 }
 
-/// Map an empty ISO-639-2 language code to the "undetermined" placeholder.
-fn normalize_language(lang: &str) -> &str {
-    if lang.is_empty() { "und" } else { lang }
-}
-
-fn language_code(mdhd: &Mdhd) -> String {
-    normalize_language(mdhd.language.as_str()).to_string()
-}
-
 /// The `mdhd` language as `Some(code)`, or `None` when the box leaves it empty.
 fn optional_language_code(mdhd: &Mdhd) -> Option<String> {
     let lang = mdhd.language.as_str();
@@ -316,8 +307,9 @@ pub struct AudioCmafMetadata {
     pub sample_rate: u32,
     /// Number of audio channels (e.g. 2 for stereo, 6 for 5.1).
     pub channels: u16,
-    /// ISO-639-2 language code (`"und"` when unspecified).
-    pub language: String,
+    /// ISO-639-2 language code from the file's `mdhd` box, or `None` when the
+    /// file leaves it unspecified.
+    pub language: Option<String>,
 }
 
 /// The media-specific fields parsed from a timed-text track's sample entry.
@@ -378,16 +370,6 @@ mod tests {
     fn average_bandwidth_is_bits_per_second() {
         // 1000 bytes over exactly 1 second = 8000 bits/s
         assert_eq!(average_bandwidth(1_000, 48_000, 48_000), 8_000);
-    }
-
-    #[test]
-    fn normalize_language_maps_empty_to_und() {
-        assert_eq!(normalize_language(""), "und");
-    }
-
-    #[test]
-    fn normalize_language_passes_through_a_known_code() {
-        assert_eq!(normalize_language("nld"), "nld");
     }
 
     #[tokio::test]

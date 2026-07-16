@@ -273,6 +273,7 @@ pub struct AudioTrack {
     cmaf_header: CmafHeader,
     cmaf_metadata: AudioCmafMetadata,
     id_descriptor: Option<String>,
+    language_descriptor: Option<String>,
     role_descriptor: Option<AudioRole>,
 }
 
@@ -280,7 +281,9 @@ impl AudioTrack {
     /// Assemble an audio track from its resolved `path`, parsed `cmaf_header`,
     /// probed `cmaf_metadata`, and the descriptor `model` it came from (`None`
     /// when the track was probed without a descriptor entry). Only the
-    /// descriptor overrides (the stored id) are kept; the model is not.
+    /// descriptor overrides are kept, the model is not: the stored id, the
+    /// non-empty `language` (a hand-edited empty string falls through to the
+    /// probed value), and the role.
     pub fn new(
         path: String,
         cmaf_header: CmafHeader,
@@ -292,6 +295,10 @@ impl AudioTrack {
             cmaf_header,
             cmaf_metadata,
             id_descriptor: model.map(|m| m.id.clone()),
+            language_descriptor: model
+                .and_then(|m| m.language.as_deref())
+                .filter(|l| !l.is_empty())
+                .map(str::to_string),
             role_descriptor: model.and_then(|m| m.role),
         }
     }
@@ -311,9 +318,13 @@ impl AudioTrack {
         self.cmaf_metadata.channels
     }
 
-    /// ISO-639-2 language code (`"und"` when the file leaves it unspecified).
+    /// The track's effective ISO-639-2 language: the descriptor's value when
+    /// present, else the language parsed from the file, else `"und"`.
     pub fn language(&self) -> &str {
-        &self.cmaf_metadata.language
+        self.language_descriptor
+            .as_deref()
+            .or(self.cmaf_metadata.language.as_deref())
+            .unwrap_or("und")
     }
 
     /// The track's declared purpose, or `None` when the descriptor omits it.
@@ -332,7 +343,7 @@ impl AudioTrack {
             timescale: self.timescale(),
             sample_rate: self.sample_rate(),
             channels: self.channels(),
-            language: Some(self.cmaf_metadata.language.clone()),
+            language: Some(self.language().to_string()),
             role: self.role(),
         })
     }
@@ -751,7 +762,7 @@ mod tests {
                 },
                 sample_rate: 48_000,
                 channels: 2,
-                language: "nld".to_string(),
+                language: Some("nld".to_string()),
             },
             None,
         );
@@ -779,7 +790,7 @@ mod tests {
                 },
                 sample_rate: 48_000,
                 channels: 2,
-                language: "nld".to_string(),
+                language: Some("nld".to_string()),
             },
             Some(&model),
         );
@@ -876,7 +887,7 @@ mod tests {
                 },
                 sample_rate: 48_000,
                 channels: 2,
-                language: "nld".to_string(),
+                language: Some("nld".to_string()),
             },
             Some(&model),
         );

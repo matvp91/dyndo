@@ -61,5 +61,5 @@ async fn parses_audio_aac_fixture() {
     assert_eq!(a.codec.rfc6381(), "mp4a.40.2");
     assert_eq!(a.sample_rate, 48_000);
     assert_eq!(a.channels, 2);
-    assert_eq!(a.language, "nld");
+    assert_eq!(a.language.as_deref(), Some("nld"));
 }

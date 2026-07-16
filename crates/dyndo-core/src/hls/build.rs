@@ -390,7 +390,7 @@ mod tests {
                 codec,
                 sample_rate: 48_000,
                 channels,
-                language: lang.to_string(),
+                language: Some(lang.to_string()),
             },
             None,
         )
@@ -720,7 +720,7 @@ mod tests {
                 },
                 sample_rate: 48_000,
                 channels: 2,
-                language: lang.to_string(),
+                language: Some(lang.to_string()),
             },
             Some(&model),
         )

@@ -542,7 +542,7 @@ mod tests {
                 },
                 sample_rate: 48_000,
                 channels: 2,
-                language: language.to_string(),
+                language: Some(language.to_string()),
             },
             Some(&model),
         )
