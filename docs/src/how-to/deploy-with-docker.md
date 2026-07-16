@@ -1,19 +1,23 @@
 # Deploy with Docker
 
-`dyndo-server` ships as a container image, so you can run it anywhere Docker
-runs — no Rust toolchain required. One image serves from either storage
-backend; you pick the backend at runtime with configuration.
+Every release of `dyndo-server` is published to Docker Hub as
+[`matvp91/dyndo-server`](https://hub.docker.com/r/matvp91/dyndo-server), so you
+can run it anywhere Docker runs — no Rust toolchain required. The image is
+multi-arch (amd64 and arm64), and one image serves from either storage backend;
+you pick the backend at runtime with configuration.
 
-## Run the published image
+## Quick start: run it locally
 
-Released versions are published to Docker Hub as `<namespace>/dyndo-server`.
-Pull and run it against a local directory of assets:
+This is the fastest way to get dyndo running. You need a directory containing
+an `asset.json` and the CMAF sources it points at — if you don't have one yet,
+the [Getting started tutorial](../tutorial/getting-started.md) shows how to
+create it. Then one command starts the server:
 
 ```bash
 docker run --rm -p 8080:8080 \
   -e DYNDO_FS__ROOT=/assets \
   -v "$PWD/assets:/assets:ro" \
-  <namespace>/dyndo-server
+  matvp91/dyndo-server
 ```
 
 - `-p 8080:8080` publishes the port. The server binds `0.0.0.0` inside the
@@ -30,11 +34,17 @@ http://localhost:8080/asset.json/dash/index.mpd    # DASH
 http://localhost:8080/asset.json/hls/index.m3u8     # HLS
 ```
 
-Pin a version with a tag — `:0.3.0`, `:0.3`, or `:latest`:
+## Pin a version
+
+Releases are tagged three ways on Docker Hub: the full version
+(`:<major>.<minor>.<patch>`), the minor line (`:<major>.<minor>`), and
+`:latest`. Pick a version from the
+[tags page](https://hub.docker.com/r/matvp91/dyndo-server/tags) and pin the
+full version in production so a new release never changes what you run:
 
 ```bash
 docker run --rm -p 8080:8080 -e DYNDO_FS__ROOT=/assets \
-  -v "$PWD/assets:/assets:ro" <namespace>/dyndo-server:0.3.0
+  -v "$PWD/assets:/assets:ro" matvp91/dyndo-server:<version>
 ```
 
 ## Serve from S3 instead
@@ -50,13 +60,29 @@ docker run --rm -p 8080:8080 \
   -e DYNDO_S3__ENDPOINT=https://s3.eu-west-1.amazonaws.com \
   -e AWS_ACCESS_KEY_ID=AKIA... \
   -e AWS_SECRET_ACCESS_KEY=... \
-  <namespace>/dyndo-server
+  matvp91/dyndo-server
 ```
 
 The values above are placeholders — substitute your own bucket, region,
 endpoint, and credentials. See [Serve media from S3](./serve-from-s3.md) for how
 each setting maps, and prefer a secrets manager over inline credentials in
 production.
+
+## Use a config file instead of environment variables
+
+To keep settings in a file, mount a `config.yaml` and point the server at it
+with `DYNDO_CONFIG`:
+
+```bash
+docker run --rm -p 8080:8080 \
+  -v "$PWD/config.yaml:/etc/dyndo/config.yaml:ro" \
+  -v "$PWD/assets:/assets:ro" \
+  -e DYNDO_CONFIG=/etc/dyndo/config.yaml \
+  matvp91/dyndo-server
+```
+
+Environment variables still override the file, so you can bake defaults into
+`config.yaml` and override per environment.
 
 ## Build the image yourself
 
@@ -72,22 +98,6 @@ docker run --rm -p 8080:8080 -e DYNDO_FS__ROOT=/assets \
 It is a multi-stage build: a Rust stage compiles `dyndo-server`, and a slim
 Debian runtime carries just the binary and CA certificates (needed for S3 over
 TLS). The container runs as an unprivileged user.
-
-## Use a config file instead of environment variables
-
-To keep settings in a file, mount a `config.yaml` and point the server at it
-with `DYNDO_CONFIG`:
-
-```bash
-docker run --rm -p 8080:8080 \
-  -v "$PWD/config.yaml:/etc/dyndo/config.yaml:ro" \
-  -v "$PWD/assets:/assets:ro" \
-  -e DYNDO_CONFIG=/etc/dyndo/config.yaml \
-  <namespace>/dyndo-server
-```
-
-Environment variables still override the file, so you can bake defaults into
-`config.yaml` and override per environment.
 
 ## Next steps
 

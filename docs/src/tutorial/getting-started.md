@@ -35,14 +35,10 @@ Install the `dyndo` CLI onto your `PATH` so you can call it by name:
 make install   # installs `dyndo` into ~/.cargo/bin
 ```
 
-Check that it works:
+Check that it works — it prints its name and version:
 
 ```bash
 dyndo --version
-```
-
-```text
-dyndo 0.2.0
 ```
 
 > If `dyndo` isn't found, make sure `~/.cargo/bin` is on your `PATH`. You can
@@ -64,11 +60,14 @@ ffmpeg -f lavfi -i "testsrc=size=1280x720:rate=25:duration=10" \
        source.mp4
 ```
 
-Now repackage each track into its own CMAF file. The
+Now repackage each track into its own CMAF file, into an `assets/` directory —
+that's where the server looks for descriptors by default. The
 `+global_sidx` flag is the important one: it writes a **single** segment index
 covering the whole file, which is what dyndo reads.
 
 ```bash
+mkdir -p assets
+
 # Video track -> assets/video.mp4
 ffmpeg -i source.mp4 -map 0:v:0 -c copy \
   -movflags +frag_keyframe+empty_moov+separate_moof+default_base_moof+global_sidx \
@@ -80,9 +79,7 @@ ffmpeg -i source.mp4 -map 0:a:0 -c copy \
   assets/audio.mp4
 ```
 
-You now have two CMAF sources under `assets/`. (The repository already contains
-an `assets/` directory — that's where the server looks for descriptors by
-default.)
+You now have two CMAF sources under `assets/`.
 
 ## Step 3: Index the sources
 
@@ -147,9 +144,9 @@ make run
 dyndo-server listening on http://0.0.0.0:8080
 ```
 
-The server reads descriptors from `./assets` (its default) and exposes each one
-as **both** a DASH and an HLS stream. Leave it running and open a second
-terminal for the next step.
+The server reads descriptors from `./assets` (set in the repository's
+`config.yaml`) and exposes each one as **both** a DASH and an HLS stream. Leave
+it running and open a second terminal for the next step.
 
 ## Step 5: Play the stream
 
@@ -205,6 +202,8 @@ protocols, and never duplicate your media.
 
 - Add subtitles to the stream you just built:
   [Add a subtitle track](../how-to/add-subtitles.md).
+- Run the server as a container instead of from source:
+  [Deploy with Docker](../how-to/deploy-with-docker.md).
 - Serve your media from object storage instead of local disk:
   [Serve media from S3](../how-to/serve-from-s3.md).
 - Understand what just happened under the hood:

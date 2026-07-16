@@ -12,12 +12,14 @@ so the byte source is pluggable (local filesystem today).
 
 | Module | Responsibility |
 |---|---|
-| [`cmaf`](src/cmaf.rs) | Bounded-memory header parse (`probe`). Streams the `moov` / `sidx` / first `moof` boxes (~10 KB) through an async reader and projects them into a `CmafHeader` (timing, init range, and segment map) and per-track `Metadata`. The `mdat` body is never read. |
-| [`asset`](src/asset.rs) | The domain `Asset` (typed `video_tracks` / `audio_tracks` plus its source path), the `Segment`, and the `Track` trait implemented by `VideoTrack`, `AudioTrack`, and the runtime-tagged `AnyTrack`. Builds tracks from CMAF, reads init/media segment bytes on demand, and converts to/from the wire model. |
-| [`codec`](src/codec.rs) | The `VideoCodec` / `AudioCodec` enums and their RFC 6381 `codecs` strings (e.g. `avc1.640028`, `mp4a.40.2`). |
+| [`cmaf`](src/cmaf.rs) | Bounded-memory header parse (`probe`). Streams the `moov` / `sidx` / first `moof` boxes (~10 KB) through an async reader and projects them into a `CmafHeader` (timing, init range, and segment map) and per-track `CmafMetadata`. The `mdat` body is never read. |
+| [`asset`](src/asset.rs) | The domain `Asset` (typed `video_tracks` / `audio_tracks` / `text_tracks` plus its source path), the `Segment`, and the `Track` trait implemented by `VideoTrack`, `AudioTrack`, `TextTrack`, and the runtime-tagged `AnyTrack`. Builds tracks from CMAF, reads init/media segment bytes on demand, and converts to/from the wire model. |
+| [`codec`](src/codec.rs) | The `VideoCodec` / `AudioCodec` / `TextCodec` enums and their RFC 6381 `codecs` strings (e.g. `avc1.640028`, `mp4a.40.2`). |
 | [`model`](src/model.rs) | The `asset.json` serde contract: `AssetModel` and the tagged `TrackModel` union. |
 | [`dash`](src/dash/mod.rs) | DASH MPD generation from an `Asset`, with an optional compaction pass that hoists `SegmentTemplate` content shared by all `Representation`s up to the `AdaptationSet`. |
 | [`hls`](src/hls/mod.rs) | HLS playlist generation from an `Asset`: a multivariant playlist plus one media playlist per track, with demuxed audio grouped by codec. |
+| [`path`](src/path.rs) | Descriptor-relative path handling: `resolve` joins a track path onto its descriptor's directory (normalizing `..`), and `relativize` is the inverse — what keeps descriptors portable. |
+| [`text`](src/text/mod.rs) | WebVTT parsing (`vtt`) and packing cues into a CMAF `wvtt` text track (`wvtt`, ISO/IEC 14496-30) — what backs `dyndo pack`. |
 
 ## Design notes
 

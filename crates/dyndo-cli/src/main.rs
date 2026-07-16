@@ -6,7 +6,7 @@ use dyndo_core::model::AssetModel;
 use opendal::Operator;
 use opendal::services::Fs;
 
-/// dyndo — CMAF indexer and DASH manifest generator.
+/// dyndo — dynamic media packaging for adaptive streaming.
 #[derive(Parser)]
 #[command(name = "dyndo", version, about)]
 struct Cli {

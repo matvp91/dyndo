@@ -16,8 +16,10 @@ make run        # equivalent to: cargo run -p dyndo-server
 dyndo-server listening on http://0.0.0.0:8080
 ```
 
-With its defaults the server binds `0.0.0.0:8080` and serves descriptors from a
-local `./assets` directory. Request a stream at
+The server binds `0.0.0.0:8080` by default; the repository's `config.yaml`
+points it at a local `./assets` directory. (There is no built-in storage root —
+whichever backend `store` selects must be given one, or the server exits at
+startup.) Request a stream at
 `/<asset>/<protocol>/<resource>`, where `<asset>` is the descriptor's path
 relative to the storage root:
 
@@ -93,6 +95,7 @@ browser-based player can load a manifest during development without a proxy.
 
 ## Next steps
 
+- Run the server as a container: [Deploy with Docker](./deploy-with-docker.md).
 - Serve from object storage: [Serve media from S3](./serve-from-s3.md).
 - Full configuration schema and precedence:
   [Configuration reference](../reference/server/configuration.md).

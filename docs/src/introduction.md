@@ -8,8 +8,8 @@ sources once into a small JSON descriptor; the server then generates DASH and
 HLS manifests and serves CMAF segments *on the fly*, straight from the original
 files via HTTP byte-range reads.
 
-> `dyndo` is in early development (`0.2.0`). Both DASH and HLS are implemented,
-> served from the same CMAF sources.
+> `dyndo` is in early development. Both DASH and HLS are implemented, served
+> from the same CMAF sources.
 
 ## The idea in one picture
 
@@ -45,8 +45,13 @@ See [The thin-pointer approach](./explanation/thin-pointer.md) for why.
 
 Both are thin front-ends over the `dyndo-core` library, which does the CMAF
 parsing and manifest generation. This book documents the two binaries and the
-`asset.json` contract between them; the core library's Rust API is documented in
-its [rustdoc](https://github.com/matvp91/dyndo).
+`asset.json` contract between them; the core library's Rust API is documented
+in its rustdoc, built locally with `make doc`.
+
+`dyndo-server` is also published as a container image,
+[`matvp91/dyndo-server`](https://hub.docker.com/r/matvp91/dyndo-server) on
+Docker Hub — the quickest way to run it without a Rust toolchain. See
+[Deploy with Docker](./how-to/deploy-with-docker.md).
 
 ## How to read this book
 
