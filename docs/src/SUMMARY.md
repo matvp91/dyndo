@@ -4,6 +4,7 @@
 
 # Tutorial
 
+- [Install the CLI](./tutorial/install-cli.md)
 - [Getting started](./tutorial/getting-started.md)
 
 # How-to guides
