@@ -34,34 +34,31 @@ segment list, no byte offsets — a single `asset.json` is a few hundred bytes,
 and serving an 800 MB source reads the same ~10 KB header region as an 8 MB one.
 See [The thin-pointer approach](./explanation/thin-pointer.md) for why.
 
-## The two binaries
+## The two tools
 
-`dyndo` is a Cargo workspace. This documentation covers its two executables:
+dyndo is two programs, and you get each the easy way — no Rust toolchain
+required:
 
-| Binary | Role |
-|---|---|
-| [`dyndo`](./reference/cli.md) | The CLI: index CMAF sources into `asset.json`, pack subtitles, and render offline manifests. |
-| [`dyndo-server`](./reference/server.md) | The HTTP server: generate DASH/HLS manifests and serve CMAF segments on the fly. |
+| Tool | What it does | How to get it |
+|---|---|---|
+| [`dyndo`](./reference/cli.md) (CLI) | Index CMAF sources into `asset.json`, pack subtitles, and render manifests offline. | The [one-line installer](./tutorial/install-cli.md). |
+| [`dyndo-server`](./reference/server.md) | Generate DASH/HLS manifests and serve CMAF segments on the fly. | The [`matvp91/dyndo-server`](https://hub.docker.com/r/matvp91/dyndo-server) image on Docker Hub. |
 
-Both are thin front-ends over the `dyndo-core` library, which does the CMAF
-parsing and manifest generation. This book documents the two binaries and the
-`asset.json` contract between them; the core library's Rust API is documented
-in its rustdoc, built locally with `make doc`.
-
-`dyndo-server` is also published as a container image,
-[`matvp91/dyndo-server`](https://hub.docker.com/r/matvp91/dyndo-server) on
-Docker Hub — the quickest way to run it without a Rust toolchain. See
-[Deploy with Docker](./how-to/deploy-with-docker.md).
+This book covers both programs and the `asset.json` descriptor that connects
+them: you produce a descriptor with the CLI, and the server reads it. If neither
+the installer nor Docker fits your platform, you can also
+[build from source](./how-to/build-from-source.md).
 
 ## Quick install
+
+Install the `dyndo` CLI (macOS and Linux):
 
 ```bash
 curl -fsSL https://matvp91.github.io/dyndo/install.sh | bash
 ```
 
-Installs the prebuilt `dyndo` CLI (macOS and Linux) into `~/.dyndo/bin` — see
-[Install the CLI](./tutorial/install-cli.md). For `dyndo-server`, use the
-Docker image above or build from source.
+See [Install the CLI](./tutorial/install-cli.md) for details. For the server,
+pull the Docker image — see [Deploy with Docker](./how-to/deploy-with-docker.md).
 
 ## How to read this book
 
@@ -71,11 +68,11 @@ the section that matches what you need right now:
 - **[Tutorial](./tutorial/getting-started.md)** — *I'm new here.* A single
   guided lesson that takes you from nothing to a playing stream.
 - **[How-to guides](./how-to/index-sources.md)** — *I have a task to do.*
-  Focused recipes: index sources, add subtitles, configure the server, serve
-  from S3.
+  Focused recipes: index sources, add subtitles, label tracks with roles, run
+  the server, serve from S3, deploy with Docker.
 - **[Reference](./reference/cli.md)** — *I need to look something up.* Exact,
-  exhaustive descriptions of every command, route, config key, and descriptor
-  field.
+  exhaustive descriptions of every command, route, config key, descriptor
+  field, and track role.
 - **[Explanation](./explanation/thin-pointer.md)** — *I want to understand why.*
   The design ideas behind dyndo: the thin pointer, bounded-memory parsing, and
   one source serving two protocols.

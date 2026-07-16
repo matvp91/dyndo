@@ -4,8 +4,8 @@ In this short lesson you'll install the prebuilt `dyndo` CLI and confirm it
 runs — no Rust toolchain needed. Set aside two minutes.
 
 Prebuilt binaries cover macOS (Apple Silicon and Intel) and Linux (x86_64).
-On any other platform, build from source instead — [Getting
-started](./getting-started.md) shows how.
+On any other platform, [build from source](../how-to/build-from-source.md)
+instead.
 
 ## Step 1: Run the installer
 
@@ -53,6 +53,6 @@ rm -rf ~/.dyndo
 ## Where to next?
 
 Follow [Getting started](./getting-started.md) to create CMAF sources, index
-them, and play a stream. That tutorial builds from source because it also
-uses `dyndo-server`, which this installer doesn't ship — for the server, see
+them, and play a stream. It runs `dyndo-server` with Docker, since this
+installer ships only the `dyndo` CLI — for the server on its own, see
 [Deploy with Docker](../how-to/deploy-with-docker.md).

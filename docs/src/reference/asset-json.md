@@ -78,6 +78,7 @@ Type-specific fields follow.
 | `sample_rate` | integer | Sampling rate, in Hz. |
 | `channels` | integer | Number of audio channels (e.g. `2` for stereo, `6` for 5.1). |
 | `language` | string *(optional)* | ISO 639-2 language code. Omitted if absent; `index` always writes it, defaulting to `und`. |
+| `role` | string *(optional)* | The track's declared purpose. Omitted when unset. One of `main`, `alternate`, `commentary`, `dub`, `description`, `enhanced-audio-intelligibility`. See [Track roles](./roles.md). |
 
 ```json
 {
@@ -88,7 +89,8 @@ Type-specific fields follow.
   "timescale": 48000,
   "sample_rate": 48000,
   "channels": 2,
-  "language": "nld"
+  "language": "nld",
+  "role": "main"
 }
 ```
 
@@ -97,6 +99,7 @@ Type-specific fields follow.
 | Field | Type | Description |
 |---|---|---|
 | `language` | string | ISO 639-2 language code (`und` when unspecified). |
+| `role` | string *(optional)* | The track's declared purpose. Omitted when unset (rendered as `subtitle`). One of `subtitle`, `caption`, `forced-subtitle`. See [Track roles](./roles.md). |
 
 ```json
 {
@@ -105,7 +108,8 @@ Type-specific fields follow.
   "path": "text_wvtt_eng.mp4",
   "fourcc": "wvtt",
   "timescale": 1000,
-  "language": "eng"
+  "language": "eng",
+  "role": "caption"
 }
 ```
 
@@ -181,8 +185,8 @@ An asset with one video, one audio, and one subtitle track:
 
 The descriptor is safe to edit, but `id` and most fields are read from the
 source at index time and describe it accurately. The fields intended for
-hand-editing are the `language` override on text tracks and the top-level
-[segmentation fields](#segmentation) (`min_segment_length`,
+hand-editing are the `language` and `role` on audio and text tracks, and the
+top-level [segmentation fields](#segmentation) (`min_segment_length`,
 `segment_boundaries`), which only shape serving and never contradict the media.
 If you change a source file, re-run [`index`](./cli/index.md) rather than
 editing metadata by hand, so the recorded values continue to match the media.

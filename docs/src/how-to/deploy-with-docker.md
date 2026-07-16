@@ -84,6 +84,24 @@ docker run --rm -p 8080:8080 \
 Environment variables still override the file, so you can bake defaults into
 `config.yaml` and override per environment.
 
+## Health checks
+
+The server answers `GET /health` with `200 OK`. Point a Kubernetes liveness or
+readiness probe — or an external load balancer — at it:
+
+```yaml
+# Kubernetes pod spec
+livenessProbe:
+  httpGet:
+    path: /health
+    port: 8080
+```
+
+The runtime image is deliberately minimal — just the binary and CA
+certificates, with no shell or HTTP client — so prefer an out-of-container probe
+like the above over a `HEALTHCHECK` that shells out to `curl` inside the
+container.
+
 ## Build the image yourself
 
 The repository ships a `Dockerfile`, so you can build from source instead of

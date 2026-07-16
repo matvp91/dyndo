@@ -12,6 +12,19 @@ Every stream lives under `/<asset>/<protocol>/<resource>`. All routes are `GET`.
 | `/<asset>/<protocol>/<repr>/init.mp4` | A representation's initialization segment. | `video/mp4`, `audio/mp4`, or `application/mp4` |
 | `/<asset>/<protocol>/<repr>/<time>.m4s` | The media segment starting at presentation `<time>`. | `video/mp4`, `audio/mp4`, or `application/mp4` |
 
+## Health check
+
+Separate from the streaming routes, the server answers a liveness probe:
+
+| Path | Description | Content-Type |
+|---|---|---|
+| `/health` | Liveness probe. Returns `200 OK` with an empty body. | *(none)* |
+
+`/health` is a fixed route registered ahead of the catch-all, so it never
+shadows a stream — every streaming route carries a `/dash/` or `/hls/` infix.
+Use it for container and load-balancer health checks; see
+[Deploy with Docker](../../how-to/deploy-with-docker.md).
+
 ## Path grammar
 
 - **`<asset>`** — the descriptor's path relative to the storage root. It may
@@ -59,7 +72,7 @@ A request whose `<time>` does not fall on a segment boundary returns `404`; a
 
 | Code | When |
 |---|---|
-| `200 OK` | The manifest or segment was generated and returned. |
+| `200 OK` | The manifest or segment was generated and returned; also the `/health` probe. |
 | `400 Bad Request` | A segment `<time>` is not a valid integer. |
 | `404 Not Found` | The path is not a streaming route; the descriptor or a source file is missing; `<repr>` matches no representation; or `<time>` is not a segment boundary. |
 | `500 Internal Server Error` | The descriptor JSON is malformed, or a source file is unreadable or not valid, supported CMAF. |

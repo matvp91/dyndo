@@ -57,6 +57,10 @@ this is the only way to set it. Valid roles are, for audio, `main`, `alternate`,
 unknown field is rejected, and a role that does not apply to the track's type
 (e.g. `subtitle` on audio) is rejected — the run aborts with a message.
 
+For what each role does to the generated manifests — which rendition a player
+defaults to, what it auto-selects, and the accessibility signalling — see
+[Label tracks with roles](./label-roles.md).
+
 ## Add to or update an existing descriptor
 
 Running `index` against an `asset.json` that already exists **merges** into it
@@ -132,6 +136,8 @@ see the [asset.json descriptor reference](../reference/asset-json.md).
 ## Next steps
 
 - Add subtitles to the descriptor: [Add a subtitle track](./add-subtitles.md).
+- Control how players present each track:
+  [Label tracks with roles](./label-roles.md).
 - Serve the descriptor: [Run and configure the server](./run-the-server.md).
 - Render a manifest without the server:
   [Generate manifests without the server](./offline-manifests.md).
