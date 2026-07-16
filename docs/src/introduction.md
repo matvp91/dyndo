@@ -88,6 +88,7 @@ Codec parameters are read from the source and emitted as
 | Media | Codec | Sample entry |
 |---|---|---|
 | Video | AVC / H.264 | `avc1` |
+| Video | HEVC / H.265 | `hvc1`, `hev1` |
 | Video | AV1 | `av01` |
 | Audio | AAC | `mp4a` |
 | Audio | Dolby Digital (AC-3) | `ac-3` |
