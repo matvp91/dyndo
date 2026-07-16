@@ -53,25 +53,29 @@ fn generates_mpd_from_asset_json() {
     let dir = tempfile::tempdir().unwrap();
     stage(dir.path(), &["video_avc_1080.mp4", "audio_aac_nl_2.mp4"]);
 
-    assert!(dyndo(dir.path())
-        .args([
-            "index",
-            "-i",
-            "video_avc_1080.mp4",
-            "-i",
-            "audio_aac_nl_2.mp4",
-            "-o",
-            "asset.json",
-        ])
-        .status()
-        .unwrap()
-        .success());
+    assert!(
+        dyndo(dir.path())
+            .args([
+                "index",
+                "-i",
+                "video_avc_1080.mp4",
+                "-i",
+                "audio_aac_nl_2.mp4",
+                "-o",
+                "asset.json",
+            ])
+            .status()
+            .unwrap()
+            .success()
+    );
 
-    assert!(dyndo(dir.path())
-        .args(["dash", "-i", "asset.json", "-o", "stream.mpd"])
-        .status()
-        .unwrap()
-        .success());
+    assert!(
+        dyndo(dir.path())
+            .args(["dash", "-i", "asset.json", "-o", "stream.mpd"])
+            .status()
+            .unwrap()
+            .success()
+    );
 
     let xml = fs::read_to_string(dir.path().join("stream.mpd")).unwrap();
     assert!(xml.contains("type=\"static\""));
@@ -85,31 +89,37 @@ fn dash_compact_flag_hoists_segment_template() {
     let dir = tempfile::tempdir().unwrap();
     stage(dir.path(), &["video_avc_1080.mp4", "audio_aac_nl_2.mp4"]);
 
-    assert!(dyndo(dir.path())
-        .args([
-            "index",
-            "-i",
-            "video_avc_1080.mp4",
-            "-i",
-            "audio_aac_nl_2.mp4",
-            "-o",
-            "asset.json",
-        ])
-        .status()
-        .unwrap()
-        .success());
+    assert!(
+        dyndo(dir.path())
+            .args([
+                "index",
+                "-i",
+                "video_avc_1080.mp4",
+                "-i",
+                "audio_aac_nl_2.mp4",
+                "-o",
+                "asset.json",
+            ])
+            .status()
+            .unwrap()
+            .success()
+    );
 
-    assert!(dyndo(dir.path())
-        .args(["dash", "-i", "asset.json", "-o", "plain.mpd"])
-        .status()
-        .unwrap()
-        .success());
+    assert!(
+        dyndo(dir.path())
+            .args(["dash", "-i", "asset.json", "-o", "plain.mpd"])
+            .status()
+            .unwrap()
+            .success()
+    );
 
-    assert!(dyndo(dir.path())
-        .args(["dash", "-i", "asset.json", "-o", "compact.mpd", "-c"])
-        .status()
-        .unwrap()
-        .success());
+    assert!(
+        dyndo(dir.path())
+            .args(["dash", "-i", "asset.json", "-o", "compact.mpd", "-c"])
+            .status()
+            .unwrap()
+            .success()
+    );
 
     let plain = fs::read_to_string(dir.path().join("plain.mpd")).unwrap();
     let compact = fs::read_to_string(dir.path().join("compact.mpd")).unwrap();
@@ -128,25 +138,29 @@ fn generates_hls_playlists_from_asset_json() {
     let dir = tempfile::tempdir().unwrap();
     stage(dir.path(), &["video_avc_1080.mp4", "audio_aac_nl_2.mp4"]);
 
-    assert!(dyndo(dir.path())
-        .args([
-            "index",
-            "-i",
-            "video_avc_1080.mp4",
-            "-i",
-            "audio_aac_nl_2.mp4",
-            "-o",
-            "asset.json",
-        ])
-        .status()
-        .unwrap()
-        .success());
+    assert!(
+        dyndo(dir.path())
+            .args([
+                "index",
+                "-i",
+                "video_avc_1080.mp4",
+                "-i",
+                "audio_aac_nl_2.mp4",
+                "-o",
+                "asset.json",
+            ])
+            .status()
+            .unwrap()
+            .success()
+    );
 
-    assert!(dyndo(dir.path())
-        .args(["hls", "-i", "asset.json", "-o", "hls"])
-        .status()
-        .unwrap()
-        .success());
+    assert!(
+        dyndo(dir.path())
+            .args(["hls", "-i", "asset.json", "-o", "hls"])
+            .status()
+            .unwrap()
+            .success()
+    );
 
     // Master plus one media playlist per track (video + audio) = 3 files.
     let names: Vec<String> = fs::read_dir(dir.path().join("hls"))
@@ -154,12 +168,16 @@ fn generates_hls_playlists_from_asset_json() {
         .map(|e| e.unwrap().file_name().into_string().unwrap())
         .collect();
     assert_eq!(names.iter().filter(|n| n.ends_with(".m3u8")).count(), 3);
-    assert!(names
-        .iter()
-        .any(|n| n.starts_with("video_") && n.ends_with(".m3u8")));
-    assert!(names
-        .iter()
-        .any(|n| n.starts_with("audio_") && n.ends_with(".m3u8")));
+    assert!(
+        names
+            .iter()
+            .any(|n| n.starts_with("video_") && n.ends_with(".m3u8"))
+    );
+    assert!(
+        names
+            .iter()
+            .any(|n| n.starts_with("audio_") && n.ends_with(".m3u8"))
+    );
 
     let master = fs::read_to_string(dir.path().join("hls/index.m3u8")).unwrap();
     assert!(master.contains("#EXT-X-STREAM-INF:"));
@@ -190,39 +208,45 @@ fn advertises_text_track_in_dash_and_hls() {
 
     // Index video + audio, then pack the subtitle against the asset (which adds
     // the text track to asset.json itself).
-    assert!(dyndo(dir.path())
-        .args([
-            "index",
-            "-i",
-            "video_avc_1080.mp4",
-            "-i",
-            "audio_aac_nl_2.mp4",
-            "-o",
-            "asset.json",
-        ])
-        .status()
-        .unwrap()
-        .success());
-    assert!(dyndo(dir.path())
-        .args([
-            "pack",
-            "-i",
-            "text_sample.vtt",
-            "-a",
-            "asset.json",
-            "-l",
-            "eng"
-        ])
-        .status()
-        .unwrap()
-        .success());
+    assert!(
+        dyndo(dir.path())
+            .args([
+                "index",
+                "-i",
+                "video_avc_1080.mp4",
+                "-i",
+                "audio_aac_nl_2.mp4",
+                "-o",
+                "asset.json",
+            ])
+            .status()
+            .unwrap()
+            .success()
+    );
+    assert!(
+        dyndo(dir.path())
+            .args([
+                "pack",
+                "-i",
+                "text_sample.vtt",
+                "-a",
+                "asset.json",
+                "-l",
+                "eng"
+            ])
+            .status()
+            .unwrap()
+            .success()
+    );
 
     // HLS: the master advertises the subtitle group and a text media playlist.
-    assert!(dyndo(dir.path())
-        .args(["hls", "-i", "asset.json", "-o", "hls"])
-        .status()
-        .unwrap()
-        .success());
+    assert!(
+        dyndo(dir.path())
+            .args(["hls", "-i", "asset.json", "-o", "hls"])
+            .status()
+            .unwrap()
+            .success()
+    );
 
     let master = fs::read_to_string(dir.path().join("hls/index.m3u8")).unwrap();
     assert!(master.contains("#EXT-X-MEDIA:TYPE=SUBTITLES"), "{master}");
@@ -241,11 +265,13 @@ fn advertises_text_track_in_dash_and_hls() {
     assert!(media.contains("#EXT-X-MAP:URI="), "{media}");
 
     // DASH: the text AdaptationSet carries the subtitle role.
-    assert!(dyndo(dir.path())
-        .args(["dash", "-i", "asset.json", "-o", "stream.mpd"])
-        .status()
-        .unwrap()
-        .success());
+    assert!(
+        dyndo(dir.path())
+            .args(["dash", "-i", "asset.json", "-o", "stream.mpd"])
+            .status()
+            .unwrap()
+            .success()
+    );
     let xml = fs::read_to_string(dir.path().join("stream.mpd")).unwrap();
     assert!(xml.contains("contentType=\"text\""), "{xml}");
     assert!(xml.contains("value=\"subtitle\""), "{xml}");
@@ -256,31 +282,37 @@ fn indexes_wvtt_text_track() {
     let dir = tempfile::tempdir().unwrap();
     stage(dir.path(), &["video_avc_1080.mp4", "text_sample.vtt"]);
 
-    assert!(dyndo(dir.path())
-        .args(["index", "-i", "video_avc_1080.mp4", "-o", "asset.json"])
-        .status()
-        .unwrap()
-        .success());
-    assert!(dyndo(dir.path())
-        .args([
-            "pack",
-            "-i",
-            "text_sample.vtt",
-            "-a",
-            "asset.json",
-            "-l",
-            "eng"
-        ])
-        .status()
-        .unwrap()
-        .success());
+    assert!(
+        dyndo(dir.path())
+            .args(["index", "-i", "video_avc_1080.mp4", "-o", "asset.json"])
+            .status()
+            .unwrap()
+            .success()
+    );
+    assert!(
+        dyndo(dir.path())
+            .args([
+                "pack",
+                "-i",
+                "text_sample.vtt",
+                "-a",
+                "asset.json",
+                "-l",
+                "eng"
+            ])
+            .status()
+            .unwrap()
+            .success()
+    );
 
     // Index the packed wvtt file on its own into a fresh descriptor.
-    assert!(dyndo(dir.path())
-        .args(["index", "-i", "text_wvtt_eng.mp4", "-o", "text.json"])
-        .status()
-        .unwrap()
-        .success());
+    assert!(
+        dyndo(dir.path())
+            .args(["index", "-i", "text_wvtt_eng.mp4", "-o", "text.json"])
+            .status()
+            .unwrap()
+            .success()
+    );
 
     let json: serde_json::Value =
         serde_json::from_slice(&fs::read(dir.path().join("text.json")).unwrap()).unwrap();
@@ -297,18 +329,22 @@ fn pack_aligns_subtitles_to_video_and_updates_asset() {
     stage(dir.path(), &["video_avc_1080.mp4", "sample.vtt"]);
 
     // Index the video so pack has a timeline to align to.
-    assert!(dyndo(dir.path())
-        .args(["index", "-i", "video_avc_1080.mp4", "-o", "asset.json"])
-        .status()
-        .unwrap()
-        .success());
+    assert!(
+        dyndo(dir.path())
+            .args(["index", "-i", "video_avc_1080.mp4", "-o", "asset.json"])
+            .status()
+            .unwrap()
+            .success()
+    );
 
     // Pack the subtitle against the asset's first video track.
-    assert!(dyndo(dir.path())
-        .args(["pack", "-i", "sample.vtt", "-a", "asset.json", "-l", "eng"])
-        .status()
-        .unwrap()
-        .success());
+    assert!(
+        dyndo(dir.path())
+            .args(["pack", "-i", "sample.vtt", "-a", "asset.json", "-l", "eng"])
+            .status()
+            .unwrap()
+            .success()
+    );
 
     // <id>.mp4 is written beside the descriptor and is a valid wvtt MP4.
     let data = fs::read(dir.path().join("text_wvtt_eng.mp4")).unwrap();
@@ -335,19 +371,23 @@ fn pack_empty_language_normalizes_to_und() {
     stage(dir.path(), &["video_avc_1080.mp4", "sample.vtt"]);
 
     // Index the video so pack has a timeline to align to.
-    assert!(dyndo(dir.path())
-        .args(["index", "-i", "video_avc_1080.mp4", "-o", "asset.json"])
-        .status()
-        .unwrap()
-        .success());
+    assert!(
+        dyndo(dir.path())
+            .args(["index", "-i", "video_avc_1080.mp4", "-o", "asset.json"])
+            .status()
+            .unwrap()
+            .success()
+    );
 
     // Pack with an empty language: should normalize to "und", matching core's
     // probe-time normalization, instead of writing text_wvtt_.mp4.
-    assert!(dyndo(dir.path())
-        .args(["pack", "-i", "sample.vtt", "-a", "asset.json", "-l", ""])
-        .status()
-        .unwrap()
-        .success());
+    assert!(
+        dyndo(dir.path())
+            .args(["pack", "-i", "sample.vtt", "-a", "asset.json", "-l", ""])
+            .status()
+            .unwrap()
+            .success()
+    );
 
     // <id>.mp4 is written with the normalized "und" language, not the raw
     // empty string.
@@ -377,16 +417,20 @@ fn manual_language_edit_in_asset_json_overrides_probed_language() {
 
     // Index the video and pack the subtitle with language "eng": both the
     // wvtt file's mdhd and asset.json now say "eng".
-    assert!(dyndo(dir.path())
-        .args(["index", "-i", "video_avc_1080.mp4", "-o", "asset.json"])
-        .status()
-        .unwrap()
-        .success());
-    assert!(dyndo(dir.path())
-        .args(["pack", "-i", "sample.vtt", "-a", "asset.json", "-l", "eng"])
-        .status()
-        .unwrap()
-        .success());
+    assert!(
+        dyndo(dir.path())
+            .args(["index", "-i", "video_avc_1080.mp4", "-o", "asset.json"])
+            .status()
+            .unwrap()
+            .success()
+    );
+    assert!(
+        dyndo(dir.path())
+            .args(["pack", "-i", "sample.vtt", "-a", "asset.json", "-l", "eng"])
+            .status()
+            .unwrap()
+            .success()
+    );
 
     /// Set the text track's `language` in `asset.json` to `lang`.
     fn set_text_language(dir: &Path, lang: &str) {
@@ -407,11 +451,13 @@ fn manual_language_edit_in_asset_json_overrides_probed_language() {
     // even though the file's mdhd still says "eng".
     set_text_language(dir.path(), "nld");
 
-    assert!(dyndo(dir.path())
-        .args(["dash", "-i", "asset.json", "-o", "stream.mpd"])
-        .status()
-        .unwrap()
-        .success());
+    assert!(
+        dyndo(dir.path())
+            .args(["dash", "-i", "asset.json", "-o", "stream.mpd"])
+            .status()
+            .unwrap()
+            .success()
+    );
     let xml = fs::read_to_string(dir.path().join("stream.mpd")).unwrap();
     assert!(xml.contains("lang=\"nld\""), "{xml}");
     // The representation id stays the one stored in asset.json at pack time —
@@ -423,21 +469,25 @@ fn manual_language_edit_in_asset_json_overrides_probed_language() {
     // AdaptationSet's — the probed "eng" must not leak through.
     assert!(!xml.contains("lang=\"eng\""), "{xml}");
 
-    assert!(dyndo(dir.path())
-        .args(["hls", "-i", "asset.json", "-o", "hls"])
-        .status()
-        .unwrap()
-        .success());
+    assert!(
+        dyndo(dir.path())
+            .args(["hls", "-i", "asset.json", "-o", "hls"])
+            .status()
+            .unwrap()
+            .success()
+    );
     let master = fs::read_to_string(dir.path().join("hls/index.m3u8")).unwrap();
     assert!(master.contains("LANGUAGE=\"nld\""), "{master}");
 
     // An emptied descriptor language falls back to the file's probed value.
     set_text_language(dir.path(), "");
-    assert!(dyndo(dir.path())
-        .args(["dash", "-i", "asset.json", "-o", "fallback.mpd"])
-        .status()
-        .unwrap()
-        .success());
+    assert!(
+        dyndo(dir.path())
+            .args(["dash", "-i", "asset.json", "-o", "fallback.mpd"])
+            .status()
+            .unwrap()
+            .success()
+    );
     let xml = fs::read_to_string(dir.path().join("fallback.mpd")).unwrap();
     assert!(xml.contains("lang=\"eng\""), "{xml}");
     assert!(xml.contains("text_wvtt_eng"), "{xml}");
@@ -449,11 +499,13 @@ fn pack_without_a_video_track_fails() {
     stage(dir.path(), &["audio_aac_nl_2.mp4", "sample.vtt"]);
 
     // An audio-only asset has no video timeline to align to.
-    assert!(dyndo(dir.path())
-        .args(["index", "-i", "audio_aac_nl_2.mp4", "-o", "asset.json"])
-        .status()
-        .unwrap()
-        .success());
+    assert!(
+        dyndo(dir.path())
+            .args(["index", "-i", "audio_aac_nl_2.mp4", "-o", "asset.json"])
+            .status()
+            .unwrap()
+            .success()
+    );
 
     let status = dyndo(dir.path())
         .args(["pack", "-i", "sample.vtt", "-a", "asset.json", "-l", "eng"])

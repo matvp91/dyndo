@@ -3,8 +3,8 @@
 //! streaming rewrite.
 
 use dyndo_core::cmaf::{self, CmafMetadata};
-use opendal::services::Fs;
 use opendal::Operator;
+use opendal::services::Fs;
 
 const FIXTURES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../tests/fixtures");
 

@@ -3,8 +3,8 @@ use std::path::Path;
 use clap::{Parser, Subcommand};
 use dyndo_core::asset::{Asset, Track};
 use dyndo_core::model::AssetModel;
-use opendal::services::Fs;
 use opendal::Operator;
+use opendal::services::Fs;
 
 /// dyndo — CMAF indexer and DASH manifest generator.
 #[derive(Parser)]

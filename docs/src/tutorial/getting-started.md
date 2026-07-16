@@ -13,8 +13,8 @@ Set aside about 15 minutes.
 
 ## What you'll need
 
-- A stable [Rust toolchain](https://www.rust-lang.org/tools/install) (edition
-  2021 or newer) with `cargo`.
+- A stable [Rust toolchain](https://www.rust-lang.org/tools/install) (Rust
+  1.97 or newer) with `cargo`.
 - [`git`](https://git-scm.com/), to clone the repository.
 - [`ffmpeg`](https://ffmpeg.org/), used **only** to create the sample media in
   step 2. If you already have CMAF files, you can skip that step.

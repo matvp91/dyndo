@@ -6,10 +6,10 @@
 
 use std::path::Path;
 
-use figment::providers::{Env, Format, Serialized, Yaml};
 use figment::Figment;
-use opendal::services::{FsConfig, S3Config};
+use figment::providers::{Env, Format, Serialized, Yaml};
 use opendal::Operator;
+use opendal::services::{FsConfig, S3Config};
 use serde::{Deserialize, Serialize};
 
 /// Anything that can go wrong loading configuration or building the storage

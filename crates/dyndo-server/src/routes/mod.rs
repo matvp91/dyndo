@@ -9,10 +9,10 @@ mod segment;
 mod transport;
 
 use axum::{
+    Router,
     extract::{Path, State},
     response::Response,
     routing::get,
-    Router,
 };
 use dyndo_core::model::{AssetModel, TrackModel};
 use opendal::Operator;
@@ -71,10 +71,10 @@ fn split_route(path: &str) -> Option<(&str, &str, &str)> {
     let mut best: Option<(usize, &str, usize)> = None;
     for proto in PROTOCOLS.iter().copied() {
         let delim = format!("/{proto}/");
-        if let Some(i) = path.rfind(&delim) {
-            if best.is_none_or(|(bi, _, _)| i > bi) {
-                best = Some((i, proto, i + delim.len()));
-            }
+        if let Some(i) = path.rfind(&delim)
+            && best.is_none_or(|(bi, _, _)| i > bi)
+        {
+            best = Some((i, proto, i + delim.len()));
         }
     }
     best.map(|(i, proto, res_start)| (&path[..i], proto, &path[res_start..]))

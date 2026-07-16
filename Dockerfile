@@ -1,9 +1,12 @@
 # syntax=docker/dockerfile:1
 
 # ---- build stage ----
-# Pin the Debian codename (not plain `rust:1-slim`, which tracks Debian's latest)
-# so the build glibc matches the runtime stage below and can't silently drift.
-FROM rust:1-slim-trixie AS build
+# Pin the exact rustc to match rust-toolchain.toml (FROM can't read that file,
+# so this is the one deliberate duplicate — bump both together). The Debian
+# codename is pinned too (not plain `rust:1-slim`, which tracks Debian's
+# latest) so the build glibc matches the runtime stage below and can't
+# silently drift.
+FROM rust:1.97.0-slim-trixie AS build
 WORKDIR /src
 COPY . .
 # Cache the cargo registry and target dir across local builds (BuildKit). The

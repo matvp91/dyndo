@@ -12,9 +12,9 @@ use opendal::Operator;
 use tokio::io::{AsyncRead, AsyncReadExt, ReadBuf};
 use tokio_util::compat::FuturesAsyncReadCompatExt;
 
+use crate::CoreError;
 use crate::asset::Segment;
 use crate::codec::{AudioCodec, TextCodec, VideoCodec};
-use crate::CoreError;
 
 /// Read `len` bytes of `path` starting at `offset`, through `op`. Returns
 /// [`Bytes`] so a contiguous read is handed to the caller without copying.
@@ -218,11 +218,7 @@ fn average_bandwidth(total_bytes: u64, duration: u64, timescale: u32) -> u32 {
 }
 
 fn gcd(a: u32, b: u32) -> u32 {
-    if b == 0 {
-        a
-    } else {
-        gcd(b, a % b)
-    }
+    if b == 0 { a } else { gcd(b, a % b) }
 }
 
 fn frame_rate_ratio(sample_duration: u32, timescale: u32) -> (u32, u32) {
@@ -253,11 +249,7 @@ fn first_sample_duration(moof: &Moof, moov: &Moov) -> u32 {
 
 /// Map an empty ISO-639-2 language code to the "undetermined" placeholder.
 fn normalize_language(lang: &str) -> &str {
-    if lang.is_empty() {
-        "und"
-    } else {
-        lang
-    }
+    if lang.is_empty() { "und" } else { lang }
 }
 
 fn language_code(mdhd: &Mdhd) -> String {
