@@ -53,6 +53,16 @@ in its rustdoc, built locally with `make doc`.
 Docker Hub — the quickest way to run it without a Rust toolchain. See
 [Deploy with Docker](./how-to/deploy-with-docker.md).
 
+## Quick install
+
+```bash
+curl -fsSL https://matvp91.github.io/dyndo/install.sh | bash
+```
+
+Installs the prebuilt `dyndo` CLI (macOS and Linux) into `~/.dyndo/bin` — see
+[Install the CLI](./tutorial/install-cli.md). For `dyndo-server`, use the
+Docker image above or build from source.
+
 ## How to read this book
 
 This documentation follows the [Diátaxis](https://diataxis.fr/) framework. Pick

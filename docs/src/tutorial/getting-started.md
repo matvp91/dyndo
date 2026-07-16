@@ -21,6 +21,10 @@ Set aside about 15 minutes.
 
 ## Step 1: Build dyndo
 
+> Only need the `dyndo` CLI? The [one-line installer](./install-cli.md) gives
+> you a prebuilt binary. This tutorial builds from source because it also
+> needs `dyndo-server`.
+
 Clone the repository and build both binaries:
 
 ```bash

@@ -28,6 +28,16 @@ Full documentation lives at **<https://matvp91.github.io/dyndo/>**:
   — the thin-pointer design, bounded-memory parsing, and one source / two
   protocols.
 
+## 🚀 Install
+
+```bash
+curl -fsSL https://matvp91.github.io/dyndo/install.sh | bash
+```
+
+Installs the prebuilt `dyndo` CLI for macOS or Linux into `~/.dyndo/bin` and
+puts it on your `PATH`. Pin a version with `bash -s <version>`. To build from
+source instead, follow the [Quickstart](#quickstart) below.
+
 ## Quickstart
 
 ```bash
