@@ -1,0 +1,11 @@
+target/
+.git
+.github
+docs
+assets
+tests
+.wrangler
+.claude
+.agents
+.superpowers
+.DS_Store
