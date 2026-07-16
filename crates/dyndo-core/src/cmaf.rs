@@ -195,7 +195,7 @@ fn build_segments(sidx: &Sidx, sidx_end: u64) -> Vec<Segment> {
     for r in &sidx.references {
         let duration = r.subsegment_duration as u64;
         acc_units += duration;
-        let boundary_ms = crate::asset::units_to_ms(acc_units, ts);
+        let boundary_ms = crate::segment_utils::units_to_ms(acc_units, ts);
         let duration_ms = boundary_ms - acc_ms;
         acc_ms = boundary_ms;
         out.push(Segment {

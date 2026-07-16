@@ -190,7 +190,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     // dyndo_core::asset::TextTrack::id; packing is always wvtt.
                     let out = format!("text_wvtt_{language}.mp4");
                     let id = format!("text_wvtt_{language}");
-                    let dest = dyndo_core::path::resolve(&asset, &out);
+                    let dest = dyndo_core::path_utils::resolve(&asset, &out);
                     op.write(&dest, bytes).await?;
 
                     // Add to the model (add_track probes the file), replacing any
