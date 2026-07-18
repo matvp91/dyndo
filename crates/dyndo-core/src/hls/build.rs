@@ -12,16 +12,22 @@ use crate::segment::Segment;
 use crate::track::Track;
 
 /// Build the VOD media playlist for `track`: an `EXT-X-MAP` init on the first
-/// segment, then one segment per raw CMAF fragment named by its running
+/// segment, then one segment per served (sub)segment — the raw CMAF
+/// fragments grouped under the asset's grouping pair — named by its running
 /// presentation time. `EXT-X-TARGETDURATION` is the longest segment in whole
 /// seconds.
-pub(super) fn build_media(track: &Track) -> MediaPlaylist<'static> {
+pub(super) fn build_media(
+    track: &Track,
+    boundaries_ms: &[u64],
+    min_length_ms: u64,
+) -> MediaPlaylist<'static> {
     let repr = track.id();
     let h = track.cmaf();
+    let served = track.segments(boundaries_ms, min_length_ms);
 
     let mut time = h.earliest_presentation_time;
-    let mut segments: Vec<MediaSegment<'static>> = Vec::with_capacity(h.segments.len());
-    for (i, seg) in h.segments.iter().enumerate() {
+    let mut segments: Vec<MediaSegment<'static>> = Vec::with_capacity(served.len());
+    for (i, seg) in served.iter().enumerate() {
         let mut b = MediaSegment::builder();
         b.uri(format!("{repr}/{time}.m4s"));
         b.duration(Duration::from_secs_f64(
@@ -39,10 +45,7 @@ pub(super) fn build_media(track: &Track) -> MediaPlaylist<'static> {
 
     let mut b = MediaPlaylist::builder();
     b.media_sequence(0);
-    b.target_duration(Duration::from_secs(target_duration(
-        &h.segments,
-        h.timescale,
-    )));
+    b.target_duration(Duration::from_secs(target_duration(&served, h.timescale)));
     b.playlist_type(PlaylistType::Vod);
     b.has_end_list(true);
     b.segments(segments);

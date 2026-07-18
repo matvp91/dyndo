@@ -12,6 +12,15 @@ use crate::track::Track;
 /// A dyndo asset: its tracks and where the descriptor was sourced from.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct Asset {
+    /// Minimum length of a served segment, in milliseconds (wire:
+    /// `min_segment_length`). `0` (or an absent field — deserialization
+    /// defaults) serves each CMAF fragment as its own segment.
+    #[serde(
+        rename = "min_segment_length",
+        default,
+        skip_serializing_if = "is_zero"
+    )]
+    pub min_segment_length_ms: u64,
     /// Splice points, in milliseconds from the start of the presentation
     /// (wire: `segment_boundaries`). Served segments never span one. Treated
     /// as a set: order and duplicates don't matter.
@@ -77,16 +86,64 @@ impl Asset {
             .unwrap_or(0)
     }
 
-    /// The longest (sub)segment across the asset's tracks, in milliseconds
-    /// (`0` if it has none).
+    /// The longest served (sub)segment across the asset's tracks, in
+    /// milliseconds (`0` if it has none), under the asset's grouping policy.
     ///
     /// # Panics
     /// If a track has not been probed.
     pub fn max_segment_duration_ms(&self) -> u64 {
         self.tracks
             .iter()
-            .map(Track::max_segment_duration_ms)
+            .map(|t| {
+                t.max_segment_duration_ms(&self.segment_boundaries_ms, self.min_segment_length_ms)
+            })
             .max()
             .unwrap_or(0)
+    }
+}
+
+/// `skip_serializing_if` helper: the wire omits a zero `min_segment_length`.
+fn is_zero(v: &u64) -> bool {
+    *v == 0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn grouping_fields_default_when_absent() {
+        let a: Asset = serde_json::from_str(r#"{"tracks": []}"#).unwrap();
+        assert_eq!(a.min_segment_length_ms, 0);
+        assert!(a.segment_boundaries_ms.is_empty());
+    }
+
+    #[test]
+    fn grouping_fields_parse_from_the_wire() {
+        let a: Asset = serde_json::from_str(
+            r#"{"min_segment_length": 3000, "segment_boundaries": [683640], "tracks": []}"#,
+        )
+        .unwrap();
+        assert_eq!(a.min_segment_length_ms, 3000);
+        assert_eq!(a.segment_boundaries_ms, vec![683640]);
+    }
+
+    #[test]
+    fn grouping_fields_serialize_under_their_wire_names() {
+        let a = Asset {
+            min_segment_length_ms: 3000,
+            segment_boundaries_ms: vec![683640],
+            ..Asset::new()
+        };
+        let json = serde_json::to_string(&a).unwrap();
+        assert!(json.contains(r#""min_segment_length":3000"#));
+        assert!(json.contains(r#""segment_boundaries":[683640]"#));
+    }
+
+    #[test]
+    fn default_grouping_stays_off_the_wire() {
+        let json = serde_json::to_string(&Asset::new()).unwrap();
+        assert!(!json.contains("min_segment_length"));
+        assert!(!json.contains("segment_boundaries"));
     }
 }

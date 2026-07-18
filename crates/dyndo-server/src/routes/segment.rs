@@ -38,7 +38,13 @@ pub(super) async fn media_segment(
     let asset = Asset::read(op, asset_path).await?;
     let track = find_track(&asset, repr)?;
     let bytes = track
-        .read_segment(op, asset_path, time)
+        .read_segment(
+            op,
+            asset_path,
+            time,
+            &asset.segment_boundaries_ms,
+            asset.min_segment_length_ms,
+        )
         .await?
         .ok_or_else(|| ServerError::NotFound(format!("no segment at time {time}")))?;
     Ok(([(CONTENT_TYPE, track.mime_type())], bytes).into_response())

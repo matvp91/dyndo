@@ -12,9 +12,9 @@ use crate::asset::Asset;
 /// indentation. When `compact` is set, `SegmentTemplate` content shared by all
 /// Representations is hoisted to the `AdaptationSet` level.
 ///
-/// The timeline advertises the raw CMAF fragments — segment grouping
-/// (`min_segment_length`, `segment_boundaries`) is not implemented in this
-/// generation yet — and raw (non-CMAF) tracks are not advertised.
+/// The timeline advertises the served segments — the raw CMAF fragments
+/// grouped under the asset's `min_segment_length` and `segment_boundaries`
+/// — and raw (non-CMAF) tracks are not advertised.
 ///
 /// # Panics
 /// Panics only if MPD serialization fails, which cannot happen for a

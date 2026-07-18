@@ -38,14 +38,14 @@ fn build_timeline(segments: &[Segment], first_t: u64) -> Vec<S> {
     out
 }
 
-fn segment_template(h: &HeaderCmaf) -> SegmentTemplate {
+fn segment_template(h: &HeaderCmaf, segments: &[Segment]) -> SegmentTemplate {
     SegmentTemplate {
         timescale: Some(h.timescale as u64),
         presentationTimeOffset: Some(h.earliest_presentation_time),
         initialization: Some(INIT_TEMPLATE.to_string()),
         media: Some(MEDIA_TEMPLATE.to_string()),
         SegmentTimeline: Some(SegmentTimeline {
-            segments: build_timeline(&h.segments, h.earliest_presentation_time),
+            segments: build_timeline(segments, h.earliest_presentation_time),
         }),
         ..Default::default()
     }
@@ -53,14 +53,18 @@ fn segment_template(h: &HeaderCmaf) -> SegmentTemplate {
 
 /// The track's `Representation`: the id, bandwidth, codecs, and segment
 /// template every media type shares, plus its type's dimensions or audio
-/// configuration.
-fn representation(track: &Track) -> Representation {
+/// configuration. The timeline advertises the served segments under the
+/// asset's grouping pair.
+fn representation(track: &Track, boundaries_ms: &[u64], min_length_ms: u64) -> Representation {
     let h = track.cmaf();
     let mut rep = Representation {
         id: Some(track.id()),
         bandwidth: Some(h.bandwidth() as u64),
         codecs: Some(h.codec.clone()),
-        SegmentTemplate: Some(segment_template(h)),
+        SegmentTemplate: Some(segment_template(
+            h,
+            &track.segments(boundaries_ms, min_length_ms),
+        )),
         ..Default::default()
     };
     match &track.metadata {
@@ -146,7 +150,13 @@ fn audio_accessibility(role: Option<AudioRole>) -> Vec<Accessibility> {
 /// The `AdaptationSet` for `key`, with one `Representation` per member.
 /// Attributes derive from the key alone, so the emitted set can never
 /// disagree with the grouping that formed it.
-fn adaptation_set(id: usize, key: &AdaptationKey, members: &[&Track]) -> AdaptationSet {
+fn adaptation_set(
+    id: usize,
+    key: &AdaptationKey,
+    members: &[&Track],
+    boundaries_ms: &[u64],
+    min_length_ms: u64,
+) -> AdaptationSet {
     let (content_type, mime, lang, roles, accessibility) = match key {
         AdaptationKey::Video { .. } => ("video", "video/mp4", None, Vec::new(), Vec::new()),
         AdaptationKey::Audio { language, role, .. } => (
@@ -173,7 +183,10 @@ fn adaptation_set(id: usize, key: &AdaptationKey, members: &[&Track]) -> Adaptat
         startWithSAP: Some(1),
         Accessibility: accessibility,
         Role: roles,
-        representations: members.iter().copied().map(representation).collect(),
+        representations: members
+            .iter()
+            .map(|t| representation(t, boundaries_ms, min_length_ms))
+            .collect(),
         ..Default::default()
     }
 }
@@ -181,12 +194,21 @@ fn adaptation_set(id: usize, key: &AdaptationKey, members: &[&Track]) -> Adaptat
 /// Build the raw static VOD `MPD`: tracks grouped by their
 /// [`AdaptationKey`] — one `AdaptationSet` per distinct key, in first-seen
 /// order, each track becoming a `Representation`. The timeline advertises
-/// the raw CMAF fragments; raw (non-CMAF) tracks are not advertised.
+/// the served segments under the asset's grouping policy; raw (non-CMAF)
+/// tracks are not advertised.
 fn mpd(asset: &Asset) -> MPD {
     let adaptations = adaptation_set_group::group(&asset.tracks)
         .iter()
         .enumerate()
-        .map(|(id, (key, members))| adaptation_set(id, key, members))
+        .map(|(id, (key, members))| {
+            adaptation_set(
+                id,
+                key,
+                members,
+                &asset.segment_boundaries_ms,
+                asset.min_segment_length_ms,
+            )
+        })
         .collect();
 
     let period = Period {

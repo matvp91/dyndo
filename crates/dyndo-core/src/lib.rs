@@ -15,5 +15,6 @@ pub mod hls;
 pub mod metadata;
 pub mod role;
 pub mod segment;
+mod segment_utils;
 pub mod track;
 mod track_wire;

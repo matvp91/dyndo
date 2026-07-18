@@ -1,8 +1,8 @@
 //! HLS playlist generation for dyndo assets.
 //!
-//! Playlists advertise the raw CMAF fragments — segment grouping
-//! (`min_segment_length`, `segment_boundaries`) is not implemented in this
-//! generation yet — and text and raw (non-CMAF) tracks are not advertised.
+//! Media playlists advertise the served segments — the raw CMAF fragments
+//! grouped under the asset's `min_segment_length` and `segment_boundaries`
+//! — and text and raw (non-CMAF) tracks are not advertised.
 
 mod build;
 mod group;
@@ -19,11 +19,13 @@ pub fn generate_master(asset: &Asset) -> String {
 }
 
 /// Build the HLS media playlist for a single `track`: a VOD playlist with an
-/// `EXT-X-MAP` init on the first segment and one media segment per raw CMAF
-/// fragment, named by its running presentation time.
+/// `EXT-X-MAP` init on the first segment and one media segment per served
+/// (sub)segment, named by its running presentation time. `boundaries_ms` and
+/// `min_length_ms` are the asset's grouping pair — the segment route must
+/// serve under the same pair or advertised times will not resolve.
 ///
 /// # Panics
 /// If the track has not been probed, or is raw.
-pub fn generate_media(track: &Track) -> String {
-    build::build_media(track).to_string()
+pub fn generate_media(track: &Track, boundaries_ms: &[u64], min_length_ms: u64) -> String {
+    build::build_media(track, boundaries_ms, min_length_ms).to_string()
 }

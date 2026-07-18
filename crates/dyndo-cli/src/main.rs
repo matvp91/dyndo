@@ -125,7 +125,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }) {
                 op.write(
                     &format!("{output}/{}.m3u8", t.id()),
-                    dyndo_core::hls::generate_media(t).into_bytes(),
+                    dyndo_core::hls::generate_media(
+                        t,
+                        &asset.segment_boundaries_ms,
+                        asset.min_segment_length_ms,
+                    )
+                    .into_bytes(),
                 )
                 .await?;
                 count += 1;

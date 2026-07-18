@@ -13,6 +13,7 @@ use crate::header::Header;
 use crate::header_cmaf::HeaderCmaf;
 use crate::metadata::Metadata;
 use crate::segment::Segment;
+use crate::segment_utils;
 
 /// One of the asset's tracks: the identity and location every media type
 /// shares, with the per-type fields split off into `metadata`.
@@ -153,14 +154,20 @@ impl Track {
         }
     }
 
-    /// The track's (sub)segments, in presentation order.
+    /// The track's served (sub)segments, in presentation order: the header's
+    /// raw CMAF fragments grouped to at least `min_length_ms`, never across
+    /// a splice point in `boundaries_ms`. A `min_length_ms` of 0 serves each
+    /// fragment as its own segment. Both values come from the asset
+    /// descriptor; manifest builders and the segment route must pass the
+    /// same pair or advertised segment times will not resolve.
     ///
     /// # Panics
     /// If the track has not been probed, or is raw: a raw file has no
     /// segment map of its own — its segmentation follows the asset's other
     /// tracks.
-    pub fn segments(&self) -> &[Segment] {
-        &self.cmaf().segments
+    pub fn segments(&self, boundaries_ms: &[u64], min_length_ms: u64) -> Vec<Segment> {
+        let h = self.cmaf();
+        segment_utils::group_segments(&h.segments, h.timescale, boundaries_ms, min_length_ms)
     }
 
     /// Read the bytes of the track's init segment (`ftyp`+`moov`) through
@@ -182,10 +189,12 @@ impl Track {
         Ok(op.read_with(&resolved).range(range).await?.to_bytes())
     }
 
-    /// Read the bytes of the (sub)segment starting at presentation `time`
-    /// (in the track timescale) through `op`, resolving the track's `path`
-    /// against `asset_descriptor_path`'s directory. `None` when no
-    /// (sub)segment starts at `time`.
+    /// Read the bytes of the served (sub)segment starting at presentation
+    /// `time` (in the track timescale) through `op`, resolving the track's
+    /// `path` against `asset_descriptor_path`'s directory. `time` is matched
+    /// against the served segments — pass the same grouping pair the
+    /// manifest was built with. `None` when no (sub)segment starts at
+    /// `time`.
     ///
     /// # Errors
     /// [`CoreError::Storage`] if the ranged read fails.
@@ -197,10 +206,11 @@ impl Track {
         op: &Operator,
         asset_descriptor_path: &str,
         time: u64,
+        boundaries_ms: &[u64],
+        min_length_ms: u64,
     ) -> Result<Option<Bytes>, CoreError> {
-        let h = self.cmaf();
-        let mut start = h.earliest_presentation_time;
-        for seg in &h.segments {
+        let mut start = self.cmaf().earliest_presentation_time;
+        for seg in self.segments(boundaries_ms, min_length_ms) {
             if start == time {
                 let resolved = resolve(asset_descriptor_path, &self.path);
                 let buf = op.read_with(&resolved).range(seg.range()).await?;
@@ -223,17 +233,17 @@ impl Track {
         units_to_ms(cmaf.duration(), cmaf.timescale)
     }
 
-    /// The longest (sub)segment in this track, in milliseconds. `0` if it
-    /// has none, or for raw tracks: a raw file has no segment map of its
-    /// own.
+    /// The longest served (sub)segment in this track, in milliseconds,
+    /// under the same grouping pair as [`Track::segments`]. `0` if it has
+    /// none, or for raw tracks: a raw file has no segment map of its own.
     ///
     /// # Panics
     /// If the track has not been probed.
-    pub fn max_segment_duration_ms(&self) -> u64 {
+    pub fn max_segment_duration_ms(&self, boundaries_ms: &[u64], min_length_ms: u64) -> u64 {
         let Header::Cmaf(cmaf) = self.header() else {
             return 0;
         };
-        cmaf.segments
+        self.segments(boundaries_ms, min_length_ms)
             .iter()
             .map(|s| units_to_ms(s.duration, cmaf.timescale))
             .max()
