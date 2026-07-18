@@ -1,4 +1,4 @@
-//! Parsing and applying `dyndo index` track-descriptor parameters:
+//! Parsing and applying `dyndo index` track descriptors:
 //! `<path>[,language=..][,role=..]`.
 
 use dyndo_core::metadata::Metadata;

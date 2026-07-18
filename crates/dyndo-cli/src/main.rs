@@ -6,7 +6,7 @@ use dyndo_core::track::Track;
 use opendal::Operator;
 use opendal::services::Fs;
 
-mod params;
+mod track_descriptor;
 
 /// dyndo — dynamic media packaging for adaptive streaming.
 #[derive(Parser)]
@@ -76,13 +76,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 a
             };
             for input in &inputs {
-                let (path, language, role) = params::parse_track_descriptor(input)?;
+                let (path, language, role) = track_descriptor::parse_track_descriptor(input)?;
                 match asset.tracks.iter_mut().find(|t| t.path == path) {
                     // Already indexed: the descriptor's metadata is
                     // authoritative — keep it as-is, applying only the
                     // explicit overrides.
                     Some(existing) => {
-                        params::apply_overrides(existing, language.as_deref(), role.as_deref())?;
+                        track_descriptor::apply_overrides(
+                            existing,
+                            language.as_deref(),
+                            role.as_deref(),
+                        )?;
                     }
                     // New track: populate its metadata from the file, then
                     // pin the derived id in the descriptor — segment routes
@@ -90,7 +94,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     // it.
                     None => {
                         let mut track = Track::read(&op, &output, &path).await?;
-                        params::apply_overrides(&mut track, language.as_deref(), role.as_deref())?;
+                        track_descriptor::apply_overrides(
+                            &mut track,
+                            language.as_deref(),
+                            role.as_deref(),
+                        )?;
                         track.id = track.id();
                         asset.tracks.push(track);
                     }
