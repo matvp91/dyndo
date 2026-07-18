@@ -5,11 +5,10 @@ use axum::{
     http::header::CONTENT_TYPE,
     response::{IntoResponse, Response},
 };
-use dyndo_core::asset::{AnyTrack, Track};
-use dyndo_core::model::AssetModel;
+use dyndo_core::asset::Asset;
 use opendal::Operator;
 
-use super::find_source;
+use super::find_track;
 use crate::error::ServerError;
 
 /// `{repr}/init.mp4` — the representation's initialization segment.
@@ -18,9 +17,9 @@ pub(super) async fn init_segment(
     asset_path: &str,
     repr: &str,
 ) -> Result<Response, ServerError> {
-    let model = AssetModel::read(op, asset_path).await?;
-    let track = AnyTrack::from_model(op, find_source(&model, repr)?, asset_path).await?;
-    let bytes = track.init_segment_bytes(op).await?;
+    let asset = Asset::read(op, asset_path).await?;
+    let track = find_track(&asset, repr)?;
+    let bytes = track.read_init_segment(op, asset_path).await?;
     Ok(([(CONTENT_TYPE, track.mime_type())], bytes).into_response())
 }
 
@@ -36,17 +35,10 @@ pub(super) async fn media_segment(
         .ok_or_else(|| ServerError::NotFound(format!("unknown segment: {seg}")))?
         .parse()
         .map_err(|_| ServerError::BadRequest(format!("invalid segment time: {seg}")))?;
-    let model = AssetModel::read(op, asset_path).await?;
-    let track = AnyTrack::from_model(op, find_source(&model, repr)?, asset_path).await?;
-    // The same grouping policy the manifest was built with, or the advertised
-    // segment times would not resolve.
+    let asset = Asset::read(op, asset_path).await?;
+    let track = find_track(&asset, repr)?;
     let bytes = track
-        .segment_bytes(
-            op,
-            time,
-            &model.segment_boundaries_ms,
-            model.min_segment_length_ms,
-        )
+        .read_segment(op, asset_path, time)
         .await?
         .ok_or_else(|| ServerError::NotFound(format!("no segment at time {time}")))?;
     Ok(([(CONTENT_TYPE, track.mime_type())], bytes).into_response())

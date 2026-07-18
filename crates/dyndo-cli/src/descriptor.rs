@@ -2,7 +2,7 @@
 //!
 //! Field 0 is always the file path; `language` and `role` are the only keys.
 //! This layer validates syntax only — it does not probe, so audio-vs-text and
-//! role-value validation happen later in `Asset::upsert_track`.
+//! role-value validation happen later, once the track's metadata is known.
 
 /// A parsed `index` input: a source path plus optional per-track overrides.
 pub struct TrackDescriptor {

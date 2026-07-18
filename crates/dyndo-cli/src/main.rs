@@ -1,8 +1,9 @@
-use std::path::Path;
-
 use clap::{Parser, Subcommand};
-use dyndo_core::asset::{Asset, Track};
-use dyndo_core::model::AssetModel;
+use dyndo_core::asset::Asset;
+use dyndo_core::header::Header;
+use dyndo_core::metadata::Metadata;
+use dyndo_core::role::{AudioRole, TextRole};
+use dyndo_core::track::Track;
 use opendal::Operator;
 use opendal::services::Fs;
 
@@ -44,7 +45,7 @@ enum Command {
         compact: bool,
     },
     /// Generate HLS playlists (a multivariant playlist + one media playlist per
-    /// track) from an asset.json, into an output directory.
+    /// advertised track) from an asset.json, into an output directory.
     Hls {
         /// Input asset.json path.
         #[arg(short, long = "input", default_value = "asset.json")]
@@ -52,20 +53,6 @@ enum Command {
         /// Output directory for the playlists.
         #[arg(short, long = "output", default_value = "hls")]
         output: String,
-    },
-    /// Package a raw media payload into its container format.
-    /// The input extension selects the appropriate packer
-    /// (currently: `.vtt` → `wvtt` for CMAF text tracks).
-    Pack {
-        /// Input source file.
-        #[arg(short, long = "input")]
-        input: String,
-        /// Asset descriptor to align to and update.
-        #[arg(short, long = "asset", default_value = "asset.json")]
-        asset: String,
-        /// ISO-639-2 language code stored in the track.
-        #[arg(short, long = "language", default_value = "und")]
-        language: String,
     },
 }
 
@@ -75,6 +62,48 @@ fn operator() -> Result<Operator, Box<dyn std::error::Error>> {
     Ok(Operator::new(Fs::default().root(&root))?)
 }
 
+/// Apply a track descriptor's `language`/`role` overrides onto the probed
+/// track's metadata. Video tracks take neither.
+fn apply_overrides(
+    track: &mut Track,
+    language: Option<&str>,
+    role: Option<&str>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    match &mut track.metadata {
+        Metadata::Video(_) => {
+            if language.is_some() || role.is_some() {
+                return Err(
+                    format!("{}: video tracks take no language or role", track.path).into(),
+                );
+            }
+        }
+        Metadata::Audio(a) => {
+            if let Some(l) = language {
+                a.language = l.to_string();
+            }
+            if let Some(r) = role {
+                a.role = Some(parse_role::<AudioRole>(r)?);
+            }
+        }
+        Metadata::Text(t) => {
+            if let Some(l) = language {
+                t.language = l.to_string();
+            }
+            if let Some(r) = role {
+                t.role = Some(parse_role::<TextRole>(r)?);
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Parse a kebab-case role string through the role's serde vocabulary, so the
+/// CLI accepts exactly the values descriptors do.
+fn parse_role<T: serde::de::DeserializeOwned>(s: &str) -> Result<T, String> {
+    serde_json::from_value(serde_json::Value::String(s.to_string()))
+        .map_err(|_| format!("unknown role: {s}"))
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
@@ -82,8 +111,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     match cli.command {
         Command::Index { inputs, output } => {
             let mut asset = if op.exists(&output).await? {
-                let model = AssetModel::read(&op, &output).await?;
-                Asset::from_model(&op, model, &output).await?
+                Asset::read(&op, &output).await?
             } else {
                 let mut a = Asset::new();
                 a.path = output.clone();
@@ -91,141 +119,57 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
             for input in &inputs {
                 let d = descriptor::TrackDescriptor::parse(input)?;
-                asset
-                    .upsert_track(
-                        &op,
-                        &d.path,
-                        &output,
-                        d.language.as_deref(),
-                        d.role.as_deref(),
-                    )
-                    .await?;
+                let mut track = Track::read(&op, &output, &d.path).await?;
+                apply_overrides(&mut track, d.language.as_deref(), d.role.as_deref())?;
+                match asset.tracks.iter_mut().find(|t| t.path == d.path) {
+                    // Upsert by source path, keeping the descriptor's stored id.
+                    Some(existing) => {
+                        track.id = existing.id.clone();
+                        *existing = track;
+                    }
+                    // Pin the derived id in the descriptor: segment routes key
+                    // on it, so later metadata edits must not re-derive it.
+                    None => {
+                        track.id = track.id();
+                        asset.tracks.push(track);
+                    }
+                }
             }
-            AssetModel::from(&asset).write(&op, &output).await?;
-            let tracks =
-                asset.video_tracks.len() + asset.audio_tracks.len() + asset.text_tracks.len();
-            println!("wrote {output} ({tracks} tracks)");
+            asset.write(&op, &output).await?;
+            println!("wrote {output} ({} tracks)", asset.tracks.len());
         }
         Command::Dash {
             input,
             output,
             compact,
         } => {
-            let model = AssetModel::read(&op, &input).await?;
-            let asset = Asset::from_model(&op, model, &input).await?;
+            let asset = Asset::read(&op, &input).await?;
             let mpd = dyndo_core::dash::generate_mpd(&asset, compact);
             op.write(&output, mpd.into_bytes()).await?;
             println!("wrote {output}");
         }
         Command::Hls { input, output } => {
-            let model = AssetModel::read(&op, &input).await?;
-            let asset = Asset::from_model(&op, model, &input).await?;
+            let asset = Asset::read(&op, &input).await?;
             op.write(
                 &format!("{output}/index.m3u8"),
                 dyndo_core::hls::generate_master(&asset).into_bytes(),
             )
             .await?;
-            let count =
-                asset.video_tracks.len() + asset.audio_tracks.len() + asset.text_tracks.len();
-            for t in &asset.video_tracks {
+            // Media playlists for the advertised tracks only: text and raw
+            // (non-CMAF) tracks are not part of this generation's playlists.
+            let mut count = 0;
+            for t in asset.tracks.iter().filter(|t| {
+                matches!(t.header(), Header::Cmaf(_))
+                    && matches!(t.metadata, Metadata::Video(_) | Metadata::Audio(_))
+            }) {
                 op.write(
                     &format!("{output}/{}.m3u8", t.id()),
-                    dyndo_core::hls::generate_media(
-                        t,
-                        &asset.segment_boundaries_ms,
-                        asset.min_segment_length_ms,
-                    )
-                    .into_bytes(),
+                    dyndo_core::hls::generate_media(t).into_bytes(),
                 )
                 .await?;
-            }
-            for t in &asset.audio_tracks {
-                op.write(
-                    &format!("{output}/{}.m3u8", t.id()),
-                    dyndo_core::hls::generate_media(
-                        t,
-                        &asset.segment_boundaries_ms,
-                        asset.min_segment_length_ms,
-                    )
-                    .into_bytes(),
-                )
-                .await?;
-            }
-            for t in &asset.text_tracks {
-                op.write(
-                    &format!("{output}/{}.m3u8", t.id()),
-                    dyndo_core::hls::generate_media(
-                        t,
-                        &asset.segment_boundaries_ms,
-                        asset.min_segment_length_ms,
-                    )
-                    .into_bytes(),
-                )
-                .await?;
+                count += 1;
             }
             println!("wrote {output}/ (1 master + {count} media)");
-        }
-        Command::Pack {
-            input,
-            asset,
-            language,
-        } => {
-            let ext = Path::new(&input)
-                .extension()
-                .and_then(|e| e.to_str())
-                .map(str::to_ascii_lowercase);
-            match ext.as_deref() {
-                Some("vtt") => {
-                    // First video track's segment timeline (error if no video).
-                    // Packed at raw fragment granularity (no grouping policy):
-                    // serve-time grouping regroups text and video to identical
-                    // boundaries, and the packed file survives policy edits.
-                    let model = AssetModel::read(&op, &asset).await?;
-                    let mut asset_obj = Asset::from_model(&op, model, &asset).await?;
-                    let segments = asset_obj
-                        .video_tracks
-                        .first()
-                        .ok_or_else(|| {
-                            "pack: asset has no video track to align subtitles to".to_string()
-                        })?
-                        .segments(&[], 0);
-
-                    // Parse → expand → pack.
-                    let raw = op.read(&input).await?;
-                    let text = String::from_utf8(raw.to_vec())
-                        .map_err(|e| format!("input is not valid UTF-8: {e}"))?;
-                    let subtitle = dyndo_core::text::vtt::parse(&text)?;
-                    let language = if language.is_empty() {
-                        "und".to_string()
-                    } else {
-                        language
-                    };
-                    let windows = subtitle.expand(&segments);
-                    let bytes = dyndo_core::text::wvtt::pack(&language, &windows, &segments)?;
-
-                    // Text ids are header-free (text_{fourcc}_{language}), so the
-                    // name is known before writing. Mirrors
-                    // dyndo_core::asset::TextTrack::id; packing is always wvtt.
-                    let out = format!("text_wvtt_{language}.mp4");
-                    let dest = dyndo_core::path_utils::resolve(&asset, &out);
-                    op.write(&dest, bytes).await?;
-
-                    // Upsert the packed file into the descriptor by path (the
-                    // shared index seam), replacing any stale same-path entry,
-                    // then rewrite the descriptor.
-                    asset_obj
-                        .upsert_track(&op, &out, &asset, Some(language.as_str()), None)
-                        .await?;
-                    AssetModel::from(&asset_obj).write(&op, &asset).await?;
-                    println!("wrote {out}; updated {asset}");
-                }
-                other => {
-                    return Err(format!(
-                        "pack: unsupported input extension {other:?} (supported: vtt)"
-                    )
-                    .into());
-                }
-            }
         }
     }
     Ok(())

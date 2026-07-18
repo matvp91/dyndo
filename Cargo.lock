@@ -637,6 +637,7 @@ dependencies = [
  "clap",
  "dyndo-core",
  "opendal",
+ "serde",
  "serde_json",
  "tempfile",
  "tokio",
