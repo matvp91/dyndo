@@ -3,8 +3,6 @@
 //! the advertisable tracks by that key. Rendering the groups into
 //! `AdaptationSet` XML stays in `build`.
 
-use crate::codec;
-use crate::header::Header;
 use crate::metadata::Metadata;
 use crate::role::{AudioRole, TextRole};
 use crate::track::Track;
@@ -52,28 +50,25 @@ pub(super) enum AdaptationKey {
 
 impl AdaptationKey {
     /// Where `track` fits in the MPD, or `None` when it is not advertised:
-    /// a raw (non-CMAF) file has no fragment timeline to put in a
-    /// `SegmentTemplate`.
+    /// a raw (non-CMAF) file — the only kind without a sample entry — has
+    /// no fragment timeline to put in a `SegmentTemplate`.
     fn of(track: &Track) -> Option<AdaptationKey> {
-        let h = match track.header() {
-            Header::Raw(_) => return None,
-            Header::Cmaf(h) => h,
-        };
-        let sample_entry = codec::rfc6381_sample_entry(&h.codec).to_string();
+        let sample_entry = track.sample_entry()?.to_string();
+        let timescale = track.timescale();
         Some(match &track.metadata {
             Metadata::Video(_) => AdaptationKey::Video {
                 sample_entry,
-                timescale: h.timescale,
+                timescale,
             },
             Metadata::Audio(a) => AdaptationKey::Audio {
                 sample_entry,
-                timescale: h.timescale,
+                timescale,
                 language: a.language.clone(),
                 role: a.role,
             },
             Metadata::Text(t) => AdaptationKey::Text {
                 sample_entry,
-                timescale: h.timescale,
+                timescale,
                 language: t.language.clone(),
                 role: t.role,
             },

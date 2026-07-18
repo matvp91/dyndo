@@ -1,11 +1,10 @@
 //! Groups an asset's tracks for the HLS multivariant playlist: which tracks
-//! are advertised — CMAF video and audio; text and raw (non-CMAF) tracks are
-//! not — and which audio renditions share one `EXT-X-MEDIA` `GROUP-ID`.
-//! Rendering the groups into playlist tags stays in `build`.
+//! are advertised — video and audio (always CMAF; raw is only ever `.vtt`
+//! text); text tracks are not — and which audio renditions share one
+//! `EXT-X-MEDIA` `GROUP-ID`. Rendering the groups into playlist tags stays
+//! in `build`.
 
 use crate::asset::Asset;
-use crate::codec::rfc6381_sample_entry;
-use crate::header::Header;
 use crate::metadata::{AudioMetadata, Metadata, VideoMetadata};
 use crate::track::Track;
 
@@ -29,7 +28,6 @@ pub(super) fn videos(asset: &Asset) -> Vec<(&Track, &VideoMetadata)> {
     asset
         .tracks
         .iter()
-        .filter(|t| matches!(t.header(), Header::Cmaf(_)))
         .filter_map(|t| match &t.metadata {
             Metadata::Video(v) => Some((t, v)),
             _ => None,
@@ -42,7 +40,6 @@ pub(super) fn audios(asset: &Asset) -> Vec<(&Track, &AudioMetadata)> {
     asset
         .tracks
         .iter()
-        .filter(|t| matches!(t.header(), Header::Cmaf(_)))
         .filter_map(|t| match &t.metadata {
             Metadata::Audio(a) => Some((t, a)),
             _ => None,
@@ -55,17 +52,16 @@ pub(super) fn audios(asset: &Asset) -> Vec<(&Track, &AudioMetadata)> {
 pub(super) fn audio_group<'a>(audios: &[(&'a Track, &'a AudioMetadata)]) -> Vec<AudioGroup<'a>> {
     let mut groups: Vec<AudioGroup> = Vec::new();
     for &(t, a) in audios {
-        let h = t.cmaf();
-        let sample_entry = rfc6381_sample_entry(&h.codec);
+        let sample_entry = t.sample_entry().expect("audio tracks are CMAF");
         match groups.iter_mut().find(|g| g.id == sample_entry) {
             Some(g) => {
-                g.max_bandwidth = g.max_bandwidth.max(h.bandwidth());
+                g.max_bandwidth = g.max_bandwidth.max(t.bandwidth());
                 g.tracks.push((t, a));
             }
             None => groups.push(AudioGroup {
                 id: sample_entry.to_string(),
-                codec: h.codec.clone(),
-                max_bandwidth: h.bandwidth(),
+                codec: t.codec().expect("audio tracks are CMAF").to_string(),
+                max_bandwidth: t.bandwidth(),
                 tracks: vec![(t, a)],
             }),
         }

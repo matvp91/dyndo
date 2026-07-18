@@ -8,6 +8,7 @@ use opendal::Operator;
 use relative_path::RelativePath;
 use serde::Deserialize;
 
+use crate::codec::rfc6381_sample_entry;
 use crate::error::CoreError;
 use crate::header::Header;
 use crate::header_cmaf::HeaderCmaf;
@@ -29,7 +30,7 @@ pub struct Track {
     /// descriptor's location on the fly; it is never stored resolved.
     pub path: String,
     /// The track file's parsed header, `None` until probed. Never on the
-    /// wire; access through [`Track::header`].
+    /// wire; read through the accessors on `Track`.
     #[serde(skip)]
     header: Option<Header>,
     /// The track's media type and its per-type fields, tagged on the wire by
@@ -87,7 +88,7 @@ impl Track {
     ///
     /// # Panics
     /// If the track has not been probed (`header` is `None`).
-    pub fn header(&self) -> &Header {
+    fn header(&self) -> &Header {
         self.header.as_ref().expect("track not probed")
     }
 
@@ -95,7 +96,7 @@ impl Track {
     ///
     /// # Panics
     /// If the track has not been probed, or is raw.
-    pub fn cmaf(&self) -> &HeaderCmaf {
+    fn cmaf(&self) -> &HeaderCmaf {
         let Header::Cmaf(h) = self.header() else {
             panic!("track is not CMAF");
         };
@@ -104,26 +105,31 @@ impl Track {
 
     /// The representation id: the descriptor's stored id when present, else
     /// derived from the track's distinguishing fields —
-    /// `video_{height}_{bandwidth}`, `audio_{language}_{channels}_{bandwidth}`,
-    /// or `text_{language}`. Manifests and segment routes both key
-    /// representations by this value.
+    /// `video_{sample_entry}_{height}_{bandwidth}`,
+    /// `audio_{sample_entry}_{language}_{channels}_{bandwidth}`, or
+    /// `text_{sample_entry}_{language}` (`vtt` for a raw file). Manifests
+    /// and segment routes both key representations by this value.
     ///
     /// # Panics
-    /// If the track has not been probed: the video and audio derivations
-    /// read the header.
+    /// If the track has not been probed: the derivations read the header.
     pub fn id(&self) -> String {
         if !self.id.is_empty() {
             return self.id.clone();
         }
+        // Raw is always a plain `.vtt` today; its file format stands in
+        // for the missing sample entry.
+        let sample_entry = self.sample_entry().unwrap_or("vtt");
         match &self.metadata {
-            Metadata::Video(v) => format!("video_{}_{}", v.height, self.cmaf().bandwidth()),
+            Metadata::Video(v) => {
+                format!("video_{sample_entry}_{}_{}", v.height, self.bandwidth())
+            }
             Metadata::Audio(a) => format!(
-                "audio_{}_{}_{}",
+                "audio_{sample_entry}_{}_{}_{}",
                 a.language,
                 a.channels,
-                self.cmaf().bandwidth()
+                self.bandwidth()
             ),
-            Metadata::Text(t) => format!("text_{}", t.language),
+            Metadata::Text(t) => format!("text_{sample_entry}_{}", t.language),
         }
     }
 
@@ -152,6 +158,85 @@ impl Track {
             Header::Cmaf(h) => Some(&h.codec),
             Header::Raw(_) => None,
         }
+    }
+
+    /// The sample-entry codingname of the track's codec (e.g. `"avc1"`,
+    /// `"mp4a"`), or `None` for a raw file: a plain `.vtt` has no sample
+    /// entry.
+    ///
+    /// # Panics
+    /// If the track has not been probed.
+    pub fn sample_entry(&self) -> Option<&str> {
+        match self.header() {
+            Header::Cmaf(h) => Some(rfc6381_sample_entry(&h.codec)),
+            Header::Raw(_) => None,
+        }
+    }
+
+    /// The track's average bitrate in bits/s, derived from its segment
+    /// sizes and duration. `0` for raw tracks: a raw file declares no
+    /// bitrate of its own.
+    ///
+    /// # Panics
+    /// If the track has not been probed.
+    pub fn bandwidth(&self) -> u32 {
+        match self.header() {
+            Header::Cmaf(h) => h.bandwidth(),
+            Header::Raw(_) => 0,
+        }
+    }
+
+    /// Units per second for durations in this track. `1000` for raw
+    /// tracks: a raw file declares no timescale of its own, so it counts
+    /// in milliseconds.
+    ///
+    /// # Panics
+    /// If the track has not been probed.
+    pub fn timescale(&self) -> u32 {
+        match self.header() {
+            Header::Cmaf(h) => h.timescale,
+            Header::Raw(_) => 1000,
+        }
+    }
+
+    /// Presentation time of the first (sub)segment, in the track
+    /// timescale. `0` for raw tracks: a raw file carries no offset.
+    ///
+    /// # Panics
+    /// If the track has not been probed.
+    pub fn earliest_presentation_time(&self) -> u64 {
+        match self.header() {
+            Header::Cmaf(h) => h.earliest_presentation_time,
+            Header::Raw(_) => 0,
+        }
+    }
+
+    /// Frame rate as a (numerator, denominator) ratio, in frames per
+    /// second. `(0, 1)` when the track declares no sample duration, or
+    /// for raw tracks.
+    ///
+    /// # Panics
+    /// If the track has not been probed.
+    pub fn frame_rate(&self) -> (u32, u32) {
+        match self.header() {
+            Header::Cmaf(h) => h.frame_rate(),
+            Header::Raw(_) => (0, 1),
+        }
+    }
+
+    /// Whether the track has a CMAF fragment timeline: a segmented track
+    /// serves an init segment and media (sub)segments; a raw file has
+    /// neither.
+    ///
+    /// TODO: rethink this predicate when raw (`.vtt`) serving lands: raw
+    /// tracks become representations served whole, so "is this track a
+    /// representation" stops being the question — the guard moves into
+    /// the per-resource routes.
+    ///
+    /// # Panics
+    /// If the track has not been probed.
+    pub fn is_segmented(&self) -> bool {
+        matches!(self.header(), Header::Cmaf(_))
     }
 
     /// The track's served (sub)segments, in presentation order: the header's
@@ -209,7 +294,7 @@ impl Track {
         boundaries_ms: &[u64],
         min_length_ms: u64,
     ) -> Result<Option<Bytes>, CoreError> {
-        let mut start = self.cmaf().earliest_presentation_time;
+        let mut start = self.earliest_presentation_time();
         for seg in self.segments(boundaries_ms, min_length_ms) {
             if start == time {
                 let resolved = resolve(asset_descriptor_path, &self.path);

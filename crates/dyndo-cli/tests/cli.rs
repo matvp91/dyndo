@@ -44,16 +44,19 @@ fn writes_asset_json_for_video_and_audio() {
     assert_eq!(tracks[0]["path"], "video_avc_1080.mp4");
     // The derived representation id is pinned at index time.
     assert!(
-        tracks[0]["id"].as_str().unwrap().starts_with("video_1080_"),
+        tracks[0]["id"]
+            .as_str()
+            .unwrap()
+            .starts_with("video_avc1_1080_"),
         "{:?}",
         tracks[0]["id"]
     );
     assert_eq!(tracks[1]["type"], "audio");
     assert_eq!(tracks[1]["language"], "nld");
     // Derived debug fields, recomputed from the probe on every write.
-    assert_eq!(tracks[0]["mime_type"], "video/mp4");
+    assert_eq!(tracks[0]["fourcc"], "avc1");
     assert_eq!(tracks[0]["codec"], "avc1.640028");
-    assert_eq!(tracks[1]["mime_type"], "audio/mp4");
+    assert_eq!(tracks[1]["fourcc"], "mp4a");
     assert_eq!(tracks[1]["codec"], "mp4a.40.2");
 }
 
@@ -227,8 +230,9 @@ fn indexes_raw_vtt_track_without_advertising_it() {
         .expect("a text track");
     assert_eq!(text["language"], "eng");
     assert_eq!(text["path"], "text_sample.vtt");
-    // A raw file has a real MIME type but no RFC 6381 codec.
-    assert_eq!(text["mime_type"], "text/vtt");
+    // A raw file has no sample entry and no RFC 6381 codec; neither field
+    // is written.
+    assert!(text["fourcc"].is_null(), "{text:?}");
     assert!(text["codec"].is_null(), "{text:?}");
 
     // Raw (non-CMAF) tracks are not advertised in manifests yet.
@@ -287,8 +291,8 @@ fn manual_language_edit_in_asset_json_overrides_probed_language() {
     // The representation id stays the one stored in asset.json at index time —
     // segment routes look tracks up by that id, so a language edit must not
     // re-derive it.
-    assert!(xml.contains("audio_nld_"), "{xml}");
-    assert!(!xml.contains("audio_fra_"), "{xml}");
+    assert!(xml.contains("audio_mp4a_nld_"), "{xml}");
+    assert!(!xml.contains("audio_mp4a_fra_"), "{xml}");
 
     assert!(
         dyndo(dir.path())

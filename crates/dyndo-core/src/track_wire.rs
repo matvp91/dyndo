@@ -1,5 +1,5 @@
 //! The descriptor (`asset.json`) serialization of a [`Track`]: the stored
-//! fields plus derived debug-only fields (`mime_type`, `codec`), recomputed
+//! fields plus derived debug-only fields (`fourcc`, `codec`), recomputed
 //! from the probed header on every write and ignored when a descriptor is
 //! read back.
 
@@ -16,7 +16,8 @@ struct TrackWire<'a> {
     path: &'a str,
     #[serde(flatten)]
     metadata: &'a Metadata,
-    mime_type: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    fourcc: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     codec: Option<&'a str>,
 }
@@ -31,7 +32,7 @@ impl Serialize for Track {
             id: &self.id,
             path: &self.path,
             metadata: &self.metadata,
-            mime_type: self.mime_type(),
+            fourcc: self.sample_entry(),
             codec: self.codec(),
         }
         .serialize(serializer)

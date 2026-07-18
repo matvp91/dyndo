@@ -1,6 +1,5 @@
 use clap::{Parser, Subcommand};
 use dyndo_core::asset::Asset;
-use dyndo_core::header::Header;
 use dyndo_core::metadata::Metadata;
 use dyndo_core::track::Track;
 use opendal::Operator;
@@ -124,13 +123,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 dyndo_core::hls::generate_master(&asset).into_bytes(),
             )
             .await?;
-            // Media playlists for the advertised tracks only: text and raw
-            // (non-CMAF) tracks are not part of this generation's playlists.
+            // Media playlists for the advertised tracks only: text tracks
+            // are not part of this generation's playlists.
             let mut count = 0;
-            for t in asset.tracks.iter().filter(|t| {
-                matches!(t.header(), Header::Cmaf(_))
-                    && matches!(t.metadata, Metadata::Video(_) | Metadata::Audio(_))
-            }) {
+            for t in asset
+                .tracks
+                .iter()
+                .filter(|t| matches!(t.metadata, Metadata::Video(_) | Metadata::Audio(_)))
+            {
                 op.write(
                     &format!("{output}/{}.m3u8", t.id()),
                     dyndo_core::hls::generate_media(

@@ -16,7 +16,6 @@ use axum::{
     routing::get,
 };
 use dyndo_core::asset::Asset;
-use dyndo_core::header::Header;
 use dyndo_core::track::Track;
 use opendal::Operator;
 use tower_http::cors::{Any, CorsLayer};
@@ -96,7 +95,7 @@ fn find_track<'a>(asset: &'a Asset, repr: &str) -> Result<&'a Track, ServerError
     asset
         .tracks
         .iter()
-        .filter(|t| matches!(t.header(), Header::Cmaf(_)))
+        .filter(|t| t.is_segmented())
         .find(|t| t.id() == repr)
         .ok_or_else(|| ServerError::NotFound(format!("no representation {repr}")))
 }

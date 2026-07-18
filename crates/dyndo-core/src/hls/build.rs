@@ -22,16 +22,16 @@ pub(super) fn build_media(
     min_length_ms: u64,
 ) -> MediaPlaylist<'static> {
     let repr = track.id();
-    let h = track.cmaf();
+    let timescale = track.timescale();
     let served = track.segments(boundaries_ms, min_length_ms);
 
-    let mut time = h.earliest_presentation_time;
+    let mut time = track.earliest_presentation_time();
     let mut segments: Vec<MediaSegment<'static>> = Vec::with_capacity(served.len());
     for (i, seg) in served.iter().enumerate() {
         let mut b = MediaSegment::builder();
         b.uri(format!("{repr}/{time}.m4s"));
         b.duration(Duration::from_secs_f64(
-            seg.duration as f64 / h.timescale as f64,
+            seg.duration as f64 / timescale as f64,
         ));
         if i == 0 {
             b.map(ExtXMap::new(format!("{repr}/init.mp4")));
@@ -45,7 +45,7 @@ pub(super) fn build_media(
 
     let mut b = MediaPlaylist::builder();
     b.media_sequence(0);
-    b.target_duration(Duration::from_secs(target_duration(&served, h.timescale)));
+    b.target_duration(Duration::from_secs(target_duration(&served, timescale)));
     b.playlist_type(PlaylistType::Vod);
     b.has_end_list(true);
     b.segments(segments);
@@ -162,7 +162,7 @@ fn video_variants(
 ) -> Vec<VariantStream<'static>> {
     let mut out = Vec::new();
     for &(t, v) in videos {
-        let (num, den) = t.cmaf().frame_rate();
+        let (num, den) = t.frame_rate();
         let fr = (num != 0).then(|| num as f32 / den as f32);
         if groups.is_empty() {
             out.push(video_variant(t, v, fr, None));
@@ -181,9 +181,8 @@ fn video_variant(
     fr: Option<f32>,
     group: Option<&AudioGroup>,
 ) -> VariantStream<'static> {
-    let h = t.cmaf();
-    let mut codecs = vec![h.codec.clone()];
-    let mut bandwidth = h.bandwidth() as u64;
+    let mut codecs = vec![t.codec().expect("video tracks are CMAF").to_string()];
+    let mut bandwidth = t.bandwidth() as u64;
     let audio = group.map(|g| {
         codecs.push(g.codec.clone());
         bandwidth += g.max_bandwidth as u64;
@@ -206,7 +205,6 @@ fn video_variant(
 
 /// A standalone audio variant, used only when the asset has no video.
 fn audio_variant(t: &Track) -> VariantStream<'static> {
-    let h = t.cmaf();
     VariantStream::ExtXStreamInf {
         uri: format!("{}.m3u8", t.id()).into(),
         frame_rate: None,
@@ -214,8 +212,8 @@ fn audio_variant(t: &Track) -> VariantStream<'static> {
         subtitles: None,
         closed_captions: None,
         stream_data: StreamData::builder()
-            .bandwidth(h.bandwidth() as u64)
-            .codecs(vec![h.codec.clone()])
+            .bandwidth(t.bandwidth() as u64)
+            .codecs(vec![t.codec().expect("audio tracks are CMAF").to_string()])
             .build()
             .expect("stream data always has a bandwidth"),
     }

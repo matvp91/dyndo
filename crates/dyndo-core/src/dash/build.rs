@@ -7,7 +7,6 @@ use dash_mpd::{
 
 use super::adaptation_set_group::{self, AdaptationKey};
 use crate::asset::Asset;
-use crate::header_cmaf::HeaderCmaf;
 use crate::metadata::Metadata;
 use crate::role::{AudioRole, TextRole};
 use crate::segment::Segment;
@@ -38,14 +37,15 @@ fn build_timeline(segments: &[Segment], first_t: u64) -> Vec<S> {
     out
 }
 
-fn segment_template(h: &HeaderCmaf, segments: &[Segment]) -> SegmentTemplate {
+fn segment_template(track: &Track, segments: &[Segment]) -> SegmentTemplate {
+    let ept = track.earliest_presentation_time();
     SegmentTemplate {
-        timescale: Some(h.timescale as u64),
-        presentationTimeOffset: Some(h.earliest_presentation_time),
+        timescale: Some(track.timescale() as u64),
+        presentationTimeOffset: Some(ept),
         initialization: Some(INIT_TEMPLATE.to_string()),
         media: Some(MEDIA_TEMPLATE.to_string()),
         SegmentTimeline: Some(SegmentTimeline {
-            segments: build_timeline(segments, h.earliest_presentation_time),
+            segments: build_timeline(segments, ept),
         }),
         ..Default::default()
     }
@@ -56,13 +56,12 @@ fn segment_template(h: &HeaderCmaf, segments: &[Segment]) -> SegmentTemplate {
 /// configuration. The timeline advertises the served segments under the
 /// asset's grouping pair.
 fn representation(track: &Track, boundaries_ms: &[u64], min_length_ms: u64) -> Representation {
-    let h = track.cmaf();
     let mut rep = Representation {
         id: Some(track.id()),
-        bandwidth: Some(h.bandwidth() as u64),
-        codecs: Some(h.codec.clone()),
+        bandwidth: Some(track.bandwidth() as u64),
+        codecs: track.codec().map(String::from),
         SegmentTemplate: Some(segment_template(
-            h,
+            track,
             &track.segments(boundaries_ms, min_length_ms),
         )),
         ..Default::default()
@@ -71,7 +70,7 @@ fn representation(track: &Track, boundaries_ms: &[u64], min_length_ms: u64) -> R
         Metadata::Video(v) => {
             rep.width = Some(v.width as u64);
             rep.height = Some(v.height as u64);
-            rep.frameRate = match h.frame_rate() {
+            rep.frameRate = match track.frame_rate() {
                 (0, _) => None,
                 (n, 1) => Some(n.to_string()),
                 (n, d) => Some(format!("{n}/{d}")),

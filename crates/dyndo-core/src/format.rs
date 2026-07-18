@@ -1,8 +1,7 @@
 //! The container format of a track file: [`Format::from_path`] infers it
 //! from the file extension, and the header and metadata reads
-//! ([`Header::read`](crate::header::Header::read),
-//! [`Metadata::read`](crate::metadata::Metadata::read)) dispatch
-//! on it.
+//! (`Header::read`, [`Metadata::read`](crate::metadata::Metadata::read))
+//! dispatch on it.
 
 use crate::error::CoreError;
 
