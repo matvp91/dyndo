@@ -390,6 +390,40 @@ fn index_upserts_an_existing_path_in_place() {
 }
 
 #[test]
+fn reindexing_an_existing_path_keeps_descriptor_metadata() {
+    let dir = tempfile::tempdir().unwrap();
+    stage(dir.path(), &["audio_aac_nl_2.mp4"]);
+
+    assert!(
+        dyndo(dir.path())
+            .args(["index", "audio_aac_nl_2.mp4", "-o", "asset.json"])
+            .status()
+            .unwrap()
+            .success()
+    );
+
+    // Hand-edit the descriptor language: the descriptor is authoritative.
+    let path = dir.path().join("asset.json");
+    let mut json: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    json["tracks"][0]["language"] = "fra".into();
+    fs::write(&path, serde_json::to_vec_pretty(&json).unwrap()).unwrap();
+
+    // Re-index the same path with no overrides: the edit must survive.
+    assert!(
+        dyndo(dir.path())
+            .args(["index", "audio_aac_nl_2.mp4", "-o", "asset.json"])
+            .status()
+            .unwrap()
+            .success()
+    );
+
+    let json: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    let tracks = json["tracks"].as_array().unwrap();
+    assert_eq!(tracks.len(), 1, "same path should not duplicate");
+    assert_eq!(tracks[0]["language"], "fra", "{:?}", tracks[0]);
+}
+
+#[test]
 fn index_rejects_role_on_video() {
     let dir = tempfile::tempdir().unwrap();
     stage(dir.path(), &["video_avc_1080.mp4"]);

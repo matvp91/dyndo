@@ -2,12 +2,11 @@ use clap::{Parser, Subcommand};
 use dyndo_core::asset::Asset;
 use dyndo_core::header::Header;
 use dyndo_core::metadata::Metadata;
-use dyndo_core::role::{AudioRole, TextRole};
 use dyndo_core::track::Track;
 use opendal::Operator;
 use opendal::services::Fs;
 
-mod descriptor;
+mod params;
 
 /// dyndo — dynamic media packaging for adaptive streaming.
 #[derive(Parser)]
@@ -21,8 +20,9 @@ struct Cli {
 enum Command {
     /// Build or update an asset.json descriptor from one or more track
     /// descriptors. Each descriptor is `<path>[,language=..][,role=..]`, where
-    /// the path is relative to the output descriptor's directory. When the
-    /// output already exists, tracks are merged into it (upsert by source path).
+    /// the path is relative to the output descriptor's directory. New tracks
+    /// are probed from their file; tracks already in the descriptor keep
+    /// their metadata as-is, with only explicit overrides applied.
     Index {
         /// Track descriptor(s): `<path>[,language=..][,role=..]`, one per track.
         #[arg(required = true)]
@@ -62,48 +62,6 @@ fn operator() -> Result<Operator, Box<dyn std::error::Error>> {
     Ok(Operator::new(Fs::default().root(&root))?)
 }
 
-/// Apply a track descriptor's `language`/`role` overrides onto the probed
-/// track's metadata. Video tracks take neither.
-fn apply_overrides(
-    track: &mut Track,
-    language: Option<&str>,
-    role: Option<&str>,
-) -> Result<(), Box<dyn std::error::Error>> {
-    match &mut track.metadata {
-        Metadata::Video(_) => {
-            if language.is_some() || role.is_some() {
-                return Err(
-                    format!("{}: video tracks take no language or role", track.path).into(),
-                );
-            }
-        }
-        Metadata::Audio(a) => {
-            if let Some(l) = language {
-                a.language = l.to_string();
-            }
-            if let Some(r) = role {
-                a.role = Some(parse_role::<AudioRole>(r)?);
-            }
-        }
-        Metadata::Text(t) => {
-            if let Some(l) = language {
-                t.language = l.to_string();
-            }
-            if let Some(r) = role {
-                t.role = Some(parse_role::<TextRole>(r)?);
-            }
-        }
-    }
-    Ok(())
-}
-
-/// Parse a kebab-case role string through the role's serde vocabulary, so the
-/// CLI accepts exactly the values descriptors do.
-fn parse_role<T: serde::de::DeserializeOwned>(s: &str) -> Result<T, String> {
-    serde_json::from_value(serde_json::Value::String(s.to_string()))
-        .map_err(|_| format!("unknown role: {s}"))
-}
-
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
@@ -118,18 +76,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 a
             };
             for input in &inputs {
-                let d = descriptor::TrackDescriptor::parse(input)?;
-                let mut track = Track::read(&op, &output, &d.path).await?;
-                apply_overrides(&mut track, d.language.as_deref(), d.role.as_deref())?;
-                match asset.tracks.iter_mut().find(|t| t.path == d.path) {
-                    // Upsert by source path, keeping the descriptor's stored id.
+                let (path, language, role) = params::parse_track_descriptor(input)?;
+                match asset.tracks.iter_mut().find(|t| t.path == path) {
+                    // Already indexed: the descriptor's metadata is
+                    // authoritative — keep it as-is, applying only the
+                    // explicit overrides.
                     Some(existing) => {
-                        track.id = existing.id.clone();
-                        *existing = track;
+                        params::apply_overrides(existing, language.as_deref(), role.as_deref())?;
                     }
-                    // Pin the derived id in the descriptor: segment routes key
-                    // on it, so later metadata edits must not re-derive it.
+                    // New track: populate its metadata from the file, then
+                    // pin the derived id in the descriptor — segment routes
+                    // key on it, so later metadata edits must not re-derive
+                    // it.
                     None => {
+                        let mut track = Track::read(&op, &output, &path).await?;
+                        params::apply_overrides(&mut track, language.as_deref(), role.as_deref())?;
                         track.id = track.id();
                         asset.tracks.push(track);
                     }
