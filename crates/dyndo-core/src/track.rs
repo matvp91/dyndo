@@ -21,11 +21,11 @@ use crate::segment_utils;
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct Track {
     /// The representation id manifests and segment routes key by. Generated
-    /// from the probed fields by [`Track::read`]; when a descriptor
-    /// declares none, [`Asset::read`] fills it the same way. Serialization
-    /// writes it verbatim, so a descriptor write pins it.
-    ///
-    /// [`Asset::read`]: crate::asset::Asset::read
+    /// from the probed fields by [`Track::read`] when the track is first
+    /// read; serialization writes it verbatim, so the descriptor pins it and
+    /// later reads take it from there. A descriptor must carry a non-empty
+    /// id — deserialization requires the field, and it is never regenerated
+    /// on read.
     pub id: String,
     /// Path of the track's file, relative to the asset descriptor
     /// (`asset.json`) that declares it. Reads resolve it against the

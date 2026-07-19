@@ -20,6 +20,11 @@ pub enum CoreError {
     /// required box is missing or empty.
     #[error("invalid track container: {0}")]
     Container(String),
+    /// The descriptor parsed as JSON but violates a semantic requirement:
+    /// e.g. a track with an empty id, which manifests and segment routes
+    /// cannot key by.
+    #[error("invalid descriptor: {0}")]
+    InvalidDescriptor(String),
     /// The track's sample entry declares a codec dyndo does not support.
     #[error("unsupported codec: {0}")]
     UnsupportedCodec(String),

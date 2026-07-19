@@ -45,26 +45,31 @@ impl Asset {
     }
 
     /// Read and deserialize the descriptor JSON at `path` through `op`,
-    /// recording `path` as the asset's source, probing every track's
-    /// header, and filling each id the descriptor left out with
-    /// [`Track::generate_id`] — consumers key by [`Track::id`] directly.
+    /// recording `path` as the asset's source and probing every track's
+    /// header. Each track's id comes verbatim from the descriptor, which
+    /// carries it from index time — consumers key by [`Track::id`] directly.
     ///
     /// # Errors
     /// [`CoreError::Storage`] if the object is missing or unreadable;
     /// [`CoreError::Descriptor`] if the bytes are not valid descriptor JSON;
+    /// [`CoreError::InvalidDescriptor`] if a track carries an empty id;
     /// otherwise any [`CoreError`] from probing a track's header.
     pub async fn read(op: &Operator, path: &str) -> Result<Asset, CoreError> {
         let buf = op.read(path).await?;
         let mut asset: Asset = serde_json::from_reader(buf.reader())?;
         asset.path = path.to_string();
+        // The id is the manifest/segment-route key and is never regenerated
+        // on read, so a blank one would key silently by the empty string.
+        // Reject before probing rather than propagate it.
+        if let Some(t) = asset.tracks.iter().find(|t| t.id.is_empty()) {
+            return Err(CoreError::InvalidDescriptor(format!(
+                "track {:?} has an empty id",
+                t.path
+            )));
+        }
         // Tracks are independent, so all headers are probed concurrently;
         // each read resolves the track's descriptor-relative path itself.
         try_join_all(asset.tracks.iter_mut().map(|t| t.read_header(op, path))).await?;
-        for t in &mut asset.tracks {
-            if t.id.is_empty() {
-                t.id = t.generate_id();
-            }
-        }
         Ok(asset)
     }
 
@@ -186,6 +191,22 @@ mod tests {
 
         assert!(matches!(err, CoreError::UnsupportedFormat(_)));
         assert!(asset.tracks.is_empty());
+    }
+
+    #[tokio::test]
+    async fn read_rejects_a_track_with_an_empty_id() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("subs.vtt"), "WEBVTT\n").unwrap();
+        std::fs::write(
+            dir.path().join("asset.json"),
+            r#"{"tracks":[{"id":"","path":"subs.vtt","type":"text"}]}"#,
+        )
+        .unwrap();
+        let op = Operator::new(Fs::default().root(dir.path().to_str().unwrap())).unwrap();
+
+        let err = Asset::read(&op, "asset.json").await.unwrap_err();
+
+        assert!(matches!(err, CoreError::InvalidDescriptor(_)));
     }
 
     #[test]
