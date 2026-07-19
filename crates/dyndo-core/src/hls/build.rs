@@ -6,7 +6,7 @@ use hls_m3u8::{MasterPlaylist, MediaPlaylist, MediaSegment};
 
 use super::group::{self, AudioGroup};
 use crate::asset::Asset;
-use crate::metadata::VideoMetadata;
+use crate::metadata::{AudioMetadata, VideoMetadata};
 use crate::role::AudioRole;
 use crate::segment::Segment;
 use crate::track::Track;
@@ -120,7 +120,8 @@ fn audio_characteristics(role: Option<AudioRole>) -> Option<&'static str> {
 /// `main` — so a role-free group keeps the "first is default" behavior.
 /// Roles the viewer opts into (commentary, description, enhanced
 /// intelligibility) are not auto-selected, and accessibility roles carry a
-/// `CHARACTERISTICS` UTI.
+/// `CHARACTERISTICS` UTI. `NAME`s are disambiguated per group
+/// ([`rendition_name`]): RFC 8216 §4.3.4.1 requires them distinct.
 fn audio_media(groups: &[AudioGroup]) -> Vec<ExtXMedia<'static>> {
     let mut out = Vec::new();
     for g in groups {
@@ -129,12 +130,15 @@ fn audio_media(groups: &[AudioGroup]) -> Vec<ExtXMedia<'static>> {
             .iter()
             .position(|(_, a)| a.role == Some(AudioRole::Main))
             .unwrap_or(0);
+        let mut names: Vec<String> = Vec::with_capacity(g.tracks.len());
         for (i, &(t, a)) in g.tracks.iter().enumerate() {
             let is_default = i == default_idx;
+            let name = rendition_name(a, &names);
             let mut b = ExtXMedia::builder();
             b.media_type(MediaType::Audio);
             b.group_id(g.id.clone());
-            b.name(a.language.clone());
+            b.name(name.clone());
+            names.push(name);
             b.language(a.language.clone());
             b.uri(format!("{}.m3u8", t.id()));
             b.is_default(is_default);
@@ -152,6 +156,24 @@ fn audio_media(groups: &[AudioGroup]) -> Vec<ExtXMedia<'static>> {
         }
     }
     out
+}
+
+/// The rendition's `NAME`: the language, qualified by the declared role
+/// (`"eng"`, `"eng (commentary)"`), counter-suffixed if it still collides
+/// with a name already `taken` in the group (`"eng (2)"`) — RFC 8216
+/// §4.3.4.1 requires distinct `NAME`s within one group.
+fn rendition_name(a: &AudioMetadata, taken: &[String]) -> String {
+    let base = match a.role {
+        Some(role) => format!("{} ({})", a.language, role.as_str()),
+        None => a.language.clone(),
+    };
+    if !taken.contains(&base) {
+        return base;
+    }
+    (2..)
+        .map(|n| format!("{base} ({n})"))
+        .find(|name| !taken.contains(name))
+        .expect("an unbounded counter reaches a free name")
 }
 
 /// Every video track × every audio group (or just the video track when there
@@ -216,5 +238,48 @@ fn audio_variant(t: &Track) -> VariantStream<'static> {
             .codecs(vec![t.codec().expect("audio tracks are CMAF").to_string()])
             .build()
             .expect("stream data always has a bandwidth"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    mod rendition_name {
+        use super::*;
+
+        fn audio(language: &str, role: Option<AudioRole>) -> AudioMetadata {
+            AudioMetadata {
+                sample_rate: 48_000,
+                channels: 2,
+                language: language.to_string(),
+                role,
+            }
+        }
+
+        #[test]
+        fn is_the_language_when_no_role_is_declared() {
+            assert_eq!(rendition_name(&audio("eng", None), &[]), "eng");
+        }
+
+        #[test]
+        fn is_qualified_by_the_declared_role() {
+            assert_eq!(
+                rendition_name(&audio("eng", Some(AudioRole::Commentary)), &[]),
+                "eng (commentary)"
+            );
+        }
+
+        #[test]
+        fn a_collision_gets_a_counter_suffix() {
+            let taken = vec!["eng".to_string()];
+            assert_eq!(rendition_name(&audio("eng", None), &taken), "eng (2)");
+        }
+
+        #[test]
+        fn the_counter_skips_taken_suffixes() {
+            let taken = vec!["eng".to_string(), "eng (2)".to_string()];
+            assert_eq!(rendition_name(&audio("eng", None), &taken), "eng (3)");
+        }
     }
 }

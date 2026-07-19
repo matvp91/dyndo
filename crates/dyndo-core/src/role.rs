@@ -22,6 +22,22 @@ pub enum AudioRole {
     EnhancedAudioIntelligibility,
 }
 
+impl AudioRole {
+    /// The role's kebab-case wire name (e.g. `"main"`,
+    /// `"enhanced-audio-intelligibility"`): the DASH `Role@value` string,
+    /// also used to qualify HLS rendition names.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            AudioRole::Main => "main",
+            AudioRole::Alternate => "alternate",
+            AudioRole::Commentary => "commentary",
+            AudioRole::Dub => "dub",
+            AudioRole::Description => "description",
+            AudioRole::EnhancedAudioIntelligibility => "enhanced-audio-intelligibility",
+        }
+    }
+}
+
 /// The purpose of a timed-text track.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -33,4 +49,46 @@ pub enum TextRole {
     /// Forced narrative subtitles (foreign dialogue or on-screen text), shown
     /// even when subtitles are otherwise off.
     ForcedSubtitle,
+}
+
+impl TextRole {
+    /// The role's kebab-case wire name (e.g. `"forced-subtitle"`): the DASH
+    /// `Role@value` string.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            TextRole::Subtitle => "subtitle",
+            TextRole::Caption => "caption",
+            TextRole::ForcedSubtitle => "forced-subtitle",
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn audio_role_as_str_matches_the_wire_name() {
+        for role in [
+            AudioRole::Main,
+            AudioRole::Alternate,
+            AudioRole::Commentary,
+            AudioRole::Dub,
+            AudioRole::Description,
+            AudioRole::EnhancedAudioIntelligibility,
+        ] {
+            assert_eq!(serde_json::to_value(role).unwrap(), role.as_str());
+        }
+    }
+
+    #[test]
+    fn text_role_as_str_matches_the_wire_name() {
+        for role in [
+            TextRole::Subtitle,
+            TextRole::Caption,
+            TextRole::ForcedSubtitle,
+        ] {
+            assert_eq!(serde_json::to_value(role).unwrap(), role.as_str());
+        }
+    }
 }

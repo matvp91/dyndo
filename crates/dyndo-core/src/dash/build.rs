@@ -98,36 +98,15 @@ fn role_element(value: &str) -> Role {
     }
 }
 
-/// The DASH `Role@value` string for an audio role.
-fn audio_role_value(role: AudioRole) -> &'static str {
-    match role {
-        AudioRole::Main => "main",
-        AudioRole::Alternate => "alternate",
-        AudioRole::Commentary => "commentary",
-        AudioRole::Dub => "dub",
-        AudioRole::Description => "description",
-        AudioRole::EnhancedAudioIntelligibility => "enhanced-audio-intelligibility",
-    }
-}
-
-/// The DASH `Role@value` string for a text role.
-fn text_role_value(role: TextRole) -> &'static str {
-    match role {
-        TextRole::Subtitle => "subtitle",
-        TextRole::Caption => "caption",
-        TextRole::ForcedSubtitle => "forced-subtitle",
-    }
-}
-
 /// The `Role`(s) for a text track. An unset role defaults to `subtitle`,
 /// preserving the previous hardcoded behavior.
 fn text_roles(role: Option<TextRole>) -> Vec<Role> {
-    vec![role_element(role.map_or("subtitle", text_role_value))]
+    vec![role_element(role.map_or("subtitle", TextRole::as_str))]
 }
 
 /// The `Role`(s) for an audio track. An unset role emits none.
 fn audio_roles(role: Option<AudioRole>) -> Vec<Role> {
-    role.map(|r| vec![role_element(audio_role_value(r))])
+    role.map(|r| vec![role_element(r.as_str())])
         .unwrap_or_default()
 }
 
