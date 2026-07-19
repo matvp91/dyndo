@@ -1,7 +1,6 @@
 //! The descriptor (`asset.json`) serialization of a [`Track`]: the stored
-//! fields plus derived debug-only fields (`fourcc`, `codec`), recomputed
-//! from the probed header on every write and ignored when a descriptor is
-//! read back.
+//! fields plus the derived debug-only `fourcc`, recomputed from the probed
+//! header on every write and ignored when a descriptor is read back.
 
 use serde::{Serialize, Serializer};
 
@@ -9,7 +8,7 @@ use crate::metadata::Metadata;
 use crate::track::Track;
 
 /// The wire shape of a [`Track`]: its stored fields in descriptor order,
-/// then the derived debug fields.
+/// then the derived debug field.
 #[derive(Serialize)]
 struct TrackWire<'a> {
     id: &'a str,
@@ -18,14 +17,12 @@ struct TrackWire<'a> {
     metadata: &'a Metadata,
     #[serde(skip_serializing_if = "Option::is_none")]
     fourcc: Option<&'a str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    codec: Option<&'a str>,
 }
 
-/// Serialize through [`TrackWire`], adding the derived debug fields.
+/// Serialize through `TrackWire`, adding the derived debug field.
 ///
 /// # Panics
-/// If the track has not been probed: the derived fields read the header.
+/// If the track has not been probed: the derived field reads the header.
 impl Serialize for Track {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         TrackWire {
@@ -33,7 +30,6 @@ impl Serialize for Track {
             path: &self.path,
             metadata: &self.metadata,
             fourcc: self.sample_entry(),
-            codec: self.codec(),
         }
         .serialize(serializer)
     }

@@ -53,11 +53,9 @@ fn writes_asset_json_for_video_and_audio() {
     );
     assert_eq!(tracks[1]["type"], "audio");
     assert_eq!(tracks[1]["language"], "nld");
-    // Derived debug fields, recomputed from the probe on every write.
+    // Derived debug field, recomputed from the probe on every write.
     assert_eq!(tracks[0]["fourcc"], "avc1");
-    assert_eq!(tracks[0]["codec"], "avc1.640028");
     assert_eq!(tracks[1]["fourcc"], "mp4a");
-    assert_eq!(tracks[1]["codec"], "mp4a.40.2");
 }
 
 #[test]
@@ -230,10 +228,8 @@ fn indexes_raw_vtt_track_without_advertising_it() {
         .expect("a text track");
     assert_eq!(text["language"], "eng");
     assert_eq!(text["path"], "text_sample.vtt");
-    // A raw file has no sample entry and no RFC 6381 codec; neither field
-    // is written.
+    // A raw file has no sample entry; the field is not written.
     assert!(text["fourcc"].is_null(), "{text:?}");
-    assert!(text["codec"].is_null(), "{text:?}");
 
     // Raw (non-CMAF) tracks are not advertised in manifests yet.
     assert!(
