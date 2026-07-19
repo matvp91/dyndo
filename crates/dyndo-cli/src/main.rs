@@ -1,7 +1,6 @@
 use clap::{Parser, Subcommand};
 use dyndo_core::asset::Asset;
 use dyndo_core::metadata::Metadata;
-use dyndo_core::track::Track;
 use opendal::Operator;
 use opendal::services::Fs;
 
@@ -87,19 +86,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             role.as_deref(),
                         )?;
                     }
-                    // New track: populate its metadata from the file, then
-                    // pin the derived id in the descriptor — segment routes
+                    // New track: populate its metadata from the file. The
+                    // descriptor write pins the derived id — segment routes
                     // key on it, so later metadata edits must not re-derive
                     // it.
                     None => {
-                        let mut track = Track::read(&op, &output, &path).await?;
+                        let track = asset.add_track(&op, &path).await?;
                         track_descriptor::apply_overrides(
-                            &mut track,
+                            track,
                             language.as_deref(),
                             role.as_deref(),
                         )?;
-                        track.id = track.id();
-                        asset.tracks.push(track);
                     }
                 }
             }

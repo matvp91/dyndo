@@ -73,6 +73,23 @@ impl Asset {
         Ok(())
     }
 
+    /// Read the track file at `path` — relative to this asset's descriptor
+    /// (`self.path`) — through `op`, append it to the asset's tracks, and
+    /// return it so descriptor-declared fields (language, role) can be
+    /// adjusted before the asset is written. The track's id starts empty:
+    /// writing the asset pins the derived id, and the derivation reads the
+    /// adjustable fields, so adjust first.
+    ///
+    /// # Errors
+    /// [`CoreError::UnsupportedFormat`] if `path`'s extension maps to no
+    /// supported format; otherwise any [`CoreError`] from reading or parsing
+    /// the track file.
+    pub async fn add_track(&mut self, op: &Operator, path: &str) -> Result<&mut Track, CoreError> {
+        let track = Track::read(op, &self.path, path).await?;
+        self.tracks.push(track);
+        Ok(self.tracks.last_mut().expect("a track was just pushed"))
+    }
+
     /// The asset's presentation duration, in milliseconds: the longest
     /// track's duration.
     ///
@@ -109,7 +126,61 @@ fn is_zero(v: &u64) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use opendal::services::Fs;
+
     use super::*;
+    use crate::metadata::Metadata;
+
+    /// An empty asset rooted at a tempdir holding one raw `subs.vtt`, plus
+    /// the operator to read it through.
+    fn asset_over_vtt(dir: &std::path::Path) -> (Operator, Asset) {
+        std::fs::write(dir.join("subs.vtt"), "WEBVTT\n").unwrap();
+        let op = Operator::new(Fs::default().root(dir.to_str().unwrap())).unwrap();
+        let asset = Asset {
+            path: "asset.json".to_string(),
+            ..Asset::new()
+        };
+        (op, asset)
+    }
+
+    #[tokio::test]
+    async fn add_track_probes_and_appends_the_track() {
+        let dir = tempfile::tempdir().unwrap();
+        let (op, mut asset) = asset_over_vtt(dir.path());
+
+        asset.add_track(&op, "subs.vtt").await.unwrap();
+
+        assert_eq!(asset.tracks.len(), 1);
+        assert_eq!(asset.tracks[0].path, "subs.vtt");
+    }
+
+    #[tokio::test]
+    async fn add_track_returns_the_appended_track_for_adjustment() {
+        let dir = tempfile::tempdir().unwrap();
+        let (op, mut asset) = asset_over_vtt(dir.path());
+
+        let track = asset.add_track(&op, "subs.vtt").await.unwrap();
+        let Metadata::Text(t) = &mut track.metadata else {
+            panic!("a .vtt probes as text");
+        };
+        t.language = "eng".to_string();
+
+        let Metadata::Text(t) = &asset.tracks[0].metadata else {
+            panic!("a .vtt probes as text");
+        };
+        assert_eq!(t.language, "eng");
+    }
+
+    #[tokio::test]
+    async fn add_track_surfaces_an_unsupported_extension() {
+        let dir = tempfile::tempdir().unwrap();
+        let (op, mut asset) = asset_over_vtt(dir.path());
+
+        let err = asset.add_track(&op, "subs.srt").await.unwrap_err();
+
+        assert!(matches!(err, CoreError::UnsupportedFormat(_)));
+        assert!(asset.tracks.is_empty());
+    }
 
     #[test]
     fn grouping_fields_default_when_absent() {
