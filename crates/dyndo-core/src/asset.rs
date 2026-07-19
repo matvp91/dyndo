@@ -45,32 +45,68 @@ impl Asset {
     }
 
     /// Read and deserialize the descriptor JSON at `path` through `op`,
-    /// recording `path` as the asset's source and probing every track's
-    /// header. Each track's id comes verbatim from the descriptor, which
-    /// carries it from index time — consumers key by [`Track::id`] directly.
+    /// recording `path` as the asset's source. Track headers are left
+    /// unprobed: call [`Asset::read_with_headers`] when the whole asset's
+    /// geometry is needed, or [`Track::read_header`] on a single track when
+    /// serving one representation. Each track's id comes verbatim from the
+    /// descriptor, which carries it from index time — consumers key by
+    /// [`Track::id`] directly.
     ///
     /// # Errors
     /// [`CoreError::Storage`] if the object is missing or unreadable;
     /// [`CoreError::Descriptor`] if the bytes are not valid descriptor JSON;
-    /// [`CoreError::InvalidDescriptor`] if a track carries an empty id;
-    /// otherwise any [`CoreError`] from probing a track's header.
+    /// [`CoreError::InvalidDescriptor`] if a track carries an empty id.
     pub async fn read(op: &Operator, path: &str) -> Result<Asset, CoreError> {
         let buf = op.read(path).await?;
         let mut asset: Asset = serde_json::from_reader(buf.reader())?;
         asset.path = path.to_string();
         // The id is the manifest/segment-route key and is never regenerated
         // on read, so a blank one would key silently by the empty string.
-        // Reject before probing rather than propagate it.
+        // Reject it here rather than propagate it.
         if let Some(t) = asset.tracks.iter().find(|t| t.id.is_empty()) {
             return Err(CoreError::InvalidDescriptor(format!(
                 "track {:?} has an empty id",
                 t.path
             )));
         }
+        Ok(asset)
+    }
+
+    /// Read the descriptor via [`Asset::read`] and probe every track's header,
+    /// so the asset carries the geometry manifest generation and whole-asset
+    /// segment access depend on. Prefer [`Asset::read`] plus a single
+    /// [`Track::read_header`] when only one representation is served.
+    ///
+    /// # Errors
+    /// Any [`CoreError`] from [`Asset::read`], or from probing a track's
+    /// header.
+    pub async fn read_with_headers(op: &Operator, path: &str) -> Result<Asset, CoreError> {
+        let mut asset = Asset::read(op, path).await?;
         // Tracks are independent, so all headers are probed concurrently;
         // each read resolves the track's descriptor-relative path itself.
         try_join_all(asset.tracks.iter_mut().map(|t| t.read_header(op, path))).await?;
         Ok(asset)
+    }
+
+    /// Probe the header of the track advertised as `id` and return its index,
+    /// or `None` if no track matches. Returns the index rather than a
+    /// `&Track`: probing borrows `self` mutably, and that borrow must be
+    /// released before the caller re-borrows the track shared — alongside
+    /// asset-level fields like [`Asset::segment_boundaries_ms`]. A borrow
+    /// cannot survive that mut→shared handoff, but an index can.
+    ///
+    /// # Errors
+    /// Any [`CoreError`] from probing the matched track's header.
+    pub async fn find_track_index(
+        &mut self,
+        op: &Operator,
+        id: &str,
+    ) -> Result<Option<usize>, CoreError> {
+        let Some(idx) = self.tracks.iter().position(|t| t.id == id) else {
+            return Ok(None);
+        };
+        self.tracks[idx].read_header(op, &self.path).await?;
+        Ok(Some(idx))
     }
 
     /// Serialize to pretty JSON and write to `path` through `op`.
@@ -152,6 +188,42 @@ mod tests {
             ..Asset::new()
         };
         (op, asset)
+    }
+
+    /// A tempdir holding a raw `subs.vtt` and a one-track `asset.json`
+    /// descriptor advertising it as `text_und`, plus the operator to read it.
+    fn descriptor_over_vtt(dir: &std::path::Path) -> Operator {
+        std::fs::write(dir.join("subs.vtt"), "WEBVTT\n").unwrap();
+        std::fs::write(
+            dir.join("asset.json"),
+            r#"{"tracks":[{"id":"text_und","path":"subs.vtt","type":"text"}]}"#,
+        )
+        .unwrap();
+        Operator::new(Fs::default().root(dir.to_str().unwrap())).unwrap()
+    }
+
+    #[tokio::test]
+    async fn find_track_index_probes_the_matched_track() {
+        let dir = tempfile::tempdir().unwrap();
+        let op = descriptor_over_vtt(dir.path());
+        let mut asset = Asset::read(&op, "asset.json").await.unwrap();
+
+        let idx = asset.find_track_index(&op, "text_und").await.unwrap();
+
+        assert_eq!(idx, Some(0));
+        // The header is now probed: the accessor no longer panics.
+        assert_eq!(asset.tracks[0].mime_type(), "text/vtt");
+    }
+
+    #[tokio::test]
+    async fn find_track_index_is_none_for_an_unknown_id() {
+        let dir = tempfile::tempdir().unwrap();
+        let op = descriptor_over_vtt(dir.path());
+        let mut asset = Asset::read(&op, "asset.json").await.unwrap();
+
+        let idx = asset.find_track_index(&op, "nope").await.unwrap();
+
+        assert!(idx.is_none());
     }
 
     #[tokio::test]

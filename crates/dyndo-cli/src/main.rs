@@ -66,8 +66,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let op = operator()?;
     match cli.command {
         Command::Index { inputs, output } => {
+            // Re-indexing rewrites the descriptor, and serializing a track
+            // recomputes its derived fields from the header, so every existing
+            // track must be probed first.
             let mut asset = if op.exists(&output).await? {
-                Asset::read(&op, &output).await?
+                Asset::read_with_headers(&op, &output).await?
             } else {
                 let mut a = Asset::new();
                 a.path = output.clone();
@@ -110,13 +113,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             output,
             compact,
         } => {
-            let asset = Asset::read(&op, &input).await?;
+            let asset = Asset::read_with_headers(&op, &input).await?;
             let mpd = dyndo_core::dash::generate_mpd(&asset, compact);
             op.write(&output, mpd.into_bytes()).await?;
             println!("wrote {output}");
         }
         Command::Hls { input, output } => {
-            let asset = Asset::read(&op, &input).await?;
+            let asset = Asset::read_with_headers(&op, &input).await?;
             op.write(
                 &format!("{output}/index.m3u8"),
                 dyndo_core::hls::generate_master(&asset).into_bytes(),

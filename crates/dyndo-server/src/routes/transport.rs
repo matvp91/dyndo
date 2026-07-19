@@ -10,7 +10,6 @@ use axum::{
 use dyndo_core::asset::Asset;
 use opendal::Operator;
 
-use super::find_track;
 use crate::error::ServerError;
 
 const DASH_CONTENT_TYPE: &str = "application/dash+xml";
@@ -22,7 +21,7 @@ pub(super) async fn dash_manifest(
     op: &Operator,
     asset_path: &str,
 ) -> Result<Response, ServerError> {
-    let asset = Asset::read(op, asset_path).await?;
+    let asset = Asset::read_with_headers(op, asset_path).await?;
     let xml = dyndo_core::dash::generate_mpd(&asset, true);
     Ok(([(CONTENT_TYPE, DASH_CONTENT_TYPE)], xml).into_response())
 }
@@ -30,7 +29,7 @@ pub(super) async fn dash_manifest(
 /// `hls/index.m3u8` — the asset's HLS multivariant playlist. Every rendition
 /// is described, so the whole asset is read.
 pub(super) async fn hls_master(op: &Operator, asset_path: &str) -> Result<Response, ServerError> {
-    let asset = Asset::read(op, asset_path).await?;
+    let asset = Asset::read_with_headers(op, asset_path).await?;
     let playlist = dyndo_core::hls::generate_master(&asset);
     Ok(([(CONTENT_TYPE, HLS_CONTENT_TYPE)], playlist).into_response())
 }
@@ -41,8 +40,12 @@ pub(super) async fn hls_media(
     asset_path: &str,
     repr: &str,
 ) -> Result<Response, ServerError> {
-    let asset = Asset::read(op, asset_path).await?;
-    let track = find_track(&asset, repr)?;
+    let mut asset = Asset::read(op, asset_path).await?;
+    let idx = asset
+        .find_track_index(op, repr)
+        .await?
+        .ok_or_else(|| ServerError::NotFound(format!("no representation {repr}")))?;
+    let track = &asset.tracks[idx];
     let playlist = dyndo_core::hls::generate_media(
         track,
         &asset.segment_boundaries_ms,

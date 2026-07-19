@@ -8,7 +8,6 @@ use axum::{
 use dyndo_core::asset::Asset;
 use opendal::Operator;
 
-use super::find_track;
 use crate::error::ServerError;
 
 /// `{repr}/init.mp4` — the representation's initialization segment.
@@ -17,8 +16,12 @@ pub(super) async fn init_segment(
     asset_path: &str,
     repr: &str,
 ) -> Result<Response, ServerError> {
-    let asset = Asset::read(op, asset_path).await?;
-    let track = find_track(&asset, repr)?;
+    let mut asset = Asset::read(op, asset_path).await?;
+    let idx = asset
+        .find_track_index(op, repr)
+        .await?
+        .ok_or_else(|| ServerError::NotFound(format!("no representation {repr}")))?;
+    let track = &asset.tracks[idx];
     let bytes = track.read_init_segment(op, asset_path).await?;
     Ok(([(CONTENT_TYPE, track.mime_type())], bytes).into_response())
 }
@@ -35,8 +38,12 @@ pub(super) async fn media_segment(
         .ok_or_else(|| ServerError::NotFound(format!("unknown segment: {seg}")))?
         .parse()
         .map_err(|_| ServerError::BadRequest(format!("invalid segment time: {seg}")))?;
-    let asset = Asset::read(op, asset_path).await?;
-    let track = find_track(&asset, repr)?;
+    let mut asset = Asset::read(op, asset_path).await?;
+    let idx = asset
+        .find_track_index(op, repr)
+        .await?
+        .ok_or_else(|| ServerError::NotFound(format!("no representation {repr}")))?;
+    let track = &asset.tracks[idx];
     let bytes = track
         .read_segment(
             op,
