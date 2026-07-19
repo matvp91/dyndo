@@ -11,7 +11,6 @@ use serde::Deserialize;
 use crate::codec::rfc6381_sample_entry;
 use crate::error::CoreError;
 use crate::header::Header;
-use crate::header_cmaf::HeaderCmaf;
 use crate::metadata::Metadata;
 use crate::segment::Segment;
 use crate::segment_utils;
@@ -90,17 +89,6 @@ impl Track {
     /// If the track has not been probed (`header` is `None`).
     fn header(&self) -> &Header {
         self.header.as_ref().expect("track not probed")
-    }
-
-    /// The track's CMAF header.
-    ///
-    /// # Panics
-    /// If the track has not been probed, or is raw.
-    fn cmaf(&self) -> &HeaderCmaf {
-        let Header::Cmaf(h) = self.header() else {
-            panic!("track is not CMAF");
-        };
-        h
     }
 
     /// The representation id: the descriptor's stored id when present, else
@@ -224,53 +212,43 @@ impl Track {
         }
     }
 
-    /// Whether the track has a CMAF fragment timeline: a segmented track
-    /// serves an init segment and media (sub)segments; a raw file has
-    /// neither.
-    ///
-    /// TODO: rethink this predicate when raw (`.vtt`) serving lands: raw
-    /// tracks become representations served whole, so "is this track a
-    /// representation" stops being the question — the guard moves into
-    /// the per-resource routes.
-    ///
-    /// # Panics
-    /// If the track has not been probed.
-    pub fn is_segmented(&self) -> bool {
-        matches!(self.header(), Header::Cmaf(_))
-    }
-
     /// The track's served (sub)segments, in presentation order: the header's
     /// raw CMAF fragments grouped to at least `min_length_ms`, never across
     /// a splice point in `boundaries_ms`. A `min_length_ms` of 0 serves each
     /// fragment as its own segment. Both values come from the asset
     /// descriptor; manifest builders and the segment route must pass the
-    /// same pair or advertised segment times will not resolve.
+    /// same pair or advertised segment times will not resolve. Empty for
+    /// raw tracks: a raw file has no segment map of its own — its
+    /// segmentation follows the asset's other tracks.
     ///
     /// # Panics
-    /// If the track has not been probed, or is raw: a raw file has no
-    /// segment map of its own — its segmentation follows the asset's other
-    /// tracks.
+    /// If the track has not been probed.
     pub fn segments(&self, boundaries_ms: &[u64], min_length_ms: u64) -> Vec<Segment> {
-        let h = self.cmaf();
+        let Header::Cmaf(h) = self.header() else {
+            return Vec::new();
+        };
         segment_utils::group_segments(&h.segments, h.timescale, boundaries_ms, min_length_ms)
     }
 
     /// Read the bytes of the track's init segment (`ftyp`+`moov`) through
     /// `op`, resolving the track's `path` against `asset_descriptor_path`'s
-    /// directory.
+    /// directory. Empty for raw tracks: a raw file has no init segment.
     ///
     /// # Errors
     /// [`CoreError::Storage`] if the ranged read fails.
     ///
     /// # Panics
-    /// If the track has not been probed, or is raw.
+    /// If the track has not been probed.
     pub async fn read_init_segment(
         &self,
         op: &Operator,
         asset_descriptor_path: &str,
     ) -> Result<Bytes, CoreError> {
+        let Header::Cmaf(h) = self.header() else {
+            return Ok(Bytes::new());
+        };
         let resolved = resolve(asset_descriptor_path, &self.path);
-        let range = self.cmaf().init_segment().range();
+        let range = h.init_segment().range();
         Ok(op.read_with(&resolved).range(range).await?.to_bytes())
     }
 

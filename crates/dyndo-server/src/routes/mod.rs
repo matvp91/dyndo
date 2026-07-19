@@ -89,13 +89,13 @@ fn split_route(path: &str) -> Option<(&str, &str, &str)> {
     best.map(|(i, proto, res_start)| (&path[..i], proto, &path[res_start..]))
 }
 
-/// Find the asset track whose representation id is `repr`. Raw (non-CMAF)
-/// tracks are never representations. 404 if none matches.
+/// Find the asset track whose representation id is `repr`. 404 if none
+/// matches. Raw (non-CMAF) tracks resolve too; their segment accessors
+/// answer with empty data (no init segment, no media segments).
 fn find_track<'a>(asset: &'a Asset, repr: &str) -> Result<&'a Track, ServerError> {
     asset
         .tracks
         .iter()
-        .filter(|t| t.is_segmented())
         .find(|t| t.id() == repr)
         .ok_or_else(|| ServerError::NotFound(format!("no representation {repr}")))
 }
