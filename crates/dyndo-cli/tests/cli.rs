@@ -43,7 +43,14 @@ fn writes_asset_json_for_video_and_audio() {
     assert_eq!(tracks[0]["height"], 1080);
     assert_eq!(tracks[0]["path"], "video_avc_1080.mp4");
     // The generated representation id is pinned at index time.
-    assert_eq!(tracks[0]["id"], "video_1080_avc1");
+    assert!(
+        tracks[0]["id"]
+            .as_str()
+            .unwrap()
+            .starts_with("video_1080_avc1_"),
+        "{:?}",
+        tracks[0]["id"]
+    );
     assert_eq!(tracks[1]["type"], "audio");
     assert_eq!(tracks[1]["language"], "nld");
     // Derived debug field, recomputed from the probe on every write.
@@ -280,8 +287,8 @@ fn manual_language_edit_in_asset_json_overrides_probed_language() {
     // The representation id stays the one stored in asset.json at index time —
     // segment routes look tracks up by that id, so a language edit must not
     // re-derive it.
-    assert!(xml.contains("audio_nld_2_mp4a"), "{xml}");
-    assert!(!xml.contains("audio_fra_2_mp4a"), "{xml}");
+    assert!(xml.contains("audio_nld_2_mp4a_"), "{xml}");
+    assert!(!xml.contains("audio_fra_2_mp4a_"), "{xml}");
 
     assert!(
         dyndo(dir.path())

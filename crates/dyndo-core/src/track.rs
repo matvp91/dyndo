@@ -98,18 +98,20 @@ impl Track {
     }
 
     /// Generate a representation id from the track's distinguishing fields:
-    /// [`Metadata::generate_id`] with the sample-entry codingname appended —
-    /// `video_{height}_{sample_entry}`,
-    /// `audio_{language}_{channels}_{sample_entry}`, or
-    /// `text_{language}_{sample_entry}`. A raw file has no sample entry and
-    /// gets none appended. Ignores the stored [`Track::id`].
+    /// [`Metadata::generate_id`] with the sample-entry codingname and the
+    /// bandwidth appended — `video_{height}_{sample_entry}_{bandwidth}`,
+    /// `audio_{language}_{channels}_{sample_entry}_{bandwidth}`, or
+    /// `text_{language}_{sample_entry}_{bandwidth}`. A raw file has no
+    /// sample entry and gets neither appended. Ignores the stored
+    /// [`Track::id`].
     ///
     /// # Panics
-    /// If the track has not been probed: the sample entry reads the header.
+    /// If the track has not been probed: the appended fields read the
+    /// header.
     pub fn generate_id(&self) -> String {
         let id = self.metadata.generate_id();
         match self.sample_entry() {
-            Some(entry) => format!("{id}_{entry}"),
+            Some(entry) => format!("{id}_{entry}_{}", self.bandwidth()),
             None => id,
         }
     }
