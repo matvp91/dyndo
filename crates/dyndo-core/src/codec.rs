@@ -84,12 +84,13 @@ fn hevc_rfc6381(prefix: &str, hvcc: &Hvcc) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use mp4_atom::esds::{DecoderConfig, DecoderSpecific, EsDescriptor};
     use mp4_atom::{
         Ac3, Ac3SpecificBox, Audio, Av01, Av1c, Avc1, Avcc, Esds, FixedPoint, Hev1, Hvc1, Mp4a,
         PlainText, VttC, Wvtt,
     };
+
+    use super::*;
 
     fn avc(profile: u8, constraints: u8, level: u8) -> String {
         rfc6381(&Codec::Avc1(Avc1 {
