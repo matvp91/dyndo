@@ -15,7 +15,8 @@ use axum::{
     response::Response,
     routing::get,
 };
-use dyndo_core::model::{AssetModel, TrackModel};
+use dyndo_core::asset::Asset;
+use dyndo_core::track::Track;
 use opendal::Operator;
 use tower_http::cors::{Any, CorsLayer};
 
@@ -88,12 +89,13 @@ fn split_route(path: &str) -> Option<(&str, &str, &str)> {
     best.map(|(i, proto, res_start)| (&path[..i], proto, &path[res_start..]))
 }
 
-/// Find the descriptor track whose representation id is `repr`, matching against
-/// the ids recorded in the descriptor (no CMAF parse). 404 if none matches.
-fn find_source<'a>(model: &'a AssetModel, repr: &str) -> Result<&'a TrackModel, ServerError> {
-    model
+/// Find the asset track whose representation id is `repr`. 404 if none
+/// matches. Raw (non-CMAF) tracks resolve too; their segment accessors
+/// answer with empty data (no init segment, no media segments).
+fn find_track<'a>(asset: &'a Asset, repr: &str) -> Result<&'a Track, ServerError> {
+    asset
         .tracks
         .iter()
-        .find(|t| t.id() == repr)
+        .find(|t| t.id == repr)
         .ok_or_else(|| ServerError::NotFound(format!("no representation {repr}")))
 }

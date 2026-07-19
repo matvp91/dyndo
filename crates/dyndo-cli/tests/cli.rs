@@ -40,10 +40,22 @@ fn writes_asset_json_for_video_and_audio() {
     let tracks = json["tracks"].as_array().unwrap();
     assert_eq!(tracks.len(), 2);
     assert_eq!(tracks[0]["type"], "video");
-    assert_eq!(tracks[0]["fourcc"], "avc1");
+    assert_eq!(tracks[0]["height"], 1080);
     assert_eq!(tracks[0]["path"], "video_avc_1080.mp4");
+    // The generated representation id is pinned at index time.
+    assert!(
+        tracks[0]["id"]
+            .as_str()
+            .unwrap()
+            .starts_with("video_1080_avc1_"),
+        "{:?}",
+        tracks[0]["id"]
+    );
     assert_eq!(tracks[1]["type"], "audio");
     assert_eq!(tracks[1]["language"], "nld");
+    // Derived debug field, recomputed from the probe on every write.
+    assert_eq!(tracks[0]["fourcc"], "avc1");
+    assert_eq!(tracks[1]["fourcc"], "mp4a");
 }
 
 #[test]
@@ -187,25 +199,16 @@ fn generates_hls_playlists_from_asset_json() {
 }
 
 #[test]
-fn advertises_text_track_in_dash_and_hls() {
+fn indexes_raw_vtt_track_without_advertising_it() {
     let dir = tempfile::tempdir().unwrap();
-    stage(
-        dir.path(),
-        &[
-            "video_avc_1080.mp4",
-            "audio_aac_nl_2.mp4",
-            "text_sample.vtt",
-        ],
-    );
+    stage(dir.path(), &["video_avc_1080.mp4", "text_sample.vtt"]);
 
-    // Index video + audio, then pack the subtitle against the asset (which adds
-    // the text track to asset.json itself).
     assert!(
         dyndo(dir.path())
             .args([
                 "index",
                 "video_avc_1080.mp4",
-                "audio_aac_nl_2.mp4",
+                "text_sample.vtt,language=eng",
                 "-o",
                 "asset.json",
             ])
@@ -213,48 +216,22 @@ fn advertises_text_track_in_dash_and_hls() {
             .unwrap()
             .success()
     );
-    assert!(
-        dyndo(dir.path())
-            .args([
-                "pack",
-                "-i",
-                "text_sample.vtt",
-                "-a",
-                "asset.json",
-                "-l",
-                "eng"
-            ])
-            .status()
-            .unwrap()
-            .success()
-    );
 
-    // HLS: the master advertises the subtitle group and a text media playlist.
-    assert!(
-        dyndo(dir.path())
-            .args(["hls", "-i", "asset.json", "-o", "hls"])
-            .status()
-            .unwrap()
-            .success()
-    );
-
-    let master = fs::read_to_string(dir.path().join("hls/index.m3u8")).unwrap();
-    assert!(master.contains("#EXT-X-MEDIA:TYPE=SUBTITLES"), "{master}");
-    assert!(master.contains("SUBTITLES=\"wvtt\""), "{master}");
-
-    let names: Vec<String> = fs::read_dir(dir.path().join("hls"))
-        .unwrap()
-        .map(|e| e.unwrap().file_name().into_string().unwrap())
-        .collect();
-    let text_playlist = names
+    // The raw VTT file indexes as a text track with the declared language.
+    let json: serde_json::Value =
+        serde_json::from_slice(&fs::read(dir.path().join("asset.json")).unwrap()).unwrap();
+    let tracks = json["tracks"].as_array().unwrap();
+    assert_eq!(tracks.len(), 2);
+    let text = tracks
         .iter()
-        .find(|n| n.starts_with("text_wvtt_") && n.ends_with(".m3u8"))
-        .expect("a text media playlist");
-    let media = fs::read_to_string(dir.path().join("hls").join(text_playlist)).unwrap();
-    assert!(media.contains("#EXT-X-PLAYLIST-TYPE:VOD"), "{media}");
-    assert!(media.contains("#EXT-X-MAP:URI="), "{media}");
+        .find(|t| t["type"] == "text")
+        .expect("a text track");
+    assert_eq!(text["language"], "eng");
+    assert_eq!(text["path"], "text_sample.vtt");
+    // A raw file has no sample entry; the field is not written.
+    assert!(text["fourcc"].is_null(), "{text:?}");
 
-    // DASH: the text AdaptationSet carries the subtitle role.
+    // Raw (non-CMAF) tracks are not advertised in manifests yet.
     assert!(
         dyndo(dir.path())
             .args(["dash", "-i", "asset.json", "-o", "stream.mpd"])
@@ -263,232 +240,25 @@ fn advertises_text_track_in_dash_and_hls() {
             .success()
     );
     let xml = fs::read_to_string(dir.path().join("stream.mpd")).unwrap();
-    assert!(xml.contains("contentType=\"text\""), "{xml}");
-    assert!(xml.contains("value=\"subtitle\""), "{xml}");
-}
-
-#[test]
-fn indexes_wvtt_text_track() {
-    let dir = tempfile::tempdir().unwrap();
-    stage(dir.path(), &["video_avc_1080.mp4", "text_sample.vtt"]);
+    assert!(!xml.contains("contentType=\"text\""), "{xml}");
 
     assert!(
         dyndo(dir.path())
-            .args(["index", "video_avc_1080.mp4", "-o", "asset.json"])
+            .args(["hls", "-i", "asset.json", "-o", "hls"])
             .status()
             .unwrap()
             .success()
     );
-    assert!(
-        dyndo(dir.path())
-            .args([
-                "pack",
-                "-i",
-                "text_sample.vtt",
-                "-a",
-                "asset.json",
-                "-l",
-                "eng"
-            ])
-            .status()
-            .unwrap()
-            .success()
-    );
-
-    // Index the packed wvtt file on its own into a fresh descriptor.
-    assert!(
-        dyndo(dir.path())
-            .args(["index", "text_wvtt_eng.mp4", "-o", "text.json"])
-            .status()
-            .unwrap()
-            .success()
-    );
-
-    let json: serde_json::Value =
-        serde_json::from_slice(&fs::read(dir.path().join("text.json")).unwrap()).unwrap();
-    let tracks = json["tracks"].as_array().unwrap();
-    assert_eq!(tracks.len(), 1);
-    assert_eq!(tracks[0]["type"], "text");
-    assert_eq!(tracks[0]["fourcc"], "wvtt");
-    assert_eq!(tracks[0]["path"], "text_wvtt_eng.mp4");
-}
-
-#[test]
-fn pack_aligns_subtitles_to_video_and_updates_asset() {
-    let dir = tempfile::tempdir().unwrap();
-    stage(dir.path(), &["video_avc_1080.mp4", "sample.vtt"]);
-
-    // Index the video so pack has a timeline to align to.
-    assert!(
-        dyndo(dir.path())
-            .args(["index", "video_avc_1080.mp4", "-o", "asset.json"])
-            .status()
-            .unwrap()
-            .success()
-    );
-
-    // Pack the subtitle against the asset's first video track.
-    assert!(
-        dyndo(dir.path())
-            .args(["pack", "-i", "sample.vtt", "-a", "asset.json", "-l", "eng"])
-            .status()
-            .unwrap()
-            .success()
-    );
-
-    // <id>.mp4 is written beside the descriptor and is a valid wvtt MP4.
-    let data = fs::read(dir.path().join("text_wvtt_eng.mp4")).unwrap();
-    assert!(data.len() > 8, "expected a non-trivial mp4");
-    assert_eq!(&data[4..8], b"ftyp");
-    assert!(data.windows(4).any(|w| w == b"wvtt"));
-
-    // asset.json now lists the text track.
-    let json: serde_json::Value =
-        serde_json::from_slice(&fs::read(dir.path().join("asset.json")).unwrap()).unwrap();
-    let tracks = json["tracks"].as_array().unwrap();
-    let text = tracks
-        .iter()
-        .find(|t| t["type"] == "text")
-        .expect("a text track in the updated asset");
-    assert_eq!(text["fourcc"], "wvtt");
-    assert_eq!(text["language"], "eng");
-    assert_eq!(text["path"], "text_wvtt_eng.mp4");
-}
-
-#[test]
-fn pack_empty_language_normalizes_to_und() {
-    let dir = tempfile::tempdir().unwrap();
-    stage(dir.path(), &["video_avc_1080.mp4", "sample.vtt"]);
-
-    // Index the video so pack has a timeline to align to.
-    assert!(
-        dyndo(dir.path())
-            .args(["index", "video_avc_1080.mp4", "-o", "asset.json"])
-            .status()
-            .unwrap()
-            .success()
-    );
-
-    // Pack with an empty language: should normalize to "und", matching core's
-    // probe-time normalization, instead of writing text_wvtt_.mp4.
-    assert!(
-        dyndo(dir.path())
-            .args(["pack", "-i", "sample.vtt", "-a", "asset.json", "-l", ""])
-            .status()
-            .unwrap()
-            .success()
-    );
-
-    // <id>.mp4 is written with the normalized "und" language, not the raw
-    // empty string.
-    let data = fs::read(dir.path().join("text_wvtt_und.mp4")).unwrap();
-    assert!(data.len() > 8, "expected a non-trivial mp4");
-    assert_eq!(&data[4..8], b"ftyp");
-    assert!(data.windows(4).any(|w| w == b"wvtt"));
-    assert!(!dir.path().join("text_wvtt_.mp4").exists());
-
-    // asset.json now lists the text track with id/language "und".
-    let json: serde_json::Value =
-        serde_json::from_slice(&fs::read(dir.path().join("asset.json")).unwrap()).unwrap();
-    let tracks = json["tracks"].as_array().unwrap();
-    let text = tracks
-        .iter()
-        .find(|t| t["type"] == "text")
-        .expect("a text track in the updated asset");
-    assert_eq!(text["fourcc"], "wvtt");
-    assert_eq!(text["language"], "und");
-    assert_eq!(text["path"], "text_wvtt_und.mp4");
+    let master = fs::read_to_string(dir.path().join("hls/index.m3u8")).unwrap();
+    assert!(!master.contains("TYPE=SUBTITLES"), "{master}");
 }
 
 #[test]
 fn manual_language_edit_in_asset_json_overrides_probed_language() {
     let dir = tempfile::tempdir().unwrap();
-    stage(dir.path(), &["video_avc_1080.mp4", "sample.vtt"]);
+    stage(dir.path(), &["audio_aac_nl_2.mp4"]);
 
-    // Index the video and pack the subtitle with language "eng": both the
-    // wvtt file's mdhd and asset.json now say "eng".
-    assert!(
-        dyndo(dir.path())
-            .args(["index", "video_avc_1080.mp4", "-o", "asset.json"])
-            .status()
-            .unwrap()
-            .success()
-    );
-    assert!(
-        dyndo(dir.path())
-            .args(["pack", "-i", "sample.vtt", "-a", "asset.json", "-l", "eng"])
-            .status()
-            .unwrap()
-            .success()
-    );
-
-    /// Set the text track's `language` in `asset.json` to `lang`.
-    fn set_text_language(dir: &Path, lang: &str) {
-        let path = dir.join("asset.json");
-        let mut json: serde_json::Value =
-            serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
-        let text = json["tracks"]
-            .as_array_mut()
-            .unwrap()
-            .iter_mut()
-            .find(|t| t["type"] == "text")
-            .expect("a text track in asset.json");
-        text["language"] = lang.into();
-        fs::write(&path, serde_json::to_vec_pretty(&json).unwrap()).unwrap();
-    }
-
-    // Hand-edit the descriptor language to "nld": manifests must follow it
-    // even though the file's mdhd still says "eng".
-    set_text_language(dir.path(), "nld");
-
-    assert!(
-        dyndo(dir.path())
-            .args(["dash", "-i", "asset.json", "-o", "stream.mpd"])
-            .status()
-            .unwrap()
-            .success()
-    );
-    let xml = fs::read_to_string(dir.path().join("stream.mpd")).unwrap();
-    assert!(xml.contains("lang=\"nld\""), "{xml}");
-    // The representation id stays the one stored in asset.json at pack time —
-    // segment routes look tracks up by that id, so a language edit must not
-    // re-derive it.
-    assert!(xml.contains("text_wvtt_eng"), "{xml}");
-    assert!(!xml.contains("text_wvtt_nld"), "{xml}");
-    // The asset has no audio track, so the only lang attribute is the text
-    // AdaptationSet's — the probed "eng" must not leak through.
-    assert!(!xml.contains("lang=\"eng\""), "{xml}");
-
-    assert!(
-        dyndo(dir.path())
-            .args(["hls", "-i", "asset.json", "-o", "hls"])
-            .status()
-            .unwrap()
-            .success()
-    );
-    let master = fs::read_to_string(dir.path().join("hls/index.m3u8")).unwrap();
-    assert!(master.contains("LANGUAGE=\"nld\""), "{master}");
-
-    // An emptied descriptor language falls back to the file's probed value.
-    set_text_language(dir.path(), "");
-    assert!(
-        dyndo(dir.path())
-            .args(["dash", "-i", "asset.json", "-o", "fallback.mpd"])
-            .status()
-            .unwrap()
-            .success()
-    );
-    let xml = fs::read_to_string(dir.path().join("fallback.mpd")).unwrap();
-    assert!(xml.contains("lang=\"eng\""), "{xml}");
-    assert!(xml.contains("text_wvtt_eng"), "{xml}");
-}
-
-#[test]
-fn pack_without_a_video_track_fails() {
-    let dir = tempfile::tempdir().unwrap();
-    stage(dir.path(), &["audio_aac_nl_2.mp4", "sample.vtt"]);
-
-    // An audio-only asset has no video timeline to align to.
+    // Index the audio track: both the file's mdhd and asset.json say "nld".
     assert!(
         dyndo(dir.path())
             .args(["index", "audio_aac_nl_2.mp4", "-o", "asset.json"])
@@ -497,11 +267,38 @@ fn pack_without_a_video_track_fails() {
             .success()
     );
 
-    let status = dyndo(dir.path())
-        .args(["pack", "-i", "sample.vtt", "-a", "asset.json", "-l", "eng"])
-        .status()
-        .unwrap();
-    assert!(!status.success(), "pack should fail without a video track");
+    // Hand-edit the descriptor language to "fra": manifests must follow it
+    // even though the file's mdhd still says "nld".
+    let path = dir.path().join("asset.json");
+    let mut json: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    json["tracks"][0]["language"] = "fra".into();
+    fs::write(&path, serde_json::to_vec_pretty(&json).unwrap()).unwrap();
+
+    assert!(
+        dyndo(dir.path())
+            .args(["dash", "-i", "asset.json", "-o", "stream.mpd"])
+            .status()
+            .unwrap()
+            .success()
+    );
+    let xml = fs::read_to_string(dir.path().join("stream.mpd")).unwrap();
+    assert!(xml.contains("lang=\"fra\""), "{xml}");
+    assert!(!xml.contains("lang=\"nld\""), "{xml}");
+    // The representation id stays the one stored in asset.json at index time —
+    // segment routes look tracks up by that id, so a language edit must not
+    // re-derive it.
+    assert!(xml.contains("audio_nld_2_mp4a_"), "{xml}");
+    assert!(!xml.contains("audio_fra_2_mp4a_"), "{xml}");
+
+    assert!(
+        dyndo(dir.path())
+            .args(["hls", "-i", "asset.json", "-o", "hls"])
+            .status()
+            .unwrap()
+            .success()
+    );
+    let master = fs::read_to_string(dir.path().join("hls/index.m3u8")).unwrap();
+    assert!(master.contains("mp4a.40.2"), "{master}");
 }
 
 #[test]
@@ -590,6 +387,40 @@ fn index_upserts_an_existing_path_in_place() {
     let tracks = json["tracks"].as_array().unwrap();
     assert_eq!(tracks.len(), 1, "same path should replace, not duplicate");
     assert_eq!(tracks[0]["role"], "main");
+}
+
+#[test]
+fn reindexing_an_existing_path_keeps_descriptor_metadata() {
+    let dir = tempfile::tempdir().unwrap();
+    stage(dir.path(), &["audio_aac_nl_2.mp4"]);
+
+    assert!(
+        dyndo(dir.path())
+            .args(["index", "audio_aac_nl_2.mp4", "-o", "asset.json"])
+            .status()
+            .unwrap()
+            .success()
+    );
+
+    // Hand-edit the descriptor language: the descriptor is authoritative.
+    let path = dir.path().join("asset.json");
+    let mut json: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    json["tracks"][0]["language"] = "fra".into();
+    fs::write(&path, serde_json::to_vec_pretty(&json).unwrap()).unwrap();
+
+    // Re-index the same path with no overrides: the edit must survive.
+    assert!(
+        dyndo(dir.path())
+            .args(["index", "audio_aac_nl_2.mp4", "-o", "asset.json"])
+            .status()
+            .unwrap()
+            .success()
+    );
+
+    let json: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    let tracks = json["tracks"].as_array().unwrap();
+    assert_eq!(tracks.len(), 1, "same path should not duplicate");
+    assert_eq!(tracks[0]["language"], "fra", "{:?}", tracks[0]);
 }
 
 #[test]

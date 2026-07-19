@@ -2,7 +2,7 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use dyndo_core::CoreError;
+use dyndo_core::error::CoreError;
 
 /// The server's HTTP-facing error type; each variant maps to a status code
 /// in [`IntoResponse`].
@@ -86,8 +86,8 @@ mod tests {
     }
 
     #[test]
-    fn core_unsupported_codec_maps_to_500() {
-        let e = CoreError::UnsupportedCodec(dyndo_core::codec::MediaType::Video);
+    fn core_unsupported_format_maps_to_500() {
+        let e = CoreError::UnsupportedFormat("xyz".into());
         assert_eq!(
             ServerError::from(e).into_response().status(),
             StatusCode::INTERNAL_SERVER_ERROR
