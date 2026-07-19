@@ -20,10 +20,12 @@ use crate::segment_utils;
 /// `Serialize` is hand-written in `track_wire` to add derived debug fields.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct Track {
-    /// The descriptor's stored representation id; empty when it declares
-    /// none. Consumers key by [`Track::id`], which falls back to a derived
-    /// id — and serialization writes that value, so a descriptor write pins
-    /// the derivation.
+    /// The representation id manifests and segment routes key by. Generated
+    /// from the probed fields by [`Track::read`]; when a descriptor
+    /// declares none, [`Asset::read`] fills it the same way. Serialization
+    /// writes it verbatim, so a descriptor write pins it.
+    ///
+    /// [`Asset::read`]: crate::asset::Asset::read
     pub id: String,
     /// Path of the track's file, relative to the asset descriptor
     /// (`asset.json`) that declares it. Reads resolve it against the
@@ -44,7 +46,8 @@ impl Track {
     /// directory, through `op`: its header and the metadata the file
     /// declares. Each read fetches the file for itself; the two run
     /// concurrently. The track keeps the descriptor-relative `path`; the id
-    /// starts empty until assigned.
+    /// is generated from the probed fields ([`Track::generate_id`]), so
+    /// later metadata edits don't change it.
     ///
     /// # Errors
     /// [`CoreError::UnsupportedFormat`] if `path`'s extension maps to no
@@ -58,12 +61,14 @@ impl Track {
         let resolved = resolve(asset_descriptor_path, path);
         let (header, metadata) =
             tokio::try_join!(Header::read(op, &resolved), Metadata::read(op, &resolved))?;
-        Ok(Track {
+        let mut track = Track {
             id: String::new(),
             path: path.to_string(),
             header: Some(header),
             metadata,
-        })
+        };
+        track.id = track.generate_id();
+        Ok(track)
     }
 
     /// Read the header of the track file at the track's `path`, relative to
@@ -92,44 +97,21 @@ impl Track {
         self.header.as_ref().expect("track not probed")
     }
 
-    /// The representation id: the descriptor's stored id when present, else
-    /// derived from the track's distinguishing fields —
-    /// `video_{sample_entry}_{height}_{bandwidth}`,
-    /// `audio_{sample_entry}_{language}_{channels}_{bandwidth}`, or
-    /// `text_{sample_entry}_{language}` (`vtt` for a raw file). Manifests
-    /// and segment routes both key representations by this value.
+    /// Generate a representation id from the track's distinguishing fields:
+    /// [`Metadata::generate_id`] with the sample-entry codingname appended —
+    /// `video_{height}_{sample_entry}`,
+    /// `audio_{language}_{channels}_{sample_entry}`, or
+    /// `text_{language}_{sample_entry}`. A raw file has no sample entry and
+    /// gets none appended. Ignores the stored [`Track::id`].
     ///
     /// # Panics
-    /// If the track has not been probed: the derivations read the header.
-    pub fn id(&self) -> String {
-        if !self.id.is_empty() {
-            return self.id.clone();
+    /// If the track has not been probed: the sample entry reads the header.
+    pub fn generate_id(&self) -> String {
+        let id = self.metadata.generate_id();
+        match self.sample_entry() {
+            Some(entry) => format!("{id}_{entry}"),
+            None => id,
         }
-        // Raw is always a plain `.vtt` today; its file format stands in
-        // for the missing sample entry.
-        let sample_entry = self.sample_entry().unwrap_or("vtt");
-        match &self.metadata {
-            Metadata::Video(v) => {
-                format!("video_{sample_entry}_{}_{}", v.height, self.bandwidth())
-            }
-            Metadata::Audio(a) => format!(
-                "audio_{sample_entry}_{}_{}_{}",
-                a.language,
-                a.channels,
-                self.bandwidth()
-            ),
-            Metadata::Text(t) => format!("text_{sample_entry}_{}", t.language),
-        }
-    }
-
-    /// Whether the track file is raw (non-CMAF), e.g. a plain `.vtt`. A raw
-    /// track has no segment map of its own and is never advertised in
-    /// manifests.
-    ///
-    /// # Panics
-    /// If the track has not been probed.
-    pub fn is_raw(&self) -> bool {
-        matches!(self.header(), Header::Raw(_))
     }
 
     /// The MIME type of the track's file: the CMAF container type for its

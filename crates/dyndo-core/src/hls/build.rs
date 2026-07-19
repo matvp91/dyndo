@@ -21,7 +21,7 @@ pub(super) fn build_media(
     boundaries_ms: &[u64],
     min_length_ms: u64,
 ) -> MediaPlaylist<'static> {
-    let repr = track.id();
+    let repr = &track.id;
     let timescale = track.timescale();
     let served = track.segments(boundaries_ms, min_length_ms);
 
@@ -140,7 +140,7 @@ fn audio_media(groups: &[AudioGroup]) -> Vec<ExtXMedia<'static>> {
             b.name(name.clone());
             names.push(name);
             b.language(a.language.clone());
-            b.uri(format!("{}.m3u8", t.id()));
+            b.uri(format!("{}.m3u8", t.id));
             b.is_default(is_default);
             // Opt-in roles are not auto-selected — unless this rendition is
             // the group default, since DEFAULT=YES requires AUTOSELECT=YES.
@@ -211,7 +211,7 @@ fn video_variant(
         g.id.clone().into()
     });
     VariantStream::ExtXStreamInf {
-        uri: format!("{}.m3u8", t.id()).into(),
+        uri: format!("{}.m3u8", t.id).into(),
         frame_rate: fr.map(UFloat::new),
         audio,
         subtitles: None,
@@ -228,7 +228,7 @@ fn video_variant(
 /// A standalone audio variant, used only when the asset has no video.
 fn audio_variant(t: &Track) -> VariantStream<'static> {
     VariantStream::ExtXStreamInf {
-        uri: format!("{}.m3u8", t.id()).into(),
+        uri: format!("{}.m3u8", t.id).into(),
         frame_rate: None,
         audio: None,
         subtitles: None,

@@ -87,9 +87,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         )?;
                     }
                     // New track: populate its metadata from the file. The
-                    // descriptor write pins the derived id — segment routes
-                    // key on it, so later metadata edits must not re-derive
-                    // it.
+                    // id is generated at probe time and written verbatim —
+                    // segment routes key on it, so later metadata edits
+                    // (including these overrides) don't re-derive it.
                     None => {
                         let track = asset.add_track(&op, &path).await?;
                         track_descriptor::apply_overrides(
@@ -129,7 +129,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .filter(|t| matches!(t.metadata, Metadata::Video(_) | Metadata::Audio(_)))
             {
                 op.write(
-                    &format!("{output}/{}.m3u8", t.id()),
+                    &format!("{output}/{}.m3u8", t.id),
                     dyndo_core::hls::generate_media(
                         t,
                         &asset.segment_boundaries_ms,

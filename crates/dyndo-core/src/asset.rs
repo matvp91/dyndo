@@ -45,8 +45,9 @@ impl Asset {
     }
 
     /// Read and deserialize the descriptor JSON at `path` through `op`,
-    /// recording `path` as the asset's source and probing every track's
-    /// header.
+    /// recording `path` as the asset's source, probing every track's
+    /// header, and filling each id the descriptor left out with
+    /// [`Track::generate_id`] — consumers key by [`Track::id`] directly.
     ///
     /// # Errors
     /// [`CoreError::Storage`] if the object is missing or unreadable;
@@ -59,6 +60,11 @@ impl Asset {
         // Tracks are independent, so all headers are probed concurrently;
         // each read resolves the track's descriptor-relative path itself.
         try_join_all(asset.tracks.iter_mut().map(|t| t.read_header(op, path))).await?;
+        for t in &mut asset.tracks {
+            if t.id.is_empty() {
+                t.id = t.generate_id();
+            }
+        }
         Ok(asset)
     }
 
@@ -76,9 +82,9 @@ impl Asset {
     /// Read the track file at `path` — relative to this asset's descriptor
     /// (`self.path`) — through `op`, append it to the asset's tracks, and
     /// return it so descriptor-declared fields (language, role) can be
-    /// adjusted before the asset is written. The track's id starts empty:
-    /// writing the asset pins the derived id, and the derivation reads the
-    /// adjustable fields, so adjust first.
+    /// adjusted before the asset is written. The track's id is already
+    /// generated from the probed fields; adjustments don't re-generate it,
+    /// so segment routes keep a stable key.
     ///
     /// # Errors
     /// [`CoreError::UnsupportedFormat`] if `path`'s extension maps to no

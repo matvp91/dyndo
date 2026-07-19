@@ -24,10 +24,9 @@ pub fn generate_master(asset: &Asset) -> String {
 /// `min_length_ms` are the asset's grouping pair — the segment route must
 /// serve under the same pair or advertised times will not resolve.
 ///
-/// A raw track yields a playlist with no segments: raw tracks are never
-/// advertised in the master playlist, so callers should answer a request
-/// for one with not-found ([`Track::is_raw`](crate::track::Track::is_raw))
-/// rather than serve the empty playlist.
+/// A raw track yields a playlist with no segments: a raw file has no
+/// segment map of its own, and raw tracks are never advertised in the
+/// master playlist.
 ///
 /// # Panics
 /// If the track has not been probed.

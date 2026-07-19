@@ -57,7 +57,7 @@ fn segment_template(track: &Track, segments: &[Segment]) -> SegmentTemplate {
 /// asset's grouping pair.
 fn representation(track: &Track, boundaries_ms: &[u64], min_length_ms: u64) -> Representation {
     let mut rep = Representation {
-        id: Some(track.id()),
+        id: Some(track.id.clone()),
         bandwidth: Some(track.bandwidth() as u64),
         codecs: track.codec().map(String::from),
         SegmentTemplate: Some(segment_template(

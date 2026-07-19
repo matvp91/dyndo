@@ -51,6 +51,19 @@ impl Metadata {
         }
     }
 
+    /// Generate the metadata half of a representation id, from the fields
+    /// that distinguish renditions of the media type: `video_{height}`,
+    /// `audio_{language}_{channels}`, or `text_{language}`.
+    /// [`Track::generate_id`](crate::track::Track::generate_id) appends the
+    /// header-derived part.
+    pub fn generate_id(&self) -> String {
+        match self {
+            Metadata::Video(v) => format!("video_{}", v.height),
+            Metadata::Audio(a) => format!("audio_{}_{}", a.language, a.channels),
+            Metadata::Text(t) => format!("text_{}", t.language),
+        }
+    }
+
     /// Construct the [`Metadata`] a track's `moov` declares, dispatching on
     /// its media handler (`vide`, `soun`, or `text`).
     fn from_moov(moov: &Moov) -> Result<Metadata, CoreError> {

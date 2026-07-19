@@ -96,6 +96,6 @@ fn find_track<'a>(asset: &'a Asset, repr: &str) -> Result<&'a Track, ServerError
     asset
         .tracks
         .iter()
-        .find(|t| t.id() == repr)
+        .find(|t| t.id == repr)
         .ok_or_else(|| ServerError::NotFound(format!("no representation {repr}")))
 }

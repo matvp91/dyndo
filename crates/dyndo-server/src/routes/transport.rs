@@ -43,13 +43,6 @@ pub(super) async fn hls_media(
 ) -> Result<Response, ServerError> {
     let asset = Asset::read(op, asset_path).await?;
     let track = find_track(&asset, repr)?;
-    // Raw tracks resolve by id but are never advertised in the master
-    // playlist — a media playlist for one would be empty, so answer 404.
-    if track.is_raw() {
-        return Err(ServerError::NotFound(format!(
-            "no media playlist for {repr}"
-        )));
-    }
     let playlist = dyndo_core::hls::generate_media(
         track,
         &asset.segment_boundaries_ms,
