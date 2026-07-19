@@ -87,9 +87,9 @@ impl Asset {
     /// Read the track file at `path` — relative to this asset's descriptor
     /// (`self.path`) — through `op`, append it to the asset's tracks, and
     /// return it so descriptor-declared fields (language, role) can be
-    /// adjusted before the asset is written. The track's id is already
-    /// generated from the probed fields; adjustments don't re-generate it,
-    /// so segment routes keep a stable key.
+    /// adjusted before the asset is written. The track is returned unnamed:
+    /// the caller names it via [`Track::generate_id`] once those fields are
+    /// settled, so the id reflects the track's final initial metadata.
     ///
     /// # Errors
     /// [`CoreError::UnsupportedFormat`] if `path`'s extension maps to no

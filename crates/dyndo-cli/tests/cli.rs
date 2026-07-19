@@ -228,6 +228,9 @@ fn indexes_raw_vtt_track_without_advertising_it() {
         .expect("a text track");
     assert_eq!(text["language"], "eng");
     assert_eq!(text["path"], "text_sample.vtt");
+    // The overridden language feeds the generated id, not the file's probed
+    // `und`. A raw file has no sample entry, so none is appended.
+    assert_eq!(text["id"], "text_eng");
     // A raw file has no sample entry; the field is not written.
     assert!(text["fourcc"].is_null(), "{text:?}");
 
@@ -330,6 +333,11 @@ fn index_sets_language_and_role_on_audio() {
         .expect("an audio track");
     assert_eq!(audio["language"], "fra"); // probed nld, overridden
     assert_eq!(audio["role"], "commentary");
+    // The overridden language feeds the generated id (probed as nld).
+    assert!(
+        audio["id"].as_str().unwrap().starts_with("audio_fra_2_"),
+        "{audio:?}"
+    );
 }
 
 #[test]

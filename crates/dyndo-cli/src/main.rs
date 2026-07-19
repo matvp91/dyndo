@@ -86,10 +86,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             role.as_deref(),
                         )?;
                     }
-                    // New track: populate its metadata from the file. The
-                    // id is generated at probe time and written verbatim —
-                    // segment routes key on it, so later metadata edits
-                    // (including these overrides) don't re-derive it.
+                    // New track: probe its metadata, apply the descriptor's
+                    // overrides, then name it — so the id reflects the track's
+                    // final initial metadata (e.g. an overridden language).
+                    // Existing tracks above keep their frozen id, so
+                    // re-indexing never moves a segment route.
                     None => {
                         let track = asset.add_track(&op, &path).await?;
                         track_descriptor::apply_overrides(
@@ -97,6 +98,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             language.as_deref(),
                             role.as_deref(),
                         )?;
+                        track.id = track.generate_id();
                     }
                 }
             }

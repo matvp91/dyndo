@@ -45,9 +45,10 @@ impl Track {
     /// Read the track file at `path`, relative to `asset_descriptor_path`'s
     /// directory, through `op`: its header and the metadata the file
     /// declares. Each read fetches the file for itself; the two run
-    /// concurrently. The track keeps the descriptor-relative `path`; the id
-    /// is generated from the probed fields ([`Track::generate_id`]), so
-    /// later metadata edits don't change it.
+    /// concurrently. The track keeps the descriptor-relative `path` and is
+    /// returned unnamed (empty id): the id derives from the probed fields
+    /// via [`Track::generate_id`], which the caller invokes once the track's
+    /// initial metadata is settled, so the id reflects any initial overrides.
     ///
     /// # Errors
     /// [`CoreError::UnsupportedFormat`] if `path`'s extension maps to no
@@ -61,13 +62,12 @@ impl Track {
         let resolved = resolve(asset_descriptor_path, path);
         let (header, metadata) =
             tokio::try_join!(Header::read(op, &resolved), Metadata::read(op, &resolved))?;
-        let mut track = Track {
+        let track = Track {
             id: String::new(),
             path: path.to_string(),
             header: Some(header),
             metadata,
         };
-        track.id = track.generate_id();
         Ok(track)
     }
 
