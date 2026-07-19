@@ -18,7 +18,8 @@ use crate::segment::Segment;
 /// at read time and dropped; `mdat` is never fetched.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HeaderCmaf {
-    /// Units per second for durations in this track.
+    /// Units per second for durations in this track. Never zero: the box
+    /// scan rejects a zero `sidx` timescale, so consumers divide freely.
     pub timescale: u32,
     /// Presentation time of the first (sub)segment, in the track timescale.
     pub earliest_presentation_time: u64,
@@ -39,11 +40,11 @@ impl HeaderCmaf {
     /// fold it into a [`HeaderCmaf`].
     ///
     /// # Errors
-    /// [`CoreError::Storage`] if the object cannot be read;
-    /// [`CoreError::Container`] if a required box is missing or malformed.
-    ///
-    /// # Panics
-    /// On a sample entry dyndo does not support.
+    /// [`CoreError::Storage`]/[`CoreError::Io`] if the object cannot be
+    /// read; [`CoreError::Parse`]/[`CoreError::Container`] if a box cannot
+    /// be decoded or a required box is missing or empty;
+    /// [`CoreError::UnsupportedCodec`] on a sample entry dyndo does not
+    /// support.
     pub async fn read(op: &Operator, path: &str) -> Result<HeaderCmaf, CoreError> {
         let boxes = box_reader::scan(op, path).await?;
         Ok(HeaderCmaf {
@@ -51,7 +52,7 @@ impl HeaderCmaf {
             earliest_presentation_time: boxes.sidx.earliest_presentation_time,
             moov_end: boxes.moov_end,
             sample_duration: first_sample_duration(&boxes.moof, &boxes.moov),
-            codec: rfc6381(&boxes.moov.trak[0].mdia.minf.stbl.stsd.codecs[0]),
+            codec: rfc6381(&boxes.moov.trak[0].mdia.minf.stbl.stsd.codecs[0])?,
             segments: build_segments(&boxes.sidx, boxes.sidx_end),
         })
     }
@@ -65,7 +66,7 @@ impl HeaderCmaf {
     /// duration. `0` when the track has no duration.
     pub fn bandwidth(&self) -> u32 {
         let duration = self.duration();
-        if duration == 0 || self.timescale == 0 {
+        if duration == 0 {
             return 0;
         }
         let bytes: u64 = self.segments.iter().map(|s| s.size).sum();
@@ -76,7 +77,7 @@ impl HeaderCmaf {
     /// Frame rate as a (numerator, denominator) ratio, in frames per second.
     /// `(0, 1)` when the track declares no sample duration.
     pub fn frame_rate(&self) -> (u32, u32) {
-        if self.sample_duration == 0 || self.timescale == 0 {
+        if self.sample_duration == 0 {
             return (0, 1);
         }
         let g = gcd(self.timescale, self.sample_duration);

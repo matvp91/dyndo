@@ -14,7 +14,9 @@ use tokio_util::compat::{Compat, FuturesAsyncReadCompatExt};
 use crate::error::CoreError;
 
 /// The parsed header-region boxes of a CMAF track file, with the absolute
-/// byte offsets just past the `moov` and `sidx` boxes.
+/// byte offsets just past the `moov` and `sidx` boxes. Validated on
+/// construction: `moov.trak[0]` and its `stsd.codecs[0]` exist, and the
+/// `sidx` timescale is non-zero — consumers index and divide freely.
 pub struct Boxes {
     pub moov: Moov,
     pub sidx: Sidx,
@@ -27,11 +29,31 @@ pub struct Boxes {
 /// [`Boxes`].
 ///
 /// # Errors
-/// [`CoreError::Storage`] if the object cannot be read;
-/// [`CoreError::Container`] if a required box is missing or malformed.
+/// [`CoreError::Storage`]/[`CoreError::Io`] if the object cannot be read;
+/// [`CoreError::Parse`] if a box cannot be decoded;
+/// [`CoreError::Container`] if a required box is missing or empty, or the
+/// `sidx` timescale is zero.
 pub async fn scan(op: &Operator, path: &str) -> Result<Boxes, CoreError> {
     let mut r = reader(op, path).await?;
-    walk(&mut r).await
+    let boxes = walk(&mut r).await?;
+    validate(&boxes)?;
+    Ok(boxes)
+}
+
+/// Reject structural defects the rest of the crate must never see: every
+/// consumer indexes `trak[0]`/`codecs[0]` and divides by the `sidx`
+/// timescale, so a file violating these would panic far from the parse.
+fn validate(boxes: &Boxes) -> Result<(), CoreError> {
+    let Some(trak) = boxes.moov.trak.first() else {
+        return Err(CoreError::Container("moov has no trak".into()));
+    };
+    if trak.mdia.minf.stbl.stsd.codecs.is_empty() {
+        return Err(CoreError::Container("stsd has no sample entry".into()));
+    }
+    if boxes.sidx.timescale == 0 {
+        return Err(CoreError::Container("sidx timescale is zero".into()));
+    }
+    Ok(())
 }
 
 /// Open a byte-counting stream over the file at `path` through `op`.
@@ -59,9 +81,7 @@ async fn walk<R: AsyncRead + Unpin>(r: &mut CountingReader<R>) -> Result<Boxes, 
     let mut sidx_end = 0u64;
 
     while moov.is_none() || sidx.is_none() || moof.is_none() {
-        let header = BoxHeader::read_from(r)
-            .await
-            .map_err(|e| CoreError::Container(e.to_string()))?;
+        let header = BoxHeader::read_from(r).await?;
         let body_len = header
             .size
             .ok_or_else(|| CoreError::Container("box has no size".into()))?
@@ -96,16 +116,12 @@ async fn parse<A: AsyncReadAtom, R: AsyncRead + Unpin>(
     header: &BoxHeader,
     r: &mut R,
 ) -> Result<A, CoreError> {
-    A::read_atom(header, r)
-        .await
-        .map_err(|e| CoreError::Container(e.to_string()))
+    Ok(A::read_atom(header, r).await?)
 }
 
 /// Read and discard `len` bytes from `r`, erroring if the stream ends early.
 async fn skip<R: AsyncRead + Unpin>(r: &mut R, len: u64) -> Result<(), CoreError> {
-    let copied = tokio::io::copy(&mut r.take(len), &mut tokio::io::sink())
-        .await
-        .map_err(|e| CoreError::Container(e.to_string()))?;
+    let copied = tokio::io::copy(&mut r.take(len), &mut tokio::io::sink()).await?;
     if copied != len {
         return Err(CoreError::Container("truncated box body".into()));
     }

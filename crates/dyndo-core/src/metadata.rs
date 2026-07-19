@@ -30,9 +30,11 @@ impl Metadata {
     ///
     /// # Errors
     /// [`CoreError::UnsupportedFormat`] if `path`'s extension maps to no
-    /// supported format; [`CoreError::Storage`] if the object cannot be
-    /// read; [`CoreError::Container`] if a required box is missing or
-    /// malformed, or if the media handler and sample entry don't line up.
+    /// supported format; [`CoreError::Storage`]/[`CoreError::Io`] if the
+    /// object cannot be read; [`CoreError::Parse`]/[`CoreError::Container`]
+    /// if a box cannot be decoded, a required box is missing or empty, or
+    /// the media handler is unrecognized; [`CoreError::UnsupportedCodec`]
+    /// if the handler and sample entry don't line up.
     pub async fn read(op: &Operator, path: &str) -> Result<Metadata, CoreError> {
         match Format::from_path(path)? {
             Format::Cmaf => {
@@ -85,7 +87,7 @@ impl VideoMetadata {
             Codec::Hvc1(a) => &a.visual,
             Codec::Hev1(a) => &a.visual,
             _ => {
-                return Err(CoreError::Container(
+                return Err(CoreError::UnsupportedCodec(
                     "video track without a supported visual sample entry".into(),
                 ));
             }
@@ -122,7 +124,7 @@ impl AudioMetadata {
             Codec::Ac3(a) => &a.audio,
             Codec::Eac3(a) => &a.audio,
             _ => {
-                return Err(CoreError::Container(
+                return Err(CoreError::UnsupportedCodec(
                     "audio track without a supported audio sample entry".into(),
                 ));
             }

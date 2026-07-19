@@ -3,15 +3,20 @@
 //! extracts the sample-entry codingname (e.g. `"avc1"`) that DASH
 //! adaptation sets and HLS rendition groups key on.
 
+use std::fmt::Write;
+
 use mp4_atom::{Codec, Hvcc};
+
+use crate::error::CoreError;
 
 /// The RFC 6381 `codecs` parameter for the sample entry `codec`
 /// (e.g. `"avc1.640028"`, `"mp4a.40.2"`).
 ///
-/// # Panics
-/// On a sample entry dyndo does not support.
-pub fn rfc6381(codec: &Codec) -> String {
-    match codec {
+/// # Errors
+/// [`CoreError::UnsupportedCodec`] on a sample entry dyndo does not
+/// support, naming the entry.
+pub fn rfc6381(codec: &Codec) -> Result<String, CoreError> {
+    Ok(match codec {
         Codec::Avc1(a) => format!(
             "avc1.{:02x}{:02x}{:02x}",
             a.avcc.avc_profile_indication,
@@ -41,8 +46,20 @@ pub fn rfc6381(codec: &Codec) -> String {
         Codec::Ac3(_) => "ac-3".to_string(),
         Codec::Eac3(_) => "ec-3".to_string(),
         Codec::Wvtt(_) => "wvtt".to_string(),
-        c => panic!("unsupported codec {c:?}"),
-    }
+        c => return Err(CoreError::UnsupportedCodec(codec_name(c))),
+    })
+}
+
+/// The sample entry's name for error messages (e.g. `"Vp09"`): the variant
+/// name off the `Debug` output — [`Codec`] offers no fourcc accessor, and
+/// the full `Debug` payload is pages of decoder configuration.
+fn codec_name(codec: &Codec) -> String {
+    let debug = format!("{codec:?}");
+    debug
+        .split(['(', ' ', '{'])
+        .next()
+        .expect("split yields at least one item")
+        .to_string()
 }
 
 /// The sample-entry codingname of an RFC 6381 `codecs` string: everything
@@ -76,7 +93,7 @@ fn hevc_rfc6381(prefix: &str, hvcc: &Hvcc) -> String {
     let constraints = &hvcc.general_constraint_indicator_flags;
     if let Some(end) = constraints.iter().rposition(|&b| b != 0) {
         for b in &constraints[..=end] {
-            s.push_str(&format!(".{b:02x}"));
+            write!(s, ".{b:02x}").expect("writing to a String is infallible");
         }
     }
     s
@@ -102,6 +119,7 @@ mod tests {
             },
             ..Default::default()
         }))
+        .unwrap()
     }
 
     /// An `hvcC` with the MPEG reference vector's identity: Main profile,
@@ -120,6 +138,7 @@ mod tests {
             hvcc,
             ..Default::default()
         }))
+        .unwrap()
     }
 
     fn av1(av1c: Av1c) -> String {
@@ -127,6 +146,7 @@ mod tests {
             av1c,
             ..Default::default()
         }))
+        .unwrap()
     }
 
     fn aac(audio_object_type: u8) -> String {
@@ -152,6 +172,7 @@ mod tests {
             btrt: None,
             taic: None,
         }))
+        .unwrap()
     }
 
     #[test]
@@ -172,7 +193,8 @@ mod tests {
         let s = rfc6381(&Codec::Hev1(Hev1 {
             hvcc: hvcc(),
             ..Default::default()
-        }));
+        }))
+        .unwrap();
         assert_eq!(s, "hev1.1.6.L123");
     }
 
@@ -261,7 +283,8 @@ mod tests {
                 lfeon: true,
                 bit_rate_code: 8,
             },
-        }));
+        }))
+        .unwrap();
         assert_eq!(s, "ac-3");
     }
 
@@ -276,8 +299,15 @@ mod tests {
             },
             label: None,
             btrt: None,
-        }));
+        }))
+        .unwrap();
         assert_eq!(s, "wvtt");
+    }
+
+    #[test]
+    fn an_unsupported_sample_entry_errors_with_its_name() {
+        let err = rfc6381(&Codec::Vp09(Default::default())).unwrap_err();
+        assert_eq!(err.to_string(), "unsupported codec: Vp09");
     }
 
     #[test]

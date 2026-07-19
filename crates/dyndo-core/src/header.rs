@@ -24,9 +24,11 @@ impl Header {
     ///
     /// # Errors
     /// [`CoreError::UnsupportedFormat`] if `path`'s extension maps to no
-    /// supported format; [`CoreError::Storage`] if the object cannot be
-    /// read; [`CoreError::Container`] if a required box is missing or
-    /// malformed.
+    /// supported format; [`CoreError::Storage`]/[`CoreError::Io`] if the
+    /// object cannot be read; [`CoreError::Parse`]/[`CoreError::Container`]
+    /// if a box cannot be decoded or a required box is missing or empty;
+    /// [`CoreError::UnsupportedCodec`] on a sample entry dyndo does not
+    /// support.
     pub async fn read(op: &Operator, path: &str) -> Result<Header, CoreError> {
         match Format::from_path(path)? {
             Format::Cmaf => Ok(Header::Cmaf(HeaderCmaf::read(op, path).await?)),
