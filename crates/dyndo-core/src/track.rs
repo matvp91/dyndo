@@ -22,7 +22,8 @@ use crate::segment_utils;
 pub struct Track {
     /// The descriptor's stored representation id; empty when it declares
     /// none. Consumers key by [`Track::id`], which falls back to a derived
-    /// id.
+    /// id — and serialization writes that value, so a descriptor write pins
+    /// the derivation.
     pub id: String,
     /// Path of the track's file, relative to the asset descriptor
     /// (`asset.json`) that declares it. Reads resolve it against the
@@ -119,6 +120,16 @@ impl Track {
             ),
             Metadata::Text(t) => format!("text_{sample_entry}_{}", t.language),
         }
+    }
+
+    /// Whether the track file is raw (non-CMAF), e.g. a plain `.vtt`. A raw
+    /// track has no segment map of its own and is never advertised in
+    /// manifests.
+    ///
+    /// # Panics
+    /// If the track has not been probed.
+    pub fn is_raw(&self) -> bool {
+        matches!(self.header(), Header::Raw(_))
     }
 
     /// The MIME type of the track's file: the CMAF container type for its
@@ -257,13 +268,14 @@ impl Track {
     /// `path` against `asset_descriptor_path`'s directory. `time` is matched
     /// against the served segments — pass the same grouping pair the
     /// manifest was built with. `None` when no (sub)segment starts at
-    /// `time`.
+    /// `time` — always the case for a raw track, which has no segment map
+    /// of its own.
     ///
     /// # Errors
     /// [`CoreError::Storage`] if the ranged read fails.
     ///
     /// # Panics
-    /// If the track has not been probed, or is raw.
+    /// If the track has not been probed.
     pub async fn read_segment(
         &self,
         op: &Operator,
