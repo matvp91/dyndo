@@ -1,103 +1,115 @@
 # Add a subtitle track
 
-This guide shows how to add a WebVTT subtitle track to an existing asset with
-`dyndo pack`. Unlike video and audio — which you supply as ready-made CMAF —
-subtitles start life as a `.vtt` text file, so `pack` does two jobs: it converts
-the subtitle into a CMAF `wvtt` track **and** adds it to your descriptor.
+This guide shows how to add a WebVTT subtitle track to an existing asset.
+Subtitles are the one track type you don't package ahead of time: you hand
+[`dyndo index`](../reference/cli/index.md) the raw `.vtt` file itself, and
+serving works from that source directly — chunking the raw WebVTT, or packaging
+it as CMAF `wvtt`, on the fly at request time. Your `.vtt` stays the single
+source of truth.
+
+> Text-track serving is the part of dyndo currently under construction: CMAF
+> `wvtt` tracks are advertised in DASH manifests today, while manifest
+> advertisement for raw `.vtt` tracks and HLS subtitle renditions are still
+> being wired up. Indexing works as described below either way, and descriptors
+> you build now will be served as those pieces land.
 
 ## Before you start
 
 You need:
 
-- an `asset.json` that already contains **at least one video track** (see
-  [Index your CMAF sources](./index-sources.md)); and
+- an `asset.json` (see [Index your CMAF sources](./index-sources.md)); and
 - a [WebVTT](https://www.w3.org/TR/webvtt1/) file (`.vtt`).
 
-`pack` aligns the subtitle to the first video track's segment timeline, so the
-asset must have a video track to align to. Packing against an audio-only asset
-fails.
+## Add the subtitle
 
-## Pack the subtitle
+Index the `.vtt` like any other source, with a `language`:
 
 ```bash
-dyndo pack -i subtitles_en.vtt -a asset.json -l eng
+dyndo index subtitles_nl.vtt,language=nld -o asset.json
 ```
 
 ```text
-wrote text_wvtt_eng.mp4; updated asset.json
+wrote asset.json (3 tracks)
 ```
 
-This does three things:
-
-1. reads the first video track's segment timeline from `asset.json`;
-2. segments the subtitle to match that timeline and writes it as a CMAF `wvtt`
-   file, `text_wvtt_<language>.mp4`, **beside the descriptor**; and
-3. adds the new text track to `asset.json`.
-
-The `-l/--language` value is an [ISO 639-2](https://www.loc.gov/standards/iso639-2/php/code_list.php)
-three-letter code (`eng`, `nld`, `fra`, …). It becomes both the track's language
-and part of its `id` and filename. If you omit it, the language defaults to
-`und` (undetermined).
-
-Your descriptor now carries the text track alongside the others:
+Your descriptor now carries the text track alongside the others, pointing
+straight at the `.vtt`:
 
 ```json
 {
+  "id": "text_und",
+  "path": "subtitles_nl.vtt",
   "type": "text",
-  "id": "text_wvtt_eng",
-  "path": "text_wvtt_eng.mp4",
-  "fourcc": "wvtt",
-  "timescale": 1000,
-  "language": "eng"
+  "language": "nld"
 }
 ```
 
-Manifests generated from this asset will advertise the subtitle: a `subtitle`
-`Role` in the DASH `AdaptationSet`, and an `EXT-X-MEDIA:TYPE=SUBTITLES` entry in
-the HLS multivariant playlist.
+The `language` value is an [ISO 639-2](https://www.loc.gov/standards/iso639-2/php/code_list.php)
+three-letter code (`eng`, `nld`, `fra`, …). A WebVTT file declares no language
+of its own, so set it here — if you omit it, the track's language is `und`
+(undetermined).
 
 ## Add subtitles in several languages
 
-Run `pack` once per language, each against the same descriptor:
+Each `.vtt` file becomes one track; index them together or in separate runs
+against the same descriptor:
 
 ```bash
-dyndo pack -i subtitles_en.vtt -a asset.json -l eng
-dyndo pack -i subtitles_nl.vtt -a asset.json -l nld
+dyndo index \
+  subtitles_nl.vtt,language=nld \
+  subtitles_en.vtt,language=eng \
+  -o asset.json
 ```
 
-Because the output filename and `id` are derived from the language,
-`pack`-ing the same language again overwrites the previous track cleanly instead
-of creating a duplicate.
+Re-indexing the same `.vtt` path never duplicates the track — `index` updates
+the existing entry in place.
 
 ## Give the subtitle a role
 
-`pack` creates the track with a language but **no role**, so by default it is
-advertised as a plain `subtitle`. To mark it as closed captions (SDH) or a
-forced-narrative track, re-index the packed file with a `role`. Because `index`
-merges by source path, this updates the existing track in place:
+By default a text track is presented as a plain `subtitle`. To mark it as
+closed captions (SDH) or a forced-narrative track, re-index it with a `role` —
+this updates the entry in place and changes nothing else:
 
 ```bash
-dyndo pack -i captions_en.vtt -a asset.json -l eng   # wrote text_wvtt_eng.mp4
-dyndo index text_wvtt_eng.mp4,role=caption -o asset.json
+dyndo index subtitles_en.vtt,role=caption -o asset.json
 ```
 
 Valid text roles are `subtitle`, `caption`, and `forced-subtitle`. Each changes
-how the track is signalled in both manifests — see
+how the track is signalled in the generated manifests — see
 [Label tracks with roles](./label-roles.md).
+
+## Already-packaged subtitles (CMAF `wvtt`)
+
+If a packager already gave you WebVTT in ISO-BMFF — a CMAF `wvtt` track — index
+it like any other CMAF source. It is a regular text track (these are the ones
+DASH manifests advertise today):
+
+```bash
+dyndo index text_wvtt_eng.mp4,language=eng -o asset.json
+```
+
+```json
+{
+  "id": "text_eng_wvtt_586",
+  "path": "text_wvtt_eng.mp4",
+  "type": "text",
+  "language": "eng",
+  "fourcc": "wvtt"
+}
+```
 
 ## Correct a subtitle's language after the fact
 
-The language stored in `asset.json` wins over whatever the file itself declares.
-To relabel a track, edit its `language` field in the descriptor — the manifests
-will follow your edit without re-packing. (Emptying the field falls back to the
-language recorded inside the file.) This override is described in the
-[descriptor reference](../reference/asset-json.md#text-tracks).
+The `language` stored in `asset.json` is authoritative. To relabel a track,
+either re-index it with a new `language=` override or edit the field in the
+JSON directly — the manifests follow without any repackaging. The track's `id`
+never changes with it: ids are pinned at index time so segment URLs stay
+stable (see [Representation ids](../reference/asset-json.md#representation-ids)).
 
 ## Next steps
 
 - Mark subtitles as captions or forced narrative:
   [Label tracks with roles](./label-roles.md).
-- Serve the asset (subtitles included):
-  [Run and configure the server](./run-the-server.md).
-- See exactly what `pack` accepts:
-  [`dyndo pack` reference](../reference/cli/pack.md).
+- Serve the asset: [Run and configure the server](./run-the-server.md).
+- The text-track fields in detail:
+  [asset.json descriptor](../reference/asset-json.md#text-tracks).

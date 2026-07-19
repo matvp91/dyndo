@@ -1,7 +1,8 @@
 # dyndo CLI
 
-`dyndo` is the command-line front-end for indexing CMAF sources and rendering
-manifests offline. It is the binary produced by the `dyndo-cli` crate.
+`dyndo` is the command-line front-end for indexing media sources into
+`asset.json` descriptors and rendering manifests offline. It is the binary
+produced by the `dyndo-cli` crate.
 
 ```text
 dyndo <COMMAND>
@@ -9,10 +10,9 @@ dyndo <COMMAND>
 
 | Command | Purpose |
 |---|---|
-| [`index`](./cli/index.md) | Build an `asset.json` descriptor from one or more CMAF files. |
+| [`index`](./cli/index.md) | Build or update an `asset.json` descriptor from CMAF and WebVTT sources. |
 | [`dash`](./cli/dash.md) | Render a DASH MPD from an `asset.json`. |
 | [`hls`](./cli/hls.md) | Render HLS playlists from an `asset.json` into a directory. |
-| [`pack`](./cli/pack.md) | Pack a subtitle file into a CMAF text track and add it to an asset. |
 
 ## Global options
 
@@ -38,15 +38,15 @@ See [Understand how paths resolve](../how-to/index-sources.md#understand-how-pat
 
 ## Exit behavior
 
-Every command runs to completion or aborts. On any error — a missing file,
-malformed descriptor JSON, an input that isn't valid CMAF, or an unsupported
-codec — the command prints the error and exits with a non-zero status. There is
-no partial success: `index` does not skip a bad input and continue, and a failed
-`dash`/`hls` writes nothing.
+Every command runs to completion or aborts. On any runtime error — a missing
+file, malformed descriptor JSON, an input that isn't valid CMAF, or an
+unsupported codec or file format — the command prints the error and exits with
+status `1`. Command-line usage errors (an unknown flag, no inputs) print usage
+and exit with status `2`. There is no partial success: `index` does not skip a
+bad input and continue, and a failed `dash`/`hls` writes nothing.
 
 ## Commands
 
 - [`index`](./cli/index.md)
 - [`dash`](./cli/dash.md)
 - [`hls`](./cli/hls.md)
-- [`pack`](./cli/pack.md)

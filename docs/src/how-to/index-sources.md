@@ -1,19 +1,21 @@
 # Index your CMAF sources
 
-This guide shows how to build an `asset.json` descriptor from a set of CMAF
+This guide shows how to build an `asset.json` descriptor from a set of media
 files with `dyndo index`. You do this once per asset; the descriptor is what the
 server (or the offline manifest commands) reads afterwards.
 
 ## Before you start
 
-Each input must be valid CMAF:
+`index` accepts two kinds of input, selected by file extension:
 
-- a fragmented MP4 containing a `moov` with **exactly one track**;
-- a single global `sidx` segment index; and
-- a [supported codec](../introduction.md#supported-codecs).
+- **`.mp4`** — a CMAF track: a fragmented MP4 containing a `moov` with
+  **exactly one track**, a single global `sidx` segment index, and a
+  [supported codec](../introduction.md#supported-codecs).
+- **`.vtt`** — a raw WebVTT subtitle file (see
+  [Add a subtitle track](./add-subtitles.md)).
 
 Any violation aborts the run — there are no silent fallbacks and no
-skip-and-continue. If you need to produce conforming files, see the ffmpeg
+skip-and-continue. If you need to produce conforming CMAF files, see the ffmpeg
 recipe in the [Getting started tutorial](../tutorial/getting-started.md#step-2-create-two-cmaf-sources).
 
 ## Index one track per input
@@ -51,11 +53,12 @@ dyndo index \
 ```
 
 `language` overrides the code probed from the file; `role` is never probed, so
-this is the only way to set it. Valid roles are, for audio, `main`, `alternate`,
-`commentary`, `dub`, `description`, `enhanced-audio-intelligibility`; for text,
-`subtitle`, `caption`, `forced-subtitle`. A video input takes neither field, an
-unknown field is rejected, and a role that does not apply to the track's type
-(e.g. `subtitle` on audio) is rejected — the run aborts with a message.
+this is the only way to set it apart from editing the JSON. Valid roles are,
+for audio, `main`, `alternate`, `commentary`, `dub`, `description`,
+`enhanced-audio-intelligibility`; for text, `subtitle`, `caption`,
+`forced-subtitle`. A video input takes neither field, an unknown field is
+rejected, and a role that does not apply to the track's type (e.g. `subtitle`
+on audio) is rejected — the run aborts with a message.
 
 For what each role does to the generated manifests — which rendition a player
 defaults to, what it auto-selects, and the accessibility signalling — see
@@ -64,24 +67,33 @@ defaults to, what it auto-selects, and the accessibility signalling — see
 ## Add to or update an existing descriptor
 
 Running `index` against an `asset.json` that already exists **merges** into it
-rather than overwriting. A track is matched by its source path: index a new path
-to append it, or re-index a path that is already listed to replace that entry —
-handy for adding a `role` you left off the first time:
+rather than overwriting, keyed by each input's source path:
+
+- a **new path** is probed from its file and appended;
+- a path **already in the descriptor** keeps its entry exactly as it stands —
+  the file's metadata is not re-probed, so anything you've hand-edited in the
+  JSON survives. The only thing a re-index changes is what you explicitly ask
+  for with `language=`/`role=` overrides.
 
 ```bash
 # start with the video
-dyndo index video.mp4 -o asset.json          # wrote asset.json (1 tracks)
+dyndo index video.mp4 -o asset.json           # wrote asset.json (1 tracks)
 
 # append an audio track
-dyndo index audio.mp4 -o asset.json          # wrote asset.json (2 tracks)
+dyndo index audio.mp4 -o asset.json           # wrote asset.json (2 tracks)
 
-# update that same audio track in place — still two tracks
-dyndo index audio.mp4,role=main -o asset.json  # wrote asset.json (2 tracks)
+# set a role on that same audio track — still two tracks, nothing else changes
+dyndo index audio.mp4,role=main -o asset.json # wrote asset.json (2 tracks)
 ```
 
-Renaming a source file on disk is invisible to `index` (identity is the path you
-point at): re-indexing the new name appends a second entry, so edit or remove
-the stale one in the JSON by hand.
+Two consequences of this merge model are worth knowing:
+
+- Updating a descriptor re-opens every source already listed in it, so **all
+  indexed files must still exist** — a re-index fails if one has gone missing.
+- If a source file's **content** changed, `index` won't notice: remove the
+  track's entry from the JSON (or delete the descriptor) and index the file
+  afresh. Likewise, renaming a source on disk and indexing the new name appends
+  a second entry — remove the stale one by hand.
 
 ## Understand how paths resolve
 
@@ -116,22 +128,22 @@ hand-edit:
 {
   "tracks": [
     {
-      "type": "video",
-      "id": "video_avc1_1080_4807228",
+      "id": "video_1080_avc1_4807228",
       "path": "video_1080.mp4",
-      "fourcc": "avc1",
-      "timescale": 90000,
+      "type": "video",
       "width": 1920,
-      "height": 1080
+      "height": 1080,
+      "fourcc": "avc1"
     }
   ]
 }
 ```
 
-Each track's `id` is derived from its codec and properties (for video,
-`video_<fourcc>_<height>_<bitrate>`). The server uses these ids as the
-representation names in every manifest and segment URL. For the full field list,
-see the [asset.json descriptor reference](../reference/asset-json.md).
+Each track's `id` is derived from its properties at index time (for video,
+`video_<height>_<fourcc>_<bitrate>`) and then **pinned** — later edits never
+change it. The server uses these ids as the representation names in every
+manifest and segment URL. For the full field list, see the
+[asset.json descriptor reference](../reference/asset-json.md).
 
 ## Next steps
 

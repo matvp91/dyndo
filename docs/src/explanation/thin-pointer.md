@@ -28,18 +28,17 @@ dyndo inverts this. It never writes media. Instead, indexing records a small
 
 ```json
 {
-  "type": "video",
-  "id": "video_avc1_1080_4807228",
+  "id": "video_1080_avc1_4807228",
   "path": "video_1080.mp4",
-  "fourcc": "avc1",
-  "timescale": 90000,
+  "type": "video",
   "width": 1920,
-  "height": 1080
+  "height": 1080,
+  "fourcc": "avc1"
 }
 ```
 
 Notice what is *not* here: no list of segments, no byte offsets, no init-segment
-range, no per-protocol layout. The descriptor is a pointer, not a copy. At
+range, not even a timescale, no per-protocol layout. The descriptor is a pointer, not a copy. At
 request time the server reads the source's header and re-derives everything else
 (the [next page](./segment-index.md) covers how).
 
