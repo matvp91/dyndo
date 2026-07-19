@@ -14,3 +14,6 @@ nonstandard_style = "deny"
 # Groups (e.g. `all`) get negative priority so specific lint overrides win.
 [workspace.lints.clippy]
 all = { level = "deny", priority = -1 }
+# Nursery lint, opted into individually: catches clones the borrow checker
+# would have allowed you to skip.
+redundant_clone = "deny"
