@@ -60,7 +60,7 @@ the same running sum of segment durations.
 A track's *role* — its author-declared purpose, such as a commentary audio track
 or a forced-subtitle text track — is recorded once in the descriptor and then
 rendered into whatever each protocol uses to express it. DASH emits `Role` and
-`Accessibility` descriptors; HLS emits `DEFAULT`/`AUTOSELECT`/`FORCED` flags and
+`Accessibility` descriptors; HLS emits `DEFAULT`/`AUTOSELECT` flags and
 `CHARACTERISTICS` attributes. As with segments, there is one source of truth —
 the descriptor's `role` — and two renderings of it, so the two manifests describe
 the same track the same way. See the [DASH](../reference/cli/dash.md) and

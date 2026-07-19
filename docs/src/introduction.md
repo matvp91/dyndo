@@ -41,7 +41,7 @@ required:
 
 | Tool | What it does | How to get it |
 |---|---|---|
-| [`dyndo`](./reference/cli.md) (CLI) | Index CMAF sources into `asset.json`, pack subtitles, and render manifests offline. | The [one-line installer](./tutorial/install-cli.md). |
+| [`dyndo`](./reference/cli.md) (CLI) | Index CMAF and WebVTT sources into `asset.json` and render manifests offline. | The [one-line installer](./tutorial/install-cli.md). |
 | [`dyndo-server`](./reference/server.md) | Generate DASH/HLS manifests and serve CMAF segments on the fly. | The [`matvp91/dyndo-server`](https://hub.docker.com/r/matvp91/dyndo-server) image on Docker Hub. |
 
 This book covers both programs and the `asset.json` descriptor that connects
@@ -91,3 +91,6 @@ Codec parameters are read from the source and emitted as
 | Audio | Dolby Digital (AC-3) | `ac-3` |
 | Audio | Dolby Digital Plus (E-AC-3) | `ec-3` |
 | Text | WebVTT in ISO-BMFF | `wvtt` |
+
+Raw WebVTT (`.vtt`) files are also accepted as text-track sources, with no
+packaging step — see [Add a subtitle track](./how-to/add-subtitles.md).

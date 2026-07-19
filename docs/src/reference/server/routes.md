@@ -12,6 +12,10 @@ Every stream lives under `/<asset>/<protocol>/<resource>`. All routes are `GET`.
 | `/<asset>/<protocol>/<repr>/init.mp4` | A representation's initialization segment. | `video/mp4`, `audio/mp4`, or `application/mp4` |
 | `/<asset>/<protocol>/<repr>/<time>.m4s` | The media segment starting at presentation `<time>`. | `video/mp4`, `audio/mp4`, or `application/mp4` |
 
+A raw-WebVTT text track answers on the same segment routes with `text/vtt` (its
+`init.mp4` is empty — a raw source has no initialization segment), though such
+tracks are not yet referenced by the generated manifests.
+
 ## Health check
 
 Separate from the streaming routes, the server answers a liveness probe:
@@ -33,7 +37,7 @@ Use it for container and load-balancer health checks; see
   descriptor filename, including its extension, is part of the path.
 - **`<protocol>`** — `dash` or `hls`.
 - **`<repr>`** — a representation `id` exactly as recorded in the descriptor
-  (for example `video_avc1_1080_4807228`).
+  (for example `video_1080_avc1_4807228`).
 - **`<time>`** — the presentation start time of a segment, an integer in the
   track's timescale (see [Segment addressing](#segment-addressing)).
 
@@ -49,8 +53,8 @@ The `init.mp4` and `<time>.m4s` routes return the same CMAF bytes under either
 manifest differs. These two requests fetch identical data:
 
 ```text
-/asset.json/dash/video_avc1_1080_4807228/init.mp4
-/asset.json/hls/video_avc1_1080_4807228/init.mp4
+/asset.json/dash/video_1080_avc1_4807228/init.mp4
+/asset.json/hls/video_1080_avc1_4807228/init.mp4
 ```
 
 See [One source, two protocols](../../explanation/two-protocols.md) for why.

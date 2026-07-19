@@ -24,7 +24,6 @@
   - [index](./reference/cli/index.md)
   - [dash](./reference/cli/dash.md)
   - [hls](./reference/cli/hls.md)
-  - [pack](./reference/cli/pack.md)
 - [dyndo-server](./reference/server.md)
   - [HTTP routes](./reference/server/routes.md)
   - [Configuration](./reference/server/configuration.md)

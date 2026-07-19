@@ -40,7 +40,7 @@ dyndo --version
 ```
 
 You can now use every [CLI command](../reference/cli.md) — `index`, `dash`,
-`hls`, `pack` — exactly as the rest of this book describes.
+`hls` — exactly as the rest of this book describes.
 
 ## Run the server
 

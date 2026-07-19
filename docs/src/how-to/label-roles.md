@@ -23,7 +23,8 @@ dyndo index \
 ```
 
 To set a role on a track that's already in the descriptor, re-index it — `index`
-merges by source path, so this updates the entry in place:
+merges by source path, so this updates the entry in place and changes nothing
+else about it:
 
 ```bash
 dyndo index audio_en_commentary.mp4,role=commentary -o asset.json
@@ -48,6 +49,11 @@ none, it's the first audio track. Mark exactly one track `main` to control what
 plays by default.
 
 ## Text (subtitle) roles
+
+> Text-track manifest output is still being completed — today a text role
+> shows up in DASH (for CMAF `wvtt` sources); HLS subtitle renditions land
+> next. See [Track roles](../reference/roles.md) for the exact per-protocol
+> state.
 
 | Role | Use it for | Effect on players |
 |---|---|---|
@@ -74,13 +80,11 @@ An audio-description track for accessibility:
 dyndo index audio_en_ad.mp4,language=eng,role=description -o asset.json
 ```
 
-Forced subtitles that display automatically for foreign-language dialogue. For
-subtitles you produce from a `.vtt` file, [`pack`](./add-subtitles.md) the track
-first, then re-index it with the role:
+Forced subtitles that display automatically for foreign-language dialogue —
+set the role directly on the `.vtt` you [index](./add-subtitles.md):
 
 ```bash
-dyndo pack -i forced_en.vtt -a asset.json -l eng
-dyndo index text_wvtt_eng.mp4,role=forced-subtitle -o asset.json
+dyndo index forced_en.vtt,language=eng,role=forced-subtitle -o asset.json
 ```
 
 ## What gets rejected

@@ -33,13 +33,18 @@ derived from the source's `sidx`. Segment URLs use the `$RepresentationID$` and
 `$Time$` template variables — `<id>/init.mp4` and `<id>/<time>.m4s` — matching
 the [server's segment routes](../server/routes.md).
 
-Audio and text `AdaptationSet`s carry a `lang` attribute, and tracks are grouped
-into sets by `(codec, language, role)`. A track's role becomes a `Role`
+Audio and text `AdaptationSet`s carry a `lang` attribute, and tracks are
+grouped into sets by **(sample entry, timescale, language, role)** — the fields
+DASH requires to be uniform within a set. A track's role becomes a `Role`
 descriptor (scheme `urn:mpeg:dash:role:2011`); the `description` and
 `enhanced-audio-intelligibility` audio roles additionally emit an
 `Accessibility` descriptor. A text track with no role defaults to
 `Role@value="subtitle"`. See the [Track roles reference](../roles.md) for the
 exact mapping.
+
+Text tracks appear in the MPD when their source is CMAF `wvtt`; raw `.vtt`
+sources are recorded in the descriptor but not yet advertised — on-the-fly
+chunking of raw WebVTT is still being wired up.
 
 ## The `--compact` flag
 

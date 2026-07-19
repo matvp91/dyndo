@@ -98,8 +98,8 @@ livenessProbe:
 ```
 
 The runtime image is deliberately minimal — just the binary and CA
-certificates, with no shell or HTTP client — so prefer an out-of-container probe
-like the above over a `HEALTHCHECK` that shells out to `curl` inside the
+certificates, with no HTTP client — so prefer an out-of-container probe
+like the above over a `HEALTHCHECK` that would need `curl` inside the
 container.
 
 ## Build the image yourself

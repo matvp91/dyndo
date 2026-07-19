@@ -51,7 +51,7 @@ First, generate a 10-second test clip with a video and an audio stream:
 ffmpeg -f lavfi -i "testsrc=size=1280x720:rate=25:duration=10" \
        -f lavfi -i "sine=frequency=440:duration=10" \
        -c:v libx264 -profile:v high -pix_fmt yuv420p -g 50 -keyint_min 50 \
-       -c:a aac -b:a 128k -ar 48000 \
+       -c:a aac -b:a 128k -ar 48000 -ac 2 \
        source.mp4
 ```
 
@@ -81,10 +81,11 @@ You now have two CMAF sources under `assets/`.
 Turn your two files into an `asset.json` descriptor. Each positional argument
 adds one track; paths are resolved relative to the output descriptor's
 directory, so from your working directory they're just the file names inside
-`assets/`:
+`assets/`. An input can also carry `key=value` parameters after the path —
+here we tag the audio track's language:
 
 ```bash
-dyndo index video.mp4 audio.mp4 -o assets/asset.json
+dyndo index video.mp4 audio.mp4,language=eng -o assets/asset.json
 ```
 
 ```text
@@ -101,23 +102,21 @@ cat assets/asset.json
 {
   "tracks": [
     {
-      "type": "video",
-      "id": "video_avc1_720_126233",
+      "id": "video_720_avc1_126233",
       "path": "video.mp4",
-      "fourcc": "avc1",
-      "timescale": 12800,
+      "type": "video",
       "width": 1280,
-      "height": 720
+      "height": 720,
+      "fourcc": "avc1"
     },
     {
-      "type": "audio",
-      "id": "audio_mp4a_und_1_130130",
+      "id": "audio_und_2_mp4a_131171",
       "path": "audio.mp4",
-      "fourcc": "mp4a",
-      "timescale": 48000,
+      "type": "audio",
       "sample_rate": 48000,
-      "channels": 1,
-      "language": "und"
+      "channels": 2,
+      "language": "eng",
+      "fourcc": "mp4a"
     }
   ]
 }
@@ -126,7 +125,10 @@ cat assets/asset.json
 That's the whole descriptor: per-track metadata and a source path, nothing more.
 Notice there's no segment list and no byte offsets — the server re-derives those
 from each source at request time. (Your `id` numbers may differ slightly; they
-include the measured bitrate, which depends on your exact encode.)
+include the measured bitrate, which depends on your exact encode. And the audio
+id says `und` even though we set `language=eng`: ids are minted from what the
+file itself declares — our ffmpeg test clip has no language — and then never
+change, so URLs stay stable however you relabel a track.)
 
 ## Step 4: Start the server
 
@@ -174,9 +176,9 @@ curl http://localhost:8080/asset.json/hls/index.m3u8
 
 ```text
 #EXTM3U
-#EXT-X-MEDIA:TYPE=AUDIO,URI="audio_mp4a_und_1_130130.m3u8",GROUP-ID="mp4a",LANGUAGE="und",NAME="und",DEFAULT=YES,AUTOSELECT=YES,CHANNELS="1"
-#EXT-X-STREAM-INF:BANDWIDTH=250184,CODECS="avc1.64001f,mp4a.40.2",RESOLUTION=1280x720,FRAME-RATE=25.000,AUDIO="mp4a"
-video_avc1_720_126233.m3u8
+#EXT-X-MEDIA:TYPE=AUDIO,URI="audio_und_2_mp4a_131171.m3u8",GROUP-ID="mp4a",LANGUAGE="eng",NAME="eng",DEFAULT=YES,AUTOSELECT=YES,CHANNELS="2"
+#EXT-X-STREAM-INF:BANDWIDTH=257404,CODECS="avc1.64001f,mp4a.40.2",RESOLUTION=1280x720,FRAME-RATE=25.000,AUDIO="mp4a"
+video_720_avc1_126233.m3u8
 #EXT-X-INDEPENDENT-SEGMENTS
 ```
 

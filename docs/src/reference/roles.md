@@ -32,7 +32,7 @@ track's representation `id`.
 ## DASH mapping
 
 Roles are emitted as descriptors on the track's `AdaptationSet`; tracks are
-grouped into adaptation sets by `(codec, language, role)`.
+grouped into adaptation sets by `(sample entry, timescale, language, role)`.
 
 ### `Role`
 
@@ -63,18 +63,23 @@ multivariant playlist.
 
 ### Audio renditions
 
-Audio tracks are grouped by codec fourcc. Within a group:
+Audio tracks are grouped by sample-entry code. Within a group:
 
 | Attribute | Rule |
 |---|---|
 | `DEFAULT` | `YES` on the first `main`-role rendition; if no member is `main`, on the first rendition. `NO` otherwise. |
 | `AUTOSELECT` | `NO` for the opt-in roles (`commentary`, `description`, `enhanced-audio-intelligibility`) unless the rendition is the group default; `YES` otherwise. |
 | `CHARACTERISTICS` | `public.accessibility.describes-video` for `description`; `public.accessibility.enhances-speech-intelligibility` for `enhanced-audio-intelligibility`; absent otherwise. |
+| `NAME` | The rendition's language, qualified by its role when one is set — `nld`, `eng (commentary)`. A counter disambiguates collisions (`eng (2)`). |
 
 `DEFAULT=YES` implies `AUTOSELECT=YES`, so the group default is always
 auto-selected even when its role is opt-in.
 
 ### Subtitle renditions
+
+> HLS subtitle renditions are not emitted yet — text tracks currently appear in
+> DASH manifests only (CMAF `wvtt` sources). The mapping below is the design
+> that on-the-fly text serving is being built toward.
 
 All text tracks share one `TYPE=SUBTITLES` group.
 

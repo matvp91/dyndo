@@ -25,7 +25,7 @@ The output is a static MPD describing every representation in the asset:
 <MPD xmlns="urn:mpeg:dash:schema:mpd:2011" profiles="urn:mpeg:dash:profile:isoff-live:2011" type="static" mediaPresentationDuration="PT22M50.325S" minBufferTime="PT1.962S" …>
   <Period id="0" start="PT0S">
     <AdaptationSet id="0" contentType="video" segmentAlignment="true" mimeType="video/mp4" startWithSAP="1">
-      <Representation id="video_avc1_1080_4807228" bandwidth="4807228" width="1920" height="1080" frameRate="25" codecs="avc1.640028">
+      <Representation id="video_1080_avc1_4807228" bandwidth="4807228" width="1920" height="1080" frameRate="25" codecs="avc1.640028">
         <SegmentTemplate media="$RepresentationID$/$Time$.m4s" initialization="$RepresentationID$/init.mp4" timescale="90000" presentationTimeOffset="0">
           <SegmentTimeline>
             <S t="0" d="172800" r="355"/>
@@ -60,7 +60,7 @@ within each set:
       …
     </SegmentTimeline>
   </SegmentTemplate>
-  <Representation id="video_avc1_1080_4807228" bandwidth="4807228" width="1920" height="1080" frameRate="25" codecs="avc1.640028"/>
+  <Representation id="video_1080_avc1_4807228" bandwidth="4807228" width="1920" height="1080" frameRate="25" codecs="avc1.640028"/>
 </AdaptationSet>
 ```
 
@@ -70,7 +70,8 @@ within each set:
 ## Render HLS playlists
 
 HLS is a *set* of files — a multivariant playlist plus one media playlist per
-track — so `dyndo hls` writes to a **directory** rather than a single file:
+advertised track — so `dyndo hls` writes to a **directory** rather than a
+single file:
 
 ```bash
 dyndo hls -i asset.json -o hls
@@ -81,14 +82,15 @@ wrote hls/ (1 master + 3 media)
 ```
 
 The directory contains the multivariant playlist and one media playlist per
-representation, named by track `id`:
+video and audio track, named by track `id` (text tracks are not yet advertised
+in HLS — see the [`dyndo hls` reference](../reference/cli/hls.md)):
 
 ```text
 hls/
 ├── index.m3u8                        # multivariant (master) playlist
-├── video_avc1_1080_4807228.m3u8      # one media playlist per track
-├── audio_mp4a_nld_2_196918.m3u8
-└── text_wvtt_eng.m3u8
+├── video_1080_avc1_4807228.m3u8      # one media playlist per track
+├── video_720_avc1_3205265.m3u8
+└── audio_nld_2_mp4a_196918.m3u8
 ```
 
 Each media playlist references the segments by the same relative URLs the server
@@ -99,11 +101,11 @@ uses (`<id>/init.mp4`, `<id>/<time>.m4s`):
 #EXT-X-VERSION:6
 #EXT-X-TARGETDURATION:2
 #EXT-X-PLAYLIST-TYPE:VOD
-#EXT-X-MAP:URI="video_avc1_1080_4807228/init.mp4"
+#EXT-X-MAP:URI="video_1080_avc1_4807228/init.mp4"
 #EXTINF:1.92,
-video_avc1_1080_4807228/0.m4s
+video_1080_avc1_4807228/0.m4s
 #EXTINF:1.92,
-video_avc1_1080_4807228/172800.m4s
+video_1080_avc1_4807228/172800.m4s
 …
 #EXT-X-ENDLIST
 ```
