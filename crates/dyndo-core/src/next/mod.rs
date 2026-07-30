@@ -2,9 +2,12 @@
 
 pub mod asset;
 mod box_reader;
+pub mod cmaf_header;
 pub mod codec;
 pub mod error;
-mod format;
+pub mod format;
 pub mod role;
+pub mod segment_index;
+pub mod timed_text;
 pub mod track;
 pub mod track_metadata;

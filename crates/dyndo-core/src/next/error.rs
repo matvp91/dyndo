@@ -120,6 +120,12 @@ pub enum InvalidTrack {
     /// The segment index has a zero timescale.
     #[error("the segment-index timescale is zero")]
     ZeroTimescale,
+    /// The segment index points to another segment index.
+    #[error("hierarchical segment indexes are unsupported")]
+    HierarchicalSegmentIndex,
+    /// Segment timing or byte-offset accumulation overflowed.
+    #[error("segment-index timing or byte offset overflows")]
+    SegmentIndexOverflow,
     /// A box ends before its declared body size.
     #[error("a box body is truncated")]
     TruncatedBox,

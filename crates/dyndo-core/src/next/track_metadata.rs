@@ -48,6 +48,19 @@ impl TrackMetadata {
     }
 
     fn from_moov(moov: &Moov, path: &RelativePath) -> Result<TrackMetadata, Error> {
+        let Some(track) = moov.trak.first() else {
+            return Err(Error::InvalidTrack {
+                path: path.to_owned(),
+                reason: InvalidTrack::MissingMediaTrack,
+            });
+        };
+        if track.mdia.minf.stbl.stsd.codecs.is_empty() {
+            return Err(Error::InvalidTrack {
+                path: path.to_owned(),
+                reason: InvalidTrack::MissingSampleEntry,
+            });
+        }
+
         let handler = moov.trak[0].mdia.hdlr.handler;
         let kind = if handler == FourCC::new(b"vide") {
             Kind::Video(VideoKind::from_moov(moov, path)?)

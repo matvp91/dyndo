@@ -1,12 +1,10 @@
-//! Shared box extraction over a CMAF track's header region (`moov`, `sidx`,
-//! and the first `moof`). [`scan`] opens a byte-counting stream over the
-//! file and walks its box structure into a [`Boxes`], the intermediate
-//! `Header::read` and `Metadata::read` fold from. `mdat` is never fetched.
+//! Shared extraction of the `moov` and `sidx` boxes from a CMAF track.
+//! [`scan`] stops as soon as both boxes have been read, before media payloads.
 
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use mp4_atom::{AsyncReadAtom, AsyncReadFrom, Atom, Header as BoxHeader, Moof, Moov, Sidx};
+use mp4_atom::{AsyncReadAtom, AsyncReadFrom, Atom, Header as BoxHeader, Moov, Sidx};
 use opendal::{FuturesAsyncReader, Operator};
 use relative_path::RelativePath;
 use tokio::io::{AsyncRead, AsyncReadExt, ReadBuf};
@@ -14,14 +12,10 @@ use tokio_util::compat::{Compat, FuturesAsyncReadCompatExt};
 
 use super::error::{Error, InvalidTrack};
 
-/// The parsed header-region boxes of a CMAF track file, with the absolute
-/// byte offsets just past the `moov` and `sidx` boxes. Validated on
-/// construction: `moov.trak[0]` and its `stsd.codecs[0]` exist, and the
-/// `sidx` timescale is non-zero — consumers index and divide freely.
+/// The parsed `moov` and `sidx`, with their absolute end offsets.
 pub struct Boxes {
     pub moov: Moov,
     pub sidx: Sidx,
-    pub moof: Moof,
     pub moov_end: u64,
     pub sidx_end: u64,
 }
@@ -39,16 +33,8 @@ pub async fn scan(op: &Operator, path: &RelativePath) -> Result<Boxes, Error> {
     Ok(boxes)
 }
 
-/// Reject structural defects the rest of the crate must never see: every
-/// consumer indexes `trak[0]`/`codecs[0]` and divides by the `sidx`
-/// timescale, so a file violating these would panic far from the parse.
+/// Reject structural defects shared by all consumers.
 fn validate(boxes: &Boxes, path: &RelativePath) -> Result<(), Error> {
-    let Some(trak) = boxes.moov.trak.first() else {
-        return Err(invalid_track(path, InvalidTrack::MissingMediaTrack));
-    };
-    if trak.mdia.minf.stbl.stsd.codecs.is_empty() {
-        return Err(invalid_track(path, InvalidTrack::MissingSampleEntry));
-    }
     if boxes.sidx.timescale == 0 {
         return Err(invalid_track(path, InvalidTrack::ZeroTimescale));
     }
@@ -77,20 +63,18 @@ async fn reader(
     Ok(CountingReader::new(inner))
 }
 
-/// Walk `r`'s box structure, capturing the `moov`, `sidx`, and first `moof`
-/// boxes as they pass and skipping every other box. Stops at the first
-/// `moof`, so `mdat` is never touched.
+/// Walk `r`'s box structure, capturing `moov` and `sidx` and skipping every
+/// other box. Stop as soon as both have been read.
 async fn walk<R: AsyncRead + Unpin>(
     r: &mut CountingReader<R>,
     path: &RelativePath,
 ) -> Result<Boxes, Error> {
     let mut moov: Option<Moov> = None;
     let mut sidx: Option<Sidx> = None;
-    let mut moof: Option<Moof> = None;
     let mut moov_end = 0u64;
     let mut sidx_end = 0u64;
 
-    while moov.is_none() || sidx.is_none() || moof.is_none() {
+    while moov.is_none() || sidx.is_none() {
         let header = BoxHeader::read_from(r)
             .await
             .map_err(|source| Error::ParseTrack {
@@ -108,10 +92,6 @@ async fn walk<R: AsyncRead + Unpin>(
         } else if header.kind == Sidx::KIND {
             sidx = Some(parse(&header, r, path).await?);
             sidx_end = r.count();
-        } else if header.kind == Moof::KIND {
-            // The first `moof` ends the header region; `mdat` follows it.
-            moof = Some(parse(&header, r, path).await?);
-            break;
         } else {
             skip(r, body_len, path).await?;
         }
@@ -120,7 +100,6 @@ async fn walk<R: AsyncRead + Unpin>(
     Ok(Boxes {
         moov: moov.ok_or_else(|| invalid_track(path, InvalidTrack::MissingMovieBox))?,
         sidx: sidx.ok_or_else(|| invalid_track(path, InvalidTrack::MissingSegmentIndex))?,
-        moof: moof.ok_or_else(|| invalid_track(path, InvalidTrack::MissingMediaFragment))?,
         moov_end,
         sidx_end,
     })
