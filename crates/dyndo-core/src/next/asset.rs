@@ -58,18 +58,6 @@ impl Asset {
         Ok(asset)
     }
 
-    /// Add a track to this asset.
-    ///
-    /// # Errors
-    /// Track discovery and its errors are not implemented yet.
-    pub async fn add_track(
-        &mut self,
-        _op: &Operator,
-        _path: &str,
-    ) -> Result<&mut Track, CoreError> {
-        unimplemented!("track discovery is not implemented yet")
-    }
-
     /// Serialize this asset with descriptor-relative track paths and write it.
     ///
     /// # Errors

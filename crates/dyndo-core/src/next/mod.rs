@@ -2,6 +2,7 @@
 
 pub mod asset;
 mod box_reader;
+pub mod codec;
 mod format;
 pub mod role;
 pub mod track;

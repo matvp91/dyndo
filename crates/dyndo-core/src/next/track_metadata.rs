@@ -6,9 +6,9 @@ use relative_path::RelativePath;
 use serde::{Deserialize, Serialize};
 
 use super::box_reader;
+use super::codec::codec_from_moov;
 use super::format::Format;
 use super::role::Role;
-use crate::codec::Codec;
 use crate::error::CoreError;
 
 /// Media-specific track metadata.
@@ -16,7 +16,7 @@ use crate::error::CoreError;
 pub struct TrackMetadata {
     /// The track's codec, or `None` for a raw track without a codec.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub codec: Option<Codec>,
+    pub codec: Option<String>,
     /// The track's purpose, if declared.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub role: Option<Role>,
@@ -62,7 +62,7 @@ impl TrackMetadata {
         };
 
         Ok(TrackMetadata {
-            codec: Some(Codec::from_moov(moov)?),
+            codec: Some(codec_from_moov(moov)?),
             role: None,
             kind,
         })
