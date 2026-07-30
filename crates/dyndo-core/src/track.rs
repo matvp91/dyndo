@@ -1,14 +1,14 @@
 //! The `Track`: one struct for every media type, with the per-type fields
-//! split off into [`Metadata`]. Tracks deserialize directly from descriptor
-//! (`asset.json`) entries; serialization goes through `track_wire`, which
-//! adds derived debug-only fields.
+//! split off into [`Metadata`]. Tracks (de)serialize directly to and from
+//! descriptor (`asset.json`) entries, with the probed [`Header`] kept off
+//! the wire.
 
 use bytes::Bytes;
 use opendal::Operator;
 use relative_path::RelativePath;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-use crate::codec::rfc6381_sample_entry;
+use crate::codec::Codec;
 use crate::error::CoreError;
 use crate::header::Header;
 use crate::metadata::Metadata;
@@ -17,8 +17,7 @@ use crate::segment_utils;
 
 /// One of the asset's tracks: the identity and location every media type
 /// shares, with the per-type fields split off into `metadata`.
-/// `Serialize` is hand-written in `track_wire` to add derived debug fields.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Track {
     /// The representation id manifests and segment routes key by. Generated
     /// from the probed fields by [`Track::read`] when the track is first
@@ -98,8 +97,9 @@ impl Track {
     }
 
     /// Generate a representation id from the track's distinguishing fields:
-    /// [`Metadata::generate_id`] with the sample-entry codingname and the
-    /// bandwidth appended — `video_{height}_{sample_entry}_{bandwidth}`,
+    /// the media type and the fields that separate its renditions, with the
+    /// sample-entry codingname and the bandwidth appended —
+    /// `video_{height}_{sample_entry}_{bandwidth}`,
     /// `audio_{language}_{channels}_{sample_entry}_{bandwidth}`, or
     /// `text_{language}_{sample_entry}_{bandwidth}`. A raw file has no
     /// sample entry and gets neither appended. Ignores the stored
@@ -109,7 +109,11 @@ impl Track {
     /// If the track has not been probed: the appended fields read the
     /// header.
     pub fn generate_id(&self) -> String {
-        let id = self.metadata.generate_id();
+        let id = match &self.metadata {
+            Metadata::Video(v) => format!("video_{}", v.height),
+            Metadata::Audio(a) => format!("audio_{}_{}", a.language, a.channels),
+            Metadata::Text(t) => format!("text_{}", t.language),
+        };
         match self.sample_entry() {
             Some(entry) => format!("{id}_{entry}_{}", self.bandwidth()),
             None => id,
@@ -131,15 +135,14 @@ impl Track {
         }
     }
 
-    /// The track's RFC 6381 codecs parameter (e.g. `"avc1.640028"`), or
-    /// `None` for a raw file: a plain `.vtt` declares no codec.
-    ///
-    /// # Panics
-    /// If the track has not been probed.
-    pub fn codec(&self) -> Option<&str> {
-        match self.header() {
-            Header::Cmaf(h) => Some(&h.codec),
-            Header::Raw(_) => None,
+    /// The track's codec (e.g. `"avc1.640028"`), or `None` for a raw file: a
+    /// plain `.vtt` declares no codec. Read from the descriptor-declared
+    /// metadata, so it needs no probe.
+    pub fn codec(&self) -> Option<&Codec> {
+        match &self.metadata {
+            Metadata::Video(v) => Some(&v.codec),
+            Metadata::Audio(a) => Some(&a.codec),
+            Metadata::Text(t) => t.codec.as_ref(),
         }
     }
 
@@ -151,7 +154,7 @@ impl Track {
     /// If the track has not been probed.
     pub fn sample_entry(&self) -> Option<&str> {
         match self.header() {
-            Header::Cmaf(h) => Some(rfc6381_sample_entry(&h.codec)),
+            Header::Cmaf(h) => Some(&h.codec.id),
             Header::Raw(_) => None,
         }
     }

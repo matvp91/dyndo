@@ -59,7 +59,7 @@ fn representation(track: &Track, boundaries_ms: &[u64], min_length_ms: u64) -> R
     let mut rep = Representation {
         id: Some(track.id.clone()),
         bandwidth: Some(track.bandwidth() as u64),
-        codecs: track.codec().map(String::from),
+        codecs: track.codec().map(|c| c.to_string()),
         SegmentTemplate: Some(segment_template(
             track,
             &track.segments(boundaries_ms, min_length_ms),

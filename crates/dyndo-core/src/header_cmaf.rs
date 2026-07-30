@@ -1,15 +1,15 @@
 //! Reads the header region of a CMAF track into a [`HeaderCmaf`].
 //!
-//! Box extraction lives in `box_reader` and codec strings in `codec`:
+//! Box extraction lives in `box_reader` and codec identifiers in `codec`:
 //! [`HeaderCmaf::read`] scans the file into a `Boxes`, and
-//! `build_segments` / `first_sample_duration` / [`rfc6381`] fold the
+//! `build_segments` / `first_sample_duration` / [`Codec::from_moov`] fold the
 //! scanned boxes into the stored values.
 
 use mp4_atom::{Moof, Moov, Sidx};
 use opendal::Operator;
 
 use crate::box_reader;
-use crate::codec::rfc6381;
+use crate::codec::Codec;
 use crate::error::CoreError;
 use crate::segment::Segment;
 
@@ -28,9 +28,8 @@ pub struct HeaderCmaf {
     /// Duration of the track's first sample, in the track timescale. `0`
     /// when the file doesn't declare one.
     pub sample_duration: u32,
-    /// RFC 6381 codecs parameter of the track's sample entry
-    /// (e.g. `"avc1.640028"`).
-    pub codec: String,
+    /// The track's codec, from its sample entry (e.g. `"avc1.640028"`).
+    pub codec: Codec,
     /// The track's (sub)segments, in presentation order.
     pub segments: Vec<Segment>,
 }
@@ -52,7 +51,7 @@ impl HeaderCmaf {
             earliest_presentation_time: boxes.sidx.earliest_presentation_time,
             moov_end: boxes.moov_end,
             sample_duration: first_sample_duration(&boxes.moof, &boxes.moov),
-            codec: rfc6381(&boxes.moov.trak[0].mdia.minf.stbl.stsd.codecs[0])?,
+            codec: Codec::from_moov(&boxes.moov)?,
             segments: build_segments(&boxes.sidx, boxes.sidx_end),
         })
     }

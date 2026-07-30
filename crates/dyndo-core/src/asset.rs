@@ -196,7 +196,7 @@ mod tests {
         std::fs::write(dir.join("subs.vtt"), "WEBVTT\n").unwrap();
         std::fs::write(
             dir.join("asset.json"),
-            r#"{"tracks":[{"id":"text_und","path":"subs.vtt","type":"text"}]}"#,
+            r#"{"tracks":[{"id":"text_und","path":"subs.vtt","type":"text","language":"und"}]}"#,
         )
         .unwrap();
         Operator::new(Fs::default().root(dir.to_str().unwrap())).unwrap()
@@ -271,7 +271,7 @@ mod tests {
         std::fs::write(dir.path().join("subs.vtt"), "WEBVTT\n").unwrap();
         std::fs::write(
             dir.path().join("asset.json"),
-            r#"{"tracks":[{"id":"","path":"subs.vtt","type":"text"}]}"#,
+            r#"{"tracks":[{"id":"","path":"subs.vtt","type":"text","language":"und"}]}"#,
         )
         .unwrap();
         let op = Operator::new(Fs::default().root(dir.path().to_str().unwrap())).unwrap();

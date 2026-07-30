@@ -1,80 +1,143 @@
-//! RFC 6381 codec strings: [`rfc6381`] renders the `codecs` parameter a
-//! sample entry declares (e.g. `"avc1.640028"`), [`rfc6381_sample_entry`]
-//! extracts the sample-entry codingname (e.g. `"avc1"`) that DASH
-//! adaptation sets and HLS rendition groups key on.
+//! RFC 6381 codec identifiers. [`Codec`] pairs the sample-entry codingname
+//! (`id`, e.g. `"avc1"`) with the profile/level parameters that follow it
+//! (e.g. `"640028"`). It renders to and parses back from the single `codecs`
+//! string a sample entry declares, and serde treats it as that string.
+//! [`Codec::from_moov`] builds one from a track's `moov`.
 
-use std::fmt::Write;
+use std::fmt::{self, Write as _};
 
-use mp4_atom::{Codec, Hvcc};
+use mp4_atom::{Codec as SampleEntry, Hvcc, Moov};
+use serde::{Deserialize, Serialize};
 
 use crate::error::CoreError;
 
-/// The RFC 6381 `codecs` parameter for the sample entry `codec`
-/// (e.g. `"avc1.640028"`, `"mp4a.40.2"`).
+/// An RFC 6381 codec: a sample-entry codingname and its parameters.
 ///
-/// # Errors
-/// [`CoreError::UnsupportedCodec`] on a sample entry dyndo does not
-/// support, naming the entry.
-pub fn rfc6381(codec: &Codec) -> Result<String, CoreError> {
-    Ok(match codec {
-        Codec::Avc1(a) => format!(
-            "avc1.{:02x}{:02x}{:02x}",
-            a.avcc.avc_profile_indication,
-            a.avcc.profile_compatibility,
-            a.avcc.avc_level_indication
-        ),
-        Codec::Av01(a) => {
-            let t = if a.av1c.seq_tier_0 { 'H' } else { 'M' };
-            let bit_depth = if a.av1c.twelve_bit {
-                12
-            } else if a.av1c.high_bitdepth {
-                10
-            } else {
-                8
-            };
-            format!(
-                "av01.{}.{:02}{t}.{bit_depth:02}",
-                a.av1c.seq_profile, a.av1c.seq_level_idx_0
-            )
+/// The [`Display`](fmt::Display) form is the `codecs` parameter DASH and HLS
+/// advertise (e.g. `"avc1.640028"`, `"mp4a.40.2"`, `"ec-3"`); the
+/// [`id`](Codec::id) alone is the codingname adaptation sets and rendition
+/// groups key on. serde (de)serializes it as that single string.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(into = "String", from = "String")]
+pub struct Codec {
+    /// The sample-entry codingname (e.g. `"avc1"`, `"mp4a"`, `"ec-3"`):
+    /// everything before the first `.` of the RFC 6381 string.
+    pub id: String,
+    /// The parameters following the codingname (e.g. `"640028"`, `"40.2"`),
+    /// or `None` for a codec that declares none (e.g. `"ec-3"`, `"wvtt"`).
+    pub parameters: Option<String>,
+}
+
+impl Codec {
+    /// The codec a track's `moov` declares, from its first sample entry.
+    ///
+    /// # Errors
+    /// [`CoreError::UnsupportedCodec`] on a sample entry dyndo does not
+    /// support, naming the entry.
+    pub fn from_moov(moov: &Moov) -> Result<Codec, CoreError> {
+        Codec::from_sample_entry(&moov.trak[0].mdia.minf.stbl.stsd.codecs[0])
+    }
+
+    /// The codec a sample entry declares (e.g. an `avc1` entry → the codec
+    /// rendering as `"avc1.640028"`).
+    ///
+    /// # Errors
+    /// [`CoreError::UnsupportedCodec`] on a sample entry dyndo does not
+    /// support, naming the entry.
+    fn from_sample_entry(entry: &SampleEntry) -> Result<Codec, CoreError> {
+        Ok(match entry {
+            SampleEntry::Avc1(a) => Codec {
+                id: "avc1".to_string(),
+                parameters: Some(format!(
+                    "{:02x}{:02x}{:02x}",
+                    a.avcc.avc_profile_indication,
+                    a.avcc.profile_compatibility,
+                    a.avcc.avc_level_indication
+                )),
+            },
+            SampleEntry::Av01(a) => {
+                let tier = if a.av1c.seq_tier_0 { 'H' } else { 'M' };
+                let bit_depth = if a.av1c.twelve_bit {
+                    12
+                } else if a.av1c.high_bitdepth {
+                    10
+                } else {
+                    8
+                };
+                Codec {
+                    id: "av01".to_string(),
+                    parameters: Some(format!(
+                        "{}.{:02}{tier}.{bit_depth:02}",
+                        a.av1c.seq_profile, a.av1c.seq_level_idx_0
+                    )),
+                }
+            }
+            SampleEntry::Hvc1(a) => hevc("hvc1", &a.hvcc),
+            SampleEntry::Hev1(a) => hevc("hev1", &a.hvcc),
+            SampleEntry::Mp4a(a) => Codec {
+                id: "mp4a".to_string(),
+                // The object-type-indication is always 0x40 (MPEG-4 Audio).
+                parameters: Some(format!(
+                    "40.{}",
+                    a.esds.es_desc.dec_config.dec_specific.profile
+                )),
+            },
+            SampleEntry::Ac3(_) => Codec {
+                id: "ac-3".to_string(),
+                parameters: None,
+            },
+            SampleEntry::Eac3(_) => Codec {
+                id: "ec-3".to_string(),
+                parameters: None,
+            },
+            SampleEntry::Wvtt(_) => Codec {
+                id: "wvtt".to_string(),
+                parameters: None,
+            },
+            entry => return Err(CoreError::UnsupportedCodec(codec_name(entry))),
+        })
+    }
+}
+
+impl fmt::Display for Codec {
+    /// Rejoin the codingname and parameters with a `.` (just the codingname
+    /// when there are none): the RFC 6381 `codecs` string.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.id)?;
+        if let Some(parameters) = &self.parameters {
+            write!(f, ".{parameters}")?;
         }
-        Codec::Hvc1(a) => hevc_rfc6381("hvc1", &a.hvcc),
-        Codec::Hev1(a) => hevc_rfc6381("hev1", &a.hvcc),
-        Codec::Mp4a(a) => {
-            // The object-type-indication is always 0x40 (MPEG-4 Audio).
-            format!("mp4a.40.{}", a.esds.es_desc.dec_config.dec_specific.profile)
+        Ok(())
+    }
+}
+
+impl From<Codec> for String {
+    fn from(codec: Codec) -> String {
+        codec.to_string()
+    }
+}
+
+impl From<String> for Codec {
+    /// Split an RFC 6381 string on its first `.` into the codingname `id`
+    /// and the remaining `parameters` (`None` for a dotless codec).
+    fn from(codec: String) -> Codec {
+        match codec.split_once('.') {
+            Some((id, parameters)) => Codec {
+                id: id.to_string(),
+                parameters: Some(parameters.to_string()),
+            },
+            None => Codec {
+                id: codec,
+                parameters: None,
+            },
         }
-        Codec::Ac3(_) => "ac-3".to_string(),
-        Codec::Eac3(_) => "ec-3".to_string(),
-        Codec::Wvtt(_) => "wvtt".to_string(),
-        c => return Err(CoreError::UnsupportedCodec(codec_name(c))),
-    })
+    }
 }
 
-/// The sample entry's name for error messages (e.g. `"Vp09"`): the variant
-/// name off the `Debug` output — [`Codec`] offers no fourcc accessor, and
-/// the full `Debug` payload is pages of decoder configuration.
-fn codec_name(codec: &Codec) -> String {
-    let debug = format!("{codec:?}");
-    debug
-        .split(['(', ' ', '{'])
-        .next()
-        .expect("split yields at least one item")
-        .to_string()
-}
-
-/// The sample-entry codingname of an RFC 6381 `codecs` string: everything
-/// before the first `.` (e.g. `"avc1"`), or the whole string for dotless
-/// codecs (e.g. `"ec-3"`). Representations sharing a decoder — and thus a
-/// DASH `AdaptationSet` or HLS rendition group — share this name.
-pub fn rfc6381_sample_entry(rfc6381: &str) -> &str {
-    rfc6381
-        .split_once('.')
-        .map_or(rfc6381, |(sample_entry, _)| sample_entry)
-}
-
-/// The HEVC `hvc1.…`/`hev1.…` codec string from an `hvcC` decoder
-/// configuration (ISO/IEC 14496-15 Annex E).
-fn hevc_rfc6381(prefix: &str, hvcc: &Hvcc) -> String {
+/// The HEVC codec (`hvc1`/`hev1`) from an `hvcC` decoder configuration
+/// (ISO/IEC 14496-15 Annex E): `prefix` is the codingname, the parameters
+/// carry the profile, compatibility flags, tier, level, and constraint bytes.
+fn hevc(prefix: &str, hvcc: &Hvcc) -> Codec {
     // profile_space: 0 → nothing, 1/2/3 → 'A'/'B'/'C'.
     let space = match hvcc.general_profile_space {
         0 => String::new(),
@@ -84,8 +147,8 @@ fn hevc_rfc6381(prefix: &str, hvcc: &Hvcc) -> String {
     // leading zeroes suppressed.
     let flags = u32::from_be_bytes(hvcc.general_profile_compatibility_flags).reverse_bits();
     let tier = if hvcc.general_tier_flag { 'H' } else { 'L' };
-    let mut s = format!(
-        "{prefix}.{space}{}.{flags:x}.{tier}{}",
+    let mut parameters = format!(
+        "{space}{}.{flags:x}.{tier}{}",
         hvcc.general_profile_idc, hvcc.general_level_idc
     );
     // Constraint bytes: hex, dot-separated, with trailing zero bytes dropped
@@ -93,24 +156,39 @@ fn hevc_rfc6381(prefix: &str, hvcc: &Hvcc) -> String {
     let constraints = &hvcc.general_constraint_indicator_flags;
     if let Some(end) = constraints.iter().rposition(|&b| b != 0) {
         for b in &constraints[..=end] {
-            write!(s, ".{b:02x}").expect("writing to a String is infallible");
+            write!(parameters, ".{b:02x}").expect("writing to a String is infallible");
         }
     }
-    s
+    Codec {
+        id: prefix.to_string(),
+        parameters: Some(parameters),
+    }
+}
+
+/// The sample entry's variant name for error messages (e.g. `"Vp09"`): taken
+/// off the `Debug` output, as the sample entry offers no codingname accessor
+/// and its full `Debug` payload is pages of decoder configuration.
+fn codec_name(entry: &SampleEntry) -> String {
+    let debug = format!("{entry:?}");
+    debug
+        .split(['(', ' ', '{'])
+        .next()
+        .expect("split yields at least one item")
+        .to_string()
 }
 
 #[cfg(test)]
 mod tests {
     use mp4_atom::esds::{DecoderConfig, DecoderSpecific, EsDescriptor};
     use mp4_atom::{
-        Ac3, Ac3SpecificBox, Audio, Av01, Av1c, Avc1, Avcc, Esds, FixedPoint, Hev1, Hvc1, Mp4a,
-        PlainText, VttC, Wvtt,
+        Ac3, Ac3SpecificBox, Audio, Av01, Av1c, Avc1, Avcc, Codec as SampleEntry, Esds, FixedPoint,
+        Hev1, Hvc1, Mp4a, PlainText, VttC, Wvtt,
     };
 
     use super::*;
 
     fn avc(profile: u8, constraints: u8, level: u8) -> String {
-        rfc6381(&Codec::Avc1(Avc1 {
+        Codec::from_sample_entry(&SampleEntry::Avc1(Avc1 {
             avcc: Avcc {
                 avc_profile_indication: profile,
                 profile_compatibility: constraints,
@@ -120,6 +198,7 @@ mod tests {
             ..Default::default()
         }))
         .unwrap()
+        .to_string()
     }
 
     /// An `hvcC` with the MPEG reference vector's identity: Main profile,
@@ -134,23 +213,25 @@ mod tests {
     }
 
     fn hvc1(hvcc: Hvcc) -> String {
-        rfc6381(&Codec::Hvc1(Hvc1 {
+        Codec::from_sample_entry(&SampleEntry::Hvc1(Hvc1 {
             hvcc,
             ..Default::default()
         }))
         .unwrap()
+        .to_string()
     }
 
     fn av1(av1c: Av1c) -> String {
-        rfc6381(&Codec::Av01(Av01 {
+        Codec::from_sample_entry(&SampleEntry::Av01(Av01 {
             av1c,
             ..Default::default()
         }))
         .unwrap()
+        .to_string()
     }
 
     fn aac(audio_object_type: u8) -> String {
-        rfc6381(&Codec::Mp4a(Mp4a {
+        Codec::from_sample_entry(&SampleEntry::Mp4a(Mp4a {
             audio: Audio {
                 data_reference_index: 1,
                 channel_count: 2,
@@ -173,6 +254,7 @@ mod tests {
             taic: None,
         }))
         .unwrap()
+        .to_string()
     }
 
     #[test]
@@ -190,11 +272,12 @@ mod tests {
     fn hevc_hev1_uses_hev1_prefix() {
         // hvc1 and hev1 render the same fields under different codingnames —
         // the distinction DASH forbids mixing within one AdaptationSet.
-        let s = rfc6381(&Codec::Hev1(Hev1 {
+        let s = Codec::from_sample_entry(&SampleEntry::Hev1(Hev1 {
             hvcc: hvcc(),
             ..Default::default()
         }))
-        .unwrap();
+        .unwrap()
+        .to_string();
         assert_eq!(s, "hev1.1.6.L123");
     }
 
@@ -267,8 +350,8 @@ mod tests {
     }
 
     #[test]
-    fn ac3_renders_its_fourcc() {
-        let s = rfc6381(&Codec::Ac3(Ac3 {
+    fn ac3_renders_its_codingname() {
+        let s = Codec::from_sample_entry(&SampleEntry::Ac3(Ac3 {
             audio: Audio {
                 data_reference_index: 1,
                 channel_count: 6,
@@ -284,13 +367,14 @@ mod tests {
                 bit_rate_code: 8,
             },
         }))
-        .unwrap();
+        .unwrap()
+        .to_string();
         assert_eq!(s, "ac-3");
     }
 
     #[test]
-    fn wvtt_renders_its_fourcc() {
-        let s = rfc6381(&Codec::Wvtt(Wvtt {
+    fn wvtt_renders_its_codingname() {
+        let s = Codec::from_sample_entry(&SampleEntry::Wvtt(Wvtt {
             plaintext: PlainText {
                 data_reference_index: 1,
             },
@@ -300,26 +384,47 @@ mod tests {
             label: None,
             btrt: None,
         }))
-        .unwrap();
+        .unwrap()
+        .to_string();
         assert_eq!(s, "wvtt");
     }
 
     #[test]
     fn an_unsupported_sample_entry_errors_with_its_name() {
-        let err = rfc6381(&Codec::Vp09(Default::default())).unwrap_err();
+        let err = Codec::from_sample_entry(&SampleEntry::Vp09(Default::default())).unwrap_err();
         assert_eq!(err.to_string(), "unsupported codec: Vp09");
     }
 
     #[test]
-    fn sample_entry_is_the_prefix_before_the_first_dot() {
-        assert_eq!(rfc6381_sample_entry("avc1.640028"), "avc1");
-        assert_eq!(rfc6381_sample_entry("mp4a.40.2"), "mp4a");
-        assert_eq!(rfc6381_sample_entry("hev1.1.6.L123"), "hev1");
+    fn id_is_the_codingname_before_the_first_dot() {
+        assert_eq!(Codec::from("avc1.640028".to_string()).id, "avc1");
+        assert_eq!(Codec::from("mp4a.40.2".to_string()).id, "mp4a");
+        assert_eq!(Codec::from("hev1.1.6.L123".to_string()).id, "hev1");
     }
 
     #[test]
-    fn sample_entry_of_a_dotless_codec_is_the_whole_string() {
-        assert_eq!(rfc6381_sample_entry("ec-3"), "ec-3");
-        assert_eq!(rfc6381_sample_entry("wvtt"), "wvtt");
+    fn a_dotless_codec_parses_to_a_bare_codingname() {
+        for codingname in ["ec-3", "wvtt"] {
+            let codec = Codec::from(codingname.to_string());
+            assert_eq!(codec.id, codingname);
+            assert_eq!(codec.parameters, None);
+        }
+    }
+
+    #[test]
+    fn display_rejoins_id_and_parameters() {
+        assert_eq!(Codec::from("mp4a.40.2".to_string()).to_string(), "mp4a.40.2");
+        assert_eq!(Codec::from("wvtt".to_string()).to_string(), "wvtt");
+    }
+
+    #[test]
+    fn serde_round_trips_through_the_codec_string() {
+        let codec = Codec {
+            id: "avc1".to_string(),
+            parameters: Some("640028".to_string()),
+        };
+        let json = serde_json::to_string(&codec).unwrap();
+        assert_eq!(json, r#""avc1.640028""#);
+        assert_eq!(serde_json::from_str::<Codec>(&json).unwrap(), codec);
     }
 }
