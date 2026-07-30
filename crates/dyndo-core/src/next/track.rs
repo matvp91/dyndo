@@ -5,8 +5,8 @@ use relative_path::{RelativePath, RelativePathBuf};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use super::error::Error;
 use super::track_metadata::{Kind, TrackMetadata};
-use crate::error::CoreError;
 
 /// A track's identity, location, and media-specific metadata.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -31,7 +31,7 @@ impl Track {
         op: &Operator,
         path: &str,
         asset_descriptor_path: &RelativePath,
-    ) -> Result<Track, CoreError> {
+    ) -> Result<Track, Error> {
         let path = asset_descriptor_path
             .parent()
             .unwrap_or_else(|| RelativePath::new(""))

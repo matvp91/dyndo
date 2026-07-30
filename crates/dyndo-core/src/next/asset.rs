@@ -5,8 +5,8 @@ use opendal::{ErrorKind, Operator};
 use relative_path::{RelativePath, RelativePathBuf};
 use serde::{Deserialize, Serialize};
 
+use super::error::Error;
 use super::track::Track;
-use crate::error::CoreError;
 
 /// An asset descriptor and its tracks.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -30,10 +30,8 @@ impl Asset {
     /// does not exist, return an empty asset rooted at `path`.
     ///
     /// # Errors
-    /// Returns [`CoreError::Storage`] when the descriptor cannot be read for a
-    /// reason other than it not existing, or [`CoreError::Descriptor`] when it
-    /// is not valid descriptor JSON.
-    pub async fn read(op: &Operator, path: &str) -> Result<Asset, CoreError> {
+    /// Returns an error when the descriptor cannot be read or decoded.
+    pub async fn read(op: &Operator, path: &str) -> Result<Asset, Error> {
         let descriptor_path = RelativePathBuf::from(path);
         let buf = match op.read(path).await {
             Ok(buf) => buf,
@@ -44,10 +42,19 @@ impl Asset {
                     tracks: Vec::new(),
                 });
             }
-            Err(error) => return Err(error.into()),
+            Err(source) => {
+                return Err(Error::ReadDescriptor {
+                    path: descriptor_path,
+                    source,
+                });
+            }
         };
 
-        let mut asset: Asset = serde_json::from_reader(buf.reader())?;
+        let mut asset: Asset =
+            serde_json::from_reader(buf.reader()).map_err(|source| Error::DecodeDescriptor {
+                path: descriptor_path.clone(),
+                source,
+            })?;
         asset.path = descriptor_path;
 
         let directory = asset_directory(&asset.path);
@@ -61,9 +68,8 @@ impl Asset {
     /// Serialize this asset with descriptor-relative track paths and write it.
     ///
     /// # Errors
-    /// Returns [`CoreError::Descriptor`] when serialization fails, or
-    /// [`CoreError::Storage`] when the descriptor cannot be written.
-    pub async fn write(&self, op: &Operator) -> Result<(), CoreError> {
+    /// Returns an error when the descriptor cannot be encoded or written.
+    pub async fn write(&self, op: &Operator) -> Result<(), Error> {
         let mut wire_asset = self.clone();
         let directory = asset_directory(&self.path);
 
@@ -71,8 +77,17 @@ impl Asset {
             track.path = directory.relative(&track.path);
         }
 
-        let bytes = serde_json::to_vec_pretty(&wire_asset)?;
-        op.write(self.path.as_str(), bytes).await?;
+        let bytes =
+            serde_json::to_vec_pretty(&wire_asset).map_err(|source| Error::EncodeDescriptor {
+                path: self.path.clone(),
+                source,
+            })?;
+        op.write(self.path.as_str(), bytes)
+            .await
+            .map_err(|source| Error::WriteDescriptor {
+                path: self.path.clone(),
+                source,
+            })?;
         Ok(())
     }
 
@@ -82,11 +97,7 @@ impl Asset {
     /// # Errors
     /// Returns any format, storage, parsing, container, or codec error from
     /// probing a new track.
-    pub async fn index_track(
-        &mut self,
-        op: &Operator,
-        path: &str,
-    ) -> Result<&mut Track, CoreError> {
+    pub async fn index_track(&mut self, op: &Operator, path: &str) -> Result<&mut Track, Error> {
         let resolved_path = asset_directory(&self.path).join(path).normalize();
 
         if let Some(index) = self

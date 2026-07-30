@@ -7,9 +7,9 @@ use serde::{Deserialize, Serialize};
 
 use super::box_reader;
 use super::codec::codec_from_moov;
+use super::error::{Error, InvalidTrack};
 use super::format::Format;
 use super::role::Role;
-use crate::error::CoreError;
 
 /// Media-specific track metadata.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -31,11 +31,11 @@ impl TrackMetadata {
     /// # Errors
     /// Returns an error when the format is unsupported, storage cannot be
     /// read, or the CMAF box structure or codec is invalid.
-    pub async fn probe(op: &Operator, path: &RelativePath) -> Result<TrackMetadata, CoreError> {
+    pub async fn probe(op: &Operator, path: &RelativePath) -> Result<TrackMetadata, Error> {
         match Format::from_path(path)? {
             Format::Cmaf => {
-                let boxes = box_reader::scan(op, path.as_str()).await?;
-                TrackMetadata::from_moov(&boxes.moov)
+                let boxes = box_reader::scan(op, path).await?;
+                TrackMetadata::from_moov(&boxes.moov, path)
             }
             Format::Vtt => Ok(TrackMetadata {
                 codec: None,
@@ -47,22 +47,25 @@ impl TrackMetadata {
         }
     }
 
-    fn from_moov(moov: &Moov) -> Result<TrackMetadata, CoreError> {
+    fn from_moov(moov: &Moov, path: &RelativePath) -> Result<TrackMetadata, Error> {
         let handler = moov.trak[0].mdia.hdlr.handler;
         let kind = if handler == FourCC::new(b"vide") {
-            Kind::Video(VideoKind::from_moov(moov)?)
+            Kind::Video(VideoKind::from_moov(moov, path)?)
         } else if handler == FourCC::new(b"soun") {
-            Kind::Audio(AudioKind::from_moov(moov)?)
+            Kind::Audio(AudioKind::from_moov(moov, path)?)
         } else if handler == FourCC::new(b"text") {
             Kind::Text(TextKind::from_moov(moov))
         } else {
-            return Err(CoreError::Container(format!(
-                "unrecognized media handler {handler}"
-            )));
+            return Err(Error::InvalidTrack {
+                path: path.to_owned(),
+                reason: InvalidTrack::UnsupportedMediaHandler {
+                    handler: handler.to_string(),
+                },
+            });
         };
 
         Ok(TrackMetadata {
-            codec: Some(codec_from_moov(moov)?),
+            codec: Some(codec_from_moov(moov, path)?),
             role: None,
             kind,
         })
@@ -91,16 +94,17 @@ pub struct VideoKind {
 }
 
 impl VideoKind {
-    fn from_moov(moov: &Moov) -> Result<VideoKind, CoreError> {
+    fn from_moov(moov: &Moov, path: &RelativePath) -> Result<VideoKind, Error> {
         let visual = match sample_entry(moov) {
             SampleEntry::Avc1(entry) => &entry.visual,
             SampleEntry::Av01(entry) => &entry.visual,
             SampleEntry::Hvc1(entry) => &entry.visual,
             SampleEntry::Hev1(entry) => &entry.visual,
             _ => {
-                return Err(CoreError::UnsupportedCodec(
-                    "video track without a supported visual sample entry".into(),
-                ));
+                return Err(Error::InvalidTrack {
+                    path: path.to_owned(),
+                    reason: InvalidTrack::MissingVisualSampleEntry,
+                });
             }
         };
 
@@ -123,15 +127,16 @@ pub struct AudioKind {
 }
 
 impl AudioKind {
-    fn from_moov(moov: &Moov) -> Result<AudioKind, CoreError> {
+    fn from_moov(moov: &Moov, path: &RelativePath) -> Result<AudioKind, Error> {
         let audio = match sample_entry(moov) {
             SampleEntry::Mp4a(entry) => &entry.audio,
             SampleEntry::Ac3(entry) => &entry.audio,
             SampleEntry::Eac3(entry) => &entry.audio,
             _ => {
-                return Err(CoreError::UnsupportedCodec(
-                    "audio track without a supported audio sample entry".into(),
-                ));
+                return Err(Error::InvalidTrack {
+                    path: path.to_owned(),
+                    reason: InvalidTrack::MissingAudioSampleEntry,
+                });
             }
         };
 

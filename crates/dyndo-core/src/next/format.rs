@@ -2,7 +2,7 @@
 
 use relative_path::RelativePath;
 
-use crate::error::CoreError;
+use super::error::Error;
 
 /// The container format of a track file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -17,15 +17,20 @@ impl Format {
     /// Infer a track's format from its file extension, case-insensitively.
     ///
     /// # Errors
-    /// Returns [`CoreError::UnsupportedFormat`] for unsupported extensions.
-    pub fn from_path(path: &RelativePath) -> Result<Format, CoreError> {
+    /// Returns an error when the path has no extension or its extension is not
+    /// supported.
+    pub fn from_path(path: &RelativePath) -> Result<Format, Error> {
         let extension = path.extension().map(str::to_ascii_lowercase);
         match extension.as_deref() {
             Some("mp4") => Ok(Format::Cmaf),
             Some("vtt") => Ok(Format::Vtt),
-            other => Err(CoreError::UnsupportedFormat(format!(
-                "no format for file extension {other:?} (supported: mp4, vtt)"
-            ))),
+            Some(extension) => Err(Error::UnsupportedTrackFormat {
+                path: path.to_owned(),
+                extension: extension.to_owned(),
+            }),
+            None => Err(Error::MissingTrackExtension {
+                path: path.to_owned(),
+            }),
         }
     }
 }

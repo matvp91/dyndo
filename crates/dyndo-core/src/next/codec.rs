@@ -4,15 +4,16 @@ use std::fmt::Write as _;
 
 use mp4_atom::{Codec, Hvcc, Moov};
 
-use crate::error::CoreError;
+use relative_path::RelativePath;
+
+use super::error::{Error, InvalidTrack};
 
 /// Return the RFC 6381 codec string declared by the first sample entry in
 /// `moov`.
 ///
 /// # Errors
-/// Returns [`CoreError::UnsupportedCodec`] when the sample entry is not
-/// supported.
-pub fn codec_from_moov(moov: &Moov) -> Result<String, CoreError> {
+/// Returns an error when the sample entry is not supported.
+pub fn codec_from_moov(moov: &Moov, path: &RelativePath) -> Result<String, Error> {
     let entry = &moov.trak[0].mdia.minf.stbl.stsd.codecs[0];
     Ok(match entry {
         Codec::Avc1(entry) => format!(
@@ -44,7 +45,14 @@ pub fn codec_from_moov(moov: &Moov) -> Result<String, CoreError> {
         Codec::Ac3(_) => "ac-3".to_string(),
         Codec::Eac3(_) => "ec-3".to_string(),
         Codec::Wvtt(_) => "wvtt".to_string(),
-        entry => return Err(CoreError::UnsupportedCodec(codec_name(entry))),
+        entry => {
+            return Err(Error::InvalidTrack {
+                path: path.to_owned(),
+                reason: InvalidTrack::UnsupportedCodec {
+                    codec: codec_name(entry),
+                },
+            });
+        }
     })
 }
 
