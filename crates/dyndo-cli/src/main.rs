@@ -1,8 +1,11 @@
 use clap::{Parser, Subcommand};
-use dyndo_core::asset::Asset;
+use dyndo_core::asset::Asset as LegacyAsset;
 use dyndo_core::metadata::Metadata;
+use dyndo_core::next::asset::Asset;
+use dyndo_core::next::track::Track;
 use opendal::Operator;
 use opendal::services::Fs;
+use relative_path::RelativePath;
 
 mod track_descriptor;
 
@@ -66,46 +69,35 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let op = operator()?;
     match cli.command {
         Command::Index { inputs, output } => {
-            // Re-indexing rewrites the descriptor, and serializing a track
-            // recomputes its derived fields from the header, so every existing
-            // track must be probed first.
-            let mut asset = if op.exists(&output).await? {
-                Asset::read_with_headers(&op, &output).await?
-            } else {
-                let mut a = Asset::new();
-                a.path = output.clone();
-                a
-            };
+            let mut asset = Asset::read(&op, &output).await?;
+            let directory = asset
+                .path
+                .parent()
+                .unwrap_or_else(|| RelativePath::new(""))
+                .to_owned();
+
             for input in &inputs {
                 let (path, language, role) = track_descriptor::parse_track_descriptor(input)?;
-                match asset.tracks.iter_mut().find(|t| t.path == path) {
-                    // Already indexed: the descriptor's metadata is
-                    // authoritative — keep it as-is, applying only the
-                    // explicit overrides.
-                    Some(existing) => {
-                        track_descriptor::apply_overrides(
-                            existing,
-                            language.as_deref(),
-                            role.as_deref(),
-                        )?;
-                    }
-                    // New track: probe its metadata, apply the descriptor's
-                    // overrides, then name it — so the id reflects the track's
-                    // final initial metadata (e.g. an overridden language).
-                    // Existing tracks above keep their frozen id, so
-                    // re-indexing never moves a segment route.
+                let resolved_path = directory.join(&path).normalize();
+                let index = match asset
+                    .tracks
+                    .iter()
+                    .position(|track| track.path == resolved_path)
+                {
+                    Some(index) => index,
                     None => {
-                        let track = asset.add_track(&op, &path).await?;
-                        track_descriptor::apply_overrides(
-                            track,
-                            language.as_deref(),
-                            role.as_deref(),
-                        )?;
-                        track.id = track.generate_id();
+                        let track = Track::probe(&op, &path, &asset.path).await?;
+                        asset.tracks.push(track);
+                        asset.tracks.len() - 1
                     }
-                }
+                };
+                track_descriptor::apply_overrides(
+                    &mut asset.tracks[index],
+                    language.as_deref(),
+                    role.as_deref(),
+                )?;
             }
-            asset.write(&op, &output).await?;
+            asset.write(&op).await?;
             println!("wrote {output} ({} tracks)", asset.tracks.len());
         }
         Command::Dash {
@@ -113,13 +105,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             output,
             compact,
         } => {
-            let asset = Asset::read_with_headers(&op, &input).await?;
+            let asset = LegacyAsset::read_with_headers(&op, &input).await?;
             let mpd = dyndo_core::dash::generate_mpd(&asset, compact);
             op.write(&output, mpd.into_bytes()).await?;
             println!("wrote {output}");
         }
         Command::Hls { input, output } => {
-            let asset = Asset::read_with_headers(&op, &input).await?;
+            let asset = LegacyAsset::read_with_headers(&op, &input).await?;
             op.write(
                 &format!("{output}/index.m3u8"),
                 dyndo_core::hls::generate_master(&asset).into_bytes(),

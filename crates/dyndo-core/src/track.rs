@@ -6,7 +6,7 @@
 use bytes::Bytes;
 use opendal::Operator;
 use relative_path::RelativePath;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 use crate::codec::Codec;
 use crate::error::CoreError;
@@ -17,7 +17,7 @@ use crate::segment_utils;
 
 /// One of the asset's tracks: the identity and location every media type
 /// shares, with the per-type fields split off into `metadata`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct Track {
     /// The representation id manifests and segment routes key by. Generated
     /// from the probed fields by [`Track::read`] when the track is first

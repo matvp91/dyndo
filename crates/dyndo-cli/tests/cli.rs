@@ -42,20 +42,16 @@ fn writes_asset_json_for_video_and_audio() {
     assert_eq!(tracks[0]["type"], "video");
     assert_eq!(tracks[0]["height"], 1080);
     assert_eq!(tracks[0]["path"], "video_avc_1080.mp4");
-    // The generated representation id is pinned at index time.
+    // The deterministic UUID is prefixed by the probed media kind.
     assert!(
-        tracks[0]["id"]
-            .as_str()
-            .unwrap()
-            .starts_with("video_1080_avc1_"),
+        tracks[0]["id"].as_str().unwrap().starts_with("video_"),
         "{:?}",
         tracks[0]["id"]
     );
     assert_eq!(tracks[1]["type"], "audio");
     assert_eq!(tracks[1]["language"], "nld");
-    // Derived debug field, recomputed from the probe on every write.
-    assert_eq!(tracks[0]["fourcc"], "avc1");
-    assert_eq!(tracks[1]["fourcc"], "mp4a");
+    assert_eq!(tracks[0]["codec"], "avc1.640028");
+    assert_eq!(tracks[1]["codec"], "mp4a.40.2");
 }
 
 #[test]
@@ -228,11 +224,9 @@ fn indexes_raw_vtt_track_without_advertising_it() {
         .expect("a text track");
     assert_eq!(text["language"], "eng");
     assert_eq!(text["path"], "text_sample.vtt");
-    // The overridden language feeds the generated id, not the file's probed
-    // `und`. A raw file has no sample entry, so none is appended.
-    assert_eq!(text["id"], "text_eng");
-    // A raw file has no sample entry; the field is not written.
-    assert!(text["fourcc"].is_null(), "{text:?}");
+    assert!(text["id"].as_str().unwrap().starts_with("text_"));
+    // A raw file has no RFC 6381 codec; the field is not written.
+    assert!(text["codec"].is_null(), "{text:?}");
 
     // Raw (non-CMAF) tracks are not advertised in manifests yet.
     assert!(
@@ -269,6 +263,9 @@ fn manual_language_edit_in_asset_json_overrides_probed_language() {
             .unwrap()
             .success()
     );
+    let indexed: serde_json::Value =
+        serde_json::from_slice(&fs::read(dir.path().join("asset.json")).unwrap()).unwrap();
+    let id = indexed["tracks"][0]["id"].as_str().unwrap().to_string();
 
     // Hand-edit the descriptor language to "fra": manifests must follow it
     // even though the file's mdhd still says "nld".
@@ -287,11 +284,8 @@ fn manual_language_edit_in_asset_json_overrides_probed_language() {
     let xml = fs::read_to_string(dir.path().join("stream.mpd")).unwrap();
     assert!(xml.contains("lang=\"fra\""), "{xml}");
     assert!(!xml.contains("lang=\"nld\""), "{xml}");
-    // The representation id stays the one stored in asset.json at index time —
-    // segment routes look tracks up by that id, so a language edit must not
-    // re-derive it.
-    assert!(xml.contains("audio_nld_2_mp4a_"), "{xml}");
-    assert!(!xml.contains("audio_fra_2_mp4a_"), "{xml}");
+    // Metadata edits do not change the path-derived identity.
+    assert!(xml.contains(&id), "{xml}");
 
     assert!(
         dyndo(dir.path())
@@ -333,11 +327,7 @@ fn index_sets_language_and_role_on_audio() {
         .expect("an audio track");
     assert_eq!(audio["language"], "fra"); // probed nld, overridden
     assert_eq!(audio["role"], "commentary");
-    // The overridden language feeds the generated id (probed as nld).
-    assert!(
-        audio["id"].as_str().unwrap().starts_with("audio_fra_2_"),
-        "{audio:?}"
-    );
+    assert!(audio["id"].as_str().unwrap().starts_with("audio_"));
 }
 
 #[test]
@@ -381,6 +371,10 @@ fn index_upserts_an_existing_path_in_place() {
             .unwrap()
             .success()
     );
+    let initial: serde_json::Value =
+        serde_json::from_slice(&fs::read(dir.path().join("asset.json")).unwrap()).unwrap();
+    let id = initial["tracks"][0]["id"].as_str().unwrap().to_string();
+
     // Re-index the same path, now declaring a role.
     assert!(
         dyndo(dir.path())
@@ -394,6 +388,7 @@ fn index_upserts_an_existing_path_in_place() {
         serde_json::from_slice(&fs::read(dir.path().join("asset.json")).unwrap()).unwrap();
     let tracks = json["tracks"].as_array().unwrap();
     assert_eq!(tracks.len(), 1, "same path should replace, not duplicate");
+    assert_eq!(tracks[0]["id"], id);
     assert_eq!(tracks[0]["role"], "main");
 }
 
@@ -432,24 +427,27 @@ fn reindexing_an_existing_path_keeps_descriptor_metadata() {
 }
 
 #[test]
-fn index_rejects_role_on_video() {
+fn index_accepts_role_on_video() {
     let dir = tempfile::tempdir().unwrap();
     stage(dir.path(), &["video_avc_1080.mp4"]);
     assert!(
-        !dyndo(dir.path())
+        dyndo(dir.path())
             .args(["index", "video_avc_1080.mp4,role=main", "-o", "asset.json"])
             .status()
             .unwrap()
             .success()
     );
+    let json: serde_json::Value =
+        serde_json::from_slice(&fs::read(dir.path().join("asset.json")).unwrap()).unwrap();
+    assert_eq!(json["tracks"][0]["role"], "main");
 }
 
 #[test]
-fn index_rejects_a_text_role_on_audio() {
+fn index_accepts_subtitle_role_on_audio() {
     let dir = tempfile::tempdir().unwrap();
     stage(dir.path(), &["audio_aac_nl_2.mp4"]);
     assert!(
-        !dyndo(dir.path())
+        dyndo(dir.path())
             .args([
                 "index",
                 "audio_aac_nl_2.mp4,role=subtitle",
@@ -460,6 +458,9 @@ fn index_rejects_a_text_role_on_audio() {
             .unwrap()
             .success()
     );
+    let json: serde_json::Value =
+        serde_json::from_slice(&fs::read(dir.path().join("asset.json")).unwrap()).unwrap();
+    assert_eq!(json["tracks"][0]["role"], "subtitle");
 }
 
 #[test]

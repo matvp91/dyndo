@@ -1,7 +1,7 @@
 //! An asset's media track.
 
 use opendal::Operator;
-use relative_path::RelativePathBuf;
+use relative_path::{RelativePath, RelativePathBuf};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -21,16 +21,22 @@ pub struct Track {
 }
 
 impl Track {
-    /// Probe a track and assign a deterministic ID from its normalized path.
+    /// Resolve and probe a descriptor-relative track path, then assign a
+    /// deterministic ID from the normalized storage path.
     ///
     /// # Errors
     /// Returns any format, storage, parsing, container, or codec error from
     /// probing the track metadata.
     pub async fn probe(
         op: &Operator,
-        path: impl Into<RelativePathBuf>,
+        path: &str,
+        asset_descriptor_path: &RelativePath,
     ) -> Result<Track, CoreError> {
-        let path = path.into().normalize();
+        let path = asset_descriptor_path
+            .parent()
+            .unwrap_or_else(|| RelativePath::new(""))
+            .join(path)
+            .normalize();
         let metadata = TrackMetadata::probe(op, &path).await?;
         let prefix = match &metadata.kind {
             Kind::Video(_) => "video",
