@@ -2,10 +2,8 @@ use clap::{Parser, Subcommand};
 use dyndo_core::asset::Asset as LegacyAsset;
 use dyndo_core::metadata::Metadata;
 use dyndo_core::next::asset::Asset;
-use dyndo_core::next::track::Track;
 use opendal::Operator;
 use opendal::services::Fs;
-use relative_path::RelativePath;
 
 mod track_descriptor;
 
@@ -70,32 +68,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     match cli.command {
         Command::Index { inputs, output } => {
             let mut asset = Asset::read(&op, &output).await?;
-            let directory = asset
-                .path
-                .parent()
-                .unwrap_or_else(|| RelativePath::new(""))
-                .to_owned();
 
             for input in &inputs {
                 let (path, language, role) = track_descriptor::parse_track_descriptor(input)?;
-                let resolved_path = directory.join(&path).normalize();
-                let index = match asset
-                    .tracks
-                    .iter()
-                    .position(|track| track.path == resolved_path)
-                {
-                    Some(index) => index,
-                    None => {
-                        let track = Track::probe(&op, &path, &asset.path).await?;
-                        asset.tracks.push(track);
-                        asset.tracks.len() - 1
-                    }
-                };
-                track_descriptor::apply_overrides(
-                    &mut asset.tracks[index],
-                    language.as_deref(),
-                    role.as_deref(),
-                )?;
+                let track = asset.index_track(&op, &path).await?;
+                track_descriptor::apply_overrides(track, language.as_deref(), role.as_deref())?;
             }
             asset.write(&op).await?;
             println!("wrote {output} ({} tracks)", asset.tracks.len());

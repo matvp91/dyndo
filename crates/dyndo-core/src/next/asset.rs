@@ -75,6 +75,33 @@ impl Asset {
         op.write(self.path.as_str(), bytes).await?;
         Ok(())
     }
+
+    /// Return the track at `path`, probing and adding it when it is not yet
+    /// present in the asset.
+    ///
+    /// # Errors
+    /// Returns any format, storage, parsing, container, or codec error from
+    /// probing a new track.
+    pub async fn index_track(
+        &mut self,
+        op: &Operator,
+        path: &str,
+    ) -> Result<&mut Track, CoreError> {
+        let resolved_path = asset_directory(&self.path).join(path).normalize();
+
+        if let Some(index) = self
+            .tracks
+            .iter()
+            .position(|track| track.path == resolved_path)
+        {
+            return Ok(&mut self.tracks[index]);
+        }
+
+        let track = Track::probe(op, path, &self.path).await?;
+        let index = self.tracks.len();
+        self.tracks.push(track);
+        Ok(&mut self.tracks[index])
+    }
 }
 
 fn asset_directory(path: &RelativePath) -> &RelativePath {
