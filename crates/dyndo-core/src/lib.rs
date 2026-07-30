@@ -13,6 +13,7 @@ mod header_cmaf;
 mod header_raw;
 pub mod hls;
 pub mod metadata;
+pub mod next;
 pub mod role;
 pub mod segment;
 mod segment_utils;
