@@ -1,5 +1,7 @@
-use super::Segment;
-use crate::next::error::Error;
+//! A format-independent segment index.
+
+use super::error::Error;
+use super::segment::Segment;
 
 /// The segment boundaries on a media timeline.
 #[derive(Debug, Clone, PartialEq, Eq)]
