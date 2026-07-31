@@ -8,7 +8,7 @@ use relative_path::RelativePath;
 
 use super::box_reader;
 use super::error::{Error, InvalidTrack};
-use super::segment_index::{Segment, SegmentIndex, SegmentNotFound};
+use super::segment::{Segment, SegmentIndex};
 
 /// The initialization range and indexed media segments of a CMAF track.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -50,16 +50,33 @@ impl CmafHeader {
         })
     }
 
-    /// Return the segment starting exactly at `start`.
+    /// Resolve a segment timing interval to its CMAF source byte range.
     ///
     /// # Errors
-    /// Returns [`SegmentNotFound`] when `start` is not an advertised segment
-    /// boundary.
-    pub fn segment_at(&self, start: u64) -> Result<&CmafSegment, SegmentNotFound> {
-        self.segments
+    /// Returns [`Error::CmafRangeNotFound`] unless both ends of `segment`
+    /// coincide with raw CMAF segment boundaries.
+    pub fn byte_range(&self, segment: Segment) -> Result<Range<u64>, Error> {
+        let target_end = segment
+            .start
+            .checked_add(segment.duration)
+            .ok_or_else(|| cmaf_range_not_found(segment))?;
+        let start = self
+            .segments
             .iter()
-            .find(|segment| segment.timing.start == start)
-            .ok_or(SegmentNotFound { start })
+            .position(|raw| raw.timing.start == segment.start)
+            .ok_or_else(|| cmaf_range_not_found(segment))?;
+        let range_start = self.segments[start].range.start;
+
+        for raw in &self.segments[start..] {
+            if raw.timing.end() == target_end {
+                return Ok(range_start..raw.range.end);
+            }
+            if raw.timing.end() > target_end {
+                break;
+            }
+        }
+
+        Err(cmaf_range_not_found(segment))
     }
 
     /// Return the format-independent timing index for this track.
@@ -110,5 +127,12 @@ fn invalid_track(path: &RelativePath, reason: InvalidTrack) -> Error {
     Error::InvalidTrack {
         path: path.to_owned(),
         reason,
+    }
+}
+
+fn cmaf_range_not_found(segment: Segment) -> Error {
+    Error::CmafRangeNotFound {
+        start: segment.start,
+        duration: segment.duration,
     }
 }

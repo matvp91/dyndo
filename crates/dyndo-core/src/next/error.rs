@@ -94,6 +94,28 @@ pub enum Error {
         /// The violated requirement.
         reason: InvalidTrack,
     },
+    /// No segment starts at the requested presentation time.
+    #[error("no segment starts at {start}")]
+    SegmentNotFound {
+        /// The requested start time.
+        start: u64,
+    },
+    /// A segment index cannot be grouped without a timescale.
+    #[error("cannot group a segment index with a zero timescale")]
+    ZeroSegmentTimescale,
+    /// A grouped segment's duration does not fit in a `u64`.
+    #[error("grouped segment duration overflows")]
+    SegmentDurationOverflow,
+    /// A segment interval does not align with CMAF source boundaries.
+    #[error(
+        "segment at {start} with duration {duration} does not align with CMAF segment boundaries"
+    )]
+    CmafRangeNotFound {
+        /// The requested start time.
+        start: u64,
+        /// The requested duration.
+        duration: u64,
+    },
 }
 
 /// The reason a decoded track is invalid.
