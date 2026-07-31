@@ -2,6 +2,8 @@
 
 use relative_path::RelativePathBuf;
 
+use super::segment::Segment;
+
 /// An error produced while reading, writing, or probing dyndo data.
 ///
 /// Each variant describes a dyndo operation or domain failure. Underlying
@@ -92,81 +94,32 @@ pub enum Error {
         /// The track path.
         path: RelativePathBuf,
         /// The violated requirement.
-        reason: InvalidTrack,
+        reason: String,
+    },
+    /// Timed text could not be parsed.
+    #[error("could not parse timed text `{path}`: {reason}")]
+    ParseText {
+        /// The timed-text path.
+        path: RelativePathBuf,
+        /// The reason parsing failed.
+        reason: String,
     },
     /// No segment starts at the requested presentation time.
-    #[error("no segment starts at {start}")]
-    SegmentNotFound {
+    #[error("no segment starts at {0}")]
+    SegmentNotFound(
         /// The requested start time.
-        start: u64,
-    },
+        u64,
+    ),
     /// A segment index cannot be grouped without a timescale.
     #[error("cannot group a segment index with a zero timescale")]
     ZeroSegmentTimescale,
     /// A grouped segment's duration does not fit in a `u64`.
     #[error("grouped segment duration overflows")]
     SegmentDurationOverflow,
-    /// A segment interval does not align with CMAF source boundaries.
-    #[error(
-        "segment at {start} with duration {duration} does not align with CMAF segment boundaries"
-    )]
-    CmafRangeNotFound {
-        /// The requested start time.
-        start: u64,
-        /// The requested duration.
-        duration: u64,
-    },
-}
-
-/// The reason a decoded track is invalid.
-#[derive(Debug, thiserror::Error)]
-pub enum InvalidTrack {
-    /// A box does not declare its body size.
-    #[error("a box has no declared size")]
-    MissingBoxSize,
-    /// No movie box occurs before the first media fragment.
-    #[error("the movie box is missing before the first media fragment")]
-    MissingMovieBox,
-    /// No segment index occurs before the first media fragment.
-    #[error("the segment index is missing before the first media fragment")]
-    MissingSegmentIndex,
-    /// The track has no media fragment.
-    #[error("the first media fragment is missing")]
-    MissingMediaFragment,
-    /// The movie box contains no media track.
-    #[error("the movie box contains no media track")]
-    MissingMediaTrack,
-    /// The sample description contains no sample entry.
-    #[error("the sample description contains no sample entry")]
-    MissingSampleEntry,
-    /// The segment index has a zero timescale.
-    #[error("the segment-index timescale is zero")]
-    ZeroTimescale,
-    /// The segment index points to another segment index.
-    #[error("hierarchical segment indexes are unsupported")]
-    HierarchicalSegmentIndex,
-    /// Segment timing or byte-offset accumulation overflowed.
-    #[error("segment-index timing or byte offset overflows")]
-    SegmentIndexOverflow,
-    /// A box ends before its declared body size.
-    #[error("a box body is truncated")]
-    TruncatedBox,
-    /// The track uses a media handler dyndo does not support.
-    #[error("media handler `{handler}` is unsupported")]
-    UnsupportedMediaHandler {
-        /// The handler's four-character code.
-        handler: String,
-    },
-    /// The track uses a codec dyndo does not support.
-    #[error("codec `{codec}` is unsupported")]
-    UnsupportedCodec {
-        /// The codec or sample-entry name.
-        codec: String,
-    },
-    /// A video track has no compatible visual sample entry.
-    #[error("the video track has no supported visual sample entry")]
-    MissingVisualSampleEntry,
-    /// An audio track has no compatible audio sample entry.
-    #[error("the audio track has no supported audio sample entry")]
-    MissingAudioSampleEntry,
+    /// No source byte range matches a segment interval.
+    #[error("no byte range found for segment {0:?}")]
+    RangeNotFound(
+        /// The segment whose byte range was requested.
+        Segment,
+    ),
 }

@@ -6,7 +6,7 @@ use mp4_atom::{Codec, Hvcc, Moov};
 
 use relative_path::RelativePath;
 
-use super::error::{Error, InvalidTrack};
+use super::error::Error;
 
 /// Return the RFC 6381 codec string declared by the first sample entry in
 /// `moov`.
@@ -48,9 +48,7 @@ pub fn codec_from_moov(moov: &Moov, path: &RelativePath) -> Result<String, Error
         entry => {
             return Err(Error::InvalidTrack {
                 path: path.to_owned(),
-                reason: InvalidTrack::UnsupportedCodec {
-                    codec: codec_name(entry),
-                },
+                reason: format!("codec `{}` is unsupported", codec_name(entry)),
             });
         }
     })

@@ -23,6 +23,6 @@ impl SegmentIndex {
             .iter()
             .copied()
             .find(|segment| segment.start == start)
-            .ok_or(Error::SegmentNotFound { start })
+            .ok_or(Error::SegmentNotFound(start))
     }
 }

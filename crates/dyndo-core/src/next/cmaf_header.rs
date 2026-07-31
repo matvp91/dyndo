@@ -7,7 +7,7 @@ use opendal::Operator;
 use relative_path::RelativePath;
 
 use super::box_reader;
-use super::error::{Error, InvalidTrack};
+use super::error::Error;
 use super::segment::Segment;
 use super::segment_index::SegmentIndex;
 
@@ -62,18 +62,18 @@ impl CmafHeader {
     /// Resolve a segment timing interval to its CMAF source byte range.
     ///
     /// # Errors
-    /// Returns [`Error::CmafRangeNotFound`] unless both ends of `segment`
+    /// Returns [`Error::RangeNotFound`] unless both ends of `segment`
     /// coincide with raw CMAF segment boundaries.
     pub fn byte_range(&self, segment: Segment) -> Result<Range<u64>, Error> {
         let target_end = segment
             .start
             .checked_add(segment.duration)
-            .ok_or_else(|| cmaf_range_not_found(segment))?;
+            .ok_or_else(|| range_not_found(segment))?;
         let start = self
             .fragments
             .iter()
             .position(|fragment| fragment.start == segment.start)
-            .ok_or_else(|| cmaf_range_not_found(segment))?;
+            .ok_or_else(|| range_not_found(segment))?;
         let range_start = self.fragments[start].range.start;
 
         for fragment in &self.fragments[start..] {
@@ -85,7 +85,7 @@ impl CmafHeader {
             }
         }
 
-        Err(cmaf_range_not_found(segment))
+        Err(range_not_found(segment))
     }
 
     /// Return the format-independent timing index for this track.
@@ -115,7 +115,10 @@ fn fragments_from_sidx(
 
     for reference in &sidx.references {
         if reference.reference_type {
-            return Err(invalid_track(path, InvalidTrack::HierarchicalSegmentIndex));
+            return Err(invalid_track(
+                path,
+                "hierarchical segment indexes are unsupported",
+            ));
         }
 
         let size = u64::from(reference.reference_size);
@@ -137,19 +140,16 @@ fn fragments_from_sidx(
 
 fn checked_add(left: u64, right: u64, path: &RelativePath) -> Result<u64, Error> {
     left.checked_add(right)
-        .ok_or_else(|| invalid_track(path, InvalidTrack::SegmentIndexOverflow))
+        .ok_or_else(|| invalid_track(path, "segment-index timing or byte offset overflows"))
 }
 
-fn invalid_track(path: &RelativePath, reason: InvalidTrack) -> Error {
+fn invalid_track(path: &RelativePath, reason: &str) -> Error {
     Error::InvalidTrack {
         path: path.to_owned(),
-        reason,
+        reason: reason.to_string(),
     }
 }
 
-fn cmaf_range_not_found(segment: Segment) -> Error {
-    Error::CmafRangeNotFound {
-        start: segment.start,
-        duration: segment.duration,
-    }
+fn range_not_found(segment: Segment) -> Error {
+    Error::RangeNotFound(segment)
 }

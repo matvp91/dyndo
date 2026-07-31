@@ -10,6 +10,6 @@ pub mod group_segments;
 pub mod role;
 pub mod segment;
 pub mod segment_index;
-pub mod timed_text;
+pub mod text;
 pub mod track;
 pub mod track_metadata;

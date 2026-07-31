@@ -10,7 +10,7 @@ use relative_path::RelativePath;
 use tokio::io::{AsyncRead, AsyncReadExt, ReadBuf};
 use tokio_util::compat::{Compat, FuturesAsyncReadCompatExt};
 
-use super::error::{Error, InvalidTrack};
+use super::error::Error;
 
 /// The parsed `moov` and `sidx`, with their absolute end offsets.
 pub struct Boxes {
@@ -36,7 +36,7 @@ pub async fn scan(op: &Operator, path: &RelativePath) -> Result<Boxes, Error> {
 /// Reject structural defects shared by all consumers.
 fn validate(boxes: &Boxes, path: &RelativePath) -> Result<(), Error> {
     if boxes.sidx.timescale == 0 {
-        return Err(invalid_track(path, InvalidTrack::ZeroTimescale));
+        return Err(invalid_track(path, "the segment-index timescale is zero"));
     }
     Ok(())
 }
@@ -83,7 +83,7 @@ async fn walk<R: AsyncRead + Unpin>(
             })?;
         let body_len = header
             .size
-            .ok_or_else(|| invalid_track(path, InvalidTrack::MissingBoxSize))?
+            .ok_or_else(|| invalid_track(path, "a box has no declared size"))?
             as u64;
 
         if header.kind == Moov::KIND {
@@ -98,8 +98,18 @@ async fn walk<R: AsyncRead + Unpin>(
     }
 
     Ok(Boxes {
-        moov: moov.ok_or_else(|| invalid_track(path, InvalidTrack::MissingMovieBox))?,
-        sidx: sidx.ok_or_else(|| invalid_track(path, InvalidTrack::MissingSegmentIndex))?,
+        moov: moov.ok_or_else(|| {
+            invalid_track(
+                path,
+                "the movie box is missing before the first media fragment",
+            )
+        })?,
+        sidx: sidx.ok_or_else(|| {
+            invalid_track(
+                path,
+                "the segment index is missing before the first media fragment",
+            )
+        })?,
         moov_end,
         sidx_end,
     })
@@ -128,15 +138,15 @@ async fn skip<R: AsyncRead + Unpin>(r: &mut R, len: u64, path: &RelativePath) ->
             source,
         })?;
     if copied != len {
-        return Err(invalid_track(path, InvalidTrack::TruncatedBox));
+        return Err(invalid_track(path, "a box body is truncated"));
     }
     Ok(())
 }
 
-fn invalid_track(path: &RelativePath, reason: InvalidTrack) -> Error {
+fn invalid_track(path: &RelativePath, reason: &str) -> Error {
     Error::InvalidTrack {
         path: path.to_owned(),
-        reason,
+        reason: reason.to_string(),
     }
 }
 

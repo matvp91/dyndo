@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use super::box_reader;
 use super::codec::codec_from_moov;
-use super::error::{Error, InvalidTrack};
+use super::error::Error;
 use super::format::Format;
 use super::role::Role;
 
@@ -51,13 +51,13 @@ impl TrackMetadata {
         let Some(track) = moov.trak.first() else {
             return Err(Error::InvalidTrack {
                 path: path.to_owned(),
-                reason: InvalidTrack::MissingMediaTrack,
+                reason: "the movie box contains no media track".to_string(),
             });
         };
         if track.mdia.minf.stbl.stsd.codecs.is_empty() {
             return Err(Error::InvalidTrack {
                 path: path.to_owned(),
-                reason: InvalidTrack::MissingSampleEntry,
+                reason: "the sample description contains no sample entry".to_string(),
             });
         }
 
@@ -71,9 +71,7 @@ impl TrackMetadata {
         } else {
             return Err(Error::InvalidTrack {
                 path: path.to_owned(),
-                reason: InvalidTrack::UnsupportedMediaHandler {
-                    handler: handler.to_string(),
-                },
+                reason: format!("media handler `{handler}` is unsupported"),
             });
         };
 
@@ -116,7 +114,7 @@ impl VideoKind {
             _ => {
                 return Err(Error::InvalidTrack {
                     path: path.to_owned(),
-                    reason: InvalidTrack::MissingVisualSampleEntry,
+                    reason: "the video track has no supported visual sample entry".to_string(),
                 });
             }
         };
@@ -148,7 +146,7 @@ impl AudioKind {
             _ => {
                 return Err(Error::InvalidTrack {
                     path: path.to_owned(),
-                    reason: InvalidTrack::MissingAudioSampleEntry,
+                    reason: "the audio track has no supported audio sample entry".to_string(),
                 });
             }
         };
