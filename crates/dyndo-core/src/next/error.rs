@@ -122,4 +122,7 @@ pub enum Error {
         /// The segment whose byte range was requested.
         Segment,
     ),
+    /// An asset could not be serialized as a DASH MPD.
+    #[error("could not serialize DASH MPD: {0}")]
+    SerializeDash(String),
 }

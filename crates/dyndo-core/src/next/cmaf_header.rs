@@ -18,8 +18,6 @@ pub struct CmafHeader {
     pub initialization: Range<u64>,
     /// Units per second used by segment start times and durations.
     pub timescale: u32,
-    /// Presentation time of the first segment.
-    pub earliest_presentation_time: u64,
     /// Media fragments in presentation order.
     pub fragments: Vec<Fragment>,
 }
@@ -54,7 +52,6 @@ impl CmafHeader {
         Ok(Self {
             initialization: 0..boxes.moov_end,
             timescale: boxes.sidx.timescale,
-            earliest_presentation_time: boxes.sidx.earliest_presentation_time,
             fragments,
         })
     }
@@ -91,7 +88,9 @@ impl CmafHeader {
     /// Return the format-independent timing index for this track.
     pub fn segment_index(&self) -> SegmentIndex {
         SegmentIndex {
+            initialization: self.initialization.clone(),
             timescale: self.timescale,
+            bandwidth: self.bandwidth(),
             segments: self
                 .fragments
                 .iter()
@@ -102,6 +101,42 @@ impl CmafHeader {
                 .collect(),
         }
     }
+
+    fn duration(&self) -> u64 {
+        self.fragments
+            .iter()
+            .map(|fragment| fragment.duration)
+            .sum()
+    }
+
+    /// Longest fragment duration, rounded up to milliseconds.
+    pub fn max_fragment_duration_ms(&self) -> u64 {
+        self.fragments
+            .iter()
+            .map(|fragment| units_to_milliseconds(fragment.duration, self.timescale))
+            .max()
+            .unwrap_or(0)
+    }
+
+    /// Average media bandwidth in bits per second.
+    fn bandwidth(&self) -> u64 {
+        let duration = u128::from(self.duration());
+        if duration == 0 {
+            return 0;
+        }
+        let bytes: u128 = self
+            .fragments
+            .iter()
+            .map(|fragment| u128::from(fragment.range.end - fragment.range.start))
+            .sum();
+        let bits_per_second = bytes * 8 * u128::from(self.timescale) / duration;
+        u64::try_from(bits_per_second).unwrap_or(u64::MAX)
+    }
+}
+
+fn units_to_milliseconds(units: u64, timescale: u32) -> u64 {
+    let milliseconds = u128::from(units) * 1_000;
+    u64::try_from(milliseconds.div_ceil(u128::from(timescale))).unwrap_or(u64::MAX)
 }
 
 fn fragments_from_sidx(

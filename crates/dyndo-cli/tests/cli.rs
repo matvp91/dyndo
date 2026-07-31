@@ -41,6 +41,7 @@ fn writes_asset_json_for_video_and_audio() {
     assert_eq!(tracks.len(), 2);
     assert_eq!(tracks[0]["type"], "video");
     assert_eq!(tracks[0]["height"], 1080);
+    assert_eq!(tracks[0]["frame_rate"], 25.0);
     assert_eq!(tracks[0]["path"], "video_avc_1080.mp4");
     // The deterministic UUID is prefixed by the probed media kind.
     assert!(
@@ -85,6 +86,7 @@ fn generates_mpd_from_asset_json() {
     assert!(xml.contains("type=\"static\""));
     assert!(xml.contains("<SegmentTimeline>"));
     assert!(xml.contains("codecs=\"avc1.640028\""));
+    assert!(xml.contains("frameRate=\"25\""));
     assert!(xml.contains("codecs=\"mp4a.40.2\""));
 }
 

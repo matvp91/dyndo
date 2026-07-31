@@ -9,11 +9,18 @@ use super::error::Error;
 use super::track::Track;
 
 /// An asset descriptor and its tracks.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Asset {
     /// The resolved storage path of this asset descriptor.
     #[serde(skip)]
     pub path: RelativePathBuf,
+    /// Minimum segment length in milliseconds. Zero keeps source fragments.
+    #[serde(
+        rename = "min_segment_length",
+        default,
+        skip_serializing_if = "is_zero"
+    )]
+    pub min_segment_length_ms: u64,
     /// Segment boundaries, in milliseconds from the start of the presentation.
     #[serde(
         rename = "segment_boundaries",
@@ -38,6 +45,7 @@ impl Asset {
             Err(error) if error.kind() == ErrorKind::NotFound => {
                 return Ok(Asset {
                     path: descriptor_path,
+                    min_segment_length_ms: 0,
                     segment_boundaries_ms: Vec::new(),
                     tracks: Vec::new(),
                 });
@@ -117,4 +125,8 @@ impl Asset {
 
 fn asset_directory(path: &RelativePath) -> &RelativePath {
     path.parent().unwrap_or_else(|| RelativePath::new(""))
+}
+
+fn is_zero(value: &u64) -> bool {
+    *value == 0
 }

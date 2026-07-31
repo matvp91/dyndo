@@ -9,7 +9,7 @@ use super::error::Error;
 use super::track_metadata::{Kind, TrackMetadata};
 
 /// A track's identity, location, and media-specific metadata.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Track {
     /// The representation identifier used by manifests and segment routes.
     pub id: String,

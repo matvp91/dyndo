@@ -23,10 +23,6 @@ pub fn group_segments(
     if index.timescale == 0 {
         return Err(Error::ZeroSegmentTimescale);
     }
-    if minimum_length_ms == 0 {
-        return Ok(index.clone());
-    }
-
     let minimum = u128::from(minimum_length_ms) * u128::from(index.timescale);
     let cumulative = cumulative_durations(&index.segments)?;
     let cuts = snap_boundaries(&cumulative, index.timescale, boundaries_ms);
@@ -53,7 +49,9 @@ pub fn group_segments(
     }
 
     Ok(SegmentIndex {
+        initialization: index.initialization.clone(),
         timescale: index.timescale,
+        bandwidth: index.bandwidth,
         segments: grouped,
     })
 }

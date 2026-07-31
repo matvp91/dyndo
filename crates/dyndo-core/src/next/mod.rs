@@ -4,6 +4,7 @@ pub mod asset;
 mod box_reader;
 pub mod cmaf_header;
 pub mod codec;
+pub mod dash;
 pub mod error;
 pub mod format;
 pub mod group_segments;

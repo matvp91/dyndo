@@ -4,7 +4,7 @@
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use mp4_atom::{AsyncReadAtom, AsyncReadFrom, Atom, Header as BoxHeader, Moov, Sidx};
+use mp4_atom::{AsyncReadAtom, AsyncReadFrom, Atom, Header as BoxHeader, Moof, Moov, Sidx};
 use opendal::{FuturesAsyncReader, Operator};
 use relative_path::RelativePath;
 use tokio::io::{AsyncRead, AsyncReadExt, ReadBuf};
@@ -15,6 +15,7 @@ use super::error::Error;
 /// The parsed `moov` and `sidx`, with their absolute end offsets.
 pub struct Boxes {
     pub moov: Moov,
+    pub moof: Moof,
     pub sidx: Sidx,
     pub moov_end: u64,
     pub sidx_end: u64,
@@ -37,6 +38,20 @@ pub async fn scan(op: &Operator, path: &RelativePath) -> Result<Boxes, Error> {
 fn validate(boxes: &Boxes, path: &RelativePath) -> Result<(), Error> {
     if boxes.sidx.timescale == 0 {
         return Err(invalid_track(path, "the segment-index timescale is zero"));
+    }
+    if boxes.sidx.references.is_empty() {
+        return Err(invalid_track(path, "the segment index is empty"));
+    }
+    if boxes
+        .sidx
+        .references
+        .iter()
+        .any(|reference| reference.subsegment_duration == 0)
+    {
+        return Err(invalid_track(
+            path,
+            "the segment index contains a zero-duration reference",
+        ));
     }
     Ok(())
 }
@@ -70,11 +85,12 @@ async fn walk<R: AsyncRead + Unpin>(
     path: &RelativePath,
 ) -> Result<Boxes, Error> {
     let mut moov: Option<Moov> = None;
+    let mut moof: Option<Moof> = None;
     let mut sidx: Option<Sidx> = None;
     let mut moov_end = 0u64;
     let mut sidx_end = 0u64;
 
-    while moov.is_none() || sidx.is_none() {
+    while moov.is_none() || sidx.is_none() || moof.is_none() {
         let header = BoxHeader::read_from(r)
             .await
             .map_err(|source| Error::ParseTrack {
@@ -89,6 +105,8 @@ async fn walk<R: AsyncRead + Unpin>(
         if header.kind == Moov::KIND {
             moov = Some(parse(&header, r, path).await?);
             moov_end = r.count();
+        } else if header.kind == Moof::KIND {
+            moof = Some(parse(&header, r, path).await?);
         } else if header.kind == Sidx::KIND {
             sidx = Some(parse(&header, r, path).await?);
             sidx_end = r.count();
@@ -104,6 +122,7 @@ async fn walk<R: AsyncRead + Unpin>(
                 "the movie box is missing before the first media fragment",
             )
         })?,
+        moof: moof.ok_or_else(|| invalid_track(path, "the first media fragment is missing"))?,
         sidx: sidx.ok_or_else(|| {
             invalid_track(
                 path,

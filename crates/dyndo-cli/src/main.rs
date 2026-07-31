@@ -82,8 +82,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             output,
             compact,
         } => {
-            let asset = LegacyAsset::read_with_headers(&op, &input).await?;
-            let mpd = dyndo_core::dash::generate_mpd(&asset, compact);
+            let asset = Asset::read(&op, &input).await?;
+            let mpd = dyndo_core::next::dash::generate_mpd(&op, &asset, compact).await?;
             op.write(&output, mpd.into_bytes()).await?;
             println!("wrote {output}");
         }

@@ -26,3 +26,20 @@ pub enum Role {
     /// even when subtitles are otherwise off.
     ForcedSubtitle,
 }
+
+impl Role {
+    /// Return the role's canonical kebab-case wire name.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Main => "main",
+            Self::Alternate => "alternate",
+            Self::Commentary => "commentary",
+            Self::Dub => "dub",
+            Self::Description => "description",
+            Self::EnhancedAudioIntelligibility => "enhanced-audio-intelligibility",
+            Self::Subtitle => "subtitle",
+            Self::Caption => "caption",
+            Self::ForcedSubtitle => "forced-subtitle",
+        }
+    }
+}

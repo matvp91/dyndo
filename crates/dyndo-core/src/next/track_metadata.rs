@@ -1,6 +1,6 @@
 //! Media-specific track metadata.
 
-use mp4_atom::{Codec as SampleEntry, FourCC, Moov};
+use mp4_atom::{Codec as SampleEntry, FourCC, Moof, Moov};
 use opendal::Operator;
 use relative_path::RelativePath;
 use serde::{Deserialize, Serialize};
@@ -12,7 +12,7 @@ use super::format::Format;
 use super::role::Role;
 
 /// Media-specific track metadata.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TrackMetadata {
     /// The track's codec, or `None` for a raw track without a codec.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -35,7 +35,7 @@ impl TrackMetadata {
         match Format::from_path(path)? {
             Format::Cmaf => {
                 let boxes = box_reader::scan(op, path).await?;
-                TrackMetadata::from_moov(&boxes.moov, path)
+                TrackMetadata::from_boxes(&boxes.moov, &boxes.moof, path)
             }
             Format::Vtt => Ok(TrackMetadata {
                 codec: None,
@@ -47,7 +47,7 @@ impl TrackMetadata {
         }
     }
 
-    fn from_moov(moov: &Moov, path: &RelativePath) -> Result<TrackMetadata, Error> {
+    fn from_boxes(moov: &Moov, moof: &Moof, path: &RelativePath) -> Result<TrackMetadata, Error> {
         let Some(track) = moov.trak.first() else {
             return Err(Error::InvalidTrack {
                 path: path.to_owned(),
@@ -63,7 +63,7 @@ impl TrackMetadata {
 
         let handler = moov.trak[0].mdia.hdlr.handler;
         let kind = if handler == FourCC::new(b"vide") {
-            Kind::Video(VideoKind::from_moov(moov, path)?)
+            Kind::Video(VideoKind::from_boxes(moov, moof, path)?)
         } else if handler == FourCC::new(b"soun") {
             Kind::Audio(AudioKind::from_moov(moov, path)?)
         } else if handler == FourCC::new(b"text") {
@@ -84,7 +84,7 @@ impl TrackMetadata {
 }
 
 /// A track's media type and type-specific metadata.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum Kind {
     /// Video track metadata.
@@ -96,16 +96,19 @@ pub enum Kind {
 }
 
 /// Video-specific track metadata.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct VideoKind {
     /// Visual width, in pixels.
     pub width: u32,
     /// Visual height, in pixels.
     pub height: u32,
+    /// Presented video frames per second.
+    #[serde(deserialize_with = "deserialize_frame_rate")]
+    pub frame_rate: f64,
 }
 
 impl VideoKind {
-    fn from_moov(moov: &Moov, path: &RelativePath) -> Result<VideoKind, Error> {
+    fn from_boxes(moov: &Moov, moof: &Moof, path: &RelativePath) -> Result<VideoKind, Error> {
         let visual = match sample_entry(moov) {
             SampleEntry::Avc1(entry) => &entry.visual,
             SampleEntry::Av01(entry) => &entry.visual,
@@ -119,10 +122,57 @@ impl VideoKind {
             }
         };
 
+        let sample_duration =
+            first_sample_duration(moof, moov).ok_or_else(|| Error::InvalidTrack {
+                path: path.to_owned(),
+                reason: "the video frame rate is not declared".to_string(),
+            })?;
+        let timescale = moov.trak[0].mdia.mdhd.timescale;
+        if timescale == 0 {
+            return Err(Error::InvalidTrack {
+                path: path.to_owned(),
+                reason: "the video media timescale is zero".to_string(),
+            });
+        }
+
         Ok(VideoKind {
             width: visual.width as u32,
             height: visual.height as u32,
+            frame_rate: f64::from(timescale) / f64::from(sample_duration),
         })
+    }
+}
+
+fn first_sample_duration(moof: &Moof, moov: &Moov) -> Option<u32> {
+    moof.traf
+        .first()
+        .and_then(|traf| {
+            traf.trun
+                .iter()
+                .flat_map(|trun| &trun.entries)
+                .find_map(|entry| entry.duration)
+                .or(traf.tfhd.default_sample_duration)
+        })
+        .or_else(|| {
+            moov.mvex
+                .as_ref()
+                .and_then(|mvex| mvex.trex.first())
+                .map(|trex| trex.default_sample_duration)
+        })
+        .filter(|duration| *duration != 0)
+}
+
+fn deserialize_frame_rate<'de, D>(deserializer: D) -> Result<f64, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let frame_rate = f64::deserialize(deserializer)?;
+    if frame_rate.is_finite() && frame_rate > 0.0 {
+        Ok(frame_rate)
+    } else {
+        Err(serde::de::Error::custom(
+            "frame_rate must be a finite number greater than zero",
+        ))
     }
 }
 
