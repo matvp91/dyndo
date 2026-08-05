@@ -9,4 +9,9 @@ workspace = true
 
 [dependencies]
 mp4-atom = "0.12.1"
+opendal = { version = "0.58.0", default-features = false }
 thiserror = "2"
+
+[dev-dependencies]
+opendal = { version = "0.58.0", default-features = false, features = ["services-memory"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

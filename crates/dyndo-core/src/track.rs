@@ -1,20 +1,20 @@
 use std::ops::Range;
 
 use bytes::Bytes;
+use dyndo_text::layer::WvttLayer;
 use opendal::Operator;
 use relative_path::{RelativePath, RelativePathBuf};
 use uuid::Uuid;
 
 use crate::asset_descriptor::TrackKind;
 use crate::track_probe::{self, TrackProbeError};
-use crate::track_source::{TrackSource, TrackSourceError};
 
 #[derive(Debug, thiserror::Error)]
 pub enum TrackError {
     #[error(transparent)]
     Probe(#[from] TrackProbeError),
     #[error(transparent)]
-    Source(#[from] TrackSourceError),
+    Storage(#[from] opendal::Error),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -44,6 +44,10 @@ impl Fragment {
 }
 
 pub struct Track {
+    /// The operator the track's bytes are read through. It may package the
+    /// track as it reads (see [`Track::read`]), so a track must be read back
+    /// through this one and not through an operator the caller happens to hold.
+    op: Operator,
     id: Uuid,
     path: RelativePathBuf,
     codec: String,
@@ -52,29 +56,48 @@ pub struct Track {
     earliest_presentation_time: u64,
     initialization_range: Range<u64>,
     fragments: Vec<Fragment>,
-    source: TrackSource,
 }
 
 impl Track {
-    pub async fn probe(
+    /// Reads the track at `path`, through an operator that packages subtitle
+    /// documents into CMAF as it reads them.
+    ///
+    /// A `.mp4` is already a CMAF track and is read as-is. A `.vtt` is packed
+    /// into a `wvtt` track by [`WvttLayer`], fragmented at the asset's splice
+    /// points (`boundaries_ms`) and on the `min_segment_length_ms` grid so its
+    /// fragments group into segments alongside the asset's other tracks. Either
+    /// way the returned track sees nothing but CMAF.
+    ///
+    /// # Errors
+    ///
+    /// [`TrackError`] if the track cannot be read or packaged, or if the
+    /// extension is not one dyndo accepts.
+    pub async fn read(
         op: &Operator,
         path: &RelativePath,
         kind: Option<TrackKind>,
+        boundaries_ms: &[u64],
+        min_segment_length_ms: u64,
     ) -> Result<Self, TrackError> {
-        let probed = track_probe::probe(op, path).await?;
-        let kind = kind.unwrap_or(probed.kind);
-        let id = Uuid::new_v5(&Uuid::NAMESPACE_URL, path.as_str().as_bytes());
+        if !matches!(path.extension(), Some("mp4" | "vtt")) {
+            return Err(TrackProbeError::UnsupportedFormat.into());
+        }
+
+        let op = op
+            .clone()
+            .layer(WvttLayer::new(boundaries_ms, min_segment_length_ms));
+        let probed = track_probe::probe(&op, path).await?;
 
         Ok(Self {
-            id,
+            op,
+            id: Uuid::new_v5(&Uuid::NAMESPACE_URL, path.as_str().as_bytes()),
             path: path.to_owned(),
             codec: probed.codec,
-            kind,
+            kind: kind.unwrap_or(probed.kind),
             timescale: probed.timescale,
             earliest_presentation_time: probed.earliest_presentation_time,
             initialization_range: probed.initialization_range,
             fragments: probed.fragments,
-            source: probed.source,
         })
     }
 
@@ -141,19 +164,25 @@ impl Track {
         u64::try_from(duration_ms).unwrap_or(u64::MAX)
     }
 
-    pub async fn read_range(&self, op: &Operator, range: Range<u64>) -> Result<Bytes, TrackError> {
-        Ok(self.source.read_range(op, &self.path, range).await?)
+    pub async fn read_range(&self, range: Range<u64>) -> Result<Bytes, TrackError> {
+        Ok(self
+            .op
+            .read_with(self.path.as_str())
+            .range(range)
+            .await?
+            .to_bytes())
     }
 
     /// Reads the track's CMAF initialization segment.
-    pub async fn read_initialization(&self, op: &Operator) -> Result<Bytes, TrackError> {
-        self.read_range(op, self.initialization_range()).await
+    pub async fn read_initialization(&self) -> Result<Bytes, TrackError> {
+        self.read_range(self.initialization_range()).await
     }
 }
 
 #[cfg(test)]
 pub(crate) fn test_track(kind: TrackKind, timescale: u32, fragments: Vec<Fragment>) -> Track {
     Track {
+        op: Operator::new(opendal::services::Memory::default()).unwrap(),
         id: Uuid::nil(),
         path: RelativePathBuf::from("track.mp4"),
         codec: "test".to_string(),
@@ -162,9 +191,6 @@ pub(crate) fn test_track(kind: TrackKind, timescale: u32, fragments: Vec<Fragmen
         earliest_presentation_time: 0,
         initialization_range: 0..0,
         fragments,
-        source: TrackSource::Memory {
-            bytes: Bytes::new(),
-        },
     }
 }
 

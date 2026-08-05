@@ -5,4 +5,3 @@ pub mod segment;
 pub mod track;
 pub mod track_helpers;
 pub mod track_probe;
-pub mod track_source;

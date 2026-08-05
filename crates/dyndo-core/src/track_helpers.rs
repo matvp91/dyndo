@@ -5,22 +5,33 @@ use crate::asset_descriptor::AssetDescriptor;
 use crate::asset_descriptor::TrackKind;
 use crate::track::{Track, TrackError};
 
-/// Reads and probes every track declared by `asset` concurrently.
+/// Reads every track declared by `asset` concurrently, under the asset's splice
+/// points and the requested `min_segment_length_ms`.
 ///
 /// Returned tracks retain descriptor order and use descriptor metadata for
 /// their track kind.
 ///
 /// # Errors
 ///
-/// Returns the first [`TrackError`] encountered while probing the tracks.
+/// Returns the first [`TrackError`] encountered while reading the tracks.
 pub async fn read_all_tracks(
     op: &Operator,
     asset: &AssetDescriptor,
+    min_segment_length_ms: u64,
 ) -> Result<Vec<Track>, TrackError> {
     let reads = asset.tracks.iter().map(|descriptor| {
         let path = asset.track_path(descriptor);
         let kind = descriptor.kind.clone();
-        async move { Track::probe(op, &path, Some(kind)).await }
+        async move {
+            Track::read(
+                op,
+                &path,
+                Some(kind),
+                &asset.segment_boundaries,
+                min_segment_length_ms,
+            )
+            .await
+        }
     });
 
     try_join_all(reads).await

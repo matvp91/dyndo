@@ -105,7 +105,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     continue;
                 }
 
-                let track = Track::probe(&op, &path, None).await?;
+                let track =
+                    Track::read(&op, &path, None, &descriptor.segment_boundaries, 0).await?;
                 input.apply(&mut descriptor.add_track(&track).kind);
             }
 
