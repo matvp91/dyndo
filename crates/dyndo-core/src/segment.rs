@@ -127,8 +127,23 @@ mod tests {
     #[test]
     fn zero_minimum_maps_each_fragment_to_a_segment() {
         let fragments = fragments(&[1000, 1000]);
+        let segments = group_fragments(&fragments, 1000, &[], 0);
 
-        assert_eq!(group_fragments(&fragments, 1000, &[], 0).len(), 2);
+        assert_eq!(
+            segments,
+            vec![
+                Segment {
+                    byte_offset: 100,
+                    byte_size: 10,
+                    duration: 1000,
+                },
+                Segment {
+                    byte_offset: 110,
+                    byte_size: 10,
+                    duration: 1000,
+                },
+            ]
+        );
     }
 
     #[test]
@@ -151,5 +166,58 @@ mod tests {
             segments.iter().map(Segment::duration).collect::<Vec<_>>(),
             vec![3840, 120, 3720]
         );
+    }
+
+    #[test]
+    fn empty_fragments_produce_no_segments() {
+        assert!(group_fragments(&[], 1000, &[], 3000).is_empty());
+    }
+
+    #[test]
+    fn final_short_segment_is_preserved() {
+        let fragments = fragments(&[2000, 2000, 500]);
+        let segments = group_fragments(&fragments, 1000, &[], 3000);
+
+        assert_eq!(
+            segments.iter().map(Segment::duration).collect::<Vec<_>>(),
+            vec![4000, 500]
+        );
+    }
+
+    #[test]
+    fn boundary_on_fragment_edge_closes_the_segment_at_that_edge() {
+        let fragments = fragments(&[1000, 1000, 1000]);
+        let segments = group_fragments(&fragments, 1000, &[2000], 5000);
+
+        assert_eq!(
+            segments.iter().map(Segment::duration).collect::<Vec<_>>(),
+            vec![2000, 1000]
+        );
+    }
+
+    #[test]
+    fn equidistant_boundary_snaps_to_earlier_edge() {
+        assert_eq!(snap_cuts(&[0, 1000, 2000], 1000, &[1500]), vec![1]);
+    }
+
+    #[test]
+    fn out_of_range_boundaries_snap_to_track_edges() {
+        assert_eq!(snap_cuts(&[0, 1000, 2000], 1000, &[0, 9000]), vec![0, 2]);
+    }
+
+    #[test]
+    fn unordered_duplicate_boundaries_produce_unique_sorted_cuts() {
+        assert_eq!(
+            snap_cuts(&[0, 1000, 2000, 3000], 1000, &[2500, 1000, 1000]),
+            vec![1, 2]
+        );
+    }
+
+    #[test]
+    fn grouped_segment_spans_combined_byte_range() {
+        let fragments = fragments(&[1000, 1000]);
+        let segments = group_fragments(&fragments, 1000, &[], 2000);
+
+        assert_eq!(segments[0].byte_range(), 100..120);
     }
 }

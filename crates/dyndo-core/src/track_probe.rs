@@ -1,8 +1,9 @@
+use std::ops::Range;
+
 use bytes::Bytes;
 use mp4_atom::{Codec, FourCC, Hvcc};
 use opendal::Operator;
 use relative_path::RelativePath;
-use std::ops::Range;
 
 use crate::asset_descriptor::{AudioKind, TextKind, TrackKind, VideoKind};
 use crate::box_reader::{self, BoxReaderError, Boxes};
@@ -287,5 +288,20 @@ mod tests {
     #[test]
     fn greatest_common_divisor_reduces_frame_rate_ratio() {
         assert_eq!(greatest_common_divisor(1000, 500), 500);
+    }
+
+    #[test]
+    fn greatest_common_divisor_handles_coprime_values() {
+        assert_eq!(greatest_common_divisor(25, 1), 1);
+    }
+
+    #[test]
+    fn greatest_common_divisor_handles_equal_values() {
+        assert_eq!(greatest_common_divisor(1000, 1000), 1000);
+    }
+
+    #[test]
+    fn greatest_common_divisor_handles_zero_right_operand() {
+        assert_eq!(greatest_common_divisor(1000, 0), 1000);
     }
 }

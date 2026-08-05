@@ -111,7 +111,7 @@ CI publishes. The guide's sources live in [`docs/`](docs/) and are published to
 GitHub Pages by the same workflow.
 
 Tests run against small, committed header-only CMAF fixtures under
-[`tests/fixtures`](tests/fixtures) — just enough of each file (`ftyp` + `moov` +
+[`fixtures`](fixtures) — just enough of each file (`ftyp` + `moov` +
 `sidx` + first `moof`) to exercise parsing end to end without shipping gigabytes
 of media.
 

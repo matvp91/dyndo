@@ -150,3 +150,114 @@ impl Track {
         self.read_range(op, self.initialization_range()).await
     }
 }
+
+#[cfg(test)]
+pub(crate) fn test_track(kind: TrackKind, timescale: u32, fragments: Vec<Fragment>) -> Track {
+    Track {
+        id: Uuid::nil(),
+        path: RelativePathBuf::from("track.mp4"),
+        codec: "test".to_string(),
+        kind,
+        timescale,
+        earliest_presentation_time: 0,
+        initialization_range: 0..0,
+        fragments,
+        source: TrackSource::Memory {
+            bytes: Bytes::new(),
+        },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::asset_descriptor::{AudioKind, TextKind, VideoKind};
+
+    #[test]
+    fn fragment_new_returns_none_when_byte_range_overflows() {
+        assert_eq!(Fragment::new(u64::MAX, 1, 1), None);
+    }
+
+    #[test]
+    fn fragment_byte_range_is_half_open() {
+        let fragment = Fragment::new(10, 5, 1).unwrap();
+
+        assert_eq!(fragment.byte_range(), 10..15);
+    }
+
+    #[test]
+    fn duration_ms_converts_timescale_units() {
+        let track = test_track(
+            video_kind(),
+            90_000,
+            vec![Fragment::new(0, 10, 295_200).unwrap()],
+        );
+
+        assert_eq!(track.duration_ms(), 3_280);
+    }
+
+    #[test]
+    fn duration_ms_truncates_fractional_milliseconds() {
+        let track = test_track(
+            video_kind(),
+            3_000,
+            vec![Fragment::new(0, 10, 3_001).unwrap()],
+        );
+
+        assert_eq!(track.duration_ms(), 1_000);
+    }
+
+    #[test]
+    fn video_has_video_content_and_mime_types() {
+        let track = test_track(video_kind(), 1_000, Vec::new());
+
+        assert_eq!(
+            (track.content_type(), track.mime_type()),
+            ("video", "video/mp4")
+        );
+    }
+
+    #[test]
+    fn audio_has_audio_content_and_mime_types() {
+        let track = test_track(audio_kind(), 1_000, Vec::new());
+
+        assert_eq!(
+            (track.content_type(), track.mime_type()),
+            ("audio", "audio/mp4")
+        );
+    }
+
+    #[test]
+    fn text_has_text_content_and_application_mime_types() {
+        let track = test_track(text_kind(), 1_000, Vec::new());
+
+        assert_eq!(
+            (track.content_type(), track.mime_type()),
+            ("text", "application/mp4")
+        );
+    }
+
+    fn video_kind() -> TrackKind {
+        TrackKind::Video(VideoKind {
+            width: 1920,
+            height: 1080,
+            frame_rate: "25/1".to_string(),
+        })
+    }
+
+    fn audio_kind() -> TrackKind {
+        TrackKind::Audio(AudioKind {
+            sample_rate: 48_000,
+            channels: 2,
+            language: "eng".to_string(),
+            role: None,
+        })
+    }
+
+    fn text_kind() -> TrackKind {
+        TrackKind::Text(TextKind {
+            language: "eng".to_string(),
+            role: None,
+        })
+    }
+}

@@ -103,3 +103,107 @@ fn max_matching_duration_ms(tracks: &[Track], include: impl Fn(&TrackKind) -> bo
         .map(Track::duration_ms)
         .max()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::asset_descriptor::{AudioKind, TextKind, VideoKind};
+    use crate::track::{Fragment, test_track};
+
+    #[test]
+    fn max_duration_prefers_video_over_longer_audio() {
+        let tracks = vec![track(audio_kind(), 10_000), track(video_kind(), 4_000)];
+
+        assert_eq!(max_duration_ms(&tracks), 4_000);
+    }
+
+    #[test]
+    fn max_duration_falls_back_to_audio_without_video() {
+        let tracks = vec![track(text_kind(), 20_000), track(audio_kind(), 5_000)];
+
+        assert_eq!(max_duration_ms(&tracks), 5_000);
+    }
+
+    #[test]
+    fn max_duration_ignores_text_only_assets() {
+        let tracks = vec![track(text_kind(), 20_000)];
+
+        assert_eq!(max_duration_ms(&tracks), 0);
+    }
+
+    #[test]
+    fn max_segment_duration_excludes_text_and_rounds_up() {
+        let tracks = vec![
+            test_track(video_kind(), 3, vec![Fragment::new(0, 10, 1).unwrap()]),
+            track(text_kind(), 10_000),
+        ];
+
+        assert_eq!(max_segment_duration_ms(&tracks, &[], 0), 334);
+    }
+
+    #[test]
+    fn max_bitrate_returns_highest_segment_rate() {
+        let track = test_track(
+            video_kind(),
+            1_000,
+            vec![
+                Fragment::new(0, 1_000, 1_000).unwrap(),
+                Fragment::new(1_000, 2_000, 1_000).unwrap(),
+            ],
+        );
+
+        assert_eq!(max_bitrate(&track, &[], 0), 16_000);
+    }
+
+    #[test]
+    fn average_bitrate_uses_all_segment_bytes_and_duration() {
+        let track = test_track(
+            video_kind(),
+            1_000,
+            vec![
+                Fragment::new(0, 1_000, 1_000).unwrap(),
+                Fragment::new(1_000, 2_000, 1_000).unwrap(),
+            ],
+        );
+
+        assert_eq!(average_bitrate(&track, &[], 0), 12_000);
+    }
+
+    #[test]
+    fn bitrates_are_zero_without_segments() {
+        let track = test_track(video_kind(), 1_000, Vec::new());
+
+        assert_eq!(
+            (max_bitrate(&track, &[], 0), average_bitrate(&track, &[], 0)),
+            (0, 0)
+        );
+    }
+
+    fn track(kind: TrackKind, duration: u64) -> Track {
+        test_track(kind, 1_000, vec![Fragment::new(0, 10, duration).unwrap()])
+    }
+
+    fn video_kind() -> TrackKind {
+        TrackKind::Video(VideoKind {
+            width: 1920,
+            height: 1080,
+            frame_rate: "25/1".to_string(),
+        })
+    }
+
+    fn audio_kind() -> TrackKind {
+        TrackKind::Audio(AudioKind {
+            sample_rate: 48_000,
+            channels: 2,
+            language: "eng".to_string(),
+            role: None,
+        })
+    }
+
+    fn text_kind() -> TrackKind {
+        TrackKind::Text(TextKind {
+            language: "eng".to_string(),
+            role: None,
+        })
+    }
+}

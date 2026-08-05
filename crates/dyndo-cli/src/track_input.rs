@@ -4,7 +4,7 @@ use dyndo_core::asset_descriptor::TrackKind;
 use dyndo_core::role::Role;
 use relative_path::RelativePathBuf;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub(crate) struct TrackInput {
     pub(crate) path: RelativePathBuf,
     language: Option<String>,
@@ -66,6 +66,110 @@ impl FromStr for TrackInput {
             path,
             language,
             role,
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use dyndo_core::asset_descriptor::{AudioKind, TextKind, VideoKind};
+
+    use super::*;
+
+    #[test]
+    fn parse_accepts_plain_path() {
+        let input: TrackInput = "video.mp4".parse().unwrap();
+
+        assert_eq!(input.path, RelativePathBuf::from("video.mp4"));
+    }
+
+    #[test]
+    fn parse_accepts_language_and_role() {
+        let input: TrackInput = "audio.mp4,language=fra,role=commentary".parse().unwrap();
+
+        assert_eq!(
+            (input.language.as_deref(), input.role),
+            (Some("fra"), Some(Role::Commentary))
+        );
+    }
+
+    #[test]
+    fn parse_rejects_unknown_field() {
+        let error = "audio.mp4,codec=aac".parse::<TrackInput>().unwrap_err();
+
+        assert_eq!(error, "expected language=.. or role=.., got \"codec=aac\"");
+    }
+
+    #[test]
+    fn parse_treats_path_key_syntax_as_literal_path() {
+        let input = "path=video.mp4".parse::<TrackInput>().unwrap();
+
+        assert_eq!(input.path, RelativePathBuf::from("path=video.mp4"));
+    }
+
+    #[test]
+    fn parse_rejects_unknown_role() {
+        let error = "audio.mp4,role=unknown".parse::<TrackInput>().unwrap_err();
+
+        assert_eq!(error, "unknown role: unknown");
+    }
+
+    #[test]
+    fn apply_overrides_audio_language_and_role() {
+        let input: TrackInput = "audio.mp4,language=fra,role=commentary".parse().unwrap();
+        let mut kind = audio_kind();
+
+        input.apply(&mut kind);
+
+        let TrackKind::Audio(audio) = kind else {
+            panic!("expected audio");
+        };
+        assert_eq!(
+            (audio.language, audio.role),
+            ("fra".to_string(), Some(Role::Commentary))
+        );
+    }
+
+    #[test]
+    fn apply_overrides_text_language_and_role() {
+        let input: TrackInput = "text.vtt,language=nld,role=subtitle".parse().unwrap();
+        let mut kind = TrackKind::Text(TextKind {
+            language: "und".to_string(),
+            role: None,
+        });
+
+        input.apply(&mut kind);
+
+        let TrackKind::Text(text) = kind else {
+            panic!("expected text");
+        };
+        assert_eq!(
+            (text.language, text.role),
+            ("nld".to_string(), Some(Role::Subtitle))
+        );
+    }
+
+    #[test]
+    fn apply_ignores_video_overrides() {
+        let input: TrackInput = "video.mp4,language=fra".parse().unwrap();
+        let mut kind = TrackKind::Video(VideoKind {
+            width: 1920,
+            height: 1080,
+            frame_rate: "25/1".to_string(),
+        });
+        let expected = kind.clone();
+
+        input.apply(&mut kind);
+
+        assert_eq!(kind, expected);
+    }
+
+    fn audio_kind() -> TrackKind {
+        TrackKind::Audio(AudioKind {
+            sample_rate: 48_000,
+            channels: 2,
+            language: "nld".to_string(),
+            role: None,
         })
     }
 }
