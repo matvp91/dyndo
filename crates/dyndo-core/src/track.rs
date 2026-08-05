@@ -6,6 +6,7 @@ use relative_path::{RelativePath, RelativePathBuf};
 use uuid::Uuid;
 
 use crate::asset_descriptor::TrackKind;
+use crate::segment::SegmentOptions;
 use crate::track_helpers::add_operator_layers;
 use crate::track_probe::{self, TrackProbeError};
 
@@ -52,19 +53,14 @@ pub struct Track {
     earliest_presentation_time: u64,
     initialization_range: Range<u64>,
     fragments: Vec<Fragment>,
-    /// The packaging this track was probed under. Reads repeat it, since a
-    /// subtitle track's bytes exist only through those layers.
-    boundaries_ms: Vec<u64>,
-    text_segment_length_ms: u64,
 }
 
 impl Track {
     /// Probes the track at `path`, packaging it as CMAF if it is not already.
     ///
-    /// A subtitle document is packed into a `wvtt` track as it is read,
-    /// fragmented at the asset's splice points (`boundaries_ms`) and every
-    /// `text_segment_length_ms`, so its fragments group into segments alongside
-    /// the asset's other tracks.
+    /// A subtitle document is packed into a `wvtt` track as it is read, fragmented
+    /// at the splice points and text segment length in `options`, so its fragments
+    /// group into segments alongside the asset's other tracks.
     ///
     /// # Errors
     ///
@@ -73,10 +69,9 @@ impl Track {
         op: &Operator,
         path: &RelativePath,
         kind: Option<TrackKind>,
-        boundaries_ms: &[u64],
-        text_segment_length_ms: u64,
+        options: &SegmentOptions,
     ) -> Result<Self, TrackError> {
-        let layered = add_operator_layers(op, boundaries_ms, text_segment_length_ms);
+        let layered = add_operator_layers(op, options);
         let probed = track_probe::probe(&layered, path).await?;
         let kind = kind.unwrap_or(probed.kind);
         let id = Uuid::new_v5(&Uuid::NAMESPACE_URL, path.as_str().as_bytes());
@@ -90,8 +85,6 @@ impl Track {
             earliest_presentation_time: probed.earliest_presentation_time,
             initialization_range: probed.initialization_range,
             fragments: probed.fragments,
-            boundaries_ms: boundaries_ms.to_vec(),
-            text_segment_length_ms,
         })
     }
 
@@ -158,10 +151,15 @@ impl Track {
         u64::try_from(duration_ms).unwrap_or(u64::MAX)
     }
 
-    /// Reads a byte range of the track, packaging it the same way [`Track::probe`]
-    /// did so the range means what it meant then.
-    pub async fn read_range(&self, op: &Operator, range: Range<u64>) -> Result<Bytes, TrackError> {
-        let op = add_operator_layers(op, &self.boundaries_ms, self.text_segment_length_ms);
+    /// Reads a byte range of the track. Pass the `options` it was probed under, so
+    /// the packaging — and with it the meaning of the range — is the same.
+    pub async fn read_range(
+        &self,
+        op: &Operator,
+        options: &SegmentOptions,
+        range: Range<u64>,
+    ) -> Result<Bytes, TrackError> {
+        let op = add_operator_layers(op, options);
 
         Ok(op
             .read_with(self.path.as_str())
@@ -171,8 +169,13 @@ impl Track {
     }
 
     /// Reads the track's CMAF initialization segment.
-    pub async fn read_initialization(&self, op: &Operator) -> Result<Bytes, TrackError> {
-        self.read_range(op, self.initialization_range()).await
+    pub async fn read_initialization(
+        &self,
+        op: &Operator,
+        options: &SegmentOptions,
+    ) -> Result<Bytes, TrackError> {
+        self.read_range(op, options, self.initialization_range())
+            .await
     }
 }
 
@@ -187,8 +190,6 @@ pub(crate) fn test_track(kind: TrackKind, timescale: u32, fragments: Vec<Fragmen
         earliest_presentation_time: 0,
         initialization_range: 0..0,
         fragments,
-        boundaries_ms: Vec::new(),
-        text_segment_length_ms: 0,
     }
 }
 

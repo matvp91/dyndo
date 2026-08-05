@@ -1,5 +1,6 @@
 use dyndo_core::asset_descriptor::{AssetDescriptor, TrackDescriptor, TrackKind};
 use dyndo_core::role::Role;
+use dyndo_core::segment::SegmentOptions;
 use dyndo_core::track::Track;
 
 pub(super) type Member<'a> = (&'a TrackDescriptor, &'a Track);
@@ -56,20 +57,16 @@ impl<'a> AdaptationSetGroup<'a> {
         &self.members
     }
 
-    pub(super) fn is_segment_aligned(
-        &self,
-        boundaries_ms: &[u64],
-        min_segment_length_ms: u64,
-    ) -> bool {
+    pub(super) fn is_segment_aligned(&self, options: &SegmentOptions) -> bool {
         let Some((_, reference)) = self.members.first() else {
             return true;
         };
-        let reference_segments = reference.segments(boundaries_ms, min_segment_length_ms);
+        let reference_segments = reference.segments(options);
 
         self.members.iter().skip(1).all(|(_, candidate)| {
             candidate.earliest_presentation_time() == reference.earliest_presentation_time()
                 && candidate
-                    .segments(boundaries_ms, min_segment_length_ms)
+                    .segments(options)
                     .iter()
                     .map(|segment| segment.duration())
                     .eq(reference_segments.iter().map(|segment| segment.duration()))

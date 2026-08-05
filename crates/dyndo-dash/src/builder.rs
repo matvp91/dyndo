@@ -45,8 +45,9 @@ pub async fn generate_mpd(
     segment_options: &SegmentOptions,
     compact: bool,
 ) -> Result<MPD, DashError> {
-    let tracks = read_all_tracks(op, asset, segment_options.text_segment_length_ms).await?;
-    build_mpd(asset, &tracks, segment_options, compact)
+    let segment_options = segment_options.for_asset(asset);
+    let tracks = read_all_tracks(op, asset, &segment_options).await?;
+    build_mpd(asset, &tracks, &segment_options, compact)
 }
 
 fn build_mpd(
@@ -57,18 +58,16 @@ fn build_mpd(
 ) -> Result<MPD, DashError> {
     let duration = Duration::from_millis(max_duration_ms(tracks));
     let groups = adaptation_set_group::group(asset, tracks);
-    if groups.iter().any(|group| {
-        !group.is_segment_aligned(
-            &asset.segment_boundaries,
-            segment_options.min_segment_length_ms,
-        )
-    }) {
+    if groups
+        .iter()
+        .any(|group| !group.is_segment_aligned(segment_options))
+    {
         return Err(DashError::SegmentAlignment);
     }
     let adaptations = groups
         .iter()
         .enumerate()
-        .map(|(index, group)| adaptation_set(index, group, asset, segment_options))
+        .map(|(index, group)| adaptation_set(index, group, segment_options))
         .collect();
 
     let mut mpd = MPD {
@@ -77,8 +76,7 @@ fn build_mpd(
         profiles: Some(DASH_PROFILE.to_string()),
         minBufferTime: Some(Duration::from_millis(max_segment_duration_ms(
             tracks,
-            &asset.segment_boundaries,
-            segment_options.min_segment_length_ms,
+            segment_options,
         ))),
         mediaPresentationDuration: Some(duration),
         periods: vec![Period {
@@ -99,7 +97,6 @@ fn build_mpd(
 fn adaptation_set(
     index: usize,
     group: &AdaptationSetGroup<'_>,
-    asset: &AssetDescriptor,
     segment_options: &SegmentOptions,
 ) -> AdaptationSet {
     AdaptationSet {
@@ -114,7 +111,7 @@ fn adaptation_set(
         representations: group
             .members()
             .iter()
-            .map(|(descriptor, track)| representation(descriptor, track, asset, segment_options))
+            .map(|(descriptor, track)| representation(descriptor, track, segment_options))
             .collect(),
         ..Default::default()
     }
@@ -123,18 +120,13 @@ fn adaptation_set(
 fn representation(
     descriptor: &TrackDescriptor,
     track: &Track,
-    asset: &AssetDescriptor,
     segment_options: &SegmentOptions,
 ) -> Representation {
     let mut representation = Representation {
         id: Some(descriptor.id.clone()),
-        bandwidth: Some(max_bitrate(
-            track,
-            &asset.segment_boundaries,
-            segment_options.min_segment_length_ms,
-        )),
+        bandwidth: Some(max_bitrate(track, segment_options)),
         codecs: Some(descriptor.codec.clone()),
-        SegmentTemplate: Some(segment_template(track, asset, segment_options)),
+        SegmentTemplate: Some(segment_template(track, segment_options)),
         ..Default::default()
     };
 
@@ -163,32 +155,21 @@ fn audio_channel_configuration(channels: u16) -> AudioChannelConfiguration {
     }
 }
 
-fn segment_template(
-    track: &Track,
-    asset: &AssetDescriptor,
-    segment_options: &SegmentOptions,
-) -> SegmentTemplate {
+fn segment_template(track: &Track, segment_options: &SegmentOptions) -> SegmentTemplate {
     SegmentTemplate {
         timescale: Some(u64::from(track.timescale())),
         presentationTimeOffset: Some(track.earliest_presentation_time()),
         initialization: Some(INITIALIZATION_TEMPLATE.to_string()),
         media: Some(MEDIA_TEMPLATE.to_string()),
-        SegmentTimeline: Some(segment_timeline(track, asset, segment_options)),
+        SegmentTimeline: Some(segment_timeline(track, segment_options)),
         ..Default::default()
     }
 }
 
-fn segment_timeline(
-    track: &Track,
-    asset: &AssetDescriptor,
-    segment_options: &SegmentOptions,
-) -> SegmentTimeline {
+fn segment_timeline(track: &Track, segment_options: &SegmentOptions) -> SegmentTimeline {
     let mut segments: Vec<S> = Vec::new();
 
-    for segment in track.segments(
-        &asset.segment_boundaries,
-        segment_options.min_segment_length_ms,
-    ) {
+    for segment in track.segments(segment_options) {
         match segments.last_mut() {
             Some(previous) if previous.d == segment.duration() => {
                 *previous.r.get_or_insert(0) += 1;

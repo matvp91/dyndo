@@ -47,7 +47,8 @@ pub async fn generate_master_playlist(
     _hls_options: &HlsOptions,
 ) -> Result<MasterPlaylist<'static>, HlsError> {
     ensure_unique_rendition_names(asset)?;
-    let tracks = read_all_tracks(op, asset, segment_options.text_segment_length_ms).await?;
+    let segment_options = &segment_options.for_asset(asset);
+    let tracks = read_all_tracks(op, asset, segment_options).await?;
     build_master_playlist(asset, &tracks, segment_options)
 }
 
@@ -65,15 +66,9 @@ pub async fn generate_media_playlist(
     _hls_options: &HlsOptions,
 ) -> Result<MediaPlaylist<'static>, HlsError> {
     let path = asset.track_path(descriptor);
-    let track = Track::probe(
-        op,
-        &path,
-        Some(descriptor.kind.clone()),
-        &asset.segment_boundaries,
-        segment_options.text_segment_length_ms,
-    )
-    .await?;
-    build_media_playlist(asset, descriptor, &track, segment_options)
+    let segment_options = &segment_options.for_asset(asset);
+    let track = Track::probe(op, &path, Some(descriptor.kind.clone()), segment_options).await?;
+    build_media_playlist(descriptor, &track, segment_options)
 }
 
 /// Serializes a media playlist with `EXTINF` durations rounded to three decimals.
@@ -99,16 +94,12 @@ pub fn serialize_media_playlist(playlist: &MediaPlaylist<'_>) -> String {
 }
 
 fn build_media_playlist(
-    asset: &AssetDescriptor,
     descriptor: &TrackDescriptor,
     track: &Track,
     segment_options: &SegmentOptions,
 ) -> Result<MediaPlaylist<'static>, HlsError> {
     let mut start_time = track.earliest_presentation_time();
-    let segments = track.segments(
-        &asset.segment_boundaries,
-        segment_options.min_segment_length_ms,
-    );
+    let segments = track.segments(segment_options);
     let target_duration = segments
         .iter()
         .map(|segment| rounded_duration_seconds(segment.duration(), track.timescale()))
@@ -187,21 +178,17 @@ fn build_master_playlist(
         .filter(|track| !matches!(track.kind(), TrackKind::Video(_)))
         .map(Track::codec)
         .collect::<Vec<_>>();
-    let rendition_bandwidth = max_rendition_bandwidth(asset, tracks, segment_options, |kind| {
+    let rendition_bandwidth = max_rendition_bandwidth(tracks, segment_options, |kind| {
         matches!(kind, TrackKind::Audio(_))
     })
-    .saturating_add(max_rendition_bandwidth(
-        asset,
-        tracks,
-        segment_options,
-        |kind| matches!(kind, TrackKind::Text(_)),
-    ));
+    .saturating_add(max_rendition_bandwidth(tracks, segment_options, |kind| {
+        matches!(kind, TrackKind::Text(_))
+    }));
     let rendition_average_bandwidth =
-        max_rendition_average_bandwidth(asset, tracks, segment_options, |kind| {
+        max_rendition_average_bandwidth(tracks, segment_options, |kind| {
             matches!(kind, TrackKind::Audio(_))
         })
         .saturating_add(max_rendition_average_bandwidth(
-            asset,
             tracks,
             segment_options,
             |kind| matches!(kind, TrackKind::Text(_)),
@@ -223,18 +210,9 @@ fn build_master_playlist(
             let codecs = unique_codecs(
                 std::iter::once(track.codec()).chain(rendition_codecs.iter().copied()),
             );
-            let bandwidth = max_bitrate(
-                track,
-                &asset.segment_boundaries,
-                segment_options.min_segment_length_ms,
-            )
-            .saturating_add(rendition_bandwidth);
-            let average_bandwidth = average_bitrate(
-                track,
-                &asset.segment_boundaries,
-                segment_options.min_segment_length_ms,
-            )
-            .saturating_add(rendition_average_bandwidth);
+            let bandwidth = max_bitrate(track, segment_options).saturating_add(rendition_bandwidth);
+            let average_bandwidth =
+                average_bitrate(track, segment_options).saturating_add(rendition_average_bandwidth);
             let mut stream_data = StreamData::builder();
             stream_data
                 .bandwidth(bandwidth)
@@ -392,7 +370,6 @@ fn selection_tuple(
 }
 
 fn max_rendition_bandwidth(
-    asset: &AssetDescriptor,
     tracks: &[Track],
     segment_options: &SegmentOptions,
     include: impl Fn(&TrackKind) -> bool,
@@ -400,19 +377,12 @@ fn max_rendition_bandwidth(
     tracks
         .iter()
         .filter(|track| include(track.kind()))
-        .map(|track| {
-            max_bitrate(
-                track,
-                &asset.segment_boundaries,
-                segment_options.min_segment_length_ms,
-            )
-        })
+        .map(|track| max_bitrate(track, segment_options))
         .max()
         .unwrap_or(0)
 }
 
 fn max_rendition_average_bandwidth(
-    asset: &AssetDescriptor,
     tracks: &[Track],
     segment_options: &SegmentOptions,
     include: impl Fn(&TrackKind) -> bool,
@@ -420,13 +390,7 @@ fn max_rendition_average_bandwidth(
     tracks
         .iter()
         .filter(|track| include(track.kind()))
-        .map(|track| {
-            average_bitrate(
-                track,
-                &asset.segment_boundaries,
-                segment_options.min_segment_length_ms,
-            )
-        })
+        .map(|track| average_bitrate(track, segment_options))
         .max()
         .unwrap_or(0)
 }

@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use dyndo_core::asset_descriptor::TrackKind;
+use dyndo_core::segment::SegmentOptions;
 use dyndo_core::track::{Track, TrackError};
 use dyndo_core::track_probe::TrackProbeError;
 use opendal::Operator;
@@ -47,10 +48,11 @@ async fn probe_reads_fragmented_wvtt_metadata() {
 #[tokio::test]
 async fn probe_exposes_valid_initialization_and_declared_segment_ranges() {
     let (op, track, source) = probe_fixture("video_avc_1080.mp4").await;
+    let options = SegmentOptions::default();
     let initialization_range = track.initialization_range();
-    let segment = track.segments(&[], 0).into_iter().next().unwrap();
+    let segment = track.segments(&options).into_iter().next().unwrap();
 
-    let initialization = track.read_initialization(&op).await.unwrap();
+    let initialization = track.read_initialization(&op, &options).await.unwrap();
     let initialization_range = usize::try_from(initialization_range.start).unwrap()
         ..usize::try_from(initialization_range.end).unwrap();
 
@@ -92,7 +94,8 @@ async fn probe_generates_deterministic_content_prefixed_id() {
 
 #[tokio::test]
 async fn probe_packages_a_vtt_document_as_a_wvtt_track() {
-    let (op, track, _) = probe_fixture_with("text_sample.vtt", &[], 4_000).await;
+    let options = options(4_000, &[]);
+    let (op, track, _) = probe_fixture_with("text_sample.vtt", &options).await;
 
     let TrackKind::Text(_) = track.kind() else {
         panic!("expected text track");
@@ -103,7 +106,7 @@ async fn probe_packages_a_vtt_document_as_a_wvtt_track() {
     );
 
     // The fixture's cues end at 12.5s, so a 4s grid cuts at 4s, 8s and 12s.
-    let segments = track.segments(&[], 4_000);
+    let segments = track.segments(&options);
     assert_eq!(
         segments
             .iter()
@@ -112,13 +115,13 @@ async fn probe_packages_a_vtt_document_as_a_wvtt_track() {
         vec![4_000, 4_000, 4_000, 500]
     );
 
-    let initialization = track.read_initialization(&op).await.unwrap();
+    let initialization = track.read_initialization(&op, &options).await.unwrap();
     assert!(
         initialization.windows(4).any(|kind| kind == b"wvtt"),
         "initialization segment declares no wvtt sample entry"
     );
     let segment = track
-        .read_range(&op, segments[0].byte_range())
+        .read_range(&op, &options, segments[0].byte_range())
         .await
         .unwrap();
     assert_eq!(
@@ -131,12 +134,12 @@ async fn probe_packages_a_vtt_document_as_a_wvtt_track() {
 async fn probe_fragments_a_subtitle_at_its_splice_points() {
     // The splice at 2s falls inside the fixture's first cue, so it is only
     // honoured when the operator packages the track with it.
-    let (_, spliced, _) = probe_fixture_with("text_sample.vtt", &[2_000], 0).await;
+    let (_, spliced, _) = probe_fixture_with("text_sample.vtt", &options(0, &[2_000])).await;
     let (_, unspliced, _) = probe_fixture("text_sample.vtt").await;
 
     let durations = |track: &Track| {
         track
-            .segments(&[], 0)
+            .segments(&SegmentOptions::default())
             .iter()
             .map(|segment| segment.duration())
             .collect::<Vec<_>>()
@@ -152,7 +155,14 @@ async fn probe_rejects_a_file_that_is_not_a_cmaf_track() {
         .await
         .unwrap();
 
-    let error = match Track::probe(&op, RelativePath::new("track.bin"), None, &[], 0).await {
+    let error = match Track::probe(
+        &op,
+        RelativePath::new("track.bin"),
+        None,
+        &SegmentOptions::default(),
+    )
+    .await
+    {
         Ok(_) => panic!("a non-CMAF file unexpectedly probed"),
         Err(error) => error,
     };
@@ -164,34 +174,39 @@ async fn probe_rejects_a_file_that_is_not_a_cmaf_track() {
 }
 
 async fn probe_fixture(name: &str) -> (Operator, Track, Vec<u8>) {
-    probe_fixture_with(name, &[], 0).await
+    probe_fixture_with(name, &SegmentOptions::default()).await
 }
 
-async fn probe_fixture_with(
-    name: &str,
-    boundaries_ms: &[u64],
-    text_segment_length_ms: u64,
-) -> (Operator, Track, Vec<u8>) {
+async fn probe_fixture_with(name: &str, options: &SegmentOptions) -> (Operator, Track, Vec<u8>) {
     let source = std::fs::read(fixture(name)).unwrap();
     let op = Operator::new(Memory::default()).unwrap();
     op.write(name, source.clone()).await.unwrap();
-    let track = Track::probe(
-        &op,
-        RelativePath::new(name),
-        None,
-        boundaries_ms,
-        text_segment_length_ms,
-    )
-    .await
-    .unwrap();
+    let track = Track::probe(&op, RelativePath::new(name), None, options)
+        .await
+        .unwrap();
     (op, track, source)
+}
+
+fn options(text_segment_length_ms: u64, boundaries_ms: &[u64]) -> SegmentOptions {
+    SegmentOptions {
+        text_segment_length_ms,
+        segment_boundaries: boundaries_ms.to_vec(),
+        ..SegmentOptions::default()
+    }
 }
 
 async fn probe_fixture_error(name: &str) -> TrackError {
     let source = std::fs::read(fixture(name)).unwrap();
     let op = Operator::new(Memory::default()).unwrap();
     op.write(name, source).await.unwrap();
-    match Track::probe(&op, RelativePath::new(name), None, &[], 0).await {
+    match Track::probe(
+        &op,
+        RelativePath::new(name),
+        None,
+        &SegmentOptions::default(),
+    )
+    .await
+    {
         Ok(_) => panic!("{name} unexpectedly probed"),
         Err(error) => error,
     }

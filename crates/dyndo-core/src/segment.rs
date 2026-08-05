@@ -3,9 +3,10 @@ use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
 
+use crate::asset_descriptor::AssetDescriptor;
 use crate::track::{Fragment, Track};
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SegmentOptions {
     /// The shortest a served segment may be; fragments are grouped until they
     /// reach it.
@@ -17,6 +18,31 @@ pub struct SegmentOptions {
     /// grid, leaving the asset's splice points as the only cuts.
     #[serde(default, rename = "text_segment_length", alias = "tsl")]
     pub text_segment_length_ms: u64,
+    /// Times a segment has to start at. Empty defers to the asset's own splice
+    /// points; see [`SegmentOptions::for_asset`].
+    #[serde(default, rename = "segment_boundaries", alias = "sb")]
+    pub segment_boundaries: Vec<u64>,
+}
+
+impl SegmentOptions {
+    /// These options with `asset`'s splice points filled in, when the request
+    /// named none of its own. Resolve once where the asset is read, so everything
+    /// downstream cuts at the same times.
+    pub fn for_asset(&self, asset: &AssetDescriptor) -> Self {
+        if !self.segment_boundaries.is_empty() {
+            return self.clone();
+        }
+
+        Self {
+            segment_boundaries: asset.segment_boundaries.clone(),
+            ..self.clone()
+        }
+    }
+
+    /// The times a segment has to start at.
+    pub fn boundaries_ms(&self) -> &[u64] {
+        &self.segment_boundaries
+    }
 }
 
 impl FromStr for SegmentOptions {
@@ -49,24 +75,18 @@ impl Segment {
 }
 
 impl Track {
-    /// Returns the segments produced from the track according to the asset's segment policy.
-    pub fn segments(&self, boundaries_ms: &[u64], min_segment_length_ms: u64) -> Vec<Segment> {
-        group_fragments(
-            self.fragments(),
-            self.timescale(),
-            boundaries_ms,
-            min_segment_length_ms,
-        )
+    /// Returns the segments produced from the track under `options`.
+    pub fn segments(&self, options: &SegmentOptions) -> Vec<Segment> {
+        group_fragments(self.fragments(), self.timescale(), options)
     }
 }
 
 fn group_fragments(
     fragments: &[Fragment],
     timescale: u32,
-    boundaries_ms: &[u64],
-    min_segment_length_ms: u64,
+    options: &SegmentOptions,
 ) -> Vec<Segment> {
-    if min_segment_length_ms == 0 {
+    if options.min_segment_length_ms == 0 {
         return fragments
             .iter()
             .map(|fragment| Segment {
@@ -77,13 +97,13 @@ fn group_fragments(
             .collect();
     }
 
-    let minimum = u128::from(min_segment_length_ms) * u128::from(timescale);
+    let minimum = u128::from(options.min_segment_length_ms) * u128::from(timescale);
     let mut cumulative = Vec::with_capacity(fragments.len() + 1);
     cumulative.push(0u64);
     for fragment in fragments {
         cumulative.push(cumulative[cumulative.len() - 1] + fragment.duration());
     }
-    let cuts = snap_cuts(&cumulative, timescale, boundaries_ms);
+    let cuts = snap_cuts(&cumulative, timescale, options.boundaries_ms());
 
     let mut segments = Vec::new();
     let mut start = 0;
@@ -186,8 +206,51 @@ mod tests {
     }
 
     #[test]
+    fn options_accept_segment_boundaries_in_rison() {
+        let options: SegmentOptions = "(segment_boundaries:!(1000,2000))".parse().unwrap();
+
+        assert_eq!(options.boundaries_ms(), [1_000, 2_000]);
+    }
+
+    #[test]
+    fn for_asset_falls_back_to_the_descriptor_boundaries() {
+        let options = SegmentOptions::default().for_asset(&asset(&[7_400]));
+
+        assert_eq!(options.boundaries_ms(), [7_400]);
+    }
+
+    #[test]
+    fn for_asset_keeps_the_boundaries_the_request_named() {
+        let requested = SegmentOptions {
+            segment_boundaries: vec![1_000],
+            ..SegmentOptions::default()
+        };
+
+        assert_eq!(
+            requested.for_asset(&asset(&[7_400])).boundaries_ms(),
+            [1_000]
+        );
+    }
+
+    fn asset(boundaries_ms: &[u64]) -> AssetDescriptor {
+        serde_json::from_value(serde_json::json!({
+            "segment_boundaries": boundaries_ms,
+            "tracks": [],
+        }))
+        .unwrap()
+    }
+
+    #[test]
     fn options_reject_negative_minimum_segment_length() {
         assert!("(msl:-1)".parse::<SegmentOptions>().is_err());
+    }
+
+    fn options(min_segment_length_ms: u64, boundaries_ms: &[u64]) -> SegmentOptions {
+        SegmentOptions {
+            min_segment_length_ms,
+            segment_boundaries: boundaries_ms.to_vec(),
+            ..SegmentOptions::default()
+        }
     }
 
     fn fragments(durations: &[u64]) -> Vec<Fragment> {
@@ -205,7 +268,7 @@ mod tests {
     #[test]
     fn zero_minimum_maps_each_fragment_to_a_segment() {
         let fragments = fragments(&[1000, 1000]);
-        let segments = group_fragments(&fragments, 1000, &[], 0);
+        let segments = group_fragments(&fragments, 1000, &options(0, &[]));
 
         assert_eq!(
             segments,
@@ -227,7 +290,7 @@ mod tests {
     #[test]
     fn fragments_are_grouped_until_the_minimum() {
         let fragments = fragments(&[1920, 1920, 1920, 1920]);
-        let segments = group_fragments(&fragments, 1000, &[], 3000);
+        let segments = group_fragments(&fragments, 1000, &options(3_000, &[]));
 
         assert_eq!(
             segments.iter().map(Segment::duration).collect::<Vec<_>>(),
@@ -238,7 +301,7 @@ mod tests {
     #[test]
     fn segment_closes_at_a_requested_boundary() {
         let fragments = fragments(&[1920, 1920, 120, 1800, 1920]);
-        let segments = group_fragments(&fragments, 1000, &[3960], 3000);
+        let segments = group_fragments(&fragments, 1000, &options(3_000, &[3_960]));
 
         assert_eq!(
             segments.iter().map(Segment::duration).collect::<Vec<_>>(),
@@ -248,13 +311,13 @@ mod tests {
 
     #[test]
     fn empty_fragments_produce_no_segments() {
-        assert!(group_fragments(&[], 1000, &[], 3000).is_empty());
+        assert!(group_fragments(&[], 1000, &options(3_000, &[])).is_empty());
     }
 
     #[test]
     fn final_short_segment_is_preserved() {
         let fragments = fragments(&[2000, 2000, 500]);
-        let segments = group_fragments(&fragments, 1000, &[], 3000);
+        let segments = group_fragments(&fragments, 1000, &options(3_000, &[]));
 
         assert_eq!(
             segments.iter().map(Segment::duration).collect::<Vec<_>>(),
@@ -265,7 +328,7 @@ mod tests {
     #[test]
     fn boundary_on_fragment_edge_closes_the_segment_at_that_edge() {
         let fragments = fragments(&[1000, 1000, 1000]);
-        let segments = group_fragments(&fragments, 1000, &[2000], 5000);
+        let segments = group_fragments(&fragments, 1000, &options(5_000, &[2_000]));
 
         assert_eq!(
             segments.iter().map(Segment::duration).collect::<Vec<_>>(),
@@ -294,7 +357,7 @@ mod tests {
     #[test]
     fn grouped_segment_spans_combined_byte_range() {
         let fragments = fragments(&[1000, 1000]);
-        let segments = group_fragments(&fragments, 1000, &[], 2000);
+        let segments = group_fragments(&fragments, 1000, &options(2_000, &[]));
 
         assert_eq!(segments[0].byte_range(), 100..120);
     }
