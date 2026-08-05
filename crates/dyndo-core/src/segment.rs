@@ -5,10 +5,38 @@ use serde::{Deserialize, Serialize};
 
 use crate::track::{Fragment, Track};
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+/// How long each segment of a packaged subtitle track is, when the request does
+/// not say.
+const DEFAULT_TEXT_SEGMENT_LENGTH_MS: u64 = 4_000;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SegmentOptions {
+    /// The shortest a served segment may be; fragments are grouped until they
+    /// reach it.
     #[serde(default, rename = "min_segment_length", alias = "msl")]
     pub min_segment_length_ms: u64,
+    /// How long each segment of a packaged subtitle track is. Unlike
+    /// `min_segment_length_ms` this is exact, since dyndo fragments those tracks
+    /// itself rather than grouping what a file already contains.
+    #[serde(
+        default = "default_text_segment_length_ms",
+        rename = "text_segment_length",
+        alias = "tsl"
+    )]
+    pub text_segment_length_ms: u64,
+}
+
+impl Default for SegmentOptions {
+    fn default() -> Self {
+        Self {
+            min_segment_length_ms: 0,
+            text_segment_length_ms: DEFAULT_TEXT_SEGMENT_LENGTH_MS,
+        }
+    }
+}
+
+fn default_text_segment_length_ms() -> u64 {
+    DEFAULT_TEXT_SEGMENT_LENGTH_MS
 }
 
 impl FromStr for SegmentOptions {
@@ -130,8 +158,37 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_options_use_zero_minimum_segment_length() {
-        assert_eq!(SegmentOptions::default().min_segment_length_ms, 0);
+    fn default_options_group_nothing_and_cut_text_every_four_seconds() {
+        let options = SegmentOptions::default();
+
+        assert_eq!(
+            (
+                options.min_segment_length_ms,
+                options.text_segment_length_ms
+            ),
+            (0, 4_000)
+        );
+    }
+
+    #[test]
+    fn options_accept_text_segment_length_in_rison() {
+        let options: SegmentOptions = "(text_segment_length:2000)".parse().unwrap();
+
+        assert_eq!(options.text_segment_length_ms, 2_000);
+    }
+
+    #[test]
+    fn options_accept_tsl_alias_in_rison() {
+        let options: SegmentOptions = "(tsl:2000)".parse().unwrap();
+
+        assert_eq!(options.text_segment_length_ms, 2_000);
+    }
+
+    #[test]
+    fn omitted_text_segment_length_falls_back_to_the_default() {
+        let options: SegmentOptions = "(min_segment_length:3000)".parse().unwrap();
+
+        assert_eq!(options.text_segment_length_ms, 4_000);
     }
 
     #[test]

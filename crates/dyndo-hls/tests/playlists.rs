@@ -80,6 +80,7 @@ async fn generate_media_playlist_applies_requested_minimum_segment_length() {
 
     let segment_options = SegmentOptions {
         min_segment_length_ms: 10_000,
+        ..SegmentOptions::default()
     };
     let playlist = dyndo_hls::builder::generate_media_playlist(
         &op,

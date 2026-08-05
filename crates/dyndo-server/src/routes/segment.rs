@@ -14,7 +14,7 @@ pub(super) async fn initialization(
     track_id: &str,
 ) -> Result<Response, ServerError> {
     let (track, content_type) = read_track(op, request_options, track_id).await?;
-    let bytes = track.read_initialization().await?;
+    let bytes = track.read_initialization(op).await?;
     Ok(([(CONTENT_TYPE, content_type)], bytes).into_response())
 }
 
@@ -39,7 +39,7 @@ pub(super) async fn media(
         &path,
         Some(descriptor.kind.clone()),
         &asset.segment_boundaries,
-        request_options.segment_options.min_segment_length_ms,
+        request_options.segment_options.text_segment_length_ms,
     )
     .await?;
     let mut start_time = track.earliest_presentation_time();
@@ -49,7 +49,7 @@ pub(super) async fn media(
         request_options.segment_options.min_segment_length_ms,
     ) {
         if start_time == time {
-            let bytes = track.read_range(segment.byte_range()).await?;
+            let bytes = track.read_range(op, segment.byte_range()).await?;
             return Ok(([(CONTENT_TYPE, track.mime_type())], bytes).into_response());
         }
         start_time = start_time
@@ -77,7 +77,7 @@ async fn read_track(
         &path,
         Some(descriptor.kind.clone()),
         &asset.segment_boundaries,
-        request_options.segment_options.min_segment_length_ms,
+        request_options.segment_options.text_segment_length_ms,
     )
     .await?;
     let content_type = track.mime_type();

@@ -51,6 +51,7 @@ async fn generate_mpd_applies_requested_minimum_segment_length() {
 
     let segment_options = SegmentOptions {
         min_segment_length_ms: 10_000,
+        ..SegmentOptions::default()
     };
     let mpd = dyndo_dash::builder::generate_mpd(&op, &asset, &segment_options, false)
         .await

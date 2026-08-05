@@ -1,3 +1,4 @@
+use dyndo_text::layer::WvttLayer;
 use futures_util::future::try_join_all;
 use opendal::Operator;
 
@@ -5,8 +6,19 @@ use crate::asset_descriptor::AssetDescriptor;
 use crate::asset_descriptor::TrackKind;
 use crate::track::{Track, TrackError};
 
-/// Reads every track declared by `asset` concurrently, under the asset's splice
-/// points and the requested `min_segment_length_ms`.
+/// Clones `op` with the layers that present a stored file as a CMAF track, packing
+/// subtitle documents into `wvtt` as they are read.
+pub(crate) fn add_operator_layers(
+    op: &Operator,
+    boundaries_ms: &[u64],
+    text_segment_length_ms: u64,
+) -> Operator {
+    op.clone()
+        .layer(WvttLayer::new(boundaries_ms, text_segment_length_ms))
+}
+
+/// Reads every track declared by `asset` concurrently, packaging subtitle
+/// documents for the asset's splice points and `text_segment_length_ms`.
 ///
 /// Returned tracks retain descriptor order and use descriptor metadata for
 /// their track kind.
@@ -17,7 +29,7 @@ use crate::track::{Track, TrackError};
 pub async fn read_all_tracks(
     op: &Operator,
     asset: &AssetDescriptor,
-    min_segment_length_ms: u64,
+    text_segment_length_ms: u64,
 ) -> Result<Vec<Track>, TrackError> {
     let reads = asset.tracks.iter().map(|descriptor| {
         let path = asset.track_path(descriptor);
@@ -28,7 +40,7 @@ pub async fn read_all_tracks(
                 &path,
                 Some(kind),
                 &asset.segment_boundaries,
-                min_segment_length_ms,
+                text_segment_length_ms,
             )
             .await
         }

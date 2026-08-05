@@ -33,11 +33,11 @@ pub enum WvttError {
 /// interval no cue covers becomes an empty sample.
 ///
 /// A fragment then ends at every splice point in `boundaries_ms` and at every
-/// multiple of `min_segment_length_ms`. Those cut times come from the asset's
+/// multiple of `text_segment_length_ms`. Those cut times come from the asset's
 /// clock, never from where the cues happen to fall, so every text track of an
 /// asset carries the same fragment timeline and stays segment-aligned with its
 /// siblings. A cue crossing a cut is split and appears in both fragments. A
-/// `min_segment_length_ms` of 0 asks for no grid, leaving the splice points as
+/// `text_segment_length_ms` of 0 asks for no grid, leaving the splice points as
 /// the only cuts.
 ///
 /// The track declares no language; that belongs to the transport.
@@ -50,12 +50,12 @@ pub enum WvttError {
 pub fn pack(
     subtitle: &Subtitle,
     boundaries_ms: &[u64],
-    min_segment_length_ms: u64,
+    text_segment_length_ms: u64,
 ) -> Result<Vec<u8>, WvttError> {
     let Some(track_end_ms) = subtitle.cues.iter().map(|cue| cue.end_ms).max() else {
         return Err(WvttError::Empty);
     };
-    let cuts = cuts(track_end_ms, boundaries_ms, min_segment_length_ms);
+    let cuts = cuts(track_end_ms, boundaries_ms, text_segment_length_ms);
     let samples = tile(subtitle, track_end_ms, &cuts);
     if samples.is_empty() {
         return Err(WvttError::Empty);
@@ -119,19 +119,19 @@ impl Sample<'_> {
 }
 
 /// The times a fragment has to end at: the asset's splice points plus the
-/// `min_segment_length_ms` grid, keeping only what falls strictly inside the
+/// `text_segment_length_ms` grid, keeping only what falls strictly inside the
 /// track.
-fn cuts(track_end_ms: u64, boundaries_ms: &[u64], min_segment_length_ms: u64) -> Vec<u64> {
+fn cuts(track_end_ms: u64, boundaries_ms: &[u64], text_segment_length_ms: u64) -> Vec<u64> {
     let mut cuts: Vec<u64> = boundaries_ms
         .iter()
         .copied()
         .filter(|&boundary_ms| boundary_ms > 0 && boundary_ms < track_end_ms)
         .collect();
 
-    let mut time_ms = min_segment_length_ms;
-    while min_segment_length_ms > 0 && time_ms < track_end_ms {
+    let mut time_ms = text_segment_length_ms;
+    while text_segment_length_ms > 0 && time_ms < track_end_ms {
         cuts.push(time_ms);
-        time_ms = time_ms.saturating_add(min_segment_length_ms);
+        time_ms = time_ms.saturating_add(text_segment_length_ms);
     }
 
     cuts.sort_unstable();
@@ -579,7 +579,7 @@ mod tests {
     }
 
     #[test]
-    fn a_zero_minimum_leaves_the_whole_track_in_one_fragment() {
+    fn a_zero_length_leaves_the_whole_track_in_one_fragment() {
         let track = pack(&subtitle(&[(0, 1_000, "A"), (2_000, 3_000, "B")]), &[], 0).unwrap();
         let (_, fragments) = fragments_of(&track);
 
@@ -588,7 +588,7 @@ mod tests {
     }
 
     #[test]
-    fn fragments_end_on_the_minimum_length_grid() {
+    fn fragments_end_on_the_text_segment_grid() {
         let cues = subtitle(&[(0, 1_000, "A"), (2_000, 3_000, "B"), (4_000, 5_000, "C")]);
         let track = pack(&cues, &[], 2_000).unwrap();
         let (_, fragments) = fragments_of(&track);

@@ -45,7 +45,7 @@ pub async fn generate_mpd(
     segment_options: &SegmentOptions,
     compact: bool,
 ) -> Result<MPD, DashError> {
-    let tracks = read_all_tracks(op, asset, segment_options.min_segment_length_ms).await?;
+    let tracks = read_all_tracks(op, asset, segment_options.text_segment_length_ms).await?;
     build_mpd(asset, &tracks, segment_options, compact)
 }
 

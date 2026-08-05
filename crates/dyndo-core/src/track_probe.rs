@@ -15,8 +15,6 @@ pub enum TrackProbeError {
     BoxReader(#[from] BoxReaderError),
     #[error(transparent)]
     Storage(#[from] opendal::Error),
-    #[error("unsupported track format")]
-    UnsupportedFormat,
     #[error("unsupported video sample entry")]
     UnsupportedVideoSampleEntry,
     #[error("unsupported audio sample entry")]

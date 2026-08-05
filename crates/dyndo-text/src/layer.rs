@@ -1,11 +1,8 @@
 //! An opendal layer that serves subtitle documents as CMAF `wvtt` tracks.
 //!
-//! Reads of a `.vtt` path are intercepted: the document is fetched from the
-//! underlying storage, parsed, and packed, and the caller receives the packed
-//! track's bytes. Nothing is written back — the track exists only for as long as
-//! the layered operator does. Every other path and operation passes straight
-//! through, so the operator stays an ordinary storage handle that happens to
-//! speak CMAF for subtitles too.
+//! A read of a `.vtt` path fetches the document from the storage underneath,
+//! packs it, and hands back the packed track's bytes. Nothing is written back,
+//! and every other path passes straight through.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -24,7 +21,7 @@ use crate::{vtt, wvtt};
 /// Serves `.vtt` documents as `wvtt` tracks, packed on read.
 ///
 /// The tracks are fragmented at `boundaries_ms` and on the
-/// `min_segment_length_ms` grid (see [`wvtt::pack`]), so the layer carries the
+/// `text_segment_length_ms` grid (see [`wvtt::pack`]), so the layer carries the
 /// asset's segmentation policy and belongs to the operator that serves one
 /// request, not to a process-wide operator.
 #[derive(Debug)]
@@ -33,11 +30,11 @@ pub struct WvttLayer {
 }
 
 impl WvttLayer {
-    pub fn new(boundaries_ms: &[u64], min_segment_length_ms: u64) -> Self {
+    pub fn new(boundaries_ms: &[u64], text_segment_length_ms: u64) -> Self {
         Self {
             transform: Arc::new(Transform {
                 boundaries_ms: boundaries_ms.to_vec(),
-                min_segment_length_ms,
+                text_segment_length_ms,
                 packed: Mutex::new(HashMap::new()),
             }),
         }
@@ -53,14 +50,13 @@ impl Layer for WvttLayer {
     }
 }
 
-/// Packs subtitle documents, holding each result for as long as the layer lives.
-///
-/// One read of a track walks its boxes and then asks for several byte ranges, so
-/// without this the same document would be packed for every one of them.
+/// Packs subtitle documents, holding each result for as long as the layer lives:
+/// reading a track walks its boxes and then asks for several byte ranges, and
+/// each of those would otherwise pack the document again.
 #[derive(Debug)]
 struct Transform {
     boundaries_ms: Vec<u64>,
-    min_segment_length_ms: u64,
+    text_segment_length_ms: u64,
     packed: Mutex<HashMap<String, Buffer>>,
 }
 
@@ -74,7 +70,7 @@ impl Transform {
         let subtitle = vtt::parse(&document)
             .map_err(|error| invalid(path, "subtitle document does not parse", error))?;
         let packed = Buffer::from(
-            wvtt::pack(&subtitle, &self.boundaries_ms, self.min_segment_length_ms)
+            wvtt::pack(&subtitle, &self.boundaries_ms, self.text_segment_length_ms)
                 .map_err(|error| invalid(path, "subtitle document cannot be packed", error))?,
         );
 
@@ -110,7 +106,6 @@ fn invalid(
         .set_source(source)
 }
 
-/// Whether this path is a subtitle document rather than a CMAF track.
 fn is_subtitle(path: &str) -> bool {
     path.ends_with(".vtt")
 }
@@ -141,8 +136,7 @@ impl Service for WvttService {
             return self.inner.stat(ctx, path, args).await;
         }
 
-        // The packed track's length, not the document's: callers size their
-        // reads from this.
+        // The packed track's length, not the document's.
         let packed = self.transform.packed(&self.inner, ctx, path).await?;
         Ok(RpStat::new(
             Metadata::new(EntryMode::FILE).with_content_length(packed.len() as u64),
@@ -154,8 +148,7 @@ impl Service for WvttService {
             return self.inner.read(ctx, path, args);
         }
 
-        // Packing has to await, and this does not, so the reader packs when it
-        // is opened.
+        // Packing awaits and this does not, so the reader packs when it opens.
         Ok(Box::new(oio::StreamReader::new(PackedReader {
             inner: self.inner.clone(),
             ctx: ctx.clone(),

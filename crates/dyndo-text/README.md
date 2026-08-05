@@ -8,8 +8,8 @@ slot in beside VTT later.
 
 `wvtt::pack` turns that `Subtitle` into a fragmented CMAF `wvtt` track indexed by
 a `sidx`. Cues are tiled into samples covering the timeline with no holes, then
-cut into fragments at the asset's splice points and on the requested minimum
-segment length. Those cut times come from the asset's clock rather than from where
+cut into fragments at the asset's splice points and on the requested text segment
+length. Those cut times come from the asset's clock rather than from where
 the cues fall, so every text track of an asset carries the same fragment timeline
 and stays segment-aligned with the video and audio beside it.
 

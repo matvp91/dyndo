@@ -47,7 +47,7 @@ pub async fn generate_master_playlist(
     _hls_options: &HlsOptions,
 ) -> Result<MasterPlaylist<'static>, HlsError> {
     ensure_unique_rendition_names(asset)?;
-    let tracks = read_all_tracks(op, asset, segment_options.min_segment_length_ms).await?;
+    let tracks = read_all_tracks(op, asset, segment_options.text_segment_length_ms).await?;
     build_master_playlist(asset, &tracks, segment_options)
 }
 
@@ -70,7 +70,7 @@ pub async fn generate_media_playlist(
         &path,
         Some(descriptor.kind.clone()),
         &asset.segment_boundaries,
-        segment_options.min_segment_length_ms,
+        segment_options.text_segment_length_ms,
     )
     .await?;
     build_media_playlist(asset, descriptor, &track, segment_options)
