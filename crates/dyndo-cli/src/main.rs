@@ -45,8 +45,9 @@ struct SegmentArgs {
     /// Minimum served segment length in milliseconds.
     #[arg(long, default_value_t = 0)]
     min_segment_length: u64,
-    /// Length of each segment of a packaged subtitle track, in milliseconds.
-    #[arg(long, default_value_t = SegmentOptions::default().text_segment_length_ms)]
+    /// Length of each segment of a packaged subtitle track, in milliseconds. Zero
+    /// cuts one only at the asset's splice points.
+    #[arg(long, default_value_t = 0)]
     text_segment_length: u64,
 }
 

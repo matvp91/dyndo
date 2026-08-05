@@ -5,11 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::track::{Fragment, Track};
 
-/// How long each segment of a packaged subtitle track is, when the request does
-/// not say.
-const DEFAULT_TEXT_SEGMENT_LENGTH_MS: u64 = 4_000;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SegmentOptions {
     /// The shortest a served segment may be; fragments are grouped until they
     /// reach it.
@@ -17,26 +13,10 @@ pub struct SegmentOptions {
     pub min_segment_length_ms: u64,
     /// How long each segment of a packaged subtitle track is. Unlike
     /// `min_segment_length_ms` this is exact, since dyndo fragments those tracks
-    /// itself rather than grouping what a file already contains.
-    #[serde(
-        default = "default_text_segment_length_ms",
-        rename = "text_segment_length",
-        alias = "tsl"
-    )]
+    /// itself rather than grouping what a file already contains. Zero asks for no
+    /// grid, leaving the asset's splice points as the only cuts.
+    #[serde(default, rename = "text_segment_length", alias = "tsl")]
     pub text_segment_length_ms: u64,
-}
-
-impl Default for SegmentOptions {
-    fn default() -> Self {
-        Self {
-            min_segment_length_ms: 0,
-            text_segment_length_ms: DEFAULT_TEXT_SEGMENT_LENGTH_MS,
-        }
-    }
-}
-
-fn default_text_segment_length_ms() -> u64 {
-    DEFAULT_TEXT_SEGMENT_LENGTH_MS
 }
 
 impl FromStr for SegmentOptions {
@@ -158,7 +138,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_options_group_nothing_and_cut_text_every_four_seconds() {
+    fn default_options_group_nothing_and_cut_text_only_at_splice_points() {
         let options = SegmentOptions::default();
 
         assert_eq!(
@@ -166,7 +146,7 @@ mod tests {
                 options.min_segment_length_ms,
                 options.text_segment_length_ms
             ),
-            (0, 4_000)
+            (0, 0)
         );
     }
 
@@ -185,10 +165,10 @@ mod tests {
     }
 
     #[test]
-    fn omitted_text_segment_length_falls_back_to_the_default() {
+    fn omitted_text_segment_length_asks_for_no_grid() {
         let options: SegmentOptions = "(min_segment_length:3000)".parse().unwrap();
 
-        assert_eq!(options.text_segment_length_ms, 4_000);
+        assert_eq!(options.text_segment_length_ms, 0);
     }
 
     #[test]
