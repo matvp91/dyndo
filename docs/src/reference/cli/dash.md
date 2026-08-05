@@ -5,15 +5,17 @@ Generate a DASH MPD from an `asset.json`.
 ## Synopsis
 
 ```text
-dyndo dash [OPTIONS]
+dyndo dash --input <INPUT> [OPTIONS]
 ```
 
 ## Options
 
 | Option | Description | Default |
 |---|---|---|
-| `-i, --input <INPUT>` | Input `asset.json` path. | `asset.json` |
+| `-i, --input <INPUT>` | Input `asset.json` path. | Required |
 | `-o, --output <OUTPUT>` | Output manifest path. | `stream.mpd` |
+| `--min-segment-length <MILLISECONDS>` | Minimum served segment length. | `0` |
+| `--compact` | Hoist common segment information in the MPD. | `false` |
 | `-h, --help` | Print help. | |
 
 ## Description

@@ -53,7 +53,7 @@ fn dash_writes_manifest() {
     index_video_and_audio(dir.path());
 
     let status = dyndo(dir.path())
-        .args(["dash", "-i", "asset.json", "-o", "stream.mpd"])
+        .args(["dash", "-i", "asset.json", "-o", "stream.mpd", "--compact"])
         .status()
         .unwrap();
     assert!(status.success());
@@ -70,7 +70,15 @@ fn hls_writes_master_and_track_playlists() {
         serde_json::from_slice(&fs::read(dir.path().join("asset.json")).unwrap()).unwrap();
 
     let status = dyndo(dir.path())
-        .args(["hls", "-i", "asset.json", "-o", "playlists"])
+        .args([
+            "hls",
+            "-i",
+            "asset.json",
+            "-o",
+            "playlists",
+            "--min-segment-length",
+            "10000",
+        ])
         .status()
         .unwrap();
     assert!(status.success());
@@ -80,6 +88,24 @@ fn hls_writes_master_and_track_playlists() {
         let id = track["id"].as_str().unwrap();
         assert!(dir.path().join(format!("playlists/{id}.m3u8")).is_file());
     }
+}
+
+#[test]
+fn dash_requires_input() {
+    let dir = tempfile::tempdir().unwrap();
+
+    let status = dyndo(dir.path()).arg("dash").status().unwrap();
+
+    assert!(!status.success());
+}
+
+#[test]
+fn hls_requires_input() {
+    let dir = tempfile::tempdir().unwrap();
+
+    let status = dyndo(dir.path()).arg("hls").status().unwrap();
+
+    assert!(!status.success());
 }
 
 #[test]

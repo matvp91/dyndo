@@ -7,7 +7,7 @@ use dyndo_hls::options::HlsOptions;
 use opendal::Operator;
 use serde::Serialize;
 
-use super::RequestOptions;
+use super::{RequestTransportOptions, read_asset};
 use crate::error::ServerError;
 
 const DASH_CONTENT_TYPE: &str = "application/dash+xml";
@@ -15,14 +15,14 @@ const HLS_CONTENT_TYPE: &str = "application/vnd.apple.mpegurl";
 
 pub(super) async fn dash_manifest(
     op: &Operator,
-    request_options: &RequestOptions<DashOptions>,
+    request_options: &RequestTransportOptions<DashOptions>,
 ) -> Result<Response, ServerError> {
-    let asset = request_options.read_asset(op).await?;
+    let asset = read_asset(op, &request_options.asset).await?;
     let mpd = dyndo_dash::builder::generate_mpd(
         op,
         &asset,
         &request_options.segment_options,
-        request_options.output_options.compact,
+        request_options.transport_options.compact,
     )
     .await?;
     let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
@@ -35,14 +35,14 @@ pub(super) async fn dash_manifest(
 
 pub(super) async fn hls_master(
     op: &Operator,
-    request_options: &RequestOptions<HlsOptions>,
+    request_options: &RequestTransportOptions<HlsOptions>,
 ) -> Result<Response, ServerError> {
-    let asset = request_options.read_asset(op).await?;
+    let asset = read_asset(op, &request_options.asset).await?;
     let playlist = dyndo_hls::builder::generate_master_playlist(
         op,
         &asset,
         &request_options.segment_options,
-        &request_options.output_options,
+        &request_options.transport_options,
     )
     .await?;
     Ok(([(CONTENT_TYPE, HLS_CONTENT_TYPE)], playlist.to_string()).into_response())
@@ -50,10 +50,10 @@ pub(super) async fn hls_master(
 
 pub(super) async fn hls_media(
     op: &Operator,
-    request_options: &RequestOptions<HlsOptions>,
+    request_options: &RequestTransportOptions<HlsOptions>,
     track_id: &str,
 ) -> Result<Response, ServerError> {
-    let asset = request_options.read_asset(op).await?;
+    let asset = read_asset(op, &request_options.asset).await?;
     let descriptor = asset
         .track(track_id)
         .ok_or_else(|| ServerError::NotFound(format!("track {track_id}")))?;
@@ -62,7 +62,7 @@ pub(super) async fn hls_media(
         &asset,
         descriptor,
         &request_options.segment_options,
-        &request_options.output_options,
+        &request_options.transport_options,
     )
     .await?;
     Ok((

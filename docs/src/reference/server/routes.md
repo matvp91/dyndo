@@ -32,9 +32,13 @@ The first path segment after `/out/` must be a Rison object, beginning with `(`
 and ending at its matching `)`:
 
 ```text
-/out/(asset:movies/big-buck-bunny)/index.mpd
+/out/(asset:movies%2Fbig-buck-bunny)/index.mpd
 /out/(asset:demo,msl:6000)/master.m3u8
 ```
+
+The options object must occupy one URL path segment. Percent-encode `/` as
+`%2F` when an option value contains a nested path. The server decodes the value
+before parsing the Rison object.
 
 | Key | Type | Description |
 |---|---|---|
@@ -43,23 +47,15 @@ and ending at its matching `)`:
 | `min_segment_length` | integer | Minimum served segment length in milliseconds. Whole fragments are grouped until this length is reached. Defaults to `0`. |
 | `msl` | integer | Alias for `min_segment_length`. |
 
-Unknown keys are rejected. Segment boundaries are asset-specific and can only
-be supplied by the descriptor.
+Unknown keys are rejected.
 
 ### The `asset` key
 
 The server appends `.json` to the value, so `asset:demo` reads `demo.json` from
-the storage root and `asset:movies/big` reads `movies/big.json`. The value may
-contain slashes, letting descriptors sit in nested directories.
-
-It is rejected with `400` when it is empty, starts or ends with `/`, ends with
-`.json`, contains a backslash, or contains an empty, `.`, or `..` path
-component. That last rule keeps a request from escaping the storage root.
-
-```text
-/out/(asset:demo.json)/index.mpd      → 400  invalid asset path: demo.json
-/out/(asset:../secrets)/index.mpd     → 400  invalid asset path: ../secrets
-```
+the storage root. The decoded value may contain slashes, letting descriptors sit
+in nested directories. For example, `asset:movies%2Fbig` reads
+`movies/big.json`. OpenDAL determines how the resulting path is resolved by the
+configured storage backend.
 
 ## Resources
 
@@ -120,8 +116,8 @@ shared path prefix.
 | Code | When |
 |---|---|
 | `200 OK` | The manifest or segment was generated and returned; also the `/health` probe. |
-| `400 Bad Request` | The path does not begin with a Rison object, the object is malformed or has an unmatched `)`, it carries an unknown key, `asset` is invalid, or `min_segment_length` is negative. |
-| `404 Not Found` | No resource followed the options object; `<track-id>` matches no track; a segment filename is not `<integer>.m4s`; `<time>` is not a segment boundary; or the descriptor does not exist. |
+| `400 Bad Request` | The options path segment is malformed Rison, it carries an unknown key, or `min_segment_length` is negative. |
+| `404 Not Found` | The path does not contain separate options and resource components; `<track-id>` matches no track; a segment filename is not `<integer>.m4s`; `<time>` is not a segment boundary; or the descriptor does not exist. |
 | `500 Internal Server Error` | The descriptor JSON is malformed; a source file is unreadable or is not valid, supported CMAF; or manifest serialization failed. |
 
 The split between `404` and `500` reflects ownership: a **missing** object is

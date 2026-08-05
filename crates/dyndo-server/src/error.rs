@@ -9,10 +9,8 @@ use dyndo_hls::builder::HlsError;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ServerError {
-    #[error("invalid output options: {0}")]
+    #[error("invalid transport options: {0}")]
     InvalidOptions(String),
-    #[error("invalid asset path: {0}")]
-    InvalidAssetPath(String),
     #[error("resource not found: {0}")]
     NotFound(String),
     #[error("segment time overflow for track {0}")]
@@ -32,7 +30,7 @@ pub enum ServerError {
 impl IntoResponse for ServerError {
     fn into_response(self) -> Response {
         let status = match &self {
-            Self::InvalidOptions(_) | Self::InvalidAssetPath(_) => StatusCode::BAD_REQUEST,
+            Self::InvalidOptions(_) => StatusCode::BAD_REQUEST,
             Self::NotFound(_) => StatusCode::NOT_FOUND,
             Self::AssetDescriptor(AssetDescriptorError::Storage(error))
                 if error.kind() == opendal::ErrorKind::NotFound =>

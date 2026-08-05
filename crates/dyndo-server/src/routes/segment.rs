@@ -5,12 +5,12 @@ use axum::{
 use dyndo_core::track::Track;
 use opendal::Operator;
 
-use super::{RequestOptions, SegmentRouteOptions};
+use super::{RequestTransportOptions, read_asset};
 use crate::error::ServerError;
 
 pub(super) async fn initialization(
     op: &Operator,
-    request_options: &RequestOptions<SegmentRouteOptions>,
+    request_options: &RequestTransportOptions<()>,
     track_id: &str,
 ) -> Result<Response, ServerError> {
     let (track, content_type) = read_track(op, request_options, track_id).await?;
@@ -20,7 +20,7 @@ pub(super) async fn initialization(
 
 pub(super) async fn media(
     op: &Operator,
-    request_options: &RequestOptions<SegmentRouteOptions>,
+    request_options: &RequestTransportOptions<()>,
     track_id: &str,
     file: &str,
 ) -> Result<Response, ServerError> {
@@ -29,7 +29,7 @@ pub(super) async fn media(
         .ok_or_else(|| ServerError::NotFound(file.to_string()))?
         .parse::<u64>()
         .map_err(|_| ServerError::NotFound(file.to_string()))?;
-    let asset = request_options.read_asset(op).await?;
+    let asset = read_asset(op, &request_options.asset).await?;
     let descriptor = asset
         .track(track_id)
         .ok_or_else(|| ServerError::NotFound(format!("track {track_id}")))?;
@@ -57,10 +57,10 @@ pub(super) async fn media(
 
 async fn read_track(
     op: &Operator,
-    request_options: &RequestOptions<SegmentRouteOptions>,
+    request_options: &RequestTransportOptions<()>,
     track_id: &str,
 ) -> Result<(Track, &'static str), ServerError> {
-    let asset = request_options.read_asset(op).await?;
+    let asset = read_asset(op, &request_options.asset).await?;
     let descriptor = asset
         .track(track_id)
         .ok_or_else(|| ServerError::NotFound(format!("track {track_id}")))?;

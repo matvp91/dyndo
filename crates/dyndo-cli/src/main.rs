@@ -1,4 +1,4 @@
-use clap::{Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
 use dyndo_core::asset_descriptor::AssetDescriptor;
 use dyndo_core::segment::SegmentOptions;
 use dyndo_core::track::Track;
@@ -35,23 +35,51 @@ enum Command {
         output: String,
     },
     /// Generate a DASH MPD from an asset.json.
-    Dash {
-        /// Input asset.json path.
-        #[arg(short, long = "input", default_value = "asset.json")]
-        input: String,
-        /// Output manifest path.
-        #[arg(short, long = "output", default_value = "stream.mpd")]
-        output: String,
-    },
+    Dash(DashArgs),
     /// Generate HLS playlists from an asset.json.
-    Hls {
-        /// Input asset.json path.
-        #[arg(short, long = "input", default_value = "asset.json")]
-        input: String,
-        /// Output playlist directory.
-        #[arg(short, long = "output", default_value = "hls")]
-        output: String,
-    },
+    Hls(HlsArgs),
+}
+
+#[derive(Args)]
+struct SegmentArgs {
+    /// Minimum served segment length in milliseconds.
+    #[arg(long, default_value_t = 0)]
+    min_segment_length: u64,
+}
+
+impl From<SegmentArgs> for SegmentOptions {
+    fn from(args: SegmentArgs) -> Self {
+        Self {
+            min_segment_length_ms: args.min_segment_length,
+        }
+    }
+}
+
+#[derive(Args)]
+struct DashArgs {
+    /// Input asset.json path.
+    #[arg(short, long = "input")]
+    input: String,
+    /// Output manifest path.
+    #[arg(short, long = "output", default_value = "stream.mpd")]
+    output: String,
+    #[command(flatten)]
+    segment: SegmentArgs,
+    /// Hoist common segment information in the MPD.
+    #[arg(long, default_value_t = false)]
+    compact: bool,
+}
+
+#[derive(Args)]
+struct HlsArgs {
+    /// Input asset.json path.
+    #[arg(short, long = "input")]
+    input: String,
+    /// Output playlist directory.
+    #[arg(short, long = "output", default_value = "hls")]
+    output: String,
+    #[command(flatten)]
+    segment: SegmentArgs,
 }
 
 /// Build the filesystem operator, rooted at `OPENDAL_FS_ROOT` (default `.`).
@@ -85,28 +113,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .await?;
             println!("wrote {output} ({} tracks)", descriptor.tracks.len());
         }
-        Command::Dash { input, output } => {
-            let descriptor = AssetDescriptor::read(&op, &input).await?;
-            let mpd = dyndo_dash::builder::generate_mpd(
-                &op,
-                &descriptor,
-                &SegmentOptions::default(),
-                false,
-            )
-            .await?;
+        Command::Dash(args) => {
+            let descriptor = AssetDescriptor::read(&op, &args.input).await?;
+            let segment_options = args.segment.into();
+            let mpd =
+                dyndo_dash::builder::generate_mpd(&op, &descriptor, &segment_options, args.compact)
+                    .await?;
             let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
             let mut serializer = quick_xml::se::Serializer::new(&mut xml);
             serializer.indent(' ', 2);
             mpd.serialize(serializer)?;
-            op.write(&output, xml.into_bytes()).await?;
-            println!("wrote {output}");
+            op.write(&args.output, xml.into_bytes()).await?;
+            println!("wrote {}", args.output);
         }
-        Command::Hls { input, output } => {
-            let descriptor = AssetDescriptor::read(&op, &input).await?;
-            let output = RelativePathBuf::from(output);
+        Command::Hls(args) => {
+            let descriptor = AssetDescriptor::read(&op, &args.input).await?;
+            let output = RelativePathBuf::from(args.output);
             op.create_dir(&format!("{output}/")).await?;
 
-            let segment_options = SegmentOptions::default();
+            let segment_options = args.segment.into();
             let hls_options = dyndo_hls::options::HlsOptions::default();
             let master = dyndo_hls::builder::generate_master_playlist(
                 &op,

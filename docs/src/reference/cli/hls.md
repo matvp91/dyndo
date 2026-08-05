@@ -6,15 +6,16 @@ plus one media playlist per track — into an output directory.
 ## Synopsis
 
 ```text
-dyndo hls [OPTIONS]
+dyndo hls --input <INPUT> [OPTIONS]
 ```
 
 ## Options
 
 | Option | Description | Default |
 |---|---|---|
-| `-i, --input <INPUT>` | Input `asset.json` path. | `asset.json` |
+| `-i, --input <INPUT>` | Input `asset.json` path. | Required |
 | `-o, --output <OUTPUT>` | Output **directory** for the playlists. | `hls` |
+| `--min-segment-length <MILLISECONDS>` | Minimum served segment length. | `0` |
 | `-h, --help` | Print help. | |
 
 ## Description
