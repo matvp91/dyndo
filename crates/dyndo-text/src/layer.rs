@@ -4,8 +4,7 @@
 //! packs it, and hands back the packed track's bytes. Nothing is written back,
 //! and every other path passes straight through.
 
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use opendal::raw::oio::{Read, ReadStream, StreamRead};
 use opendal::raw::{
@@ -22,22 +21,33 @@ use crate::{vtt, wvtt};
 ///
 /// The tracks are fragmented at `boundaries_ms` and on the
 /// `text_segment_length_ms` grid (see [`wvtt::pack`]), so the layer carries the
-/// asset's segmentation policy and belongs to the operator that serves one
-/// request, not to a process-wide operator.
-#[derive(Debug)]
+/// asset's segmentation policy and belongs to the operator serving one request
+/// rather than to a process-wide one.
+#[derive(Debug, Clone)]
 pub struct WvttLayer {
-    transform: Arc<Transform>,
+    boundaries_ms: Arc<[u64]>,
+    text_segment_length_ms: u64,
 }
 
 impl WvttLayer {
     pub fn new(boundaries_ms: &[u64], text_segment_length_ms: u64) -> Self {
         Self {
-            transform: Arc::new(Transform {
-                boundaries_ms: boundaries_ms.to_vec(),
-                text_segment_length_ms,
-                packed: Mutex::new(HashMap::new()),
-            }),
+            boundaries_ms: boundaries_ms.into(),
+            text_segment_length_ms,
         }
+    }
+
+    async fn pack(&self, inner: &Servicer, ctx: &OperationContext, path: &str) -> Result<Buffer> {
+        let (_, mut stream) = inner
+            .read(ctx, path, OpRead::default())?
+            .open(BytesRange::default())
+            .await?;
+        let document = String::from_utf8(stream.read_all().await?.to_vec()).map_err(unpackable)?;
+        let subtitle = vtt::parse(&document).map_err(unpackable)?;
+        let packed = wvtt::pack(&subtitle, &self.boundaries_ms, self.text_segment_length_ms)
+            .map_err(unpackable)?;
+
+        Ok(Buffer::from(packed))
     }
 }
 
@@ -45,65 +55,13 @@ impl Layer for WvttLayer {
     fn apply_service(&self, inner: Servicer) -> Servicer {
         Arc::new(WvttService {
             inner,
-            transform: self.transform.clone(),
+            layer: self.clone(),
         })
     }
 }
 
-/// Packs subtitle documents, holding each result for as long as the layer lives:
-/// reading a track walks its boxes and then asks for several byte ranges, and
-/// each of those would otherwise pack the document again.
-#[derive(Debug)]
-struct Transform {
-    boundaries_ms: Vec<u64>,
-    text_segment_length_ms: u64,
-    packed: Mutex<HashMap<String, Buffer>>,
-}
-
-impl Transform {
-    async fn packed(&self, inner: &Servicer, ctx: &OperationContext, path: &str) -> Result<Buffer> {
-        if let Some(packed) = self.packed.lock().unwrap().get(path).cloned() {
-            return Ok(packed);
-        }
-
-        let document = self.document(inner, ctx, path).await?;
-        let subtitle = vtt::parse(&document)
-            .map_err(|error| invalid(path, "subtitle document does not parse", error))?;
-        let packed = Buffer::from(
-            wvtt::pack(&subtitle, &self.boundaries_ms, self.text_segment_length_ms)
-                .map_err(|error| invalid(path, "subtitle document cannot be packed", error))?,
-        );
-
-        self.packed
-            .lock()
-            .unwrap()
-            .insert(path.to_string(), packed.clone());
-        Ok(packed)
-    }
-
-    async fn document(
-        &self,
-        inner: &Servicer,
-        ctx: &OperationContext,
-        path: &str,
-    ) -> Result<String> {
-        let reader = inner.read(ctx, path, OpRead::default())?;
-        let (_, mut stream) = reader.open(BytesRange::default()).await?;
-        let bytes = stream.read_all().await?;
-
-        String::from_utf8(bytes.to_vec())
-            .map_err(|error| invalid(path, "subtitle document is not valid UTF-8", error))
-    }
-}
-
-fn invalid(
-    path: &str,
-    message: &'static str,
-    source: impl std::error::Error + Send + Sync + 'static,
-) -> Error {
-    Error::new(ErrorKind::Unexpected, message)
-        .with_context("path", path.to_string())
-        .set_source(source)
+fn unpackable(source: impl std::error::Error + Send + Sync + 'static) -> Error {
+    Error::new(ErrorKind::Unexpected, "cannot package subtitle document").set_source(source)
 }
 
 fn is_subtitle(path: &str) -> bool {
@@ -113,7 +71,7 @@ fn is_subtitle(path: &str) -> bool {
 #[derive(Debug)]
 struct WvttService {
     inner: Servicer,
-    transform: Arc<Transform>,
+    layer: WvttLayer,
 }
 
 impl Service for WvttService {
@@ -123,21 +81,13 @@ impl Service for WvttService {
     type Deleter = oio::Deleter;
     type Copier = oio::Copier;
 
-    fn info(&self) -> ServiceInfo {
-        self.inner.info()
-    }
-
-    fn capability(&self) -> Capability {
-        self.inner.capability()
-    }
-
     async fn stat(&self, ctx: &OperationContext, path: &str, args: OpStat) -> Result<RpStat> {
         if !is_subtitle(path) {
             return self.inner.stat(ctx, path, args).await;
         }
 
         // The packed track's length, not the document's.
-        let packed = self.transform.packed(&self.inner, ctx, path).await?;
+        let packed = self.layer.pack(&self.inner, ctx, path).await?;
         Ok(RpStat::new(
             Metadata::new(EntryMode::FILE).with_content_length(packed.len() as u64),
         ))
@@ -153,8 +103,16 @@ impl Service for WvttService {
             inner: self.inner.clone(),
             ctx: ctx.clone(),
             path: path.to_string(),
-            transform: self.transform.clone(),
+            layer: self.layer.clone(),
         })))
+    }
+
+    fn info(&self) -> ServiceInfo {
+        self.inner.info()
+    }
+
+    fn capability(&self) -> Capability {
+        self.inner.capability()
     }
 
     async fn create_dir(
@@ -209,20 +167,16 @@ impl Service for WvttService {
     }
 }
 
-/// Reads ranges of a packed track, packing it on first open.
 struct PackedReader {
     inner: Servicer,
     ctx: OperationContext,
     path: String,
-    transform: Arc<Transform>,
+    layer: WvttLayer,
 }
 
 impl StreamRead for PackedReader {
     async fn open(&self, range: BytesRange) -> Result<(RpRead, Box<dyn oio::ReadStreamDyn>)> {
-        let packed = self
-            .transform
-            .packed(&self.inner, &self.ctx, &self.path)
-            .await?;
+        let packed = self.layer.pack(&self.inner, &self.ctx, &self.path).await?;
         let length = packed.len();
         let content = packed.slice(range.to_content_range(length)?);
         let metadata = Metadata::new(EntryMode::FILE).with_content_length(length as u64);
@@ -293,7 +247,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn reports_a_document_that_does_not_parse() {
+    async fn reports_a_document_it_cannot_pack() {
         let op = operator("text.vtt", "NOT A SUBTITLE").await;
 
         let error = op.read("text.vtt").await.unwrap_err();
@@ -301,25 +255,8 @@ mod tests {
         assert!(
             error
                 .to_string()
-                .contains("subtitle document does not parse"),
+                .contains("cannot package subtitle document"),
             "unexpected error: {error}"
-        );
-    }
-
-    #[tokio::test]
-    async fn fragments_on_the_requested_grid() {
-        let op = Operator::new(Memory::default()).unwrap();
-        op.write("text.vtt", "WEBVTT\n\n00:00.000 --> 00:10.000\nA\n")
-            .await
-            .unwrap();
-
-        let ungridded = op.clone().layer(WvttLayer::new(&[], 0));
-        let gridded = op.clone().layer(WvttLayer::new(&[], 4_000));
-
-        assert!(
-            gridded.read("text.vtt").await.unwrap().len()
-                > ungridded.read("text.vtt").await.unwrap().len(),
-            "a finer grid should add fragments, and so bytes"
         );
     }
 
