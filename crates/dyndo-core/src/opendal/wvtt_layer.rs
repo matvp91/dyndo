@@ -19,20 +19,20 @@ use dyndo_text::{vtt, wvtt};
 /// Serves `.vtt` documents as `wvtt` tracks, packed on read.
 ///
 /// The tracks are fragmented at `boundaries_ms` and on the
-/// `text_segment_length_ms` grid (see [`wvtt::pack`]), so the layer carries the
+/// `text_length_ms` grid (see [`wvtt::pack`]), so the layer carries the
 /// asset's segmentation policy and belongs to the operator serving one request
 /// rather than to a process-wide one.
 #[derive(Debug, Clone)]
 pub struct WvttLayer {
     boundaries_ms: Arc<[u64]>,
-    text_segment_length_ms: u64,
+    text_length_ms: u64,
 }
 
 impl WvttLayer {
-    pub fn new(boundaries_ms: &[u64], text_segment_length_ms: u64) -> Self {
+    pub fn new(boundaries_ms: &[u64], text_length_ms: u64) -> Self {
         Self {
             boundaries_ms: boundaries_ms.into(),
-            text_segment_length_ms,
+            text_length_ms,
         }
     }
 
@@ -43,8 +43,8 @@ impl WvttLayer {
             .await?;
         let document = String::from_utf8(stream.read_all().await?.to_vec()).map_err(unpackable)?;
         let subtitle = vtt::parse(&document).map_err(unpackable)?;
-        let packed = wvtt::pack(&subtitle, &self.boundaries_ms, self.text_segment_length_ms)
-            .map_err(unpackable)?;
+        let packed =
+            wvtt::pack(&subtitle, &self.boundaries_ms, self.text_length_ms).map_err(unpackable)?;
 
         Ok(Buffer::from(packed))
     }

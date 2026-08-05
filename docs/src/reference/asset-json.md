@@ -12,12 +12,15 @@ The file is pretty-printed JSON and safe to read, diff, and hand-edit.
 
 ## Top-level structure
 
-A descriptor is an object with a `tracks` array and an optional set of segment
-boundaries:
+A descriptor is an object with a `tracks` array and an optional block of segment
+options:
 
 ```json
 {
-  "segment_boundaries": [683640],
+  "segment_options": {
+    "min_length": 6000,
+    "boundaries": [683640]
+  },
   "tracks": [ /* track objects */ ]
 }
 ```
@@ -29,25 +32,30 @@ order you pass them.
 
 ## Segmentation
 
-The optional `segment_boundaries` field records asset-specific splice points.
-The minimum served segment length is generation-specific: pass
-`--min-segment-length` to `dyndo dash` or `dyndo hls`, or use the server's
-[`min_segment_length` option](./server/routes.md#segmentation-options).
-Grouping is applied while generating manifests and serving segments; the CMAF
-files are never modified. An empty boundary list is omitted from the
-descriptor.
+The optional `segment_options` block records how the asset asks to be segmented.
+It is what the asset *asks for*, not a decision: a `dyndo dash`/`dyndo hls` flag
+or a server request option overrides any option it names, and the descriptor is
+never written back. A block equal to the defaults is omitted from the file.
 
-| Field | Type | Description |
-|---|---|---|
-| `segment_boundaries` | array of integers *(optional)* | Splice points, in **milliseconds** from the start of the presentation, e.g. for ad insertion. A served segment never spans one, so a segment edge exists at every splice point. Treated as a set: order and duplicates don't matter. Each point is snapped per track to the nearest fragment boundary (audio fragment rasters cannot hit arbitrary millisecond positions); an exact tie snaps earlier. |
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `min_length` | integer | `0` | Minimum served segment length, in **milliseconds**. Whole fragments are grouped until this length is reached; `0` serves every fragment as its own segment. |
+| `text_length` | integer | `0` | Length of each segment of a subtitle track dyndo packages from a `.vtt`. Unlike `min_length` this is exact, since dyndo fragments those tracks itself. `0` asks for no grid, leaving the splice points as the only cuts. |
+| `boundaries` | array of integers | `[]` | Splice points, in **milliseconds** from the start of the presentation, e.g. for ad insertion. A served segment never spans one, so a segment edge exists at every splice point. Treated as a set: order and duplicates don't matter. Each point is snapped per track to the nearest fragment boundary (audio fragment rasters cannot hit arbitrary millisecond positions); an exact tie snaps earlier. |
 
-`segment_boundaries` only changes output when a non-zero minimum segment length
-groups multiple fragments. With the default of `0`, every fragment is already
-a served segment.
+Grouping is applied while generating manifests and serving segments; stored CMAF
+files are never modified.
 
-The descriptor has no shorthand field names. The server's `a`, `msl`, and `c`
-aliases belong only to its Rison request options; they are not valid substitutes
-for JSON descriptor fields.
+`boundaries` only changes video and audio output when a non-zero `min_length`
+groups multiple fragments — with the default of `0`, every fragment is already a
+served segment. Subtitle tracks are different: dyndo cuts them at the splice
+points as it packages them, whatever `min_length` says.
+
+Each option accepts three spellings, so a descriptor can use whichever reads
+best and matches the server's request options: `min_length`, `sml`, or
+`segment_min_length`; `text_length`, `stl`, or `segment_text_length`;
+`boundaries`, `sb`, or `segment_boundaries`. The `a` and `c` shorthands belong
+only to the server's Rison request options and are not descriptor fields.
 
 ## Track object
 
@@ -113,13 +121,11 @@ A text track's source is WebVTT in one of two forms: **CMAF `wvtt`** (WebVTT in
 ISO-BMFF), which is probed and served like any other CMAF track, or a **raw
 `.vtt`** file.
 
-> Raw `.vtt` sources are accepted by `index` and appear in both manifests, but
-> they carry no segments yet: the conversion from raw WebVTT to a servable
-> `wvtt` track is a stub. A raw-`.vtt` track's HLS media playlist is empty
-> (`#EXT-X-TARGETDURATION:0`, no segments) and its DASH `SegmentTimeline` has no
-> entries. Use CMAF `wvtt` sources for subtitles that must actually play. The
-> descriptor format below is the same for both and will not change as the
-> conversion lands.
+> Both forms are served. A raw `.vtt` is parsed and packaged into a `wvtt` track
+> as it is read, so nothing is written beside it and the `.vtt` stays the source
+> of truth; its segments are cut where the asset's splice points and
+> [`text_length`](#segmentation) say. The descriptor format below is the same for
+> both, and `codec` is `wvtt` either way.
 
 | Field | Type | Description |
 |---|---|---|

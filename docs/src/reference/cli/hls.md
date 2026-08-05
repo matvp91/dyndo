@@ -15,7 +15,9 @@ dyndo hls --input <INPUT> [OPTIONS]
 |---|---|---|
 | `-i, --input <INPUT>` | Input `asset.json` path. | Required |
 | `-o, --output <OUTPUT>` | Output **directory** for the playlists. | `hls` |
-| `--min-segment-length <MILLISECONDS>` | Minimum served segment length. | `0` |
+| `--segment-min-length <MILLISECONDS>` | Minimum served segment length. | `0` |
+| `--segment-text-length <MILLISECONDS>` | Length of each segment of a subtitle track packaged from a `.vtt`. | `0` |
+| `--segment-boundaries <MILLISECONDS,…>` | Splice points a segment may not span. | none |
 | `-h, --help` | Print help. | |
 
 ## Description
@@ -112,10 +114,10 @@ time in the track's timescale.
 ## Text tracks
 
 Text tracks are advertised as `TYPE=SUBTITLES` renditions and each gets a media
-playlist. For CMAF `wvtt` sources that playlist lists real segments; for raw
-`.vtt` sources it is **empty** (`#EXT-X-TARGETDURATION:0`, no segments, straight
-to `#EXT-X-ENDLIST`), because converting raw WebVTT into a servable track is not
-implemented yet.
+playlist listing real segments, whichever source form it came from. A CMAF `wvtt`
+track is indexed from its own `sidx`; a raw `.vtt` is parsed and packaged into
+`wvtt` as it is read, and its segments follow the splice points and
+[`segment_options.text_length`](../asset-json.md#segmentation).
 
 ## Examples
 
@@ -126,7 +128,7 @@ dyndo hls -i asset.json -o hls
 Group fragments into served segments of at least six seconds where possible:
 
 ```bash
-dyndo hls -i asset.json -o hls --min-segment-length 6000
+dyndo hls -i asset.json -o hls --segment-min-length 6000
 ```
 
 Resulting layout:

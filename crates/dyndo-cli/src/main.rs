@@ -43,16 +43,16 @@ enum Command {
 #[derive(Args)]
 struct SegmentArgs {
     /// Minimum served segment length in milliseconds.
-    #[arg(long, default_value_t = 0)]
-    min_segment_length: u64,
+    #[arg(long = "segment-min-length", default_value_t = 0)]
+    min_length: u64,
     /// Length of each segment of a packaged subtitle track, in milliseconds. Zero
     /// cuts one only at the asset's splice points.
-    #[arg(long, default_value_t = 0)]
-    text_segment_length: u64,
-    /// Times a segment has to start at, in milliseconds: `--segment-boundaries
-    /// 30000,60000`.
-    #[arg(long, value_delimiter = ',')]
-    segment_boundaries: Vec<u64>,
+    #[arg(long = "segment-text-length", default_value_t = 0)]
+    text_length: u64,
+    /// Times a segment has to start at, in milliseconds:
+    /// `--segment-boundaries 30000,60000`.
+    #[arg(long = "segment-boundaries", value_delimiter = ',')]
+    boundaries: Vec<u64>,
 }
 
 impl SegmentArgs {
@@ -60,14 +60,14 @@ impl SegmentArgs {
     /// asset asked for them. A flag left at zero — or no boundaries at all — names
     /// nothing.
     fn assign_to(&self, options: &mut SegmentOptions) {
-        if self.min_segment_length != 0 {
-            options.min_segment_length_ms = self.min_segment_length;
+        if self.min_length != 0 {
+            options.min_length_ms = self.min_length;
         }
-        if self.text_segment_length != 0 {
-            options.text_segment_length_ms = self.text_segment_length;
+        if self.text_length != 0 {
+            options.text_length_ms = self.text_length;
         }
-        if !self.segment_boundaries.is_empty() {
-            options.segment_boundaries = self.segment_boundaries.clone();
+        if !self.boundaries.is_empty() {
+            options.boundaries = self.boundaries.clone();
         }
     }
 }

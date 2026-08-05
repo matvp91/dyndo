@@ -9,8 +9,8 @@ GET /out/<options>/<resource>
 ```
 
 `<options>` is a **Rison** object — a compact, URL-friendly object notation, so
-`(asset:demo,msl:6000)` is the equivalent of the JSON
-`{"asset":"demo","msl":6000}` — carrying the asset to serve and
+`(asset:demo,sml:6000)` is the equivalent of the JSON
+`{"asset":"demo","sml":6000}` — carrying the asset to serve and
 how to segment it. `<resource>` names what to return from it.
 Because the options travel in the path rather than a query string, a manifest
 and every segment it references share one prefix, and the relative URLs inside a
@@ -33,7 +33,7 @@ and ending at its matching `)`:
 
 ```text
 /out/(asset:movies%2Fbig-buck-bunny)/index.mpd
-/out/(asset:demo,msl:6000)/master.m3u8
+/out/(asset:demo,sml:6000)/master.m3u8
 ```
 
 The options object must occupy one URL path segment. Percent-encode `/` as
@@ -50,7 +50,15 @@ before parsing the Rison object.
 
 | Full key | Shorthand | Type | Default | Description |
 |---|---|---|---|---|
-| `min_segment_length` | `msl` | integer | `0` | Minimum served segment length in milliseconds. Whole fragments are grouped until this length is reached. |
+| `min_length` | `sml`, `segment_min_length` | integer | `0` | Minimum served segment length in milliseconds. Whole fragments are grouped until this length is reached. |
+| `text_length` | `stl`, `segment_text_length` | integer | `0` | Length of each segment of a subtitle track dyndo packages from a `.vtt`, in milliseconds. Exact, not a minimum. `0` cuts one only at the splice points. |
+| `boundaries` | `sb`, `segment_boundaries` | array of integers | `[]` | Splice points in milliseconds; a served segment never spans one. |
+
+Each of these overrides the matching option in the descriptor's
+[`segment_options`](../asset-json.md#segmentation) block. An option left at zero —
+or an empty boundary list — names nothing and leaves the asset's value standing,
+since a request cannot express the difference between an absent value and a zero
+one.
 
 ### Transport options
 
@@ -62,13 +70,13 @@ DASH resources accept one transport-specific option:
 
 HLS currently has no transport-specific options.
 
-The supported shorthand map is therefore `asset` → `a`,
-`min_segment_length` → `msl`, and `compact` → `c`. The full and short forms are
+The supported shorthand map is therefore `asset` → `a`, `min_length` → `sml`,
+`text_length` → `stl`, `boundaries` → `sb`, and `compact` → `c`. The forms are
 equivalent:
 
 ```text
-/out/(asset:demo,min_segment_length:6000,compact:!t)/index.mpd
-/out/(a:demo,msl:6000,c:!t)/index.mpd
+/out/(asset:demo,min_length:6000,compact:!t)/index.mpd
+/out/(a:demo,sml:6000,c:!t)/index.mpd
 ```
 
 Unknown keys are rejected for DASH and HLS manifest requests.
@@ -131,7 +139,7 @@ DASH `SegmentTimeline` and the URIs in the HLS media playlists.
 
 Because segmentation options change where segment edges fall, a `<time>` is only
 valid for the same options that produced it. Requesting a segment under
-different `min_segment_length` values than the manifest
+different `min_length` values than the manifest
 was generated with will usually `404` — which is why the options live in the
 shared path prefix.
 
@@ -140,7 +148,7 @@ shared path prefix.
 | Code | When |
 |---|---|
 | `200 OK` | The manifest or segment was generated and returned; also the `/health` probe. |
-| `400 Bad Request` | The options path segment is malformed Rison, a DASH or HLS manifest request carries an unknown option, or `min_segment_length` is negative. |
+| `400 Bad Request` | The options path segment is malformed Rison, a DASH or HLS manifest request carries an unknown option, or a segment length is negative. |
 | `404 Not Found` | The path does not contain separate options and resource components; `<track-id>` matches no track; a segment filename is not `<integer>.m4s`; `<time>` is not a segment boundary; or the descriptor does not exist. |
 | `500 Internal Server Error` | The descriptor JSON is malformed; a source file is unreadable or is not valid, supported CMAF; or manifest serialization failed. |
 

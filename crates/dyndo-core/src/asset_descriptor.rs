@@ -218,12 +218,12 @@ mod tests {
     #[test]
     fn serialization_keeps_segment_options_the_asset_asked_for() {
         let mut asset = asset("asset.json", "video");
-        asset.segment_options.min_segment_length_ms = 3_000;
+        asset.segment_options.min_length_ms = 3_000;
         let json = serde_json::to_value(asset).unwrap();
 
         assert_eq!(
             json.get("segment_options").and_then(|options| options
-                .get("min_segment_length")
+                .get("min_length")
                 .and_then(serde_json::Value::as_u64)),
             Some(3_000)
         );
@@ -231,12 +231,22 @@ mod tests {
 
     #[test]
     fn deserialization_reads_segment_options_and_defaults_the_rest() {
-        let json = r#"{"segment_options":{"segment_boundaries":[7400]},"tracks":[]}"#;
+        let json = r#"{"segment_options":{"boundaries":[7400]},"tracks":[]}"#;
 
         let asset: AssetDescriptor = serde_json::from_str(json).unwrap();
 
-        assert_eq!(asset.segment_options.segment_boundaries, [7_400]);
-        assert_eq!(asset.segment_options.min_segment_length_ms, 0);
+        assert_eq!(asset.segment_options.boundaries, [7_400]);
+        assert_eq!(asset.segment_options.min_length_ms, 0);
+    }
+
+    #[test]
+    fn deserialization_accepts_the_short_and_long_option_aliases() {
+        let json = r#"{"segment_options":{"sml":3000,"segment_boundaries":[7400]},"tracks":[]}"#;
+
+        let asset: AssetDescriptor = serde_json::from_str(json).unwrap();
+
+        assert_eq!(asset.segment_options.min_length_ms, 3_000);
+        assert_eq!(asset.segment_options.boundaries, [7_400]);
     }
 
     #[test]

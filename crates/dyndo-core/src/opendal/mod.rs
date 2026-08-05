@@ -14,8 +14,6 @@ use crate::segment::SegmentOptions;
 /// Clones `op` with the layers that present a stored file as a CMAF track, packing
 /// subtitle documents into `wvtt` as they are read.
 pub(crate) fn add_operator_layers(op: &Operator, options: &SegmentOptions) -> Operator {
-    op.clone().layer(WvttLayer::new(
-        &options.segment_boundaries,
-        options.text_segment_length_ms,
-    ))
+    op.clone()
+        .layer(WvttLayer::new(&options.boundaries, options.text_length_ms))
 }

@@ -1,19 +1,18 @@
 # Add a subtitle track
 
-This guide shows how to add a WebVTT subtitle track to an existing asset.
-There are two source forms, and today they behave differently:
+This guide shows how to add a WebVTT subtitle track to an existing asset. Either
+source form works, and both are served the same way:
 
-- **CMAF `wvtt`** — WebVTT packaged into ISO-BMFF by a packager. Indexed, probed,
-  and served like any other CMAF track. **Use this for subtitles that must
-  play.**
-- **Raw `.vtt`** — the WebVTT file itself. Accepted by `index` and advertised in
-  both manifests, but not yet servable: converting raw WebVTT into a `wvtt`
-  track on the fly is still a stub, so the track carries no segments.
+- **Raw `.vtt`** — the WebVTT file itself. dyndo parses it and packages a CMAF
+  `wvtt` track as it reads it, so your `.vtt` stays the single source of truth.
+  Nothing is written back beside it.
+- **CMAF `wvtt`** — WebVTT already packaged into ISO-BMFF by a packager. Indexed,
+  probed, and served like any other CMAF track.
 
-> The target design is that you hand dyndo the `.vtt` and it does the packaging
-> at request time, keeping your `.vtt` the single source of truth. The indexing
-> half of that works now; the conversion does not. Descriptors you build from
-> `.vtt` files today will serve correctly once it lands, with no re-indexing.
+> Packaging happens on the way out, per request, so a `.vtt` you edit is served
+> edited on the next request — no re-indexing and no repackaging step. How the
+> packaged track is cut is set by
+> [`segment_options.text_length` and `boundaries`](../reference/asset-json.md#segmentation).
 
 ## Before you start
 
@@ -68,11 +67,15 @@ dyndo index subtitles_nl.vtt,language=nld -o asset.json
 
 A WebVTT file declares no language of its own, so set it here — without
 `language=` the track's language is `und` (undetermined). The `codec` is recorded
-as `wvtt` because that is what the track will be packaged as.
+as `wvtt` because that is what the track is packaged as when served.
 
-The entry is complete and correct, but until the conversion is implemented its
-HLS media playlist is empty (`#EXT-X-TARGETDURATION:0`, no segments) and its DASH
-`SegmentTimeline` has no entries, so a player will find nothing to fetch.
+By default the whole subtitle becomes one segment, cut only at the asset's splice
+points. Ask for a grid instead with `--segment-text-length` (or `text_length` in
+the descriptor) when you want the text timeline to resemble the media's:
+
+```bash
+dyndo dash -i asset.json -o stream.mpd --segment-text-length 4000
+```
 
 ## Set the language
 

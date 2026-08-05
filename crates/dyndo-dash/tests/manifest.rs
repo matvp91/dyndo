@@ -47,7 +47,7 @@ async fn generate_mpd_emits_complete_vod_manifest() {
 #[tokio::test]
 async fn generate_mpd_applies_the_assets_minimum_segment_length() {
     let (op, mut asset) = asset().await;
-    asset.segment_options.min_segment_length_ms = 10_000;
+    asset.segment_options.min_length_ms = 10_000;
 
     let mpd = dyndo_dash::builder::generate_mpd(&op, &asset, false)
         .await

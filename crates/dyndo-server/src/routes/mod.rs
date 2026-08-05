@@ -127,10 +127,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn hls_media_route_applies_msl_alias() {
+    async fn hls_media_route_applies_sml_alias() {
         let (_dir, app) = app("asset");
 
-        let response = request(app, "/out/(asset:asset,msl:10000)/video-main.m3u8").await;
+        let response = request(app, "/out/(asset:asset,sml:10000)/video-main.m3u8").await;
         let status = response.status();
         let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
 

@@ -8,17 +8,27 @@ use crate::track::{Fragment, Track};
 pub struct SegmentOptions {
     /// The shortest a served segment may be; fragments are grouped until they
     /// reach it.
-    #[serde(default, rename = "min_segment_length", alias = "msl")]
-    pub min_segment_length_ms: u64,
+    #[serde(
+        default,
+        rename = "min_length",
+        alias = "sml",
+        alias = "segment_min_length"
+    )]
+    pub min_length_ms: u64,
     /// How long each segment of a packaged subtitle track is. Unlike
-    /// `min_segment_length_ms` this is exact, since dyndo fragments those tracks
+    /// `min_length_ms` this is exact, since dyndo fragments those tracks
     /// itself rather than grouping what a file already contains. Zero asks for no
     /// grid, leaving the asset's splice points as the only cuts.
-    #[serde(default, rename = "text_segment_length", alias = "tsl")]
-    pub text_segment_length_ms: u64,
+    #[serde(
+        default,
+        rename = "text_length",
+        alias = "stl",
+        alias = "segment_text_length"
+    )]
+    pub text_length_ms: u64,
     /// Times a segment has to start at.
-    #[serde(default, rename = "segment_boundaries", alias = "sb")]
-    pub segment_boundaries: Vec<u64>,
+    #[serde(default, alias = "sb", alias = "segment_boundaries")]
+    pub boundaries: Vec<u64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -54,7 +64,7 @@ fn group_fragments(
     timescale: u32,
     options: &SegmentOptions,
 ) -> Vec<Segment> {
-    if options.min_segment_length_ms == 0 {
+    if options.min_length_ms == 0 {
         return fragments
             .iter()
             .map(|fragment| Segment {
@@ -65,13 +75,13 @@ fn group_fragments(
             .collect();
     }
 
-    let minimum = u128::from(options.min_segment_length_ms) * u128::from(timescale);
+    let minimum = u128::from(options.min_length_ms) * u128::from(timescale);
     let mut cumulative = Vec::with_capacity(fragments.len() + 1);
     cumulative.push(0u64);
     for fragment in fragments {
         cumulative.push(cumulative[cumulative.len() - 1] + fragment.duration());
     }
-    let cuts = snap_cuts(&cumulative, timescale, &options.segment_boundaries);
+    let cuts = snap_cuts(&cumulative, timescale, &options.boundaries);
 
     let mut segments = Vec::new();
     let mut start = 0;
@@ -129,19 +139,13 @@ mod tests {
     fn default_options_group_nothing_and_cut_text_only_at_splice_points() {
         let options = SegmentOptions::default();
 
-        assert_eq!(
-            (
-                options.min_segment_length_ms,
-                options.text_segment_length_ms
-            ),
-            (0, 0)
-        );
+        assert_eq!((options.min_length_ms, options.text_length_ms), (0, 0));
     }
 
-    fn options(min_segment_length_ms: u64, boundaries_ms: &[u64]) -> SegmentOptions {
+    fn options(min_length_ms: u64, boundaries_ms: &[u64]) -> SegmentOptions {
         SegmentOptions {
-            min_segment_length_ms,
-            segment_boundaries: boundaries_ms.to_vec(),
+            min_length_ms,
+            boundaries: boundaries_ms.to_vec(),
             ..SegmentOptions::default()
         }
     }
