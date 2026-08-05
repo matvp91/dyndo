@@ -22,7 +22,7 @@ pub(super) async fn dash_manifest(
         op,
         &asset,
         &request_options.segment_options,
-        &request_options.output_options,
+        request_options.output_options.compact,
     )
     .await?;
     let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");

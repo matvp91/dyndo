@@ -91,7 +91,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 &op,
                 &descriptor,
                 &SegmentOptions::default(),
-                &dyndo_dash::options::DashOptions::default(),
+                false,
             )
             .await?;
             let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");

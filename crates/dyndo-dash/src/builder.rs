@@ -15,7 +15,7 @@ use dyndo_core::track_helpers::{
 use opendal::Operator;
 
 use crate::adaptation_set_group::{self, AdaptationSetGroup};
-use crate::options::DashOptions;
+use crate::compact;
 use crate::roles;
 
 const DASH_PROFILE: &str = "urn:mpeg:dash:profile:isoff-live:2011";
@@ -43,16 +43,17 @@ pub async fn generate_mpd(
     op: &Operator,
     asset: &AssetDescriptor,
     segment_options: &SegmentOptions,
-    _dash_options: &DashOptions,
+    compact: bool,
 ) -> Result<MPD, DashError> {
     let tracks = read_all_tracks(op, asset).await?;
-    build_mpd(asset, &tracks, segment_options)
+    build_mpd(asset, &tracks, segment_options, compact)
 }
 
 fn build_mpd(
     asset: &AssetDescriptor,
     tracks: &[Track],
     segment_options: &SegmentOptions,
+    should_compact: bool,
 ) -> Result<MPD, DashError> {
     let duration = Duration::from_millis(max_duration_ms(tracks));
     let groups = adaptation_set_group::group(asset, tracks);
@@ -70,7 +71,7 @@ fn build_mpd(
         .map(|(index, group)| adaptation_set(index, group, asset, segment_options))
         .collect();
 
-    Ok(MPD {
+    let mut mpd = MPD {
         xmlns: Some(DASH_XMLNS.to_string()),
         mpdtype: Some("static".to_string()),
         profiles: Some(DASH_PROFILE.to_string()),
@@ -88,7 +89,11 @@ fn build_mpd(
             ..Default::default()
         }],
         ..Default::default()
-    })
+    };
+    if should_compact {
+        compact::compact(&mut mpd);
+    }
+    Ok(mpd)
 }
 
 fn adaptation_set(
@@ -106,7 +111,6 @@ fn adaptation_set(
         startWithSAP: Some(1),
         Role: roles::roles(group.content_type(), group.role()),
         Accessibility: roles::accessibility(group.content_type(), group.role()),
-        SegmentTemplate: Some(segment_template(group, asset, segment_options)),
         representations: group
             .members()
             .iter()
@@ -130,6 +134,7 @@ fn representation(
             segment_options.min_segment_length_ms,
         )),
         codecs: Some(descriptor.codec.clone()),
+        SegmentTemplate: Some(segment_template(track, asset, segment_options)),
         ..Default::default()
     };
 
@@ -159,12 +164,10 @@ fn audio_channel_configuration(channels: u16) -> AudioChannelConfiguration {
 }
 
 fn segment_template(
-    group: &AdaptationSetGroup<'_>,
+    track: &Track,
     asset: &AssetDescriptor,
     segment_options: &SegmentOptions,
 ) -> SegmentTemplate {
-    let track = group.members()[0].1;
-
     SegmentTemplate {
         timescale: Some(u64::from(track.timescale())),
         presentationTimeOffset: Some(track.earliest_presentation_time()),
@@ -214,21 +217,21 @@ mod tests {
 
     #[test]
     fn generate_mpd_creates_a_static_manifest() {
-        let mpd = build_mpd(&asset(), &[], &SegmentOptions::default()).unwrap();
+        let mpd = build_mpd(&asset(), &[], &SegmentOptions::default(), false).unwrap();
 
         assert_eq!(mpd.mpdtype.as_deref(), Some("static"));
     }
 
     #[test]
     fn generate_mpd_uses_the_segment_based_profile() {
-        let mpd = build_mpd(&asset(), &[], &SegmentOptions::default()).unwrap();
+        let mpd = build_mpd(&asset(), &[], &SegmentOptions::default(), false).unwrap();
 
         assert_eq!(mpd.profiles.as_deref(), Some(DASH_PROFILE));
     }
 
     #[test]
     fn generate_mpd_creates_one_period() {
-        let mpd = build_mpd(&asset(), &[], &SegmentOptions::default()).unwrap();
+        let mpd = build_mpd(&asset(), &[], &SegmentOptions::default(), false).unwrap();
 
         assert_eq!(mpd.periods.len(), 1);
     }

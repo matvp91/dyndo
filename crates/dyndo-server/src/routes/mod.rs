@@ -237,6 +237,14 @@ mod tests {
     }
 
     #[test]
+    fn parse_route_accepts_compact_alias() {
+        let route = parse_route("(asset:asset,c:!t)/index.mpd").unwrap();
+        let request_options = route.request_options::<DashOptions>().unwrap();
+
+        assert!(request_options.output_options.compact);
+    }
+
+    #[test]
     fn parse_route_rejects_segment_boundaries() {
         let route =
             parse_route("(asset:asset,segment_boundaries:!(1000,2000))/master.m3u8").unwrap();
