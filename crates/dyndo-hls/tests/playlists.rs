@@ -15,7 +15,7 @@ async fn generate_master_playlist_emits_video_variant_and_audio_rendition() {
     let playlist = dyndo_hls::builder::generate_master_playlist(
         &op,
         &asset,
-        &SegmentOptions::default(),
+        &SegmentOptions::new(None),
         &HlsOptions::default(),
     )
     .await
@@ -51,7 +51,7 @@ async fn generate_media_playlist_emits_vod_timing_and_relative_uris() {
         &op,
         &asset,
         descriptor,
-        &SegmentOptions::default(),
+        &SegmentOptions::new(None),
         &HlsOptions::default(),
     )
     .await
@@ -80,7 +80,7 @@ async fn generate_media_playlist_applies_requested_minimum_segment_length() {
 
     let segment_options = SegmentOptions {
         min_segment_length_ms: 10_000,
-        ..SegmentOptions::default()
+        ..SegmentOptions::new(None)
     };
     let playlist = dyndo_hls::builder::generate_media_playlist(
         &op,

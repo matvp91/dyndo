@@ -12,7 +12,7 @@ const FIXTURES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../fixtures");
 async fn generate_mpd_emits_complete_vod_manifest() {
     let (op, asset) = asset().await;
 
-    let mpd = dyndo_dash::builder::generate_mpd(&op, &asset, &SegmentOptions::default(), false)
+    let mpd = dyndo_dash::builder::generate_mpd(&op, &asset, &SegmentOptions::new(None), false)
         .await
         .unwrap();
     let mut xml = String::new();
@@ -51,7 +51,7 @@ async fn generate_mpd_applies_requested_minimum_segment_length() {
 
     let segment_options = SegmentOptions {
         min_segment_length_ms: 10_000,
-        ..SegmentOptions::default()
+        ..SegmentOptions::new(None)
     };
     let mpd = dyndo_dash::builder::generate_mpd(&op, &asset, &segment_options, false)
         .await
@@ -67,7 +67,7 @@ async fn generate_mpd_applies_requested_minimum_segment_length() {
 async fn generate_mpd_keeps_templates_on_representations_when_not_compact() {
     let (op, asset) = asset().await;
 
-    let mpd = dyndo_dash::builder::generate_mpd(&op, &asset, &SegmentOptions::default(), false)
+    let mpd = dyndo_dash::builder::generate_mpd(&op, &asset, &SegmentOptions::new(None), false)
         .await
         .unwrap();
 
@@ -84,7 +84,7 @@ async fn generate_mpd_keeps_templates_on_representations_when_not_compact() {
 async fn generate_mpd_hoists_templates_when_compact() {
     let (op, asset) = asset().await;
 
-    let mpd = dyndo_dash::builder::generate_mpd(&op, &asset, &SegmentOptions::default(), true)
+    let mpd = dyndo_dash::builder::generate_mpd(&op, &asset, &SegmentOptions::new(None), true)
         .await
         .unwrap();
 

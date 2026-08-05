@@ -10,7 +10,7 @@ use dyndo_core::asset_descriptor::{AssetDescriptor, TrackDescriptor, TrackKind};
 use dyndo_core::segment::SegmentOptions;
 use dyndo_core::track::{Track, TrackError};
 use dyndo_core::track_helpers::{
-    max_bitrate, max_duration_ms, max_segment_duration_ms, read_all_tracks,
+    max_bitrate, max_duration_ms, max_segment_duration_ms, probe_all_tracks,
 };
 use opendal::Operator;
 
@@ -45,8 +45,9 @@ pub async fn generate_mpd(
     segment_options: &SegmentOptions,
     compact: bool,
 ) -> Result<MPD, DashError> {
-    let segment_options = segment_options.for_asset(asset);
-    let tracks = read_all_tracks(op, asset, &segment_options).await?;
+    let mut segment_options = segment_options.clone();
+    segment_options.segment_boundaries = asset.segment_boundaries.clone();
+    let tracks = probe_all_tracks(op, asset, &segment_options).await?;
     build_mpd(asset, &tracks, &segment_options, compact)
 }
 
@@ -198,21 +199,21 @@ mod tests {
 
     #[test]
     fn generate_mpd_creates_a_static_manifest() {
-        let mpd = build_mpd(&asset(), &[], &SegmentOptions::default(), false).unwrap();
+        let mpd = build_mpd(&asset(), &[], &SegmentOptions::new(None), false).unwrap();
 
         assert_eq!(mpd.mpdtype.as_deref(), Some("static"));
     }
 
     #[test]
     fn generate_mpd_uses_the_segment_based_profile() {
-        let mpd = build_mpd(&asset(), &[], &SegmentOptions::default(), false).unwrap();
+        let mpd = build_mpd(&asset(), &[], &SegmentOptions::new(None), false).unwrap();
 
         assert_eq!(mpd.profiles.as_deref(), Some(DASH_PROFILE));
     }
 
     #[test]
     fn generate_mpd_creates_one_period() {
-        let mpd = build_mpd(&asset(), &[], &SegmentOptions::default(), false).unwrap();
+        let mpd = build_mpd(&asset(), &[], &SegmentOptions::new(None), false).unwrap();
 
         assert_eq!(mpd.periods.len(), 1);
     }

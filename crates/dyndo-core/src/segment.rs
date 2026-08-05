@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::asset_descriptor::AssetDescriptor;
 use crate::track::{Fragment, Track};
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SegmentOptions {
     /// The shortest a served segment may be; fragments are grouped until they
     /// reach it.
@@ -18,30 +18,24 @@ pub struct SegmentOptions {
     /// grid, leaving the asset's splice points as the only cuts.
     #[serde(default, rename = "text_segment_length", alias = "tsl")]
     pub text_segment_length_ms: u64,
-    /// Times a segment has to start at. Empty defers to the asset's own splice
-    /// points; see [`SegmentOptions::for_asset`].
+    /// Times a segment has to start at, taken from the asset unless a request
+    /// names its own.
     #[serde(default, rename = "segment_boundaries", alias = "sb")]
     pub segment_boundaries: Vec<u64>,
 }
 
 impl SegmentOptions {
-    /// These options with `asset`'s splice points filled in, when the request
-    /// named none of its own. Resolve once where the asset is read, so everything
-    /// downstream cuts at the same times.
-    pub fn for_asset(&self, asset: &AssetDescriptor) -> Self {
-        if !self.segment_boundaries.is_empty() {
-            return self.clone();
-        }
-
+    /// Options with dyndo's defaults — group nothing, cut subtitle tracks only at
+    /// splice points — taking those splice points from `descriptor` when there is
+    /// one to take them from.
+    pub fn new(descriptor: Option<&AssetDescriptor>) -> Self {
         Self {
-            segment_boundaries: asset.segment_boundaries.clone(),
-            ..self.clone()
+            min_segment_length_ms: 0,
+            text_segment_length_ms: 0,
+            segment_boundaries: descriptor
+                .map(|descriptor| descriptor.segment_boundaries.clone())
+                .unwrap_or_default(),
         }
-    }
-
-    /// The times a segment has to start at.
-    pub fn boundaries_ms(&self) -> &[u64] {
-        &self.segment_boundaries
     }
 }
 
@@ -103,7 +97,7 @@ fn group_fragments(
     for fragment in fragments {
         cumulative.push(cumulative[cumulative.len() - 1] + fragment.duration());
     }
-    let cuts = snap_cuts(&cumulative, timescale, options.boundaries_ms());
+    let cuts = snap_cuts(&cumulative, timescale, &options.segment_boundaries);
 
     let mut segments = Vec::new();
     let mut start = 0;
@@ -158,8 +152,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_options_group_nothing_and_cut_text_only_at_splice_points() {
-        let options = SegmentOptions::default();
+    fn options_without_a_descriptor_group_nothing_and_cut_text_only_at_splice_points() {
+        let options = SegmentOptions::new(None);
 
         assert_eq!(
             (
@@ -209,27 +203,14 @@ mod tests {
     fn options_accept_segment_boundaries_in_rison() {
         let options: SegmentOptions = "(segment_boundaries:!(1000,2000))".parse().unwrap();
 
-        assert_eq!(options.boundaries_ms(), [1_000, 2_000]);
+        assert_eq!(options.segment_boundaries, [1_000, 2_000]);
     }
 
     #[test]
-    fn for_asset_falls_back_to_the_descriptor_boundaries() {
-        let options = SegmentOptions::default().for_asset(&asset(&[7_400]));
+    fn options_take_their_boundaries_from_the_descriptor() {
+        let options = SegmentOptions::new(Some(&asset(&[7_400])));
 
-        assert_eq!(options.boundaries_ms(), [7_400]);
-    }
-
-    #[test]
-    fn for_asset_keeps_the_boundaries_the_request_named() {
-        let requested = SegmentOptions {
-            segment_boundaries: vec![1_000],
-            ..SegmentOptions::default()
-        };
-
-        assert_eq!(
-            requested.for_asset(&asset(&[7_400])).boundaries_ms(),
-            [1_000]
-        );
+        assert_eq!(options.segment_boundaries, [7_400]);
     }
 
     fn asset(boundaries_ms: &[u64]) -> AssetDescriptor {
@@ -249,7 +230,7 @@ mod tests {
         SegmentOptions {
             min_segment_length_ms,
             segment_boundaries: boundaries_ms.to_vec(),
-            ..SegmentOptions::default()
+            ..SegmentOptions::new(None)
         }
     }
 

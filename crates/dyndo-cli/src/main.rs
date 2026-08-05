@@ -114,7 +114,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 // Indexing records a track's codec and kind, neither of which
                 // depends on how it is fragmented, so the defaults will do.
-                let options = SegmentOptions::default().for_asset(&descriptor);
+                let options = SegmentOptions::new(Some(&descriptor));
                 let track = Track::probe(&op, &path, None, &options).await?;
                 input.apply(&mut descriptor.add_track(&track).kind);
             }

@@ -15,7 +15,7 @@ use crate::segment::SegmentOptions;
 /// subtitle documents into `wvtt` as they are read.
 pub(crate) fn add_operator_layers(op: &Operator, options: &SegmentOptions) -> Operator {
     op.clone().layer(WvttLayer::new(
-        options.boundaries_ms(),
+        &options.segment_boundaries,
         options.text_segment_length_ms,
     ))
 }

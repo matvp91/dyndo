@@ -35,7 +35,8 @@ pub(super) async fn media(
         .track(track_id)
         .ok_or_else(|| ServerError::NotFound(format!("track {track_id}")))?;
     let path = asset.track_path(descriptor);
-    let segment_options = request_options.segment_options.for_asset(&asset);
+    let mut segment_options = request_options.segment_options.clone();
+    segment_options.segment_boundaries = asset.segment_boundaries.clone();
     let track = Track::probe(op, &path, Some(descriptor.kind.clone()), &segment_options).await?;
     let mut start_time = track.earliest_presentation_time();
 
@@ -66,7 +67,8 @@ async fn read_track(
         .track(track_id)
         .ok_or_else(|| ServerError::NotFound(format!("track {track_id}")))?;
     let path = asset.track_path(descriptor);
-    let segment_options = request_options.segment_options.for_asset(&asset);
+    let mut segment_options = request_options.segment_options.clone();
+    segment_options.segment_boundaries = asset.segment_boundaries.clone();
     let track = Track::probe(op, &path, Some(descriptor.kind.clone()), &segment_options).await?;
     let content_type = track.mime_type();
     Ok((segment_options, track, content_type))

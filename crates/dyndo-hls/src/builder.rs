@@ -7,7 +7,7 @@ use std::time::Duration;
 use dyndo_core::asset_descriptor::{AssetDescriptor, TrackDescriptor, TrackKind};
 use dyndo_core::segment::SegmentOptions;
 use dyndo_core::track::{Track, TrackError};
-use dyndo_core::track_helpers::{average_bitrate, max_bitrate, read_all_tracks};
+use dyndo_core::track_helpers::{average_bitrate, max_bitrate, probe_all_tracks};
 use hls_m3u8::tags::{ExtXMap, ExtXMedia, VariantStream};
 use hls_m3u8::types::{Channels, ClosedCaptions, MediaType, PlaylistType, StreamData, UFloat};
 use hls_m3u8::{MasterPlaylist, MediaPlaylist, MediaSegment};
@@ -47,8 +47,10 @@ pub async fn generate_master_playlist(
     _hls_options: &HlsOptions,
 ) -> Result<MasterPlaylist<'static>, HlsError> {
     ensure_unique_rendition_names(asset)?;
-    let segment_options = &segment_options.for_asset(asset);
-    let tracks = read_all_tracks(op, asset, segment_options).await?;
+    let mut segment_options = segment_options.clone();
+    segment_options.segment_boundaries = asset.segment_boundaries.clone();
+    let segment_options = &segment_options;
+    let tracks = probe_all_tracks(op, asset, segment_options).await?;
     build_master_playlist(asset, &tracks, segment_options)
 }
 
@@ -66,7 +68,9 @@ pub async fn generate_media_playlist(
     _hls_options: &HlsOptions,
 ) -> Result<MediaPlaylist<'static>, HlsError> {
     let path = asset.track_path(descriptor);
-    let segment_options = &segment_options.for_asset(asset);
+    let mut segment_options = segment_options.clone();
+    segment_options.segment_boundaries = asset.segment_boundaries.clone();
+    let segment_options = &segment_options;
     let track = Track::probe(op, &path, Some(descriptor.kind.clone()), segment_options).await?;
     build_media_playlist(descriptor, &track, segment_options)
 }

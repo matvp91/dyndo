@@ -15,7 +15,7 @@ use crate::track::{Track, TrackError};
 /// # Errors
 ///
 /// Returns the first [`TrackError`] encountered while reading the tracks.
-pub async fn read_all_tracks(
+pub async fn probe_all_tracks(
     op: &Operator,
     asset: &AssetDescriptor,
     options: &SegmentOptions,
@@ -136,7 +136,7 @@ mod tests {
         ];
 
         assert_eq!(
-            max_segment_duration_ms(&tracks, &SegmentOptions::default()),
+            max_segment_duration_ms(&tracks, &SegmentOptions::new(None)),
             334
         );
     }
@@ -152,7 +152,7 @@ mod tests {
             ],
         );
 
-        assert_eq!(max_bitrate(&track, &SegmentOptions::default()), 16_000);
+        assert_eq!(max_bitrate(&track, &SegmentOptions::new(None)), 16_000);
     }
 
     #[test]
@@ -166,7 +166,7 @@ mod tests {
             ],
         );
 
-        assert_eq!(average_bitrate(&track, &SegmentOptions::default()), 12_000);
+        assert_eq!(average_bitrate(&track, &SegmentOptions::new(None)), 12_000);
     }
 
     #[test]
@@ -175,8 +175,8 @@ mod tests {
 
         assert_eq!(
             (
-                max_bitrate(&track, &SegmentOptions::default()),
-                average_bitrate(&track, &SegmentOptions::default())
+                max_bitrate(&track, &SegmentOptions::new(None)),
+                average_bitrate(&track, &SegmentOptions::new(None))
             ),
             (0, 0)
         );
