@@ -8,8 +8,8 @@ use relative_path::RelativePath;
 pub enum TrackSourceError {
     #[error(transparent)]
     Storage(#[from] opendal::Error),
-    #[error("byte range {start}..{end} is outside source length {length}")]
-    InvalidRange { start: u64, end: u64, length: u64 },
+    #[error("invalid byte range {0:?}")]
+    InvalidRange(Range<u64>),
 }
 
 pub(crate) enum TrackSource {
@@ -27,26 +27,13 @@ impl TrackSource {
         match self {
             Self::Stored => Ok(op.read_with(path.as_str()).range(range).await?.to_bytes()),
             Self::Memory { bytes } => {
-                let start =
-                    usize::try_from(range.start).map_err(|_| TrackSourceError::InvalidRange {
-                        start: range.start,
-                        end: range.end,
-                        length: bytes.len() as u64,
-                    })?;
-                let end =
-                    usize::try_from(range.end).map_err(|_| TrackSourceError::InvalidRange {
-                        start: range.start,
-                        end: range.end,
-                        length: bytes.len() as u64,
-                    })?;
-                if start > end || end > bytes.len() {
-                    return Err(TrackSourceError::InvalidRange {
-                        start: range.start,
-                        end: range.end,
-                        length: bytes.len() as u64,
-                    });
+                // `Bytes::slice` panics on reversed and out-of-bounds ranges.
+                if range.start > range.end || range.end > bytes.len() as u64 {
+                    return Err(TrackSourceError::InvalidRange(range));
                 }
-                Ok(bytes.slice(start..end))
+
+                // Both bounds are within the length, so narrowing back is lossless.
+                Ok(bytes.slice(range.start as usize..range.end as usize))
             }
         }
     }
@@ -60,70 +47,39 @@ mod tests {
 
     #[tokio::test]
     async fn memory_source_reads_valid_range() {
-        let source = source();
-
-        let bytes = source
-            .read_range(&operator(), RelativePath::new("unused"), 1..4)
-            .await
-            .unwrap();
-
-        assert_eq!(bytes, Bytes::from_static(b"bcd"));
+        assert_eq!(read(1..4).await.unwrap(), Bytes::from_static(b"bcd"));
     }
 
     #[tokio::test]
     async fn memory_source_reads_empty_range() {
-        let source = source();
-
-        let bytes = source
-            .read_range(&operator(), RelativePath::new("unused"), 2..2)
-            .await
-            .unwrap();
-
-        assert!(bytes.is_empty());
+        assert!(read(2..2).await.unwrap().is_empty());
     }
 
     #[tokio::test]
     async fn memory_source_rejects_reversed_range() {
-        let range = Range { start: 4, end: 2 };
-        let error = source()
-            .read_range(&operator(), RelativePath::new("unused"), range)
-            .await
-            .unwrap_err();
+        let error = read(Range { start: 4, end: 2 }).await.unwrap_err();
 
-        assert!(matches!(
-            error,
-            TrackSourceError::InvalidRange {
-                start: 4,
-                end: 2,
-                length: 6
-            }
-        ));
+        assert_eq!(error.to_string(), "invalid byte range 4..2");
     }
 
     #[tokio::test]
     async fn memory_source_rejects_end_beyond_length() {
-        let error = source()
-            .read_range(&operator(), RelativePath::new("unused"), 0..7)
-            .await
-            .unwrap_err();
+        let error = read(0..7).await.unwrap_err();
 
-        assert!(matches!(
-            error,
-            TrackSourceError::InvalidRange {
-                start: 0,
-                end: 7,
-                length: 6
-            }
-        ));
+        assert_eq!(error.to_string(), "invalid byte range 0..7");
     }
 
-    fn source() -> TrackSource {
-        TrackSource::Memory {
+    async fn read(range: Range<u64>) -> Result<Bytes, TrackSourceError> {
+        let source = TrackSource::Memory {
             bytes: Bytes::from_static(b"abcdef"),
-        }
-    }
+        };
 
-    fn operator() -> Operator {
-        Operator::new(Memory::default()).unwrap()
+        source
+            .read_range(
+                &Operator::new(Memory::default()).unwrap(),
+                RelativePath::new("unused"),
+                range,
+            )
+            .await
     }
 }
