@@ -6,16 +6,15 @@
 
 use std::sync::Arc;
 
-use opendal::raw::oio::{Read, ReadStream, StreamRead};
-use opendal::raw::{
+use ::opendal::raw::oio::{Read, ReadStream, StreamRead};
+use ::opendal::raw::{
     Layer, OpCopier, OpCopy, OpCreateDir, OpList, OpPresign, OpRead, OpRename, OpStat, OpWrite,
     RpCreateDir, RpPresign, RpRead, RpRename, RpStat, Service, ServiceInfo, Servicer, oio,
 };
-use opendal::{
+use ::opendal::{
     Buffer, BytesRange, Capability, EntryMode, Error, ErrorKind, Metadata, OperationContext, Result,
 };
-
-use crate::{vtt, wvtt};
+use dyndo_text::{vtt, wvtt};
 
 /// Serves `.vtt` documents as `wvtt` tracks, packed on read.
 ///
@@ -187,8 +186,8 @@ impl StreamRead for PackedReader {
 
 #[cfg(test)]
 mod tests {
-    use opendal::Operator;
-    use opendal::services::Memory;
+    use ::opendal::Operator;
+    use ::opendal::services::Memory;
 
     use super::*;
 

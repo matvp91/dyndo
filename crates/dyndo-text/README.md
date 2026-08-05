@@ -13,16 +13,12 @@ length. Those cut times come from the asset's clock rather than from where
 the cues fall, so every text track of an asset carries the same fragment timeline
 and stays segment-aligned with the video and audio beside it.
 
-`layer::WvttLayer` is how the rest of dyndo consumes all of this: an
-[`opendal`](https://crates.io/crates/opendal) layer that packages subtitle
-documents as they are read. A read of a `.vtt` path fetches the document from
-whatever storage sits underneath, packs it, and returns the packed track's bytes —
-byte ranges and all. Nothing is written back, and every other path passes straight
-through, so [`dyndo-core`](../dyndo-core/README.md) reads a subtitle track exactly
-as it reads a CMAF one and never learns the difference.
+Nothing here touches storage. [`dyndo-core`](../dyndo-core/README.md) wraps
+`vtt::parse` and `wvtt::pack` in an opendal layer so that reading a `.vtt` path
+yields a packed track's bytes, and reads a subtitle track exactly as it reads a
+CMAF one; this crate only knows documents, cues, and boxes.
 
-Two things deliberately stay outside: the track's language and role, which belong
-to the transport ([`dyndo-dash`](../dyndo-dash/README.md),
-[`dyndo-hls`](../dyndo-hls/README.md)), and storage itself — this crate adapts
-reads, it does not own where bytes live.
+The track's language and role stay outside too — those belong to the transport
+([`dyndo-dash`](../dyndo-dash/README.md),
+[`dyndo-hls`](../dyndo-hls/README.md)).
 [`mp4-atom`](https://crates.io/crates/mp4-atom) supplies the box model.

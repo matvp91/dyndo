@@ -6,8 +6,8 @@ use relative_path::{RelativePath, RelativePathBuf};
 use uuid::Uuid;
 
 use crate::asset_descriptor::TrackKind;
+use crate::opendal::add_operator_layers;
 use crate::segment::SegmentOptions;
-use crate::track_helpers::add_operator_layers;
 use crate::track_probe::{self, TrackProbeError};
 
 #[derive(Debug, thiserror::Error)]

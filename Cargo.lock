@@ -722,9 +722,7 @@ name = "dyndo-text"
 version = "0.3.4"
 dependencies = [
  "mp4-atom",
- "opendal",
  "thiserror 2.0.18",
- "tokio",
 ]
 
 [[package]]

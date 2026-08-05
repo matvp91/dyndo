@@ -1,4 +1,3 @@
-use dyndo_text::layer::WvttLayer;
 use futures_util::future::try_join_all;
 use opendal::Operator;
 
@@ -6,15 +5,6 @@ use crate::asset_descriptor::AssetDescriptor;
 use crate::asset_descriptor::TrackKind;
 use crate::segment::SegmentOptions;
 use crate::track::{Track, TrackError};
-
-/// Clones `op` with the layers that present a stored file as a CMAF track, packing
-/// subtitle documents into `wvtt` as they are read.
-pub(crate) fn add_operator_layers(op: &Operator, options: &SegmentOptions) -> Operator {
-    op.clone().layer(WvttLayer::new(
-        options.boundaries_ms(),
-        options.text_segment_length_ms,
-    ))
-}
 
 /// Reads every track declared by `asset` concurrently, packaging subtitle
 /// documents as `options` describes.
