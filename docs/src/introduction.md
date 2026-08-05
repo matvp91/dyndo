@@ -93,6 +93,6 @@ Codec parameters are read from the source and emitted as
 | Audio | Dolby Digital Plus (E-AC-3) | `ec-3` |
 | Text | WebVTT in ISO-BMFF | `wvtt` |
 
-Raw WebVTT (`.vtt`) files are also accepted as text-track sources, though
-packaging them into servable `wvtt` at request time is not implemented yet — see
-[Add a subtitle track](./how-to/add-subtitles.md).
+Raw WebVTT (`.vtt`) files are also accepted as text-track sources: dyndo parses
+one and packages a `wvtt` track from it as it reads, so the `.vtt` stays the
+source of truth — see [Add a subtitle track](./how-to/add-subtitles.md).

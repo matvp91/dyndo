@@ -67,7 +67,7 @@ track — so `dyndo hls` writes to a **directory** rather than a single file. It
 reports each file as it goes:
 
 ```bash
-dyndo hls -i asset.json -o hls --min-segment-length 6000
+dyndo hls -i asset.json -o hls --segment-min-length 6000
 ```
 
 ```text
@@ -105,13 +105,16 @@ video_6b745be5-2791-5d95-8ce5-8f8bde29e2fe/172800.m4s
 #EXT-X-ENDLIST
 ```
 
-> A text track sourced from a raw `.vtt` gets a playlist with no segments at all
-> (`#EXT-X-TARGETDURATION:0` straight to `#EXT-X-ENDLIST`) — see
-> [Add a subtitle track](./add-subtitles.md).
+> A text track sourced from a raw `.vtt` gets a playlist like any other: dyndo
+> packages the `.vtt` into `wvtt` as it reads it. Use `--segment-text-length` to
+> choose how it is cut — see [Add a subtitle track](./add-subtitles.md).
 
-`--min-segment-length` is shared by the DASH and HLS commands. It groups whole
+`--segment-min-length` is shared by the DASH and HLS commands. It groups whole
 fragments until the requested duration is reached, while respecting the
-descriptor's `segment_boundaries`. DASH additionally accepts the
+descriptor's [`segment_options.boundaries`](../reference/asset-json.md#segmentation).
+Every segment flag overrides the matching option in that block, and
+`--segment-boundaries` and `--segment-text-length` are accepted alongside it.
+DASH additionally accepts the
 transport-specific `--compact` flag; HLS currently has no transport-specific
 flags.
 

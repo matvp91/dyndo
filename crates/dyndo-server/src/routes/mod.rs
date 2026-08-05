@@ -1,3 +1,4 @@
+mod context;
 mod segment;
 mod transport;
 
@@ -8,25 +9,13 @@ use axum::{
     response::Response,
     routing::get,
 };
-use dyndo_core::asset_descriptor::AssetDescriptor;
-use dyndo_core::segment::SegmentOptions;
 use dyndo_dash::options::DashOptions;
 use dyndo_hls::options::HlsOptions;
 use opendal::Operator;
-use serde::{Deserialize, de::DeserializeOwned};
 use tower_http::cors::{Any, CorsLayer};
 
 use crate::error::ServerError;
-
-#[derive(Debug, Deserialize)]
-struct RequestTransportOptions<T> {
-    #[serde(alias = "a")]
-    asset: String,
-    #[serde(flatten)]
-    segment_options: SegmentOptions,
-    #[serde(flatten)]
-    transport_options: T,
-}
+use crate::routes::context::parse_context;
 
 pub(crate) fn build_router(op: Operator) -> Router {
     let cors = CorsLayer::new().allow_origin(Any).allow_methods(Any);
@@ -48,45 +37,35 @@ async fn dispatch(
     match resource.as_str() {
         // Generate the asset's DASH manifest.
         "index.mpd" => {
-            let request_options = parse_request_options::<DashOptions>(&options)?;
-            transport::dash_manifest(&op, &request_options).await
+            let context = parse_context::<DashOptions>(&options)?;
+            transport::dash_manifest(&op, &context).await
         }
         // Generate the HLS multivariant playlist.
         "master.m3u8" => {
-            let request_options = parse_request_options::<HlsOptions>(&options)?;
-            transport::hls_master(&op, &request_options).await
+            let context = parse_context::<HlsOptions>(&options)?;
+            transport::hls_master(&op, &context).await
         }
         // Generate the media playlist for the track named by the filename.
         resource if !resource.contains('/') && resource.ends_with(".m3u8") => {
             let track_id = resource
                 .strip_suffix(".m3u8")
                 .ok_or_else(|| ServerError::NotFound(resource.to_string()))?;
-            let request_options = parse_request_options::<HlsOptions>(&options)?;
-            transport::hls_media(&op, &request_options, track_id).await
+            let context = parse_context::<HlsOptions>(&options)?;
+            transport::hls_media(&op, &context, track_id).await
         }
         // Serve initialization or media bytes for the track named by the path.
         resource => {
-            let request_options = parse_request_options::<()>(&options)?;
+            let context = parse_context::<()>(&options)?;
             let (track_id, file) = resource
                 .split_once('/')
                 .ok_or_else(|| ServerError::NotFound(resource.to_string()))?;
             if file == "init.mp4" {
-                segment::initialization(&op, &request_options, track_id).await
+                segment::initialization(&op, &context, track_id).await
             } else {
-                segment::media(&op, &request_options, track_id, file).await
+                segment::media(&op, &context, track_id, file).await
             }
         }
     }
-}
-
-fn parse_request_options<T: DeserializeOwned>(
-    options: &str,
-) -> Result<RequestTransportOptions<T>, ServerError> {
-    rison::from_str(options).map_err(|error| ServerError::InvalidOptions(error.to_string()))
-}
-
-async fn read_asset(op: &Operator, asset: &str) -> Result<AssetDescriptor, ServerError> {
-    Ok(AssetDescriptor::read(op, &format!("{asset}.json")).await?)
 }
 
 #[cfg(test)]
@@ -102,43 +81,6 @@ mod tests {
     use super::*;
 
     const FIXTURES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../fixtures");
-
-    #[test]
-    fn parse_request_options_accepts_a_nested_asset_path() {
-        let request_options = parse_request_options::<DashOptions>("(asset:foo/asset)").unwrap();
-
-        assert_eq!(request_options.asset, "foo/asset");
-    }
-
-    #[test]
-    fn parse_request_options_accepts_asset_alias() {
-        let request_options = parse_request_options::<DashOptions>("(a:foo/asset)").unwrap();
-
-        assert_eq!(request_options.asset, "foo/asset");
-    }
-
-    #[test]
-    fn parse_request_options_accepts_min_segment_length() {
-        let request_options =
-            parse_request_options::<HlsOptions>("(asset:asset,min_segment_length:3000)").unwrap();
-
-        assert_eq!(request_options.segment_options.min_segment_length_ms, 3000);
-    }
-
-    #[test]
-    fn parse_request_options_accepts_msl_alias() {
-        let request_options =
-            parse_request_options::<HlsOptions>("(asset:asset,msl:3000)").unwrap();
-
-        assert_eq!(request_options.segment_options.min_segment_length_ms, 3000);
-    }
-
-    #[test]
-    fn parse_request_options_accepts_compact_alias() {
-        let request_options = parse_request_options::<DashOptions>("(asset:asset,c:!t)").unwrap();
-
-        assert!(request_options.transport_options.compact);
-    }
 
     #[tokio::test]
     async fn health_route_returns_ok() {
@@ -185,10 +127,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn hls_media_route_applies_msl_alias() {
+    async fn hls_media_route_applies_sml_alias() {
         let (_dir, app) = app("asset");
 
-        let response = request(app, "/out/(asset:asset,msl:10000)/video-main.m3u8").await;
+        let response = request(app, "/out/(asset:asset,sml:10000)/video-main.m3u8").await;
         let status = response.status();
         let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
 

@@ -76,7 +76,7 @@ fn hls_writes_master_and_track_playlists() {
             "asset.json",
             "-o",
             "playlists",
-            "--min-segment-length",
+            "--segment-min-length",
             "10000",
         ])
         .status()

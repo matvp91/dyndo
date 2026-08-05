@@ -653,12 +653,12 @@ name = "dyndo-core"
 version = "0.3.4"
 dependencies = [
  "bytes",
+ "dyndo-text",
  "futures-util",
  "language-tags",
  "mp4-atom",
  "opendal",
  "relative-path",
- "rison",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -709,11 +709,20 @@ dependencies = [
  "quick-xml 0.40.1",
  "rison",
  "serde",
+ "serde_json",
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
  "tower",
  "tower-http",
+]
+
+[[package]]
+name = "dyndo-text"
+version = "0.3.4"
+dependencies = [
+ "mp4-atom",
+ "thiserror 2.0.18",
 ]
 
 [[package]]

@@ -6,12 +6,12 @@ rust-version.workspace = true
 
 [dependencies]
 bytes = "1"
+dyndo-text = { path = "../dyndo-text" }
 futures-util = "0.3"
 language-tags = { version = "0.3.2", features = ["serde"] }
 mp4-atom = { version = "0.12.1", features = ["tokio"] }
 opendal = { version = "0.58.0", default-features = false }
 relative-path = { version = "2.0.1", features = ["serde"] }
-rison = "0.1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"

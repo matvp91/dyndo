@@ -14,7 +14,9 @@ dyndo dash --input <INPUT> [OPTIONS]
 |---|---|---|
 | `-i, --input <INPUT>` | Input `asset.json` path. | Required |
 | `-o, --output <OUTPUT>` | Output manifest path. | `stream.mpd` |
-| `--min-segment-length <MILLISECONDS>` | Minimum served segment length. | `0` |
+| `--segment-min-length <MILLISECONDS>` | Minimum served segment length. | `0` |
+| `--segment-text-length <MILLISECONDS>` | Length of each segment of a subtitle track packaged from a `.vtt`. | `0` |
+| `--segment-boundaries <MILLISECONDS,…>` | Splice points a segment may not span. | none |
 | `--compact` | Hoist common segment information in the MPD. | `false` |
 | `-h, --help` | Print help. | |
 
@@ -115,9 +117,11 @@ accessibility audio roles emit an `Accessibility` descriptor *instead of* a
 
 ## Text tracks
 
-CMAF `wvtt` text tracks are advertised with a full timeline. Raw `.vtt` sources
-also appear, but with an **empty** `SegmentTimeline` — converting raw WebVTT
-into a servable track is not implemented yet.
+Both text-track sources are advertised with a full timeline. A CMAF `wvtt` track
+is indexed from its own `sidx`; a raw `.vtt` is parsed and packaged into `wvtt` as
+it is read, and its timeline follows the splice points and
+[`segment_options.text_length`](../asset-json.md#segmentation) rather than a
+stored index.
 
 ## Examples
 
@@ -129,7 +133,7 @@ Generate longer served segments and compact the MPD:
 
 ```bash
 dyndo dash -i asset.json -o stream.mpd \
-  --min-segment-length 6000 \
+  --segment-min-length 6000 \
   --compact
 ```
 

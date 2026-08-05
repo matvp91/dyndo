@@ -3,24 +3,26 @@ use opendal::Operator;
 
 use crate::asset_descriptor::AssetDescriptor;
 use crate::asset_descriptor::TrackKind;
+use crate::segment::SegmentOptions;
 use crate::track::{Track, TrackError};
 
-/// Reads and probes every track declared by `asset` concurrently.
+/// Reads every track declared by `asset` concurrently, packaging subtitle
+/// documents as the asset's segment options describe.
 ///
 /// Returned tracks retain descriptor order and use descriptor metadata for
 /// their track kind.
 ///
 /// # Errors
 ///
-/// Returns the first [`TrackError`] encountered while probing the tracks.
-pub async fn read_all_tracks(
+/// Returns the first [`TrackError`] encountered while reading the tracks.
+pub async fn probe_all_tracks(
     op: &Operator,
     asset: &AssetDescriptor,
 ) -> Result<Vec<Track>, TrackError> {
     let reads = asset.tracks.iter().map(|descriptor| {
         let path = asset.track_path(descriptor);
         let kind = descriptor.kind.clone();
-        async move { Track::probe(op, &path, Some(kind)).await }
+        async move { Track::probe(op, &path, Some(kind), &asset.segment_options).await }
     });
 
     try_join_all(reads).await
@@ -38,33 +40,26 @@ pub fn max_duration_ms(tracks: &[Track]) -> u64 {
 }
 
 /// Returns the longest audio or video segment duration in milliseconds.
-pub fn max_segment_duration_ms(
-    tracks: &[Track],
-    boundaries_ms: &[u64],
-    min_segment_length_ms: u64,
-) -> u64 {
+pub fn max_segment_duration_ms(tracks: &[Track], options: &SegmentOptions) -> u64 {
     tracks
         .iter()
         .filter(|track| matches!(track.kind(), TrackKind::Video(_) | TrackKind::Audio(_)))
         .flat_map(|track| {
             let timescale = track.timescale();
-            track
-                .segments(boundaries_ms, min_segment_length_ms)
-                .into_iter()
-                .map(move |segment| {
-                    let duration_ms =
-                        (u128::from(segment.duration()) * 1000).div_ceil(u128::from(timescale));
-                    u64::try_from(duration_ms).unwrap_or(u64::MAX)
-                })
+            track.segments(options).into_iter().map(move |segment| {
+                let duration_ms =
+                    (u128::from(segment.duration()) * 1000).div_ceil(u128::from(timescale));
+                u64::try_from(duration_ms).unwrap_or(u64::MAX)
+            })
         })
         .max()
         .unwrap_or(0)
 }
 
 /// Returns the highest average grouped-segment bitrate in bits per second.
-pub fn max_bitrate(track: &Track, boundaries_ms: &[u64], min_segment_length_ms: u64) -> u64 {
+pub fn max_bitrate(track: &Track, options: &SegmentOptions) -> u64 {
     track
-        .segments(boundaries_ms, min_segment_length_ms)
+        .segments(options)
         .iter()
         .map(|segment| {
             let bits = u128::from(segment.byte_size()) * 8;
@@ -77,16 +72,17 @@ pub fn max_bitrate(track: &Track, boundaries_ms: &[u64], min_segment_length_ms: 
 }
 
 /// Returns the average bitrate of all grouped segments in bits per second.
-pub fn average_bitrate(track: &Track, boundaries_ms: &[u64], min_segment_length_ms: u64) -> u64 {
-    let (byte_size, duration) = track
-        .segments(boundaries_ms, min_segment_length_ms)
-        .iter()
-        .fold((0_u128, 0_u128), |(byte_size, duration), segment| {
-            (
-                byte_size + u128::from(segment.byte_size()),
-                duration + u128::from(segment.duration()),
-            )
-        });
+pub fn average_bitrate(track: &Track, options: &SegmentOptions) -> u64 {
+    let (byte_size, duration) =
+        track
+            .segments(options)
+            .iter()
+            .fold((0_u128, 0_u128), |(byte_size, duration), segment| {
+                (
+                    byte_size + u128::from(segment.byte_size()),
+                    duration + u128::from(segment.duration()),
+                )
+            });
     if duration == 0 {
         return 0;
     }
@@ -138,7 +134,10 @@ mod tests {
             track(text_kind(), 10_000),
         ];
 
-        assert_eq!(max_segment_duration_ms(&tracks, &[], 0), 334);
+        assert_eq!(
+            max_segment_duration_ms(&tracks, &SegmentOptions::default()),
+            334
+        );
     }
 
     #[test]
@@ -152,7 +151,7 @@ mod tests {
             ],
         );
 
-        assert_eq!(max_bitrate(&track, &[], 0), 16_000);
+        assert_eq!(max_bitrate(&track, &SegmentOptions::default()), 16_000);
     }
 
     #[test]
@@ -166,7 +165,7 @@ mod tests {
             ],
         );
 
-        assert_eq!(average_bitrate(&track, &[], 0), 12_000);
+        assert_eq!(average_bitrate(&track, &SegmentOptions::default()), 12_000);
     }
 
     #[test]
@@ -174,7 +173,10 @@ mod tests {
         let track = test_track(video_kind(), 1_000, Vec::new());
 
         assert_eq!(
-            (max_bitrate(&track, &[], 0), average_bitrate(&track, &[], 0)),
+            (
+                max_bitrate(&track, &SegmentOptions::default()),
+                average_bitrate(&track, &SegmentOptions::default())
+            ),
             (0, 0)
         );
     }

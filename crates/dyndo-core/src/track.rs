@@ -6,15 +6,16 @@ use relative_path::{RelativePath, RelativePathBuf};
 use uuid::Uuid;
 
 use crate::asset_descriptor::TrackKind;
+use crate::opendal::add_operator_layers;
+use crate::segment::SegmentOptions;
 use crate::track_probe::{self, TrackProbeError};
-use crate::track_source::{TrackSource, TrackSourceError};
 
 #[derive(Debug, thiserror::Error)]
 pub enum TrackError {
     #[error(transparent)]
     Probe(#[from] TrackProbeError),
     #[error(transparent)]
-    Source(#[from] TrackSourceError),
+    Storage(#[from] opendal::Error),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -52,16 +53,26 @@ pub struct Track {
     earliest_presentation_time: u64,
     initialization_range: Range<u64>,
     fragments: Vec<Fragment>,
-    source: TrackSource,
 }
 
 impl Track {
+    /// Probes the track at `path`, packaging it as CMAF if it is not already.
+    ///
+    /// A subtitle document is packed into a `wvtt` track as it is read, fragmented
+    /// at the splice points and text segment length in `options`, so its fragments
+    /// group into segments alongside the asset's other tracks.
+    ///
+    /// # Errors
+    ///
+    /// [`TrackError`] if the track cannot be read, packaged, or indexed.
     pub async fn probe(
         op: &Operator,
         path: &RelativePath,
         kind: Option<TrackKind>,
+        options: &SegmentOptions,
     ) -> Result<Self, TrackError> {
-        let probed = track_probe::probe(op, path).await?;
+        let layered = add_operator_layers(op, options);
+        let probed = track_probe::probe(&layered, path).await?;
         let kind = kind.unwrap_or(probed.kind);
         let id = Uuid::new_v5(&Uuid::NAMESPACE_URL, path.as_str().as_bytes());
 
@@ -74,7 +85,6 @@ impl Track {
             earliest_presentation_time: probed.earliest_presentation_time,
             initialization_range: probed.initialization_range,
             fragments: probed.fragments,
-            source: probed.source,
         })
     }
 
@@ -141,13 +151,31 @@ impl Track {
         u64::try_from(duration_ms).unwrap_or(u64::MAX)
     }
 
-    pub async fn read_range(&self, op: &Operator, range: Range<u64>) -> Result<Bytes, TrackError> {
-        Ok(self.source.read_range(op, &self.path, range).await?)
+    /// Reads a byte range of the track. Pass the `options` it was probed under, so
+    /// the packaging — and with it the meaning of the range — is the same.
+    pub async fn read_range(
+        &self,
+        op: &Operator,
+        options: &SegmentOptions,
+        range: Range<u64>,
+    ) -> Result<Bytes, TrackError> {
+        let op = add_operator_layers(op, options);
+
+        Ok(op
+            .read_with(self.path.as_str())
+            .range(range)
+            .await?
+            .to_bytes())
     }
 
     /// Reads the track's CMAF initialization segment.
-    pub async fn read_initialization(&self, op: &Operator) -> Result<Bytes, TrackError> {
-        self.read_range(op, self.initialization_range()).await
+    pub async fn read_initialization(
+        &self,
+        op: &Operator,
+        options: &SegmentOptions,
+    ) -> Result<Bytes, TrackError> {
+        self.read_range(op, options, self.initialization_range())
+            .await
     }
 }
 
@@ -162,9 +190,6 @@ pub(crate) fn test_track(kind: TrackKind, timescale: u32, fragments: Vec<Fragmen
         earliest_presentation_time: 0,
         initialization_range: 0..0,
         fragments,
-        source: TrackSource::Memory {
-            bytes: Bytes::new(),
-        },
     }
 }
 

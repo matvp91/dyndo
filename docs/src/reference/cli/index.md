@@ -79,11 +79,10 @@ requires:
 - a single `sidx` with a non-zero timescale, no zero-duration references, and
   every reference a media reference starting with a SAP of type 1.
 
-> A raw `.vtt` input is recorded as a text track, but the conversion from raw
-> WebVTT into a servable `wvtt` track is not implemented yet: the track is
-> created with no segments and a placeholder `wvtt` codec, and its language is
-> `und` unless you pass `language=`. It will appear in generated manifests with
-> an empty timeline. For subtitles that play, index a CMAF `wvtt` source.
+> A raw `.vtt` input is recorded as a text track with codec `wvtt`, which is what
+> it is packaged as when served — dyndo parses and packages it on the way out, so
+> nothing is written beside your `.vtt`. Its language is `und` unless you pass
+> `language=`, because WebVTT declares none of its own.
 
 ## Description
 

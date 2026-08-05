@@ -4,6 +4,7 @@ use relative_path::{RelativePath, RelativePathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::role::Role;
+use crate::segment::SegmentOptions;
 use crate::track::Track;
 
 #[derive(Debug, thiserror::Error)]
@@ -18,9 +19,14 @@ pub enum AssetDescriptorError {
 pub struct AssetDescriptor {
     #[serde(skip)]
     path: RelativePathBuf,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub segment_boundaries: Vec<u64>,
+    /// How the asset asks to be segmented, for requests that do not say.
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub segment_options: SegmentOptions,
     pub tracks: Vec<TrackDescriptor>,
+}
+
+fn is_default<T: Default + PartialEq>(value: &T) -> bool {
+    *value == T::default()
 }
 
 impl AssetDescriptor {
@@ -202,11 +208,45 @@ mod tests {
     }
 
     #[test]
-    fn serialization_omits_default_segment_boundaries() {
+    fn serialization_omits_default_segment_options() {
         let asset = asset("asset.json", "video");
         let json = serde_json::to_value(asset).unwrap();
 
-        assert!(json.get("segment_boundaries").is_none());
+        assert!(json.get("segment_options").is_none());
+    }
+
+    #[test]
+    fn serialization_keeps_segment_options_the_asset_asked_for() {
+        let mut asset = asset("asset.json", "video");
+        asset.segment_options.min_length_ms = 3_000;
+        let json = serde_json::to_value(asset).unwrap();
+
+        assert_eq!(
+            json.get("segment_options").and_then(|options| options
+                .get("min_length")
+                .and_then(serde_json::Value::as_u64)),
+            Some(3_000)
+        );
+    }
+
+    #[test]
+    fn deserialization_reads_segment_options_and_defaults_the_rest() {
+        let json = r#"{"segment_options":{"boundaries":[7400]},"tracks":[]}"#;
+
+        let asset: AssetDescriptor = serde_json::from_str(json).unwrap();
+
+        assert_eq!(asset.segment_options.boundaries, [7_400]);
+        assert_eq!(asset.segment_options.min_length_ms, 0);
+    }
+
+    #[test]
+    fn deserialization_accepts_the_short_and_long_option_aliases() {
+        let json = r#"{"segment_options":{"sml":3000,"segment_boundaries":[7400]},"tracks":[]}"#;
+
+        let asset: AssetDescriptor = serde_json::from_str(json).unwrap();
+
+        assert_eq!(asset.segment_options.min_length_ms, 3_000);
+        assert_eq!(asset.segment_options.boundaries, [7_400]);
     }
 
     #[test]

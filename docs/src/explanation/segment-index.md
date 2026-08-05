@@ -62,21 +62,23 @@ segment request needs (the byte range to read for a given `<time>`). The `sidx`
 
 By default every `sidx` reference becomes one served segment. A generation's
 minimum segment length, together with the descriptor's optional
-[`segment_boundaries`](../reference/asset-json.md#segmentation), groups
+[`segment_options.boundaries`](../reference/asset-json.md#segmentation), groups
 consecutive references into larger served segments at serve time — contiguous
 byte ranges merge into one — without touching the source file or the index
 itself. Offline generation receives that value through
-`--min-segment-length`; server requests use `min_segment_length` or its `msl`
+`--segment-min-length`; server requests use `min_length` or its `sml`
 shorthand. Grouping decisions are made in exact integer arithmetic on each
 track's native timescale values, so tracks with different timescales (video at
 90000, audio at 48000) reach identical decisions about where a segment edge
 falls — the two manifests and the segment routes always agree.
 
-One source type opts out of all of this: a raw `.vtt` subtitle file has no boxes
-and no `sidx`, so there is nothing to probe and nothing to re-derive. The intent
-is that the file itself stays the source of truth and dyndo packages it into
-`wvtt` at request time; that conversion is not implemented yet, so a raw `.vtt`
-track currently yields an empty segment index.
+One source type arrives at its segment index differently: a raw `.vtt` subtitle
+file has no boxes and no `sidx`, so there is nothing to probe. dyndo parses it and
+packages a `wvtt` track as it reads the path, then indexes *that* — the same box
+walk over bytes that never touch storage. Its fragments are cut where the asset's
+splice points and
+[`text_length`](../reference/asset-json.md#segmentation) say, rather than
+recovered from a file, which is why those cuts are exact instead of snapped.
 
 ## Why an 800 MB file parses like an 8 MB one
 

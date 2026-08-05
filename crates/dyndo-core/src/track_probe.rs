@@ -1,6 +1,5 @@
 use std::ops::Range;
 
-use bytes::Bytes;
 use language_tags::LanguageTag;
 use mp4_atom::{Codec, FourCC, Hvcc};
 use opendal::Operator;
@@ -9,7 +8,6 @@ use relative_path::RelativePath;
 use crate::asset_descriptor::{AudioKind, TextKind, TrackKind, VideoKind, undetermined_language};
 use crate::box_reader::{self, BoxReaderError, Boxes};
 use crate::track::Fragment;
-use crate::track_source::TrackSource;
 
 #[derive(Debug, thiserror::Error)]
 pub enum TrackProbeError {
@@ -17,8 +15,6 @@ pub enum TrackProbeError {
     BoxReader(#[from] BoxReaderError),
     #[error(transparent)]
     Storage(#[from] opendal::Error),
-    #[error("unsupported track format")]
-    UnsupportedFormat,
     #[error("unsupported video sample entry")]
     UnsupportedVideoSampleEntry,
     #[error("unsupported audio sample entry")]
@@ -42,21 +38,12 @@ pub(crate) struct ProbedTrack {
     pub earliest_presentation_time: u64,
     pub initialization_range: Range<u64>,
     pub fragments: Vec<Fragment>,
-    pub source: TrackSource,
 }
 
 pub(crate) async fn probe(
     op: &Operator,
     path: &RelativePath,
 ) -> Result<ProbedTrack, TrackProbeError> {
-    match path.extension() {
-        Some("mp4") => probe_mp4(op, path).await,
-        Some("vtt") => probe_vtt(op, path).await,
-        _ => Err(TrackProbeError::UnsupportedFormat),
-    }
-}
-
-async fn probe_mp4(op: &Operator, path: &RelativePath) -> Result<ProbedTrack, TrackProbeError> {
     let boxes = box_reader::scan(op, path.as_str()).await?;
 
     Ok(ProbedTrack {
@@ -66,7 +53,6 @@ async fn probe_mp4(op: &Operator, path: &RelativePath) -> Result<ProbedTrack, Tr
         earliest_presentation_time: boxes.sidx.earliest_presentation_time,
         initialization_range: 0..boxes.moov_end,
         fragments: track_fragments(&boxes)?,
-        source: TrackSource::Stored,
     })
 }
 
@@ -258,24 +244,6 @@ fn codec_name(codec: &Codec) -> String {
         .next()
         .unwrap_or("unknown")
         .to_string()
-}
-
-async fn probe_vtt(_op: &Operator, _path: &RelativePath) -> Result<ProbedTrack, TrackProbeError> {
-    // TODO: Convert the raw VTT into an in-memory WVTT CMAF track.
-    Ok(ProbedTrack {
-        codec: "wvtt".to_string(),
-        kind: TrackKind::Text(TextKind {
-            language: undetermined_language(),
-            role: None,
-        }),
-        timescale: 1000,
-        earliest_presentation_time: 0,
-        initialization_range: 0..0,
-        fragments: Vec::new(),
-        source: TrackSource::Memory {
-            bytes: Bytes::new(),
-        },
-    })
 }
 
 #[cfg(test)]
