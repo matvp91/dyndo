@@ -717,6 +717,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "dyndo-text"
+version = "0.3.4"
+dependencies = [
+ "mp4-atom",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "ebml-iterable"
 version = "0.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"

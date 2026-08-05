@@ -1,0 +1,12 @@
+[package]
+name = "dyndo-text"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+mp4-atom = "0.12.1"
+thiserror = "2"
