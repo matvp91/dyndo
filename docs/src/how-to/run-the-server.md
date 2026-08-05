@@ -44,13 +44,26 @@ http://localhost:8080/out/(asset:asset)/master.m3u8    # HLS
 
 With storage root `./assets`, `asset:asset` resolves to `assets/asset.json`.
 Nested descriptors work the same way: `assets/movies/big.json` is addressed as
-`(asset:movies/big)`.
+`(asset:movies%2Fbig)`. The encoded slash keeps the Rison object in one URL path
+segment; Axum decodes it before the server parses the options.
 
 The same object can override how the asset is segmented for that request:
 
 ```text
 http://localhost:8080/out/(asset:asset,msl:6000)/index.mpd
 ```
+
+The server accepts full option names and compact aliases. These DASH requests
+are equivalent:
+
+```text
+http://localhost:8080/out/(asset:asset,min_segment_length:6000,compact:!t)/index.mpd
+http://localhost:8080/out/(a:asset,msl:6000,c:!t)/index.mpd
+```
+
+`asset`/`a` selects the descriptor, `min_segment_length`/`msl` controls shared
+segmentation, and `compact`/`c` is specific to the DASH transport. HLS currently
+has no transport-specific options.
 
 Parentheses are shell metacharacters, so quote these URLs when passing them to
 `curl` or a player from a shell. See the

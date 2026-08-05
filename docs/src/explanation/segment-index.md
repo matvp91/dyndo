@@ -60,15 +60,17 @@ a DASH `SegmentTimeline`, the segment URIs in an HLS media playlist) and what a
 segment request needs (the byte range to read for a given `<time>`). The `sidx`
 *is* the segment map; dyndo reads it, never copies it.
 
-By default every `sidx` reference becomes one served segment. The request's
-`min_segment_length`, together with the descriptor's optional
+By default every `sidx` reference becomes one served segment. A generation's
+minimum segment length, together with the descriptor's optional
 [`segment_boundaries`](../reference/asset-json.md#segmentation), groups
 consecutive references into larger served segments at serve time — contiguous
 byte ranges merge into one — without touching the source file or the index
-itself. Grouping decisions are made in exact integer arithmetic on each track's native timescale values, so
-tracks with different timescales (video at 90000, audio at 48000) reach
-identical decisions about where a segment edge falls — the two manifests and
-the segment routes always agree.
+itself. Offline generation receives that value through
+`--min-segment-length`; server requests use `min_segment_length` or its `msl`
+shorthand. Grouping decisions are made in exact integer arithmetic on each
+track's native timescale values, so tracks with different timescales (video at
+90000, audio at 48000) reach identical decisions about where a segment edge
+falls — the two manifests and the segment routes always agree.
 
 One source type opts out of all of this: a raw `.vtt` subtitle file has no boxes
 and no `sidx`, so there is nothing to probe and nothing to re-derive. The intent

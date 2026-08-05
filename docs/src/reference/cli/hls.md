@@ -36,9 +36,10 @@ wrote hls/audio_e7f831b7-7992-5c5b-9b45-428b82d90704.m3u8
 wrote hls/text_3b519953-3963-56be-8c59-ae1cd0e6d5b4.m3u8
 ```
 
-The CLI and the server share one playlist builder, so these files are identical
-to what the server's [`master.m3u8` and `<id>.m3u8` routes](../server/routes.md)
-return for the same descriptor.
+The CLI and the server share one playlist builder, so these files match what
+the server's [`master.m3u8` and `<id>.m3u8` routes](../server/routes.md) return
+for the same descriptor and segmentation options. HLS currently has no
+transport-specific options.
 
 ## The multivariant playlist
 
@@ -120,6 +121,12 @@ implemented yet.
 
 ```bash
 dyndo hls -i asset.json -o hls
+```
+
+Group fragments into served segments of at least six seconds where possible:
+
+```bash
+dyndo hls -i asset.json -o hls --min-segment-length 6000
 ```
 
 Resulting layout:

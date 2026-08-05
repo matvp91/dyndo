@@ -40,14 +40,38 @@ The options object must occupy one URL path segment. Percent-encode `/` as
 `%2F` when an option value contains a nested path. The server decodes the value
 before parsing the Rison object.
 
-| Key | Type | Description |
-|---|---|---|
-| `asset` | string | **Required.** Path to the descriptor, relative to the storage root, **without** the `.json` extension. |
-| `a` | string | Alias for `asset`. |
-| `min_segment_length` | integer | Minimum served segment length in milliseconds. Whole fragments are grouped until this length is reached. Defaults to `0`. |
-| `msl` | integer | Alias for `min_segment_length`. |
+### Common options
 
-Unknown keys are rejected.
+| Full key | Shorthand | Type | Description |
+|---|---|---|---|
+| `asset` | `a` | string | **Required.** Path to the descriptor, relative to the storage root, **without** the `.json` extension. |
+
+### Segmentation options
+
+| Full key | Shorthand | Type | Default | Description |
+|---|---|---|---|---|
+| `min_segment_length` | `msl` | integer | `0` | Minimum served segment length in milliseconds. Whole fragments are grouped until this length is reached. |
+
+### Transport options
+
+DASH resources accept one transport-specific option:
+
+| Full key | Shorthand | Type | Default | Description |
+|---|---|---|---|---|
+| `compact` | `c` | boolean | `false` | Hoist segment-template data shared by DASH representations to their adaptation set. |
+
+HLS currently has no transport-specific options.
+
+The supported shorthand map is therefore `asset` → `a`,
+`min_segment_length` → `msl`, and `compact` → `c`. The full and short forms are
+equivalent:
+
+```text
+/out/(asset:demo,min_segment_length:6000,compact:!t)/index.mpd
+/out/(a:demo,msl:6000,c:!t)/index.mpd
+```
+
+Unknown keys are rejected for DASH and HLS manifest requests.
 
 ### The `asset` key
 
@@ -116,7 +140,7 @@ shared path prefix.
 | Code | When |
 |---|---|
 | `200 OK` | The manifest or segment was generated and returned; also the `/health` probe. |
-| `400 Bad Request` | The options path segment is malformed Rison, it carries an unknown key, or `min_segment_length` is negative. |
+| `400 Bad Request` | The options path segment is malformed Rison, a DASH or HLS manifest request carries an unknown option, or `min_segment_length` is negative. |
 | `404 Not Found` | The path does not contain separate options and resource components; `<track-id>` matches no track; a segment filename is not `<integer>.m4s`; `<time>` is not a segment boundary; or the descriptor does not exist. |
 | `500 Internal Server Error` | The descriptor JSON is malformed; a source file is unreadable or is not valid, supported CMAF; or manifest serialization failed. |
 

@@ -1,10 +1,12 @@
 # asset.json descriptor
 
-The `asset.json` descriptor is the contract between the CLI and the server. The
-CLI ([`index`](./cli/index.md)) writes it; the server reads it to generate
-manifests and locate segments. It is deliberately small: it records **per-track
-metadata and a source path, and nothing else** — no segment list, no byte
-offsets, no timescale. Those are re-derived from each source at read time.
+The `asset.json` descriptor is the shared contract between dyndo's indexing,
+offline-generation, and serving commands. [`dyndo index`](./cli/index.md)
+writes and updates it; [`dyndo dash`](./cli/dash.md),
+[`dyndo hls`](./cli/hls.md), and the server read it. It is deliberately small:
+it records **per-track metadata and a source path, and nothing else** — no
+segment list, no byte offsets, no timescale. Those are re-derived from each
+source at read time.
 
 The file is pretty-printed JSON and safe to read, diff, and hand-edit.
 
@@ -28,10 +30,12 @@ order you pass them.
 ## Segmentation
 
 The optional `segment_boundaries` field records asset-specific splice points.
-The minimum served segment length is request-specific and is supplied by the
-server's [`min_segment_length` option](./server/routes.md#the-options-object).
-Grouping is applied when manifests and segments are served; the CMAF files are
-never modified. An empty boundary list is omitted from the descriptor.
+The minimum served segment length is generation-specific: pass
+`--min-segment-length` to `dyndo dash` or `dyndo hls`, or use the server's
+[`min_segment_length` option](./server/routes.md#segmentation-options).
+Grouping is applied while generating manifests and serving segments; the CMAF
+files are never modified. An empty boundary list is omitted from the
+descriptor.
 
 | Field | Type | Description |
 |---|---|---|
@@ -40,6 +44,10 @@ never modified. An empty boundary list is omitted from the descriptor.
 `segment_boundaries` only changes output when a non-zero minimum segment length
 groups multiple fragments. With the default of `0`, every fragment is already
 a served segment.
+
+The descriptor has no shorthand field names. The server's `a`, `msl`, and `c`
+aliases belong only to its Rison request options; they are not valid substitutes
+for JSON descriptor fields.
 
 ## Track object
 

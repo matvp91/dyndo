@@ -27,9 +27,10 @@ recover its segment index, and writes a static MPD to `--output`:
 wrote stream.mpd
 ```
 
-The CLI and the server share one manifest builder, so the XML written here is
-byte-for-byte what the server's [`index.mpd` route](../server/routes.md)
-returns for the same descriptor and the same segmentation options.
+The CLI and the server share one manifest builder. They produce the same MPD
+model for the same descriptor, segmentation options, and DASH transport
+options. The surrounding HTTP response and XML-writing context are specific to
+each interface.
 
 ## Manifest structure
 
@@ -79,8 +80,13 @@ tracks in an adaptation set are not segment-aligned
 
 ## Segment addressing
 
-Each set carries one `SegmentTemplate`, written once at the `AdaptationSet`
-level and shared by all of its representations:
+By default, each `Representation` carries its own complete `SegmentTemplate`.
+With `--compact`, fields shared by every representation are hoisted to the
+parent `AdaptationSet`. If the templates are identical, the complete template
+is written once at adaptation-set level; otherwise only identical fields are
+hoisted and representation-specific fields remain below.
+
+A fully hoisted template looks like this:
 
 ```xml
 <SegmentTemplate media="$RepresentationID$/$Time$.m4s"
@@ -117,6 +123,14 @@ into a servable track is not implemented yet.
 
 ```bash
 dyndo dash -i asset.json -o stream.mpd
+```
+
+Generate longer served segments and compact the MPD:
+
+```bash
+dyndo dash -i asset.json -o stream.mpd \
+  --min-segment-length 6000 \
+  --compact
 ```
 
 ## See also

@@ -180,6 +180,11 @@ asset:
 curl "http://localhost:8080/out/(asset:asset)/master.m3u8"
 ```
 
+The server also accepts compact option names: `(a:asset)` is equivalent to
+`(asset:asset)`. This tutorial keeps the full name for readability; the
+[HTTP routes reference](../reference/server/routes.md#the-options-object) lists
+all full names and shorthands.
+
 ```text
 #EXTM3U
 #EXT-X-MEDIA:TYPE=AUDIO,URI="audio_39a70a1c-e177-5a37-aab0-661b18a593ae.m3u8",GROUP-ID="audio",LANGUAGE="eng",NAME="eng",DEFAULT=YES,AUTOSELECT=YES,CHANNELS="2"

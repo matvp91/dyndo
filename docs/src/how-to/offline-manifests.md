@@ -5,24 +5,28 @@ disk from an `asset.json`. This is useful for inspecting the exact XML or
 playlist a descriptor produces, diffing manifests across changes, or validating
 output without starting a server.
 
-The CLI and the server share the same manifest builders, so what you get here is
-what the server would serve for the same descriptor — these commands simply
-don't serve the media alongside it. Players still need the CMAF segments, which
-in production the server provides.
+The CLI and the server share the same manifest builders, so they produce the
+same manifest model for the same descriptor, segmentation options, and
+transport options. These commands simply do not serve the media alongside it.
+Players still need the CMAF segments, which the server provides in production.
 
 ## Render a DASH manifest
 
 ```bash
-dyndo dash -i asset.json -o stream.mpd
+dyndo dash -i asset.json -o stream.mpd --compact
 ```
 
 ```text
 wrote stream.mpd
 ```
 
-The output is a static MPD describing every representation in the asset. Each
-`AdaptationSet` carries one `SegmentTemplate`, written once and shared by the
-representations inside it:
+The output is a static MPD describing every representation in the asset. The
+`--compact` flag hoists segment-template data shared by the representations in
+an adaptation set. Without it, each representation carries its own complete
+template.
+
+When all template fields are shared, the compact output contains one
+`SegmentTemplate` on the `AdaptationSet`:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -63,7 +67,7 @@ track — so `dyndo hls` writes to a **directory** rather than a single file. It
 reports each file as it goes:
 
 ```bash
-dyndo hls -i asset.json -o hls
+dyndo hls -i asset.json -o hls --min-segment-length 6000
 ```
 
 ```text
@@ -104,6 +108,12 @@ video_6b745be5-2791-5d95-8ce5-8f8bde29e2fe/172800.m4s
 > A text track sourced from a raw `.vtt` gets a playlist with no segments at all
 > (`#EXT-X-TARGETDURATION:0` straight to `#EXT-X-ENDLIST`) — see
 > [Add a subtitle track](./add-subtitles.md).
+
+`--min-segment-length` is shared by the DASH and HLS commands. It groups whole
+fragments until the requested duration is reached, while respecting the
+descriptor's `segment_boundaries`. DASH additionally accepts the
+transport-specific `--compact` flag; HLS currently has no transport-specific
+flags.
 
 ## Next steps
 
