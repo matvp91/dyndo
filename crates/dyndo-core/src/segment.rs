@@ -1,5 +1,4 @@
 use std::ops::Range;
-use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
 
@@ -20,14 +19,6 @@ pub struct SegmentOptions {
     /// Times a segment has to start at.
     #[serde(default, rename = "segment_boundaries", alias = "sb")]
     pub segment_boundaries: Vec<u64>,
-}
-
-impl FromStr for SegmentOptions {
-    type Err = rison::Error;
-
-    fn from_str(value: &str) -> Result<Self, Self::Err> {
-        rison::from_str(value)
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -145,48 +136,6 @@ mod tests {
             ),
             (0, 0)
         );
-    }
-
-    #[test]
-    fn options_accept_text_segment_length_in_rison() {
-        let options: SegmentOptions = "(text_segment_length:2000)".parse().unwrap();
-
-        assert_eq!(options.text_segment_length_ms, 2_000);
-    }
-
-    #[test]
-    fn options_accept_tsl_alias_in_rison() {
-        let options: SegmentOptions = "(tsl:2000)".parse().unwrap();
-
-        assert_eq!(options.text_segment_length_ms, 2_000);
-    }
-
-    #[test]
-    fn omitted_text_segment_length_asks_for_no_grid() {
-        let options: SegmentOptions = "(min_segment_length:3000)".parse().unwrap();
-
-        assert_eq!(options.text_segment_length_ms, 0);
-    }
-
-    #[test]
-    fn options_accept_min_segment_length_in_rison() {
-        let options: SegmentOptions = "(min_segment_length:10000)".parse().unwrap();
-
-        assert_eq!(options.min_segment_length_ms, 10_000);
-    }
-
-    #[test]
-    fn options_accept_msl_alias_in_rison() {
-        let options: SegmentOptions = "(msl:10000)".parse().unwrap();
-
-        assert_eq!(options.min_segment_length_ms, 10_000);
-    }
-
-    #[test]
-    fn options_accept_segment_boundaries_in_rison() {
-        let options: SegmentOptions = "(segment_boundaries:!(1000,2000))".parse().unwrap();
-
-        assert_eq!(options.segment_boundaries, [1_000, 2_000]);
     }
 
     fn options(min_segment_length_ms: u64, boundaries_ms: &[u64]) -> SegmentOptions {

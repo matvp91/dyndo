@@ -42,11 +42,10 @@ pub enum DashError {
 pub async fn generate_mpd(
     op: &Operator,
     asset: &AssetDescriptor,
-    segment_options: &SegmentOptions,
     compact: bool,
 ) -> Result<MPD, DashError> {
-    let tracks = probe_all_tracks(op, asset, segment_options).await?;
-    build_mpd(asset, &tracks, segment_options, compact)
+    let tracks = probe_all_tracks(op, asset).await?;
+    build_mpd(asset, &tracks, &asset.segment_options, compact)
 }
 
 fn build_mpd(

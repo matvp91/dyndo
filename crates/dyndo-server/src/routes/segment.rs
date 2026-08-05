@@ -2,27 +2,26 @@ use axum::{
     http::header::CONTENT_TYPE,
     response::{IntoResponse, Response},
 };
+use dyndo_core::segment::SegmentOptions;
 use dyndo_core::track::Track;
 use opendal::Operator;
 
-use super::{RequestTransportOptions, read_asset};
+use super::context::RequestContext;
 use crate::error::ServerError;
 
 pub(super) async fn initialization(
     op: &Operator,
-    request_options: &RequestTransportOptions<()>,
+    context: &RequestContext<()>,
     track_id: &str,
 ) -> Result<Response, ServerError> {
-    let (track, content_type) = read_track(op, request_options, track_id).await?;
-    let bytes = track
-        .read_initialization(op, &request_options.segment_options)
-        .await?;
+    let (segment_options, track, content_type) = read_track(op, context, track_id).await?;
+    let bytes = track.read_initialization(op, &segment_options).await?;
     Ok(([(CONTENT_TYPE, content_type)], bytes).into_response())
 }
 
 pub(super) async fn media(
     op: &Operator,
-    request_options: &RequestTransportOptions<()>,
+    context: &RequestContext<()>,
     track_id: &str,
     file: &str,
 ) -> Result<Response, ServerError> {
@@ -31,12 +30,12 @@ pub(super) async fn media(
         .ok_or_else(|| ServerError::NotFound(file.to_string()))?
         .parse::<u64>()
         .map_err(|_| ServerError::NotFound(file.to_string()))?;
-    let asset = read_asset(op, &request_options.asset).await?;
+    let asset = context.read_asset(op).await?;
     let descriptor = asset
         .track(track_id)
         .ok_or_else(|| ServerError::NotFound(format!("track {track_id}")))?;
     let path = asset.track_path(descriptor);
-    let segment_options = &request_options.segment_options;
+    let segment_options = &asset.segment_options;
     let track = Track::probe(op, &path, Some(descriptor.kind.clone()), segment_options).await?;
     let mut start_time = track.earliest_presentation_time();
 
@@ -59,16 +58,16 @@ pub(super) async fn media(
 
 async fn read_track(
     op: &Operator,
-    request_options: &RequestTransportOptions<()>,
+    context: &RequestContext<()>,
     track_id: &str,
-) -> Result<(Track, &'static str), ServerError> {
-    let asset = read_asset(op, &request_options.asset).await?;
+) -> Result<(SegmentOptions, Track, &'static str), ServerError> {
+    let asset = context.read_asset(op).await?;
     let descriptor = asset
         .track(track_id)
         .ok_or_else(|| ServerError::NotFound(format!("track {track_id}")))?;
     let path = asset.track_path(descriptor);
-    let segment_options = &request_options.segment_options;
+    let segment_options = &asset.segment_options;
     let track = Track::probe(op, &path, Some(descriptor.kind.clone()), segment_options).await?;
     let content_type = track.mime_type();
-    Ok((track, content_type))
+    Ok((asset.segment_options.clone(), track, content_type))
 }

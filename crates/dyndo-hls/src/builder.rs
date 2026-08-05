@@ -43,12 +43,11 @@ pub enum HlsError {
 pub async fn generate_master_playlist(
     op: &Operator,
     asset: &AssetDescriptor,
-    segment_options: &SegmentOptions,
     _hls_options: &HlsOptions,
 ) -> Result<MasterPlaylist<'static>, HlsError> {
     ensure_unique_rendition_names(asset)?;
-    let tracks = probe_all_tracks(op, asset, segment_options).await?;
-    build_master_playlist(asset, &tracks, segment_options)
+    let tracks = probe_all_tracks(op, asset).await?;
+    build_master_playlist(asset, &tracks, &asset.segment_options)
 }
 
 /// Generates the static HLS media playlist for one asset track.
@@ -61,10 +60,10 @@ pub async fn generate_media_playlist(
     op: &Operator,
     asset: &AssetDescriptor,
     descriptor: &TrackDescriptor,
-    segment_options: &SegmentOptions,
     _hls_options: &HlsOptions,
 ) -> Result<MediaPlaylist<'static>, HlsError> {
     let path = asset.track_path(descriptor);
+    let segment_options = &asset.segment_options;
     let track = Track::probe(op, &path, Some(descriptor.kind.clone()), segment_options).await?;
     build_media_playlist(descriptor, &track, segment_options)
 }

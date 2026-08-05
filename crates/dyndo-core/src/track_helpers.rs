@@ -7,7 +7,7 @@ use crate::segment::SegmentOptions;
 use crate::track::{Track, TrackError};
 
 /// Reads every track declared by `asset` concurrently, packaging subtitle
-/// documents as `options` describes.
+/// documents as the asset's segment options describe.
 ///
 /// Returned tracks retain descriptor order and use descriptor metadata for
 /// their track kind.
@@ -18,12 +18,11 @@ use crate::track::{Track, TrackError};
 pub async fn probe_all_tracks(
     op: &Operator,
     asset: &AssetDescriptor,
-    options: &SegmentOptions,
 ) -> Result<Vec<Track>, TrackError> {
     let reads = asset.tracks.iter().map(|descriptor| {
         let path = asset.track_path(descriptor);
         let kind = descriptor.kind.clone();
-        async move { Track::probe(op, &path, Some(kind), options).await }
+        async move { Track::probe(op, &path, Some(kind), &asset.segment_options).await }
     });
 
     try_join_all(reads).await

@@ -1,7 +1,6 @@
 use std::path::PathBuf;
 
 use dyndo_core::asset_descriptor::AssetDescriptor;
-use dyndo_core::segment::SegmentOptions;
 use dyndo_hls::options::HlsOptions;
 use opendal::Operator;
 use opendal::services::Memory;
@@ -12,15 +11,11 @@ const FIXTURES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../fixtures");
 async fn generate_master_playlist_emits_video_variant_and_audio_rendition() {
     let (op, asset) = asset().await;
 
-    let playlist = dyndo_hls::builder::generate_master_playlist(
-        &op,
-        &asset,
-        &SegmentOptions::default(),
-        &HlsOptions::default(),
-    )
-    .await
-    .unwrap()
-    .to_string();
+    let playlist =
+        dyndo_hls::builder::generate_master_playlist(&op, &asset, &HlsOptions::default())
+            .await
+            .unwrap()
+            .to_string();
 
     for expected in [
         "#EXT-X-INDEPENDENT-SEGMENTS",
@@ -51,7 +46,6 @@ async fn generate_media_playlist_emits_vod_timing_and_relative_uris() {
         &op,
         &asset,
         descriptor,
-        &SegmentOptions::default(),
         &HlsOptions::default(),
     )
     .await
@@ -74,19 +68,15 @@ async fn generate_media_playlist_emits_vod_timing_and_relative_uris() {
 }
 
 #[tokio::test]
-async fn generate_media_playlist_applies_requested_minimum_segment_length() {
-    let (op, asset) = asset().await;
-    let descriptor = asset.track("video-main").unwrap();
+async fn generate_media_playlist_applies_the_assets_minimum_segment_length() {
+    let (op, mut asset) = asset().await;
+    asset.segment_options.min_segment_length_ms = 10_000;
+    let descriptor = asset.track("video-main").unwrap().clone();
 
-    let segment_options = SegmentOptions {
-        min_segment_length_ms: 10_000,
-        ..SegmentOptions::default()
-    };
     let playlist = dyndo_hls::builder::generate_media_playlist(
         &op,
         &asset,
-        descriptor,
-        &segment_options,
+        &descriptor,
         &HlsOptions::default(),
     )
     .await

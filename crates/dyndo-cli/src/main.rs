@@ -49,14 +49,25 @@ struct SegmentArgs {
     /// cuts one only at the asset's splice points.
     #[arg(long, default_value_t = 0)]
     text_segment_length: u64,
+    /// Times a segment has to start at, in milliseconds: `--segment-boundaries
+    /// 30000,60000`.
+    #[arg(long, value_delimiter = ',')]
+    segment_boundaries: Vec<u64>,
 }
 
-impl From<SegmentArgs> for SegmentOptions {
-    fn from(args: SegmentArgs) -> Self {
-        Self {
-            min_segment_length_ms: args.min_segment_length,
-            text_segment_length_ms: args.text_segment_length,
-            segment_boundaries: Vec::new(),
+impl SegmentArgs {
+    /// Assigns the options these flags name onto `options`, leaving the rest as the
+    /// asset asked for them. A flag left at zero — or no boundaries at all — names
+    /// nothing.
+    fn assign_to(&self, options: &mut SegmentOptions) {
+        if self.min_segment_length != 0 {
+            options.min_segment_length_ms = self.min_segment_length;
+        }
+        if self.text_segment_length != 0 {
+            options.text_segment_length_ms = self.text_segment_length;
+        }
+        if !self.segment_boundaries.is_empty() {
+            options.segment_boundaries = self.segment_boundaries.clone();
         }
     }
 }
@@ -111,10 +122,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     continue;
                 }
 
-                // Indexing records a track's codec and kind, neither of which
-                // depends on how it is fragmented, so the defaults will do.
-                let options = SegmentOptions::default();
-                let track = Track::probe(&op, &path, None, &options).await?;
+                let track = Track::probe(&op, &path, None, &descriptor.segment_options).await?;
                 input.apply(&mut descriptor.add_track(&track).kind);
             }
 
@@ -123,11 +131,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("wrote {output} ({} tracks)", descriptor.tracks.len());
         }
         Command::Dash(args) => {
-            let descriptor = AssetDescriptor::read(&op, &args.input).await?;
-            let segment_options = args.segment.into();
-            let mpd =
-                dyndo_dash::builder::generate_mpd(&op, &descriptor, &segment_options, args.compact)
-                    .await?;
+            let mut descriptor = AssetDescriptor::read(&op, &args.input).await?;
+            args.segment.assign_to(&mut descriptor.segment_options);
+            let mpd = dyndo_dash::builder::generate_mpd(&op, &descriptor, args.compact).await?;
             let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
             let mut serializer = quick_xml::se::Serializer::new(&mut xml);
             serializer.indent(' ', 2);
@@ -136,19 +142,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("wrote {}", args.output);
         }
         Command::Hls(args) => {
-            let descriptor = AssetDescriptor::read(&op, &args.input).await?;
+            let mut descriptor = AssetDescriptor::read(&op, &args.input).await?;
+            args.segment.assign_to(&mut descriptor.segment_options);
             let output = RelativePathBuf::from(args.output);
             op.create_dir(&format!("{output}/")).await?;
 
-            let segment_options = args.segment.into();
             let hls_options = dyndo_hls::options::HlsOptions::default();
-            let master = dyndo_hls::builder::generate_master_playlist(
-                &op,
-                &descriptor,
-                &segment_options,
-                &hls_options,
-            )
-            .await?;
+            let master =
+                dyndo_hls::builder::generate_master_playlist(&op, &descriptor, &hls_options)
+                    .await?;
             let master_path = output.join("master.m3u8");
             op.write(master_path.as_str(), master.to_string()).await?;
             println!("wrote {master_path}");
@@ -158,7 +160,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     &op,
                     &descriptor,
                     track,
-                    &segment_options,
                     &hls_options,
                 )
                 .await?;
