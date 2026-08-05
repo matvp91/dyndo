@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/dyndo-core", "crates/dyndo-text", "crates/dyndo-dash", "crates/dyndo-hls", "crates/dyndo-cli", "crates/dyndo-server"]
 
 [workspace.package]
-version = "0.3.4"
+version = "0.4.0"
 edition = "2024"
 rust-version = "1.97"
 
