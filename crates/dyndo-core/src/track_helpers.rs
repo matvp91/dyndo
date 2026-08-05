@@ -23,7 +23,7 @@ pub async fn read_all_tracks(
         let path = asset.track_path(descriptor);
         let kind = descriptor.kind.clone();
         async move {
-            Track::read(
+            Track::probe(
                 op,
                 &path,
                 Some(kind),

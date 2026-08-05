@@ -91,8 +91,8 @@ async fn probe_generates_deterministic_content_prefixed_id() {
 }
 
 #[tokio::test]
-async fn track_read_packages_a_vtt_document_as_a_wvtt_track() {
-    let track = read_fixture("text_sample.vtt", &[], 4_000).await;
+async fn probe_packages_a_vtt_document_as_a_wvtt_track() {
+    let track = probe_fixture_with("text_sample.vtt", &[], 4_000).await;
 
     let TrackKind::Text(_) = track.kind() else {
         panic!("expected text track");
@@ -125,11 +125,11 @@ async fn track_read_packages_a_vtt_document_as_a_wvtt_track() {
 }
 
 #[tokio::test]
-async fn track_read_fragments_a_subtitle_at_its_splice_points() {
+async fn probe_fragments_a_subtitle_at_its_splice_points() {
     // The splice at 2s falls inside the fixture's first cue, so it can only be
     // honoured by packing the track with it.
-    let spliced = read_fixture("text_sample.vtt", &[2_000], 0).await;
-    let unspliced = read_fixture("text_sample.vtt", &[], 0).await;
+    let spliced = probe_fixture_with("text_sample.vtt", &[2_000], 0).await;
+    let unspliced = probe_fixture_with("text_sample.vtt", &[], 0).await;
 
     let durations = |track: &Track| {
         track
@@ -143,10 +143,10 @@ async fn track_read_fragments_a_subtitle_at_its_splice_points() {
 }
 
 #[tokio::test]
-async fn track_read_rejects_unknown_file_extension() {
+async fn probe_rejects_unknown_file_extension() {
     let op = Operator::new(Memory::default()).unwrap();
 
-    let error = match Track::read(&op, RelativePath::new("track.bin"), None, &[], 0).await {
+    let error = match Track::probe(&op, RelativePath::new("track.bin"), None, &[], 0).await {
         Ok(_) => panic!("unknown extension unexpectedly read"),
         Err(error) => error,
     };
@@ -157,11 +157,15 @@ async fn track_read_rejects_unknown_file_extension() {
     ));
 }
 
-async fn read_fixture(name: &str, boundaries_ms: &[u64], min_segment_length_ms: u64) -> Track {
+async fn probe_fixture_with(
+    name: &str,
+    boundaries_ms: &[u64],
+    min_segment_length_ms: u64,
+) -> Track {
     let source = std::fs::read(fixture(name)).unwrap();
     let op = Operator::new(Memory::default()).unwrap();
     op.write(name, source).await.unwrap();
-    Track::read(
+    Track::probe(
         &op,
         RelativePath::new(name),
         None,
@@ -176,7 +180,7 @@ async fn probe_fixture(name: &str) -> (Track, Vec<u8>) {
     let source = std::fs::read(fixture(name)).unwrap();
     let op = Operator::new(Memory::default()).unwrap();
     op.write(name, source.clone()).await.unwrap();
-    let track = Track::read(&op, RelativePath::new(name), None, &[], 0)
+    let track = Track::probe(&op, RelativePath::new(name), None, &[], 0)
         .await
         .unwrap();
     (track, source)
@@ -186,7 +190,7 @@ async fn probe_fixture_error(name: &str) -> TrackError {
     let source = std::fs::read(fixture(name)).unwrap();
     let op = Operator::new(Memory::default()).unwrap();
     op.write(name, source).await.unwrap();
-    match Track::read(&op, RelativePath::new(name), None, &[], 0).await {
+    match Track::probe(&op, RelativePath::new(name), None, &[], 0).await {
         Ok(_) => panic!("{name} unexpectedly probed"),
         Err(error) => error,
     }

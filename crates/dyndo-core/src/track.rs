@@ -45,7 +45,7 @@ impl Fragment {
 
 pub struct Track {
     /// The operator the track's bytes are read through. It may package the
-    /// track as it reads (see [`Track::read`]), so a track must be read back
+    /// track as it reads (see [`Track::probe`]), so a track must be read back
     /// through this one and not through an operator the caller happens to hold.
     op: Operator,
     id: Uuid,
@@ -59,7 +59,7 @@ pub struct Track {
 }
 
 impl Track {
-    /// Reads the track at `path`, through an operator that packages subtitle
+    /// Probes the track at `path`, through an operator that packages subtitle
     /// documents into CMAF as it reads them.
     ///
     /// A `.mp4` is already a CMAF track and is read as-is. A `.vtt` is packed
@@ -72,7 +72,7 @@ impl Track {
     ///
     /// [`TrackError`] if the track cannot be read or packaged, or if the
     /// extension is not one dyndo accepts.
-    pub async fn read(
+    pub async fn probe(
         op: &Operator,
         path: &RelativePath,
         kind: Option<TrackKind>,

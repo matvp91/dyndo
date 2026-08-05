@@ -34,7 +34,7 @@ pub(super) async fn media(
         .track(track_id)
         .ok_or_else(|| ServerError::NotFound(format!("track {track_id}")))?;
     let path = asset.track_path(descriptor);
-    let track = Track::read(
+    let track = Track::probe(
         op,
         &path,
         Some(descriptor.kind.clone()),
@@ -72,7 +72,7 @@ async fn read_track(
         .track(track_id)
         .ok_or_else(|| ServerError::NotFound(format!("track {track_id}")))?;
     let path = asset.track_path(descriptor);
-    let track = Track::read(
+    let track = Track::probe(
         op,
         &path,
         Some(descriptor.kind.clone()),
