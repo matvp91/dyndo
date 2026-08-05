@@ -32,13 +32,12 @@ pub enum WvttError {
 /// as the format requires: cues on screen together share one sample, and an
 /// interval no cue covers becomes an empty sample.
 ///
-/// A fragment then ends at every splice point in `boundaries_ms` and at every
-/// multiple of `text_length_ms`. Those cut times come from the asset's
-/// clock, never from where the cues happen to fall, so every text track of an
-/// asset carries the same fragment timeline and stays segment-aligned with its
-/// siblings. A cue crossing a cut is split and appears in both fragments. A
-/// `text_length_ms` of 0 asks for no grid, leaving the splice points as
-/// the only cuts.
+/// A fragment then ends at every splice point in `boundaries` and at every
+/// multiple of `text_length`. Those cut times come from the asset's clock, never
+/// from where the cues happen to fall, so every text track of an asset carries
+/// the same fragment timeline and stays segment-aligned with its siblings. A cue
+/// crossing a cut is split and appears in both fragments. A `text_length` of 0
+/// asks for no grid, leaving the splice points as the only cuts.
 ///
 /// The track declares no language; that belongs to the transport.
 ///
@@ -49,14 +48,14 @@ pub enum WvttError {
 /// encode.
 pub fn pack(
     subtitle: &Subtitle,
-    boundaries_ms: &[u64],
-    text_length_ms: u64,
+    boundaries: &[u64],
+    text_length: u64,
 ) -> Result<Vec<u8>, WvttError> {
-    let Some(track_end_ms) = subtitle.cues.iter().map(|cue| cue.end_ms).max() else {
+    let Some(track_end) = subtitle.cues.iter().map(|cue| cue.end).max() else {
         return Err(WvttError::Empty);
     };
-    let cuts = cuts(track_end_ms, boundaries_ms, text_length_ms);
-    let samples = tile(subtitle, track_end_ms, &cuts);
+    let cuts = cuts(track_end, boundaries, text_length);
+    let samples = tile(subtitle, track_end, &cuts);
     if samples.is_empty() {
         return Err(WvttError::Empty);
     }
@@ -71,7 +70,7 @@ pub fn pack(
 
     let mut track = Vec::new();
     ftyp().encode(&mut track)?;
-    moov(track_end_ms).encode(&mut track)?;
+    moov(track_end).encode(&mut track)?;
     Sidx {
         reference_id: TRACK_ID,
         timescale: TIMESCALE,
@@ -87,17 +86,17 @@ pub fn pack(
     Ok(track)
 }
 
-/// One sample: the cues on screen over `[start_ms, end_ms)`. No cues means a
-/// gap, which the format still spends a sample on.
+/// One sample: the cues on screen over `[start, end)`. No cues means a gap,
+/// which the format still spends a sample on.
 struct Sample<'a> {
-    start_ms: u64,
-    end_ms: u64,
+    start: u64,
+    end: u64,
     texts: Vec<&'a str>,
 }
 
 impl Sample<'_> {
-    fn duration_ms(&self) -> u64 {
-        self.end_ms - self.start_ms
+    fn duration(&self) -> u64 {
+        self.end - self.start
     }
 
     fn write<B: BufMut>(&self, buf: &mut B) -> mp4_atom::Result<()> {
@@ -119,19 +118,18 @@ impl Sample<'_> {
 }
 
 /// The times a fragment has to end at: the asset's splice points plus the
-/// `text_length_ms` grid, keeping only what falls strictly inside the
-/// track.
-fn cuts(track_end_ms: u64, boundaries_ms: &[u64], text_length_ms: u64) -> Vec<u64> {
-    let mut cuts: Vec<u64> = boundaries_ms
+/// `text_length` grid, keeping only what falls strictly inside the track.
+fn cuts(track_end: u64, boundaries: &[u64], text_length: u64) -> Vec<u64> {
+    let mut cuts: Vec<u64> = boundaries
         .iter()
         .copied()
-        .filter(|&boundary_ms| boundary_ms > 0 && boundary_ms < track_end_ms)
+        .filter(|&boundary| boundary > 0 && boundary < track_end)
         .collect();
 
-    let mut time_ms = text_length_ms;
-    while text_length_ms > 0 && time_ms < track_end_ms {
-        cuts.push(time_ms);
-        time_ms = time_ms.saturating_add(text_length_ms);
+    let mut time = text_length;
+    while text_length > 0 && time < track_end {
+        cuts.push(time);
+        time = time.saturating_add(text_length);
     }
 
     cuts.sort_unstable();
@@ -141,13 +139,13 @@ fn cuts(track_end_ms: u64, boundaries_ms: &[u64], text_length_ms: u64) -> Vec<u6
 
 /// Cut the timeline at every cue edge and every fragment cut, then fill each
 /// interval with the cues covering it.
-fn tile<'a>(subtitle: &'a Subtitle, track_end_ms: u64, cuts: &[u64]) -> Vec<Sample<'a>> {
+fn tile<'a>(subtitle: &'a Subtitle, track_end: u64, cuts: &[u64]) -> Vec<Sample<'a>> {
     let mut edges = Vec::with_capacity(2 * subtitle.cues.len() + cuts.len() + 2);
     edges.push(0);
-    edges.push(track_end_ms);
+    edges.push(track_end);
     for cue in &subtitle.cues {
-        edges.push(cue.start_ms);
-        edges.push(cue.end_ms);
+        edges.push(cue.start);
+        edges.push(cue.end);
     }
     edges.extend_from_slice(cuts);
     edges.sort_unstable();
@@ -157,20 +155,16 @@ fn tile<'a>(subtitle: &'a Subtitle, track_end_ms: u64, cuts: &[u64]) -> Vec<Samp
     let mut active: Vec<&Cue> = Vec::new();
     let mut next = 0;
     for edge in edges.windows(2) {
-        let (start_ms, end_ms) = (edge[0], edge[1]);
-        while let Some(cue) = subtitle
-            .cues
-            .get(next)
-            .filter(|cue| cue.start_ms <= start_ms)
-        {
+        let (start, end) = (edge[0], edge[1]);
+        while let Some(cue) = subtitle.cues.get(next).filter(|cue| cue.start <= start) {
             active.push(cue);
             next += 1;
         }
-        active.retain(|cue| cue.end_ms > start_ms);
+        active.retain(|cue| cue.end > start);
 
         samples.push(Sample {
-            start_ms,
-            end_ms,
+            start,
+            end,
             // No cue edge falls inside the interval, so every still-active cue
             // spans all of it.
             texts: active.iter().map(|cue| cue.text.as_str()).collect(),
@@ -186,7 +180,7 @@ fn group(samples: &[Sample], cuts: &[u64]) -> Vec<Range<usize>> {
     let mut groups = Vec::new();
     let mut start = 0;
     for (index, sample) in samples.iter().enumerate() {
-        if index + 1 == samples.len() || cuts.binary_search(&sample.end_ms).is_ok() {
+        if index + 1 == samples.len() || cuts.binary_search(&sample.end).is_ok() {
             groups.push(start..index + 1);
             start = index + 1;
         }
@@ -202,7 +196,7 @@ fn fragment(index: usize, samples: &[Sample]) -> Result<Vec<u8>, WvttError> {
         let offset = data.len();
         sample.write(&mut data)?;
         entries.push(TrunEntry {
-            duration: Some(milliseconds(sample.duration_ms())),
+            duration: Some(milliseconds(sample.duration())),
             size: Some(u32::try_from(data.len() - offset).expect("a sample fits in u32 bytes")),
             ..TrunEntry::default()
         });
@@ -220,7 +214,7 @@ fn fragment(index: usize, samples: &[Sample]) -> Result<Vec<u8>, WvttError> {
                 ..Tfhd::default()
             },
             tfdt: Some(Tfdt {
-                base_media_decode_time: samples[0].start_ms,
+                base_media_decode_time: samples[0].start,
             }),
             trun: vec![Trun {
                 data_offset: Some(0),
@@ -250,12 +244,12 @@ fn fragment(index: usize, samples: &[Sample]) -> Result<Vec<u8>, WvttError> {
 }
 
 fn reference(size: usize, samples: &[Sample]) -> SegmentReference {
-    let duration_ms = samples.iter().map(Sample::duration_ms).sum();
+    let duration = samples.iter().map(Sample::duration).sum();
 
     SegmentReference {
         reference_type: false,
         reference_size: u32::try_from(size).expect("a fragment fits in u32 bytes"),
-        subsegment_duration: milliseconds(duration_ms),
+        subsegment_duration: milliseconds(duration),
         // Every text sample can be decoded on its own.
         starts_with_sap: true,
         sap_type: 1,
@@ -263,8 +257,8 @@ fn reference(size: usize, samples: &[Sample]) -> SegmentReference {
     }
 }
 
-fn milliseconds(duration_ms: u64) -> u32 {
-    u32::try_from(duration_ms).expect("a track is shorter than u32 milliseconds")
+fn milliseconds(duration: u64) -> u32 {
+    u32::try_from(duration).expect("a track is shorter than u32 milliseconds")
 }
 
 fn ftyp() -> Ftyp {
@@ -291,13 +285,13 @@ fn styp() -> Styp {
     }
 }
 
-fn moov(duration_ms: u64) -> Moov {
+fn moov(duration: u64) -> Moov {
     Moov {
         mvhd: Mvhd {
             creation_time: 0,
             modification_time: 0,
             timescale: TIMESCALE,
-            duration: duration_ms,
+            duration,
             rate: 1.into(),
             volume: 1.into(),
             matrix: Default::default(),
@@ -314,7 +308,7 @@ fn moov(duration_ms: u64) -> Moov {
         trak: vec![Trak {
             tkhd: Tkhd {
                 track_id: TRACK_ID,
-                duration: duration_ms,
+                duration,
                 enabled: true,
                 in_movie: true,
                 ..Tkhd::default()
@@ -322,7 +316,7 @@ fn moov(duration_ms: u64) -> Moov {
             mdia: Mdia {
                 mdhd: Mdhd {
                     timescale: TIMESCALE,
-                    duration: duration_ms,
+                    duration,
                     language: "und".to_string(),
                     ..Mdhd::default()
                 },
@@ -501,7 +495,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             fragments
                 .iter()
-                .map(|fragment| (fragment.size, fragment.duration_ms))
+                .map(|fragment| (fragment.size, fragment.duration))
                 .collect::<Vec<_>>()
         );
     }
@@ -531,7 +525,7 @@ mod tests {
             fragments[0]
                 .samples
                 .iter()
-                .map(|sample| sample.duration_ms)
+                .map(|sample| sample.duration)
                 .collect::<Vec<_>>(),
             [1_000, 1_000, 1_000]
         );
@@ -596,7 +590,7 @@ mod tests {
         assert_eq!(
             fragments
                 .iter()
-                .map(|fragment| (fragment.start_ms, fragment.duration_ms))
+                .map(|fragment| (fragment.start, fragment.duration))
                 .collect::<Vec<_>>(),
             [(0, 2_000), (2_000, 2_000), (4_000, 1_000)]
         );
@@ -610,7 +604,7 @@ mod tests {
         assert_eq!(
             fragments
                 .iter()
-                .map(|fragment| (fragment.start_ms, fragment.duration_ms))
+                .map(|fragment| (fragment.start, fragment.duration))
                 .collect::<Vec<_>>(),
             [(0, 2_000), (2_000, 4_000)]
         );
@@ -624,7 +618,7 @@ mod tests {
         assert_eq!(
             fragments
                 .iter()
-                .map(|fragment| (fragment.start_ms, fragment.duration_ms))
+                .map(|fragment| (fragment.start, fragment.duration))
                 .collect::<Vec<_>>(),
             [(0, 4_000), (4_000, 3_400), (7_400, 600), (8_000, 2_000)]
         );
@@ -648,7 +642,7 @@ mod tests {
             fragments_of(track)
                 .1
                 .iter()
-                .map(|fragment| (fragment.start_ms, fragment.duration_ms))
+                .map(|fragment| (fragment.start, fragment.duration))
                 .collect::<Vec<_>>()
         };
         assert_eq!(timeline(&one.unwrap()), timeline(&other.unwrap()));
@@ -710,7 +704,7 @@ mod tests {
         let (_, fragments) = fragments_of(&track);
 
         let opening = &fragments[0].samples[0];
-        assert_eq!(opening.duration_ms, 2_000);
+        assert_eq!(opening.duration, 2_000);
         assert_eq!(Vtte::decode(&mut opening.bytes.as_slice()).unwrap(), Vtte);
     }
 
@@ -718,9 +712,9 @@ mod tests {
         Subtitle {
             cues: cues
                 .iter()
-                .map(|&(start_ms, end_ms, text)| Cue {
-                    start_ms,
-                    end_ms,
+                .map(|&(start, end, text)| Cue {
+                    start,
+                    end,
                     text: text.to_string(),
                 })
                 .collect(),
@@ -728,8 +722,8 @@ mod tests {
     }
 
     struct Fragment {
-        start_ms: u64,
-        duration_ms: u32,
+        start: u64,
+        duration: u32,
         size: u32,
         moof_size: usize,
         data_offset: i32,
@@ -737,7 +731,7 @@ mod tests {
     }
 
     struct FragmentSample {
-        duration_ms: u32,
+        duration: u32,
         bytes: Vec<u8>,
     }
 
@@ -771,7 +765,7 @@ mod tests {
                 .map(|entry| {
                     let size = entry.size.unwrap() as usize;
                     let sample = FragmentSample {
-                        duration_ms: entry.duration.unwrap(),
+                        duration: entry.duration.unwrap(),
                         bytes: mdat.data[offset..offset + size].to_vec(),
                     };
                     offset += size;
@@ -780,8 +774,8 @@ mod tests {
                 .collect();
 
             fragments.push(Fragment {
-                start_ms: traf.tfdt.as_ref().unwrap().base_media_decode_time,
-                duration_ms: trun
+                start: traf.tfdt.as_ref().unwrap().base_media_decode_time,
+                duration: trun
                     .entries
                     .iter()
                     .map(|entry| entry.duration.unwrap())

@@ -47,7 +47,7 @@ pub fn parse(document: &str) -> Result<Subtitle, VttError> {
         }
     }
 
-    cues.sort_by_key(|cue| (cue.start_ms, cue.end_ms));
+    cues.sort_by_key(|cue| (cue.start, cue.end));
 
     Ok(Subtitle { cues })
 }
@@ -70,27 +70,27 @@ fn parse_block(block: &[&str]) -> Result<Option<Cue>, VttError> {
         [_identifier, timing, text @ ..] if timing.contains(TIMING_ARROW) => (timing, text),
         _ => return Ok(None),
     };
-    let (start_ms, end_ms) = parse_timing(timing)?;
+    let (start, end) = parse_timing(timing)?;
 
     Ok(Some(Cue {
-        start_ms,
-        end_ms,
+        start,
+        end,
         text: text.join("\n"),
     }))
 }
 
 fn parse_timing(line: &str) -> Result<(u64, u64), VttError> {
-    let (start, rest) = line
+    let (start, end) = line
         .split_once(TIMING_ARROW)
         .expect("callers only pass timing lines");
-    let start_ms = parse_timestamp(start.trim())?;
-    let end_ms = parse_timestamp(rest.split_whitespace().next().unwrap_or_default())?;
+    let start = parse_timestamp(start.trim())?;
+    let end = parse_timestamp(end.split_whitespace().next().unwrap_or_default())?;
 
-    if end_ms < start_ms {
-        return Err(VttError::NegativeDuration(start_ms));
+    if end < start {
+        return Err(VttError::NegativeDuration(start));
     }
 
-    Ok((start_ms, end_ms))
+    Ok((start, end))
 }
 
 /// Accepts `HH:MM:SS.mmm` and `MM:SS.mmm`.
@@ -122,7 +122,7 @@ fn parse_timestamp(timestamp: &str) -> Result<u64, VttError> {
     // Only the hours can overflow; the bounds above cap the other fields.
     hours
         .checked_mul(3_600_000)
-        .and_then(|hours_ms| hours_ms.checked_add(minutes * 60_000 + seconds * 1_000 + millis))
+        .and_then(|hours| hours.checked_add(minutes * 60_000 + seconds * 1_000 + millis))
         .ok_or_else(malformed)
 }
 
@@ -137,8 +137,8 @@ mod tests {
         assert_eq!(
             subtitle.cues,
             vec![Cue {
-                start_ms: 0,
-                end_ms: 2_000,
+                start: 0,
+                end: 2_000,
                 text: "Hello".to_string(),
             }]
         );
@@ -184,7 +184,7 @@ mod tests {
         let subtitle = parse("WEBVTT\n\nintro\n00:00.000 --> 00:02.000\nHi").unwrap();
 
         assert_eq!(
-            (subtitle.cues[0].start_ms, subtitle.cues[0].text.as_str()),
+            (subtitle.cues[0].start, subtitle.cues[0].text.as_str()),
             (0, "Hi")
         );
     }
@@ -194,7 +194,7 @@ mod tests {
         let subtitle = parse("WEBVTT\n\n00:00.000 --> 00:02.000 align:start line:90%\nHi").unwrap();
 
         assert_eq!(
-            (subtitle.cues[0].end_ms, subtitle.cues[0].text.as_str()),
+            (subtitle.cues[0].end, subtitle.cues[0].text.as_str()),
             (2_000, "Hi")
         );
     }
@@ -251,7 +251,7 @@ mod tests {
             subtitle
                 .cues
                 .iter()
-                .map(|cue| (cue.start_ms, cue.end_ms))
+                .map(|cue| (cue.start, cue.end))
                 .collect::<Vec<_>>(),
             [(0, 3_000), (2_000, 5_000)]
         );

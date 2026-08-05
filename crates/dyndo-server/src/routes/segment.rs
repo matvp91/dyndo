@@ -47,7 +47,7 @@ pub(super) async fn media(
             return Ok(([(CONTENT_TYPE, track.mime_type())], bytes).into_response());
         }
         start_time = start_time
-            .checked_add(segment.duration())
+            .checked_add(segment.raw_duration())
             .ok_or_else(|| ServerError::SegmentTimeOverflow(track_id.to_string()))?;
     }
 

@@ -6,27 +6,17 @@ use crate::track::{Fragment, Track};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SegmentOptions {
-    /// The shortest a served segment may be; fragments are grouped until they
-    /// reach it.
-    #[serde(
-        default,
-        rename = "min_length",
-        alias = "sml",
-        alias = "segment_min_length"
-    )]
-    pub min_length_ms: u64,
-    /// How long each segment of a packaged subtitle track is. Unlike
-    /// `min_length_ms` this is exact, since dyndo fragments those tracks
+    /// The shortest a served segment may be, in milliseconds; fragments are
+    /// grouped until they reach it.
+    #[serde(default, alias = "sml", alias = "segment_min_length")]
+    pub min_length: u64,
+    /// How long each segment of a packaged subtitle track is, in milliseconds.
+    /// Unlike `min_length` this is exact, since dyndo fragments those tracks
     /// itself rather than grouping what a file already contains. Zero asks for no
     /// grid, leaving the asset's splice points as the only cuts.
-    #[serde(
-        default,
-        rename = "text_length",
-        alias = "stl",
-        alias = "segment_text_length"
-    )]
-    pub text_length_ms: u64,
-    /// Times a segment has to start at.
+    #[serde(default, alias = "stl", alias = "segment_text_length")]
+    pub text_length: u64,
+    /// Times a segment has to start at, in milliseconds.
     #[serde(default, alias = "sb", alias = "segment_boundaries")]
     pub boundaries: Vec<u64>,
 }
@@ -35,7 +25,7 @@ pub struct SegmentOptions {
 pub struct Segment {
     byte_offset: u64,
     byte_size: u64,
-    duration: u64,
+    raw_duration: u64,
 }
 
 impl Segment {
@@ -47,8 +37,9 @@ impl Segment {
         self.byte_size
     }
 
-    pub fn duration(&self) -> u64 {
-        self.duration
+    /// Returns the segment's duration in the track's timescale units.
+    pub fn raw_duration(&self) -> u64 {
+        self.raw_duration
     }
 }
 
@@ -64,22 +55,22 @@ fn group_fragments(
     timescale: u32,
     options: &SegmentOptions,
 ) -> Vec<Segment> {
-    if options.min_length_ms == 0 {
+    if options.min_length == 0 {
         return fragments
             .iter()
             .map(|fragment| Segment {
                 byte_offset: fragment.byte_offset,
                 byte_size: fragment.byte_size,
-                duration: fragment.duration,
+                raw_duration: fragment.raw_duration,
             })
             .collect();
     }
 
-    let minimum = u128::from(options.min_length_ms) * u128::from(timescale);
+    let minimum = u128::from(options.min_length) * u128::from(timescale);
     let mut cumulative = Vec::with_capacity(fragments.len() + 1);
     cumulative.push(0u64);
     for fragment in fragments {
-        cumulative.push(cumulative[cumulative.len() - 1] + fragment.duration());
+        cumulative.push(cumulative[cumulative.len() - 1] + fragment.raw_duration());
     }
     let cuts = snap_cuts(&cumulative, timescale, &options.boundaries);
 
@@ -90,8 +81,8 @@ fn group_fragments(
         while next_cut < cuts.len() && cuts[next_cut] <= start {
             next_cut += 1;
         }
-        let duration = cumulative[end] - cumulative[start];
-        let long_enough = u128::from(duration) * 1000 >= minimum;
+        let raw_duration = cumulative[end] - cumulative[start];
+        let long_enough = u128::from(raw_duration) * 1000 >= minimum;
         let at_cut = next_cut < cuts.len() && cuts[next_cut] == end;
         if long_enough || at_cut || end == fragments.len() {
             let byte_offset = fragments[start].byte_offset;
@@ -99,7 +90,7 @@ fn group_fragments(
             segments.push(Segment {
                 byte_offset,
                 byte_size: byte_end - byte_offset,
-                duration,
+                raw_duration,
             });
             start = end;
         }
@@ -108,13 +99,13 @@ fn group_fragments(
     segments
 }
 
-fn snap_cuts(cumulative: &[u64], timescale: u32, boundaries_ms: &[u64]) -> Vec<usize> {
-    let mut cuts: Vec<usize> = boundaries_ms
+fn snap_cuts(cumulative: &[u64], timescale: u32, boundaries: &[u64]) -> Vec<usize> {
+    let mut cuts: Vec<usize> = boundaries
         .iter()
-        .map(|&boundary_ms| {
-            let target = u128::from(boundary_ms) * u128::from(timescale);
-            let index =
-                cumulative.partition_point(|&duration| u128::from(duration) * 1000 < target);
+        .map(|&boundary| {
+            let target = u128::from(boundary) * u128::from(timescale);
+            let index = cumulative
+                .partition_point(|&raw_duration| u128::from(raw_duration) * 1000 < target);
             if index == 0 {
                 0
             } else if index == cumulative.len() {
@@ -139,23 +130,23 @@ mod tests {
     fn default_options_group_nothing_and_cut_text_only_at_splice_points() {
         let options = SegmentOptions::default();
 
-        assert_eq!((options.min_length_ms, options.text_length_ms), (0, 0));
+        assert_eq!((options.min_length, options.text_length), (0, 0));
     }
 
-    fn options(min_length_ms: u64, boundaries_ms: &[u64]) -> SegmentOptions {
+    fn options(min_length: u64, boundaries: &[u64]) -> SegmentOptions {
         SegmentOptions {
-            min_length_ms,
-            boundaries: boundaries_ms.to_vec(),
+            min_length,
+            boundaries: boundaries.to_vec(),
             ..SegmentOptions::default()
         }
     }
 
-    fn fragments(durations: &[u64]) -> Vec<Fragment> {
+    fn fragments(raw_durations: &[u64]) -> Vec<Fragment> {
         let mut byte_offset = 100;
-        durations
+        raw_durations
             .iter()
-            .map(|&duration| {
-                let fragment = Fragment::new(byte_offset, 10, duration).unwrap();
+            .map(|&raw_duration| {
+                let fragment = Fragment::new(byte_offset, 10, raw_duration).unwrap();
                 byte_offset += 10;
                 fragment
             })
@@ -173,12 +164,12 @@ mod tests {
                 Segment {
                     byte_offset: 100,
                     byte_size: 10,
-                    duration: 1000,
+                    raw_duration: 1000,
                 },
                 Segment {
                     byte_offset: 110,
                     byte_size: 10,
-                    duration: 1000,
+                    raw_duration: 1000,
                 },
             ]
         );
@@ -190,7 +181,10 @@ mod tests {
         let segments = group_fragments(&fragments, 1000, &options(3_000, &[]));
 
         assert_eq!(
-            segments.iter().map(Segment::duration).collect::<Vec<_>>(),
+            segments
+                .iter()
+                .map(Segment::raw_duration)
+                .collect::<Vec<_>>(),
             vec![3840, 3840]
         );
     }
@@ -201,7 +195,10 @@ mod tests {
         let segments = group_fragments(&fragments, 1000, &options(3_000, &[3_960]));
 
         assert_eq!(
-            segments.iter().map(Segment::duration).collect::<Vec<_>>(),
+            segments
+                .iter()
+                .map(Segment::raw_duration)
+                .collect::<Vec<_>>(),
             vec![3840, 120, 3720]
         );
     }
@@ -217,7 +214,10 @@ mod tests {
         let segments = group_fragments(&fragments, 1000, &options(3_000, &[]));
 
         assert_eq!(
-            segments.iter().map(Segment::duration).collect::<Vec<_>>(),
+            segments
+                .iter()
+                .map(Segment::raw_duration)
+                .collect::<Vec<_>>(),
             vec![4000, 500]
         );
     }
@@ -228,7 +228,10 @@ mod tests {
         let segments = group_fragments(&fragments, 1000, &options(5_000, &[2_000]));
 
         assert_eq!(
-            segments.iter().map(Segment::duration).collect::<Vec<_>>(),
+            segments
+                .iter()
+                .map(Segment::raw_duration)
+                .collect::<Vec<_>>(),
             vec![2000, 1000]
         );
     }

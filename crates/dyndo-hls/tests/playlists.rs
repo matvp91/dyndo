@@ -70,7 +70,7 @@ async fn generate_media_playlist_emits_vod_timing_and_relative_uris() {
 #[tokio::test]
 async fn generate_media_playlist_applies_the_assets_minimum_segment_length() {
     let (op, mut asset) = asset().await;
-    asset.segment_options.min_length_ms = 10_000;
+    asset.segment_options.min_length = 10_000;
     let descriptor = asset.track("video-main").unwrap().clone();
 
     let playlist = dyndo_hls::builder::generate_media_playlist(

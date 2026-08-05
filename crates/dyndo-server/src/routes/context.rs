@@ -29,11 +29,11 @@ impl<T> RequestContext<T> {
     pub(super) async fn read_asset(&self, op: &Operator) -> Result<AssetDescriptor, ServerError> {
         let mut asset = AssetDescriptor::read(op, &format!("{}.json", self.asset)).await?;
         let options = &mut asset.segment_options;
-        if self.segment_options.min_length_ms != 0 {
-            options.min_length_ms = self.segment_options.min_length_ms;
+        if self.segment_options.min_length != 0 {
+            options.min_length = self.segment_options.min_length;
         }
-        if self.segment_options.text_length_ms != 0 {
-            options.text_length_ms = self.segment_options.text_length_ms;
+        if self.segment_options.text_length != 0 {
+            options.text_length = self.segment_options.text_length;
         }
         if !self.segment_options.boundaries.is_empty() {
             options.boundaries = self.segment_options.boundaries.clone();
@@ -75,35 +75,35 @@ mod tests {
     fn parse_context_accepts_min_length() {
         let context = parse_context::<HlsOptions>("(asset:asset,min_length:3000)").unwrap();
 
-        assert_eq!(context.segment_options.min_length_ms, 3000);
+        assert_eq!(context.segment_options.min_length, 3000);
     }
 
     #[test]
     fn parse_context_accepts_sml_alias() {
         let context = parse_context::<HlsOptions>("(asset:asset,sml:3000)").unwrap();
 
-        assert_eq!(context.segment_options.min_length_ms, 3000);
+        assert_eq!(context.segment_options.min_length, 3000);
     }
 
     #[test]
     fn parse_context_accepts_text_length() {
         let context = parse_context::<HlsOptions>("(asset:asset,text_length:2000)").unwrap();
 
-        assert_eq!(context.segment_options.text_length_ms, 2000);
+        assert_eq!(context.segment_options.text_length, 2000);
     }
 
     #[test]
     fn parse_context_accepts_stl_alias() {
         let context = parse_context::<HlsOptions>("(asset:asset,stl:2000)").unwrap();
 
-        assert_eq!(context.segment_options.text_length_ms, 2000);
+        assert_eq!(context.segment_options.text_length, 2000);
     }
 
     #[test]
     fn parse_context_accepts_the_long_aliases() {
         let context = parse_context::<HlsOptions>("(asset:asset,segment_min_length:3000)").unwrap();
 
-        assert_eq!(context.segment_options.min_length_ms, 3000);
+        assert_eq!(context.segment_options.min_length, 3000);
     }
 
     #[test]

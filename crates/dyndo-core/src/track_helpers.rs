@@ -28,28 +28,26 @@ pub async fn probe_all_tracks(
     try_join_all(reads).await
 }
 
-/// Returns the longest video duration, or the longest audio duration when no
-/// video track is present. Text tracks do not determine presentation length.
-pub fn max_duration_ms(tracks: &[Track]) -> u64 {
-    max_matching_duration_ms(tracks, |kind| matches!(kind, TrackKind::Video(_))).unwrap_or_else(
-        || {
-            max_matching_duration_ms(tracks, |kind| matches!(kind, TrackKind::Audio(_)))
-                .unwrap_or(0)
-        },
-    )
+/// Returns the longest video duration in milliseconds, or the longest audio
+/// duration when no video track is present. Text tracks do not determine
+/// presentation length.
+pub fn max_duration(tracks: &[Track]) -> u64 {
+    max_matching_duration(tracks, |kind| matches!(kind, TrackKind::Video(_))).unwrap_or_else(|| {
+        max_matching_duration(tracks, |kind| matches!(kind, TrackKind::Audio(_))).unwrap_or(0)
+    })
 }
 
 /// Returns the longest audio or video segment duration in milliseconds.
-pub fn max_segment_duration_ms(tracks: &[Track], options: &SegmentOptions) -> u64 {
+pub fn max_segment_duration(tracks: &[Track], options: &SegmentOptions) -> u64 {
     tracks
         .iter()
         .filter(|track| matches!(track.kind(), TrackKind::Video(_) | TrackKind::Audio(_)))
         .flat_map(|track| {
             let timescale = track.timescale();
             track.segments(options).into_iter().map(move |segment| {
-                let duration_ms =
-                    (u128::from(segment.duration()) * 1000).div_ceil(u128::from(timescale));
-                u64::try_from(duration_ms).unwrap_or(u64::MAX)
+                let duration =
+                    (u128::from(segment.raw_duration()) * 1000).div_ceil(u128::from(timescale));
+                u64::try_from(duration).unwrap_or(u64::MAX)
             })
         })
         .max()
@@ -64,7 +62,7 @@ pub fn max_bitrate(track: &Track, options: &SegmentOptions) -> u64 {
         .map(|segment| {
             let bits = u128::from(segment.byte_size()) * 8;
             let scaled_bits = bits * u128::from(track.timescale());
-            let bitrate = scaled_bits.div_ceil(u128::from(segment.duration()));
+            let bitrate = scaled_bits.div_ceil(u128::from(segment.raw_duration()));
             u64::try_from(bitrate).unwrap_or(u64::MAX)
         })
         .max()
@@ -73,30 +71,29 @@ pub fn max_bitrate(track: &Track, options: &SegmentOptions) -> u64 {
 
 /// Returns the average bitrate of all grouped segments in bits per second.
 pub fn average_bitrate(track: &Track, options: &SegmentOptions) -> u64 {
-    let (byte_size, duration) =
-        track
-            .segments(options)
-            .iter()
-            .fold((0_u128, 0_u128), |(byte_size, duration), segment| {
-                (
-                    byte_size + u128::from(segment.byte_size()),
-                    duration + u128::from(segment.duration()),
-                )
-            });
-    if duration == 0 {
+    let (byte_size, raw_duration) = track.segments(options).iter().fold(
+        (0_u128, 0_u128),
+        |(byte_size, raw_duration), segment| {
+            (
+                byte_size + u128::from(segment.byte_size()),
+                raw_duration + u128::from(segment.raw_duration()),
+            )
+        },
+    );
+    if raw_duration == 0 {
         return 0;
     }
 
     let bits = byte_size * 8;
     let scaled_bits = bits * u128::from(track.timescale());
-    u64::try_from(scaled_bits.div_ceil(duration)).unwrap_or(u64::MAX)
+    u64::try_from(scaled_bits.div_ceil(raw_duration)).unwrap_or(u64::MAX)
 }
 
-fn max_matching_duration_ms(tracks: &[Track], include: impl Fn(&TrackKind) -> bool) -> Option<u64> {
+fn max_matching_duration(tracks: &[Track], include: impl Fn(&TrackKind) -> bool) -> Option<u64> {
     tracks
         .iter()
         .filter(|track| include(track.kind()))
-        .map(Track::duration_ms)
+        .map(Track::duration)
         .max()
 }
 
@@ -110,21 +107,21 @@ mod tests {
     fn max_duration_prefers_video_over_longer_audio() {
         let tracks = vec![track(audio_kind(), 10_000), track(video_kind(), 4_000)];
 
-        assert_eq!(max_duration_ms(&tracks), 4_000);
+        assert_eq!(max_duration(&tracks), 4_000);
     }
 
     #[test]
     fn max_duration_falls_back_to_audio_without_video() {
         let tracks = vec![track(text_kind(), 20_000), track(audio_kind(), 5_000)];
 
-        assert_eq!(max_duration_ms(&tracks), 5_000);
+        assert_eq!(max_duration(&tracks), 5_000);
     }
 
     #[test]
     fn max_duration_ignores_text_only_assets() {
         let tracks = vec![track(text_kind(), 20_000)];
 
-        assert_eq!(max_duration_ms(&tracks), 0);
+        assert_eq!(max_duration(&tracks), 0);
     }
 
     #[test]
@@ -135,7 +132,7 @@ mod tests {
         ];
 
         assert_eq!(
-            max_segment_duration_ms(&tracks, &SegmentOptions::default()),
+            max_segment_duration(&tracks, &SegmentOptions::default()),
             334
         );
     }
@@ -181,8 +178,12 @@ mod tests {
         );
     }
 
-    fn track(kind: TrackKind, duration: u64) -> Track {
-        test_track(kind, 1_000, vec![Fragment::new(0, 10, duration).unwrap()])
+    fn track(kind: TrackKind, raw_duration: u64) -> Track {
+        test_track(
+            kind,
+            1_000,
+            vec![Fragment::new(0, 10, raw_duration).unwrap()],
+        )
     }
 
     fn video_kind() -> TrackKind {

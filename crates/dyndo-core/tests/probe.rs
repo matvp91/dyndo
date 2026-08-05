@@ -101,7 +101,7 @@ async fn probe_packages_a_vtt_document_as_a_wvtt_track() {
         panic!("expected text track");
     };
     assert_eq!(
-        (track.codec(), track.timescale(), track.duration_ms()),
+        (track.codec(), track.timescale(), track.duration()),
         ("wvtt", 1_000, 12_500)
     );
 
@@ -110,7 +110,7 @@ async fn probe_packages_a_vtt_document_as_a_wvtt_track() {
     assert_eq!(
         segments
             .iter()
-            .map(|segment| segment.duration())
+            .map(|segment| segment.raw_duration())
             .collect::<Vec<_>>(),
         vec![4_000, 4_000, 4_000, 500]
     );
@@ -141,7 +141,7 @@ async fn probe_fragments_a_subtitle_at_its_splice_points() {
         track
             .segments(&SegmentOptions::default())
             .iter()
-            .map(|segment| segment.duration())
+            .map(|segment| segment.raw_duration())
             .collect::<Vec<_>>()
     };
     assert_eq!(durations(&spliced), vec![2_000, 10_500]);
@@ -187,10 +187,10 @@ async fn probe_fixture_with(name: &str, options: &SegmentOptions) -> (Operator, 
     (op, track, source)
 }
 
-fn options(text_length_ms: u64, boundaries_ms: &[u64]) -> SegmentOptions {
+fn options(text_length: u64, boundaries: &[u64]) -> SegmentOptions {
     SegmentOptions {
-        text_length_ms,
-        boundaries: boundaries_ms.to_vec(),
+        text_length,
+        boundaries: boundaries.to_vec(),
         ..SegmentOptions::default()
     }
 }

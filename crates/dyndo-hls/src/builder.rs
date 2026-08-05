@@ -99,14 +99,14 @@ fn build_media_playlist(
     let segments = track.segments(segment_options);
     let target_duration = segments
         .iter()
-        .map(|segment| rounded_duration_seconds(segment.duration(), track.timescale()))
+        .map(|segment| rounded_duration_seconds(segment.raw_duration(), track.timescale()))
         .max()
         .unwrap_or(0);
     let segments = segments
         .into_iter()
         .enumerate()
         .map(|(index, segment)| {
-            let duration = media_duration(segment.duration(), track.timescale());
+            let duration = media_duration(segment.raw_duration(), track.timescale());
 
             let mut builder = MediaSegment::builder();
             builder
@@ -117,7 +117,7 @@ fn build_media_playlist(
             }
 
             start_time = start_time
-                .checked_add(segment.duration())
+                .checked_add(segment.raw_duration())
                 .ok_or_else(|| HlsError::SegmentTimeOverflow(descriptor.id.clone()))?;
             Ok(builder.build()?)
         })
@@ -131,16 +131,16 @@ fn build_media_playlist(
         .build()?)
 }
 
-fn media_duration(duration: u64, timescale: u32) -> Duration {
-    let duration_ms =
-        (u128::from(duration) * 1_000 + u128::from(timescale) / 2) / u128::from(timescale);
-    Duration::from_millis(u64::try_from(duration_ms).unwrap_or(u64::MAX))
+fn media_duration(raw_duration: u64, timescale: u32) -> Duration {
+    let duration =
+        (u128::from(raw_duration) * 1_000 + u128::from(timescale) / 2) / u128::from(timescale);
+    Duration::from_millis(u64::try_from(duration).unwrap_or(u64::MAX))
 }
 
-fn rounded_duration_seconds(duration: u64, timescale: u32) -> u64 {
-    let duration = u128::from(duration);
+fn rounded_duration_seconds(raw_duration: u64, timescale: u32) -> u64 {
+    let raw_duration = u128::from(raw_duration);
     let timescale = u128::from(timescale);
-    u64::try_from((duration + timescale / 2) / timescale).unwrap_or(u64::MAX)
+    u64::try_from((raw_duration + timescale / 2) / timescale).unwrap_or(u64::MAX)
 }
 
 fn ensure_unique_rendition_names(asset: &AssetDescriptor) -> Result<(), HlsError> {

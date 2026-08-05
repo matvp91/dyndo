@@ -12,7 +12,7 @@ fn parses_the_sample_document() {
         subtitle
             .cues
             .iter()
-            .map(|cue| (cue.start_ms, cue.end_ms, cue.text.as_str()))
+            .map(|cue| (cue.start, cue.end, cue.text.as_str()))
             .collect::<Vec<_>>(),
         [
             (0, 3_000, "Welcome to dyndo"),

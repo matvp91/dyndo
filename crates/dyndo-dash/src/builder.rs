@@ -10,7 +10,7 @@ use dyndo_core::asset_descriptor::{AssetDescriptor, TrackDescriptor, TrackKind};
 use dyndo_core::segment::SegmentOptions;
 use dyndo_core::track::{Track, TrackError};
 use dyndo_core::track_helpers::{
-    max_bitrate, max_duration_ms, max_segment_duration_ms, probe_all_tracks,
+    max_bitrate, max_duration, max_segment_duration, probe_all_tracks,
 };
 use opendal::Operator;
 
@@ -54,7 +54,7 @@ fn build_mpd(
     segment_options: &SegmentOptions,
     should_compact: bool,
 ) -> Result<MPD, DashError> {
-    let duration = Duration::from_millis(max_duration_ms(tracks));
+    let duration = Duration::from_millis(max_duration(tracks));
     let groups = adaptation_set_group::group(asset, tracks);
     if groups
         .iter()
@@ -72,7 +72,7 @@ fn build_mpd(
         xmlns: Some(DASH_XMLNS.to_string()),
         mpdtype: Some("static".to_string()),
         profiles: Some(DASH_PROFILE.to_string()),
-        minBufferTime: Some(Duration::from_millis(max_segment_duration_ms(
+        minBufferTime: Some(Duration::from_millis(max_segment_duration(
             tracks,
             segment_options,
         ))),
@@ -169,11 +169,11 @@ fn segment_timeline(track: &Track, segment_options: &SegmentOptions) -> SegmentT
 
     for segment in track.segments(segment_options) {
         match segments.last_mut() {
-            Some(previous) if previous.d == segment.duration() => {
+            Some(previous) if previous.d == segment.raw_duration() => {
                 *previous.r.get_or_insert(0) += 1;
             }
             _ => segments.push(S {
-                d: segment.duration(),
+                d: segment.raw_duration(),
                 ..Default::default()
             }),
         }
