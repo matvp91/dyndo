@@ -102,21 +102,22 @@ cat assets/asset.json
 {
   "tracks": [
     {
-      "id": "video_720_avc1_126233",
+      "id": "video_0a252792-21d4-505e-86eb-b7f0d5ec1f8f",
       "path": "video.mp4",
+      "codec": "avc1.64001f",
       "type": "video",
       "width": 1280,
       "height": 720,
-      "fourcc": "avc1"
+      "frame_rate": "25/1"
     },
     {
-      "id": "audio_und_2_mp4a_131171",
+      "id": "audio_39a70a1c-e177-5a37-aab0-661b18a593ae",
       "path": "audio.mp4",
+      "codec": "mp4a.40.2",
       "type": "audio",
       "sample_rate": 48000,
       "channels": 2,
-      "language": "eng",
-      "fourcc": "mp4a"
+      "language": "eng"
     }
   ]
 }
@@ -124,11 +125,13 @@ cat assets/asset.json
 
 That's the whole descriptor: per-track metadata and a source path, nothing more.
 Notice there's no segment list and no byte offsets — the server re-derives those
-from each source at request time. (Your `id` numbers may differ slightly; they
-include the measured bitrate, which depends on your exact encode. And the audio
-id says `und` even though we set `language=eng`: ids are minted from what the
-file itself declares — our ffmpeg test clip has no language — and then never
-change, so URLs stay stable however you relabel a track.)
+from each source at request time.
+
+Each `id` is `<type>_<uuid>`, where the UUID is derived from the source's path.
+That makes it stable and reproducible — indexing the same file at the same path
+always yields the same id — and independent of metadata, so relabelling a track
+never changes the URLs it is served under. You should see exactly the ids above,
+since they come from the paths `assets/video.mp4` and `assets/audio.mp4`.
 
 ## Step 4: Start the server
 
@@ -158,12 +161,15 @@ see [Deploy with Docker](../how-to/deploy-with-docker.md).)
 
 ## Step 5: Play the stream
 
-Your descriptor is at `assets/asset.json`, and the storage root is that
-`assets/` directory, so its path relative to the root is just `asset.json`.
+Streams are served under `/out/`, and the first part of the path is an object
+naming which descriptor to serve. Your descriptor is at `assets/asset.json` and
+the storage root is that `assets/` directory, so its path relative to the root is
+`asset.json` — and you name it **without** the `.json` extension: `asset`.
+
 First, confirm the DASH manifest is being served:
 
 ```bash
-curl http://localhost:8080/asset.json/dash/index.mpd
+curl "http://localhost:8080/out/(asset:asset)/index.mpd"
 ```
 
 You should see an XML document beginning with `<MPD …>` that lists a video and
@@ -171,22 +177,27 @@ an audio `AdaptationSet`. The HLS multivariant playlist is served from the same
 asset:
 
 ```bash
-curl http://localhost:8080/asset.json/hls/index.m3u8
+curl "http://localhost:8080/out/(asset:asset)/master.m3u8"
 ```
 
 ```text
 #EXTM3U
-#EXT-X-MEDIA:TYPE=AUDIO,URI="audio_und_2_mp4a_131171.m3u8",GROUP-ID="mp4a",LANGUAGE="eng",NAME="eng",DEFAULT=YES,AUTOSELECT=YES,CHANNELS="2"
-#EXT-X-STREAM-INF:BANDWIDTH=257404,CODECS="avc1.64001f,mp4a.40.2",RESOLUTION=1280x720,FRAME-RATE=25.000,AUDIO="mp4a"
-video_720_avc1_126233.m3u8
+#EXT-X-MEDIA:TYPE=AUDIO,URI="audio_39a70a1c-e177-5a37-aab0-661b18a593ae.m3u8",GROUP-ID="audio",LANGUAGE="eng",NAME="eng",DEFAULT=YES,AUTOSELECT=YES,CHANNELS="2"
+#EXT-X-STREAM-INF:BANDWIDTH=1301560,AVERAGE-BANDWIDTH=616404,CODECS="avc1.64001f,mp4a.40.2",RESOLUTION=1280x720,FRAME-RATE=25.000,AUDIO="audio",CLOSED-CAPTIONS=NONE
+video_0a252792-21d4-505e-86eb-b7f0d5ec1f8f.m3u8
 #EXT-X-INDEPENDENT-SEGMENTS
 ```
+
+The bandwidth figures are measured from your own files, so yours will differ.
+
+> Wrap the URL in quotes. The parentheses are shell metacharacters in `bash` and
+> `zsh`, so an unquoted URL will not survive the command line.
 
 **That's a working stream.** To watch it, point a player at the manifest URL.
 [VLC](https://www.videolan.org/) can open either protocol directly:
 
 ```bash
-vlc http://localhost:8080/asset.json/dash/index.mpd    # or the .m3u8 for HLS
+vlc "http://localhost:8080/out/(asset:asset)/index.mpd"    # or master.m3u8 for HLS
 ```
 
 You'll see the ffmpeg test pattern play and hear the tone. dyndo is serving the

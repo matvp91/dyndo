@@ -16,12 +16,13 @@ files via HTTP byte-range reads.
 ```text
   CMAF sources                asset.json                dyndo-server
   (fragmented MP4      dyndo    (thin                       │
-   + global sidx)  ──index──▶   descriptor)  ────────▶  ┌───┴────────────────────┐
-        │                                               │  GET …/dash/index.mpd  │
-        └───────────── byte-range reads ───────────────▶│  GET …/hls/index.m3u8  │
-                                                        │  GET …/<repr>/init.mp4 │
-                                                        │  GET …/<repr>/<t>.m4s  │
-                                                        └────────────────────────┘
+   + global sidx)  ──index──▶   descriptor)  ────────▶  ┌───┴─────────────────────────┐
+        │                                               │  GET /out/(asset:…)/…       │
+        │                                               │        index.mpd            │
+        └───────────── byte-range reads ───────────────▶│        master.m3u8          │
+                                                        │        <track>/init.mp4     │
+                                                        │        <track>/<time>.m4s   │
+                                                        └─────────────────────────────┘
 ```
 
 1. **Index** your CMAF files once with the `dyndo` CLI to produce `asset.json`.
@@ -92,5 +93,6 @@ Codec parameters are read from the source and emitted as
 | Audio | Dolby Digital Plus (E-AC-3) | `ec-3` |
 | Text | WebVTT in ISO-BMFF | `wvtt` |
 
-Raw WebVTT (`.vtt`) files are also accepted as text-track sources, with no
-packaging step — see [Add a subtitle track](./how-to/add-subtitles.md).
+Raw WebVTT (`.vtt`) files are also accepted as text-track sources, though
+packaging them into servable `wvtt` at request time is not implemented yet — see
+[Add a subtitle track](./how-to/add-subtitles.md).

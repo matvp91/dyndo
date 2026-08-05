@@ -35,31 +35,41 @@ same values.
 
 ## Audio roles
 
-| Role | Use it for | Effect on players |
+| Role | Use it for | Effect on the manifests |
 |---|---|---|
-| `main` | The primary audio. | Becomes the default audio rendition. |
-| `alternate` | An alternate mix of the main audio. | Auto-selectable (e.g. to match the viewer's language). |
-| `dub` | A dubbed rendition in another language. | Auto-selectable (e.g. to match the viewer's language). |
-| `commentary` | Commentary, e.g. director's. | Opt-in: never auto-selected, the viewer chooses it. |
-| `description` | Audio description for blind / low-vision viewers. | Opt-in, and flagged as accessible audio description. |
-| `enhanced-audio-intelligibility` | Dialogue enhanced for intelligibility. | Opt-in, and flagged as an accessibility rendition. |
+| `main` | The primary audio. | Becomes the default HLS audio rendition; DASH `Role=main`. |
+| `alternate` | An alternate mix of the main audio. | DASH `Role=alternate`. |
+| `dub` | A dubbed rendition in another language. | DASH `Role=dub`. |
+| `commentary` | Commentary, e.g. director's. | DASH `Role=commentary`. |
+| `description` | Audio description for blind / low-vision viewers. | DASH `Accessibility=description`; HLS `CHARACTERISTICS=public.accessibility.describes-video`. |
+| `enhanced-audio-intelligibility` | Dialogue enhanced for intelligibility. | DASH `Accessibility=enhanced-audio-intelligibility`; HLS `CHARACTERISTICS=public.accessibility.enhances-speech`. |
 
-The **default** audio rendition is the first track you mark `main`; if you mark
-none, it's the first audio track. Mark exactly one track `main` to control what
-plays by default.
+The **default** HLS audio rendition is the first track marked `main`; if none is,
+it is the first audio track with no role at all. Mark exactly one track `main` to
+control what plays by default — and note that if you give *every* audio track a
+non-`main` role, no rendition is marked default.
+
+Whether a non-default rendition is auto-selectable is decided by how
+distinguishable it is, not by its role: `AUTOSELECT=YES` when a rendition is the
+only one sharing its language, `FORCED` flag, and accessibility characteristics.
+So a `main` + `commentary` pair in the same language leaves the commentary track
+opt-in, while a lone commentary track is auto-selectable. See the
+[roles reference](../reference/roles.md#autoselect) for the exact rule.
 
 ## Text (subtitle) roles
 
-> Text-track manifest output is still being completed — today a text role
-> shows up in DASH (for CMAF `wvtt` sources); HLS subtitle renditions land
-> next. See [Track roles](../reference/roles.md) for the exact per-protocol
-> state.
-
-| Role | Use it for | Effect on players |
+| Role | Use it for | Effect on the manifests |
 |---|---|---|
-| `subtitle` | Translation subtitles (dialogue only). | Off by default; the viewer turns them on. This is also the default when no role is set. |
-| `caption` | SDH / closed captions (dialogue plus non-dialogue sound). | Off by default; flagged with the SDH accessibility characteristics. |
-| `forced-subtitle` | Forced narrative (foreign dialogue, on-screen text). | Auto-enabled and marked `FORCED`, so it shows even when subtitles are otherwise off. |
+| `subtitle` | Translation subtitles (dialogue only). | DASH `Role=subtitle`. This is also what a track with no role renders as. |
+| `caption` | SDH / closed captions (dialogue plus non-dialogue sound). | DASH `Role=subtitle` plus `Accessibility=caption`; HLS `CHARACTERISTICS` naming the SDH characteristics. |
+| `forced-subtitle` | Forced narrative (foreign dialogue, on-screen text). | DASH `Role=forced-subtitle`; HLS `FORCED=YES`. |
+
+Text renditions are never marked `DEFAULT` in HLS — subtitles stay off until the
+viewer enables them, or until the player acts on `FORCED`.
+
+The role also names the rendition: an HLS rendition's `NAME` is its language plus
+the role's label, so `caption` on an English track reads `eng (Captions)`. Two
+renditions in one group cannot share a `NAME`.
 
 ## Examples
 
@@ -81,20 +91,26 @@ dyndo index audio_en_ad.mp4,language=eng,role=description -o asset.json
 ```
 
 Forced subtitles that display automatically for foreign-language dialogue —
-set the role directly on the `.vtt` you [index](./add-subtitles.md):
+set the role on the subtitle source you [index](./add-subtitles.md):
 
 ```bash
-dyndo index forced_en.vtt,language=eng,role=forced-subtitle -o asset.json
+dyndo index text_wvtt_forced_eng.mp4,language=eng,role=forced-subtitle -o asset.json
 ```
 
 ## What gets rejected
 
-`index` validates roles as it reads each descriptor and aborts the whole run on:
+Only an **unrecognised role value** is rejected, and it aborts the whole run
+before anything is written:
 
-- a `role` (or `language`) on a **video** input;
-- a `role` that doesn't apply to the track's media type — e.g. `subtitle` on
-  audio, or `main` on text; or
-- an unknown role value.
+```text
+error: invalid value 'audio.mp4,role=bogus' for '<INPUTS>...': unknown role: bogus
+```
+
+Everything else is accepted as given. In particular, `index` does **not** check
+that a role suits the track: `audio.mp4,role=subtitle` is stored, and a `role=`
+on a video input is silently discarded because video tracks have no role field.
+Nothing warns you about a role that makes no sense for its track — the manifests
+will simply carry it through. Use the tables above to pick deliberately.
 
 ## Next steps
 

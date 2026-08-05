@@ -33,18 +33,29 @@ Here the `fs` backend (the default) reads from `/assets`, which is your local
 
 ## Request a stream
 
-Request a stream at `/<asset>/<protocol>/<resource>`, where `<asset>` is the
-descriptor's path relative to the storage root:
+Streams live under `/out/`, and the first path segment is a Rison object naming
+the descriptor to serve — its path relative to the storage root, **without** the
+`.json` extension:
 
 ```text
-http://localhost:8080/asset.json/dash/index.mpd    # DASH
-http://localhost:8080/asset.json/hls/index.m3u8     # HLS
+http://localhost:8080/out/(asset:asset)/index.mpd      # DASH
+http://localhost:8080/out/(asset:asset)/master.m3u8    # HLS
 ```
 
-Nested descriptors work too: a descriptor at `assets/movies/big/asset.json`
-(with storage root `assets/`) is served at
-`/movies/big/asset.json/dash/index.mpd`. See the
-[HTTP routes reference](../reference/server/routes.md) for the full route table.
+With storage root `./assets`, `asset:asset` resolves to `assets/asset.json`.
+Nested descriptors work the same way: `assets/movies/big.json` is addressed as
+`(asset:movies/big)`.
+
+The same object can override how the asset is segmented for that request:
+
+```text
+http://localhost:8080/out/(asset:asset,min_segment_length:6000)/index.mpd
+```
+
+Parentheses are shell metacharacters, so quote these URLs when passing them to
+`curl` or a player from a shell. See the
+[HTTP routes reference](../reference/server/routes.md) for the full route table
+and every option.
 
 ## Configure with a file or environment variables
 

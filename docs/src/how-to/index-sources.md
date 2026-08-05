@@ -6,17 +6,20 @@ server (or the offline manifest commands) reads afterwards.
 
 ## Before you start
 
-`index` accepts two kinds of input, selected by file extension:
+`index` accepts two kinds of input, selected by file extension
+(case-sensitively — `.MP4` is not recognised):
 
-- **`.mp4`** — a CMAF track: a fragmented MP4 containing a `moov` with
-  **exactly one track**, a single global `sidx` segment index, and a
-  [supported codec](../introduction.md#supported-codecs).
+- **`.mp4`** — a CMAF track: a fragmented MP4 with a single global `sidx`
+  segment index and a [supported codec](../introduction.md#supported-codecs).
+  The **first** track in the `moov` is the one described; any others are ignored,
+  so give each track its own file.
 - **`.vtt`** — a raw WebVTT subtitle file (see
   [Add a subtitle track](./add-subtitles.md)).
 
-Any violation aborts the run — there are no silent fallbacks and no
-skip-and-continue. If you need to produce conforming CMAF files, see the ffmpeg
-recipe in the [Getting started tutorial](../tutorial/getting-started.md#step-2-create-two-cmaf-sources).
+An unreadable or non-conforming source aborts the run — there are no silent
+fallbacks and no skip-and-continue. If you need to produce conforming CMAF
+files, see the ffmpeg recipe in the
+[Getting started tutorial](../tutorial/getting-started.md#step-2-create-two-cmaf-sources).
 
 ## Index one track per input
 
@@ -53,12 +56,16 @@ dyndo index \
 ```
 
 `language` overrides the code probed from the file; `role` is never probed, so
-this is the only way to set it apart from editing the JSON. Valid roles are,
-for audio, `main`, `alternate`, `commentary`, `dub`, `description`,
-`enhanced-audio-intelligibility`; for text, `subtitle`, `caption`,
-`forced-subtitle`. A video input takes neither field, an unknown field is
-rejected, and a role that does not apply to the track's type (e.g. `subtitle`
-on audio) is rejected — the run aborts with a message.
+this is the only way to set it apart from editing the JSON. The nine valid role
+values are `main`, `alternate`, `commentary`, `dub`, `description`,
+`enhanced-audio-intelligibility`, `subtitle`, `caption`, and `forced-subtitle`.
+
+Validation here is deliberately thin: an **unknown key** or an **unrecognised
+role value** aborts the run, but a role is not checked against the track's type
+(`audio.mp4,role=subtitle` is stored as given), and both fields on a video input
+are accepted and silently ignored. Choosing a role that suits the track is up to
+you — [Track roles](../reference/roles.md) shows which roles are meaningful
+where.
 
 For what each role does to the generated manifests — which rendition a player
 defaults to, what it auto-selects, and the accessibility signalling — see
@@ -88,12 +95,14 @@ dyndo index audio.mp4,role=main -o asset.json # wrote asset.json (2 tracks)
 
 Two consequences of this merge model are worth knowing:
 
-- Updating a descriptor re-opens every source already listed in it, so **all
-  indexed files must still exist** — a re-index fails if one has gone missing.
+- Only the inputs you name on this run are opened. Loading the existing
+  descriptor just parses its JSON, so a re-index succeeds even if a
+  previously indexed source has since moved or been deleted.
 - If a source file's **content** changed, `index` won't notice: remove the
   track's entry from the JSON (or delete the descriptor) and index the file
   afresh. Likewise, renaming a source on disk and indexing the new name appends
-  a second entry — remove the stale one by hand.
+  a second entry (with a new id, since the id follows the path) — remove the
+  stale one by hand.
 
 ## Understand how paths resolve
 
@@ -128,22 +137,24 @@ hand-edit:
 {
   "tracks": [
     {
-      "id": "video_1080_avc1_4807228",
+      "id": "video_6b745be5-2791-5d95-8ce5-8f8bde29e2fe",
       "path": "video_1080.mp4",
+      "codec": "avc1.640028",
       "type": "video",
       "width": 1920,
       "height": 1080,
-      "fourcc": "avc1"
+      "frame_rate": "25/1"
     }
   ]
 }
 ```
 
-Each track's `id` is derived from its properties at index time (for video,
-`video_<height>_<fourcc>_<bitrate>`) and then **pinned** — later edits never
-change it. The server uses these ids as the representation names in every
-manifest and segment URL. For the full field list, see the
-[asset.json descriptor reference](../reference/asset-json.md).
+Each track's `id` is `<type>_<uuid>`, where the UUID is derived from the source's
+path relative to the storage root. It is therefore deterministic — the same file
+at the same path always yields the same id — and unaffected by metadata, so
+relabelling a track never changes it. The server uses these ids as the
+representation names in every manifest and segment URL. For the full field list,
+see the [asset.json descriptor reference](../reference/asset-json.md).
 
 ## Next steps
 

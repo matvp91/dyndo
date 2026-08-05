@@ -27,20 +27,23 @@ Because the segments are the same CMAF for either protocol, dyndo stores and
 serves exactly one set of them, and generates two manifests over them:
 
 ```text
-                         ┌───────────────────────┐
+                         ┌────────────────────────┐
    asset.json ──▶ dyndo  │  DASH manifest  (.mpd) │  protocol-specific
                          │  HLS  manifests (.m3u8)│
-                         └───────────┬───────────┘
+                         └───────────┬────────────┘
                                      │  both reference the same URLs:
                                      ▼
-                         <repr>/init.mp4 , <repr>/<time>.m4s   shared CMAF
+                    <track>/init.mp4 , <track>/<time>.m4s   shared CMAF
 ```
 
 In the server this shows up directly in the [routes](../reference/server/routes.md):
-the manifest routes branch on protocol (`dash/index.mpd` vs `hls/index.m3u8`),
-but the segment routes (`<repr>/init.mp4`, `<repr>/<time>.m4s`) do not. A segment
-request returns the same bytes whether it arrived under the `dash/` or the `hls/`
-prefix — the prefix is just part of a URL the manifest happened to emit.
+only the manifest resources are protocol-specific (`index.mpd` for DASH,
+`master.m3u8` and the per-track `.m3u8` playlists for HLS). The segment
+resources — `<track-id>/init.mp4` and `<track-id>/<time>.m4s` — carry no protocol
+component at all. There is no `dash/` or `hls/` prefix anywhere in the URL space
+to distinguish them, because there would be nothing to distinguish: a segment
+request returns the same bytes regardless of which manifest sent the player
+there.
 
 ## The manifests agree by construction
 
@@ -51,7 +54,7 @@ packaging step for each protocol that could fall out of sync — the DASH
 `SegmentTimeline` and the HLS `EXTINF`/`EXT-X-MAP` entries are two renderings of
 one index.
 
-That is why the same `<repr>/<time>.m4s` value appears in both a DASH
+That is why the same `<track-id>/<time>.m4s` value appears in both a DASH
 `SegmentTimeline` `$Time$` and an HLS media-playlist URI: they are computed from
 the same running sum of segment durations.
 

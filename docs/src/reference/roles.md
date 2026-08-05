@@ -1,16 +1,23 @@
 # Track roles
 
-A track's **role** is its author-declared purpose. It applies to audio and text
-tracks only, is never probed from the media, and is stored in the descriptor's
+A track's **role** is its author-declared purpose. It is never probed from the
+media, and is stored in the descriptor's
 [`role` field](./asset-json.md#track-object). This page is the exact reference
 for the role vocabulary and how each role is rendered into DASH and HLS.
 
-To set a role, see [Label tracks with roles](../how-to/label-roles.md). Roles are
-validated at index time: a role on a video track, a role that doesn't match the
-track's media type, or an unknown value aborts the run. A role never affects a
-track's representation `id`.
+To set a role, see [Label tracks with roles](../how-to/label-roles.md).
 
-## Audio roles
+## The vocabulary
+
+There is one flat set of nine role values. Any of them may be stored on any
+audio or text track — `index` rejects only values outside this list, and does
+not check a role against the track's type. The grouping below is by intended
+use, not by enforcement.
+
+Video tracks have no `role` field; a `role=` override on a video input is
+accepted and silently discarded.
+
+### Intended for audio
 
 | Value | Meaning |
 |---|---|
@@ -21,74 +28,122 @@ track's representation `id`.
 | `description` | Audio description for viewers who are blind or have low vision. |
 | `enhanced-audio-intelligibility` | Dialogue enhanced for intelligibility. |
 
-## Text roles
+### Intended for text
 
 | Value | Meaning |
 |---|---|
-| `subtitle` | Translation subtitles (dialogue only). The default when no role is set. |
+| `subtitle` | Translation subtitles (dialogue only). |
 | `caption` | SDH / closed captions (dialogue plus non-dialogue sound description). |
-| `forced-subtitle` | Forced narrative subtitles (foreign dialogue or on-screen text), shown even when subtitles are otherwise off. |
+| `forced-subtitle` | Forced narrative subtitles (foreign dialogue or on-screen text). |
 
 ## DASH mapping
 
-Roles are emitted as descriptors on the track's `AdaptationSet`; tracks are
-grouped into adaptation sets by `(sample entry, timescale, language, role)`.
+Roles are emitted as descriptors on the track's `AdaptationSet`. Both
+descriptor kinds use the **same** scheme, `urn:mpeg:dash:role:2011`, and both
+carry the role name as a string `value`. Tracks are grouped into adaptation sets
+partly by role, so a set's members always agree on it — see
+[adaptation set grouping](./cli/dash.md#adaptation-set-grouping).
 
-### `Role`
+### Audio
 
-Scheme `urn:mpeg:dash:role:2011`; `value` is the role string verbatim.
+| Audio role | `Role@value` | `Accessibility@value` |
+|---|---|---|
+| *(none)* | — | — |
+| `main` | `main` | — |
+| `alternate` | `alternate` | — |
+| `commentary` | `commentary` | — |
+| `dub` | `dub` | — |
+| `description` | — | `description` |
+| `enhanced-audio-intelligibility` | — | `enhanced-audio-intelligibility` |
 
-| Track | `Role` emitted |
-|---|---|
-| Audio with a role | `Role@value` = the role. |
-| Audio with no role | none. |
-| Text | `Role@value` = the role, defaulting to `subtitle` when unset. |
+The two accessibility roles emit an `Accessibility` descriptor **instead of** a
+`Role`, not in addition to one.
 
-### `Accessibility`
+### Text
 
-Scheme `urn:tva:metadata:cs:AudioPurposeCS:2007`, emitted only for two audio
-roles:
+| Text role | `Role@value` | `Accessibility@value` |
+|---|---|---|
+| *(none)* | `subtitle` | — |
+| `subtitle` | `subtitle` | — |
+| `caption` | `subtitle` | `caption` |
+| `forced-subtitle` | `forced-subtitle` | — |
 
-| Audio role | `Accessibility@value` |
-|---|---|
-| `description` | `1` |
-| `enhanced-audio-intelligibility` | `8` |
+A text `AdaptationSet` always carries a `Role`; `caption` is signalled as a
+subtitle role plus an accessibility descriptor.
 
-No other role emits an `Accessibility` descriptor.
+```xml
+<AdaptationSet id="2" contentType="text" lang="eng" mimeType="application/mp4" …>
+  <Accessibility schemeIdUri="urn:mpeg:dash:role:2011" value="caption"/>
+  <Role schemeIdUri="urn:mpeg:dash:role:2011" value="subtitle"/>
+  …
+</AdaptationSet>
+```
 
 ## HLS mapping
 
-Roles set the selection attributes on the `EXT-X-MEDIA` rendition entries in the
-multivariant playlist.
+Roles set the attributes on the `EXT-X-MEDIA` rendition entries in the
+multivariant playlist. Audio renditions all share `GROUP-ID="audio"` and text
+renditions all share `GROUP-ID="subtitles"`; the role does not affect group
+membership.
 
-### Audio renditions
+Attributes whose value is `NO` are omitted from the output rather than written
+out, which is equivalent.
 
-Audio tracks are grouped by sample-entry code. Within a group:
+### `NAME`
 
-| Attribute | Rule |
+The rendition's language, qualified by a human-readable label when a role is
+set:
+
+| Role | Label | Example `NAME` |
+|---|---|---|
+| *(none)* | — | `nld` |
+| `main` | Main | `nld (Main)` |
+| `alternate` | Alternate | `nld (Alternate)` |
+| `commentary` | Commentary | `eng (Commentary)` |
+| `dub` | Dub | `fra (Dub)` |
+| `description` | Audio Description | `eng (Audio Description)` |
+| `enhanced-audio-intelligibility` | Enhanced Dialogue | `eng (Enhanced Dialogue)` |
+| `subtitle` | Subtitles | `nld (Subtitles)` |
+| `caption` | Captions | `eng (Captions)` |
+| `forced-subtitle` | Forced Subtitles | `eng (Forced Subtitles)` |
+
+Two renditions in the same group may not produce the same `NAME`; generating the
+playlist fails with `duplicate rendition name: <name>` if they do.
+
+### `DEFAULT`
+
+`DEFAULT=YES` goes to exactly one **audio** rendition, chosen in this order:
+
+1. the first audio track whose role is `main`;
+2. otherwise, the first audio track with **no** role.
+
+If every audio track carries a non-`main` role, no rendition is marked default.
+Text renditions are never marked default.
+
+### `AUTOSELECT`
+
+`AUTOSELECT=YES` when either:
+
+- the rendition is the group default (above); or
+- it is the **only** rendition sharing its combination of media type, language,
+  `FORCED` flag, and `CHARACTERISTICS`.
+
+So a lone Dutch subtitle track is auto-selectable, while a Dutch subtitle track
+sitting alongside a Dutch forced-subtitle track is still auto-selectable
+(different `FORCED` flags), and two plain Dutch subtitle tracks are neither.
+
+### `FORCED`
+
+`FORCED=YES` only for `forced-subtitle`.
+
+### `CHARACTERISTICS`
+
+| Role | `CHARACTERISTICS` |
 |---|---|
-| `DEFAULT` | `YES` on the first `main`-role rendition; if no member is `main`, on the first rendition. `NO` otherwise. |
-| `AUTOSELECT` | `NO` for the opt-in roles (`commentary`, `description`, `enhanced-audio-intelligibility`) unless the rendition is the group default; `YES` otherwise. |
-| `CHARACTERISTICS` | `public.accessibility.describes-video` for `description`; `public.accessibility.enhances-speech-intelligibility` for `enhanced-audio-intelligibility`; absent otherwise. |
-| `NAME` | The rendition's language, qualified by its role when one is set — `nld`, `eng (commentary)`. A counter disambiguates collisions (`eng (2)`). |
-
-`DEFAULT=YES` implies `AUTOSELECT=YES`, so the group default is always
-auto-selected even when its role is opt-in.
-
-### Subtitle renditions
-
-> HLS subtitle renditions are not emitted yet — text tracks currently appear in
-> DASH manifests only (CMAF `wvtt` sources). The mapping below is the design
-> that on-the-fly text serving is being built toward.
-
-All text tracks share one `TYPE=SUBTITLES` group.
-
-| Attribute | Rule |
-|---|---|
-| `DEFAULT` | Always `NO` — the viewer enables subtitles explicitly. |
-| `AUTOSELECT` | `YES` only for `forced-subtitle`; `NO` for `subtitle` and `caption`. |
-| `FORCED` | `YES` only for `forced-subtitle`. |
-| `CHARACTERISTICS` | `public.accessibility.transcribes-spoken-dialog,public.accessibility.describes-music-and-sound` for `caption`; absent otherwise. |
+| `description` | `public.accessibility.describes-video` |
+| `enhanced-audio-intelligibility` | `public.accessibility.enhances-speech` |
+| `caption` | `public.accessibility.transcribes-spoken-dialog,public.accessibility.describes-music-and-sound` |
+| all others | *(absent)* |
 
 ## See also
 
