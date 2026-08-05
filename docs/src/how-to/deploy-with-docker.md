@@ -27,11 +27,13 @@ docker run --rm -p 8080:8080 \
 - `-e DYNDO_FS__ROOT=/assets` points the filesystem backend at the mount. `fs`
   is the default store, so its root is the only setting you must supply.
 
-Then request a stream just as you would from a local server:
+Then request a stream just as you would from a local server — naming the
+descriptor (here `/assets/asset.json`, so `asset` relative to the root, without
+its extension) in the Rison object at the front of the path:
 
 ```text
-http://localhost:8080/asset.json/dash/index.mpd    # DASH
-http://localhost:8080/asset.json/hls/index.m3u8     # HLS
+http://localhost:8080/out/(asset:asset)/index.mpd      # DASH
+http://localhost:8080/out/(asset:asset)/master.m3u8    # HLS
 ```
 
 ## Pin a version

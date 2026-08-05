@@ -1,10 +1,14 @@
 use clap::{Parser, Subcommand};
-use dyndo_core::asset::Asset;
-use dyndo_core::metadata::Metadata;
+use dyndo_core::asset_descriptor::AssetDescriptor;
+use dyndo_core::track::Track;
 use opendal::Operator;
 use opendal::services::Fs;
+use relative_path::{RelativePath, RelativePathBuf};
+use serde::Serialize;
 
-mod track_descriptor;
+mod track_input;
+
+use track_input::TrackInput;
 
 /// dyndo — dynamic media packaging for adaptive streaming.
 #[derive(Parser)]
@@ -24,7 +28,7 @@ enum Command {
     Index {
         /// Track descriptor(s): `<path>[,language=..][,role=..]`, one per track.
         #[arg(required = true)]
-        inputs: Vec<String>,
+        inputs: Vec<TrackInput>,
         /// Output descriptor path.
         #[arg(short, long = "output", default_value = "asset.json")]
         output: String,
@@ -37,18 +41,13 @@ enum Command {
         /// Output manifest path.
         #[arg(short, long = "output", default_value = "stream.mpd")]
         output: String,
-        /// Hoist SegmentTemplate content shared by all Representations up to the
-        /// AdaptationSet level.
-        #[arg(short = 'c', long = "compact")]
-        compact: bool,
     },
-    /// Generate HLS playlists (a multivariant playlist + one media playlist per
-    /// advertised track) from an asset.json, into an output directory.
+    /// Generate HLS playlists from an asset.json.
     Hls {
         /// Input asset.json path.
         #[arg(short, long = "input", default_value = "asset.json")]
         input: String,
-        /// Output directory for the playlists.
+        /// Output playlist directory.
         #[arg(short, long = "output", default_value = "hls")]
         output: String,
     },
@@ -66,86 +65,56 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let op = operator()?;
     match cli.command {
         Command::Index { inputs, output } => {
-            // Re-indexing rewrites the descriptor, and serializing a track
-            // recomputes its derived fields from the header, so every existing
-            // track must be probed first.
-            let mut asset = if op.exists(&output).await? {
-                Asset::read_with_headers(&op, &output).await?
-            } else {
-                let mut a = Asset::new();
-                a.path = output.clone();
-                a
-            };
-            for input in &inputs {
-                let (path, language, role) = track_descriptor::parse_track_descriptor(input)?;
-                match asset.tracks.iter_mut().find(|t| t.path == path) {
-                    // Already indexed: the descriptor's metadata is
-                    // authoritative — keep it as-is, applying only the
-                    // explicit overrides.
-                    Some(existing) => {
-                        track_descriptor::apply_overrides(
-                            existing,
-                            language.as_deref(),
-                            role.as_deref(),
-                        )?;
-                    }
-                    // New track: probe its metadata, apply the descriptor's
-                    // overrides, then name it — so the id reflects the track's
-                    // final initial metadata (e.g. an overridden language).
-                    // Existing tracks above keep their frozen id, so
-                    // re-indexing never moves a segment route.
-                    None => {
-                        let track = asset.add_track(&op, &path).await?;
-                        track_descriptor::apply_overrides(
-                            track,
-                            language.as_deref(),
-                            role.as_deref(),
-                        )?;
-                        track.id = track.generate_id();
-                    }
+            let output_path = RelativePathBuf::from(output.as_str());
+            let output_base = output_path.parent().unwrap_or(RelativePath::new(""));
+            let mut descriptor = AssetDescriptor::read_or_new(&op, &output_path).await?;
+
+            for input in inputs {
+                let path = output_base.join(&input.path);
+                if let Some(track) = descriptor.find_track_mut(&path) {
+                    input.apply(&mut track.kind);
+                    continue;
                 }
+
+                let track = Track::probe(&op, &path, None).await?;
+                input.apply(&mut descriptor.add_track(&track).kind);
             }
-            asset.write(&op, &output).await?;
-            println!("wrote {output} ({} tracks)", asset.tracks.len());
+
+            op.write(&output, serde_json::to_vec_pretty(&descriptor)?)
+                .await?;
+            println!("wrote {output} ({} tracks)", descriptor.tracks.len());
         }
-        Command::Dash {
-            input,
-            output,
-            compact,
-        } => {
-            let asset = Asset::read_with_headers(&op, &input).await?;
-            let mpd = dyndo_core::dash::generate_mpd(&asset, compact);
-            op.write(&output, mpd.into_bytes()).await?;
+        Command::Dash { input, output } => {
+            let descriptor = AssetDescriptor::read(&op, &input).await?;
+            let mpd = dyndo_dash::builder::generate_mpd(&op, &descriptor).await?;
+            let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+            let mut serializer = quick_xml::se::Serializer::new(&mut xml);
+            serializer.indent(' ', 2);
+            mpd.serialize(serializer)?;
+            op.write(&output, xml.into_bytes()).await?;
             println!("wrote {output}");
         }
         Command::Hls { input, output } => {
-            let asset = Asset::read_with_headers(&op, &input).await?;
-            op.write(
-                &format!("{output}/index.m3u8"),
-                dyndo_core::hls::generate_master(&asset).into_bytes(),
-            )
-            .await?;
-            // Media playlists for the advertised tracks only: text tracks
-            // are not part of this generation's playlists.
-            let mut count = 0;
-            for t in asset
-                .tracks
-                .iter()
-                .filter(|t| matches!(t.metadata, Metadata::Video(_) | Metadata::Audio(_)))
-            {
+            let descriptor = AssetDescriptor::read(&op, &input).await?;
+            let output = RelativePathBuf::from(output);
+            op.create_dir(&format!("{output}/")).await?;
+
+            let master = dyndo_hls::builder::generate_master_playlist(&op, &descriptor).await?;
+            let master_path = output.join("master.m3u8");
+            op.write(master_path.as_str(), master.to_string()).await?;
+            println!("wrote {master_path}");
+
+            for track in &descriptor.tracks {
+                let playlist =
+                    dyndo_hls::builder::generate_media_playlist(&op, &descriptor, track).await?;
+                let path = output.join(format!("{}.m3u8", track.id));
                 op.write(
-                    &format!("{output}/{}.m3u8", t.id),
-                    dyndo_core::hls::generate_media(
-                        t,
-                        &asset.segment_boundaries_ms,
-                        asset.min_segment_length_ms,
-                    )
-                    .into_bytes(),
+                    path.as_str(),
+                    dyndo_hls::builder::serialize_media_playlist(&playlist),
                 )
                 .await?;
-                count += 1;
+                println!("wrote {path}");
             }
-            println!("wrote {output}/ (1 master + {count} media)");
         }
     }
     Ok(())

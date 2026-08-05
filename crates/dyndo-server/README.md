@@ -3,9 +3,10 @@
 The dynamic packaging HTTP server for [`dyndo`](../../README.md), built on
 [Axum](https://github.com/tokio-rs/axum). It serves DASH and HLS streams straight
 from your CMAF sources: at request time it reads each source's header through
-[`dyndo-core`](../dyndo-core/README.md), renders the manifest with the same
-crate's `dash`/`hls` modules, and streams init/media segments via byte-range
-reads — nothing is pre-packaged to disk.
+[`dyndo-core`](../dyndo-core/README.md), renders manifests with
+[`dyndo-dash`](../dyndo-dash/README.md) and
+[`dyndo-hls`](../dyndo-hls/README.md), and streams init/media segments via
+byte-range reads — nothing is pre-packaged to disk.
 
 Full documentation lives in the book: the
 **[dyndo-server reference](https://matvp91.github.io/dyndo/reference/server.html)**

@@ -34,7 +34,7 @@ With `store: s3`, an asset at key `asset.json` is served exactly as it is from
 local disk:
 
 ```text
-http://localhost:8080/asset.json/dash/index.mpd
+http://localhost:8080/out/(asset:asset)/index.mpd
 ```
 
 Set `DYNDO_S3__ROOT` to prepend a key prefix if your assets live under a

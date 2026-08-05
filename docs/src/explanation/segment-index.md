@@ -70,10 +70,11 @@ tracks with different timescales (video at 90000, audio at 48000) reach
 identical decisions about where a segment edge falls — the two manifests and
 the segment routes always agree.
 
-One source type opts out of all of this: a raw `.vtt` subtitle file has no
-boxes and no `sidx` — the file itself is the source of truth, and serving text
-from it (chunked, or packaged as `wvtt`) happens on the fly. That text pipeline
-is still being completed.
+One source type opts out of all of this: a raw `.vtt` subtitle file has no boxes
+and no `sidx`, so there is nothing to probe and nothing to re-derive. The intent
+is that the file itself stays the source of truth and dyndo packages it into
+`wvtt` at request time; that conversion is not implemented yet, so a raw `.vtt`
+track currently yields an empty segment index.
 
 ## Why an 800 MB file parses like an 8 MB one
 
@@ -87,7 +88,7 @@ indexing or manifest generation.
 
 ## Reading a segment
 
-When a player later requests `<repr>/<time>.m4s`, dyndo re-derives the index the
+When a player later requests `<track-id>/<time>.m4s`, dyndo re-derives the index the
 same way, finds the segment whose cumulative start time equals `<time>`, and
 issues a single byte-range read for that segment's `offset..offset+size`. Init
 segments (`init.mp4`) are the `ftyp`+`moov` range at the front of the file. In

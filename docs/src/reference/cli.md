@@ -38,12 +38,17 @@ See [Understand how paths resolve](../how-to/index-sources.md#understand-how-pat
 
 ## Exit behavior
 
-Every command runs to completion or aborts. On any runtime error — a missing
-file, malformed descriptor JSON, an input that isn't valid CMAF, or an
-unsupported codec or file format — the command prints the error and exits with
-status `1`. Command-line usage errors (an unknown flag, no inputs) print usage
-and exit with status `2`. There is no partial success: `index` does not skip a
-bad input and continue, and a failed `dash`/`hls` writes nothing.
+Every command runs to completion or aborts.
+
+| Status | When |
+|---|---|
+| `0` | Success. |
+| `1` | A runtime error: a missing file, malformed descriptor JSON, an input that isn't valid CMAF, an unsupported codec or file extension, or tracks that cannot be grouped into an aligned adaptation set. The error is printed to stderr, prefixed `Error:`. |
+| `2` | A command-line usage error: an unknown flag, no inputs, a malformed track descriptor, or an unrecognised role value. Usage is printed to stderr. |
+
+There is no partial success: `index` does not skip a bad input and continue, and
+a failed `dash` writes nothing. `hls` writes each playlist as it is produced, so
+a failure part-way through leaves the files written so far in place.
 
 ## Commands
 

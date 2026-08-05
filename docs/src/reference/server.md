@@ -29,14 +29,26 @@ request.
 
 ## What it serves
 
-For every descriptor in the storage backend, the server exposes both a DASH and
-an HLS stream over a shared set of segment routes. Manifests are generated per
+Every descriptor in the storage backend is addressable under the server's
+`/out/` tree, as both a DASH and an HLS stream over one shared set of segment
+routes:
+
+```text
+GET /out/(asset:demo)/index.mpd      # DASH manifest
+GET /out/(asset:demo)/master.m3u8    # HLS multivariant playlist
+```
+
+The bracketed part is a Rison object naming the descriptor and, optionally,
+overriding how it is segmented for that request. Manifests are generated per
 request by parsing each source's CMAF header; media segments are returned as
 byte-range reads from the original files. Nothing is written back to storage.
 
+There is no explicit listing route: an asset is served if a descriptor exists at
+the path a request names.
+
 ## In this section
 
-- [HTTP routes](./server/routes.md) — the complete route table, path grammar,
-  content types, and status codes.
+- [HTTP routes](./server/routes.md) — the complete route table, the Rison
+  options object, content types, and status codes.
 - [Configuration](./server/configuration.md) — the config schema, layering, and
   environment-variable mapping.

@@ -52,11 +52,12 @@ dyndo index video.mp4 audio.mp4 -o assets/asset.json
 make run
 ```
 
-Then point a player at either protocol:
+Then point a player at either protocol — the bracketed part names the descriptor
+relative to the storage root, without its `.json` extension:
 
 ```
-http://localhost:8080/asset.json/dash/index.mpd    # DASH
-http://localhost:8080/asset.json/hls/index.m3u8     # HLS
+http://localhost:8080/out/(asset:asset)/index.mpd      # DASH
+http://localhost:8080/out/(asset:asset)/master.m3u8    # HLS
 ```
 
 New here? The
@@ -74,15 +75,29 @@ docker run --rm -p 8080:8080 -e DYNDO_FS__ROOT=/assets \
 
 ## Project layout
 
-`dyndo` is a Cargo workspace of three crates — one library and two binaries —
-with a clean dependency direction: the core library carries no CLI or HTTP
-concerns and is reused by both binaries.
+`dyndo` is a Cargo workspace of five crates — three libraries and two binaries —
+with a strictly one-way dependency direction. `dyndo-core` knows nothing about
+manifests; the two manifest crates know nothing about each other; neither library
+layer knows anything about CLI or HTTP concerns.
 
-| Crate                                 | Kind                    | Responsibility                                                                                                                                                                                                                                |
-| ------------------------------------- | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`dyndo-core`](crates/dyndo-core)     | library                 | CMAF header parsing (bounded memory via `mp4-atom`), the `Asset`/`Track` domain model, the `asset.json` serde contract, RFC 6381 codec strings, and DASH/HLS manifest generation. Reads bytes through [OpenDAL](https://opendal.apache.org/). |
-| [`dyndo-cli`](crates/dyndo-cli)       | binary (`dyndo`)        | The indexing, subtitle-packing, and offline-manifest CLI.                                                                                                                                                                                     |
-| [`dyndo-server`](crates/dyndo-server) | binary (`dyndo-server`) | The dynamic packaging HTTP server, built on [Axum](https://github.com/tokio-rs/axum).                                                                                                                                                         |
+```text
+binaries     dyndo-cli          dyndo-server
+                   └────────┬────────┘
+manifests       dyndo-dash     dyndo-hls
+                   └────────┬────────┘
+core                   dyndo-core
+```
+
+| Crate                                 | Kind                    | Responsibility                                                                                                                                                                                          |
+| ------------------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`dyndo-core`](crates/dyndo-core)     | library                 | CMAF header parsing (bounded memory via `mp4-atom`), the `Track` domain model, segment grouping, the `asset.json` serde contract, and RFC 6381 codec strings. Reads bytes through [OpenDAL](https://opendal.apache.org/). |
+| [`dyndo-dash`](crates/dyndo-dash)     | library                 | DASH MPD generation: adaptation-set grouping, segment templates and timelines, DASH role signalling.                                                                                                     |
+| [`dyndo-hls`](crates/dyndo-hls)       | library                 | HLS playlist generation: the multivariant playlist, per-track media playlists, rendition groups and HLS role signalling.                                                                                 |
+| [`dyndo-cli`](crates/dyndo-cli)       | binary (`dyndo`)        | The indexing and offline-manifest CLI.                                                                                                                                                                   |
+| [`dyndo-server`](crates/dyndo-server) | binary (`dyndo-server`) | The dynamic packaging HTTP server, built on [Axum](https://github.com/tokio-rs/axum).                                                                                                                    |
+
+Both binaries call the same `dyndo-dash` and `dyndo-hls` builders, so the CLI's
+offline manifests and the server's generated ones are identical.
 
 ## Development
 
@@ -98,6 +113,7 @@ Common tasks are wrapped in the [`Makefile`](Makefile):
 | `make fmt`         | Format all crates (nightly `rustfmt`).                |
 | `make fmt-check`   | Verify formatting without modifying.                  |
 | `make check`       | Fast type-check of the workspace.                     |
+| `make install`     | Install the `dyndo` CLI into `~/.cargo/bin`.          |
 | `make doc`         | Build the crates' rustdoc.                            |
 | `make book`        | Build the mdBook user guide into `docs/book`.         |
 | `make book-serve`  | Serve the mdBook user guide locally with live reload. |
@@ -111,7 +127,7 @@ CI publishes. The guide's sources live in [`docs/`](docs/) and are published to
 GitHub Pages by the same workflow.
 
 Tests run against small, committed header-only CMAF fixtures under
-[`tests/fixtures`](tests/fixtures) — just enough of each file (`ftyp` + `moov` +
+[`fixtures`](fixtures) — just enough of each file (`ftyp` + `moov` +
 `sidx` + first `moof`) to exercise parsing end to end without shipping gigabytes
 of media.
 
@@ -123,7 +139,7 @@ Releases are cut locally and published by CI:
 ./scripts/release.sh          # prompts for the next version, e.g. 0.4.0
 ```
 
-The script bumps the workspace version (inherited by all three crates), commits
+The script bumps the workspace version (inherited by all five crates), commits
 `release: <version>`, tags `v<version>`, and pushes. Pushing the tag triggers
 [`.github/workflows/release.yml`](.github/workflows/release.yml), which verifies
 the tag matches `Cargo.toml`, re-runs the CI gate, builds `dyndo` and
