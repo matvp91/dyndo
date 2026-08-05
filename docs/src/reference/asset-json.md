@@ -10,12 +10,11 @@ The file is pretty-printed JSON and safe to read, diff, and hand-edit.
 
 ## Top-level structure
 
-A descriptor is an object with a `tracks` array and two optional segmentation
-fields:
+A descriptor is an object with a `tracks` array and an optional set of segment
+boundaries:
 
 ```json
 {
-  "min_segment_length": 3000,
   "segment_boundaries": [683640],
   "tracks": [ /* track objects */ ]
 }
@@ -28,20 +27,19 @@ order you pass them.
 
 ## Segmentation
 
-Both fields are optional and control how each track's CMAF fragments are
-grouped into served segments. Grouping is applied when manifests and segments
-are served — the CMAF files are never modified, so these fields can be edited
-at any time. When unset (or `0` / empty), they are omitted from the written
-descriptor.
+The optional `segment_boundaries` field records asset-specific splice points.
+The minimum served segment length is request-specific and is supplied by the
+server's [`min_segment_length` option](./server/routes.md#the-options-object).
+Grouping is applied when manifests and segments are served; the CMAF files are
+never modified. An empty boundary list is omitted from the descriptor.
 
 | Field | Type | Description |
 |---|---|---|
-| `min_segment_length` | integer *(optional)* | Minimum length of a served segment, in **milliseconds**. Whole fragments (for video: GOPs) are grouped until a segment reaches at least this length — fragment boundaries are never split. Omitted or `0`: every fragment is served as its own segment. The last segment before a splice point or the end of the track may be shorter. |
 | `segment_boundaries` | array of integers *(optional)* | Splice points, in **milliseconds** from the start of the presentation, e.g. for ad insertion. A served segment never spans one, so a segment edge exists at every splice point. Treated as a set: order and duplicates don't matter. Each point is snapped per track to the nearest fragment boundary (audio fragment rasters cannot hit arbitrary millisecond positions); an exact tie snaps earlier. |
 
-`segment_boundaries` only takes effect when `min_segment_length` is non-zero —
-with the default of `0` every fragment is already its own segment, so every
-fragment edge is a segment edge.
+`segment_boundaries` only changes output when a non-zero minimum segment length
+groups multiple fragments. With the default of `0`, every fragment is already
+a served segment.
 
 ## Track object
 

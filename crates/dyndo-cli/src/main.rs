@@ -1,5 +1,6 @@
 use clap::{Parser, Subcommand};
 use dyndo_core::asset_descriptor::AssetDescriptor;
+use dyndo_core::segment::SegmentOptions;
 use dyndo_core::track::Track;
 use opendal::Operator;
 use opendal::services::Fs;
@@ -86,7 +87,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         Command::Dash { input, output } => {
             let descriptor = AssetDescriptor::read(&op, &input).await?;
-            let mpd = dyndo_dash::builder::generate_mpd(&op, &descriptor).await?;
+            let mpd = dyndo_dash::builder::generate_mpd(
+                &op,
+                &descriptor,
+                &SegmentOptions::default(),
+                &dyndo_dash::options::DashOptions::default(),
+            )
+            .await?;
             let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
             let mut serializer = quick_xml::se::Serializer::new(&mut xml);
             serializer.indent(' ', 2);
@@ -99,14 +106,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let output = RelativePathBuf::from(output);
             op.create_dir(&format!("{output}/")).await?;
 
-            let master = dyndo_hls::builder::generate_master_playlist(&op, &descriptor).await?;
+            let segment_options = SegmentOptions::default();
+            let hls_options = dyndo_hls::options::HlsOptions::default();
+            let master = dyndo_hls::builder::generate_master_playlist(
+                &op,
+                &descriptor,
+                &segment_options,
+                &hls_options,
+            )
+            .await?;
             let master_path = output.join("master.m3u8");
             op.write(master_path.as_str(), master.to_string()).await?;
             println!("wrote {master_path}");
 
             for track in &descriptor.tracks {
-                let playlist =
-                    dyndo_hls::builder::generate_media_playlist(&op, &descriptor, track).await?;
+                let playlist = dyndo_hls::builder::generate_media_playlist(
+                    &op,
+                    &descriptor,
+                    track,
+                    &segment_options,
+                    &hls_options,
+                )
+                .await?;
                 let path = output.join(format!("{}.m3u8", track.id));
                 op.write(
                     path.as_str(),

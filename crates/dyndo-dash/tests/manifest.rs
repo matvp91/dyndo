@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 
 use dyndo_core::asset_descriptor::AssetDescriptor;
+use dyndo_core::segment::SegmentOptions;
+use dyndo_dash::options::DashOptions;
 use opendal::Operator;
 use opendal::services::Memory;
 use serde::Serialize;
@@ -11,9 +13,14 @@ const FIXTURES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../fixtures");
 async fn generate_mpd_emits_complete_vod_manifest() {
     let (op, asset) = asset().await;
 
-    let mpd = dyndo_dash::builder::generate_mpd(&op, &asset)
-        .await
-        .unwrap();
+    let mpd = dyndo_dash::builder::generate_mpd(
+        &op,
+        &asset,
+        &SegmentOptions::default(),
+        &DashOptions::default(),
+    )
+    .await
+    .unwrap();
     let mut xml = String::new();
     let mut serializer = quick_xml::se::Serializer::new(&mut xml);
     serializer.indent(' ', 2);
@@ -42,6 +49,24 @@ async fn generate_mpd_emits_complete_vod_manifest() {
     ] {
         assert!(xml.contains(expected), "missing {expected:?} in {xml}");
     }
+}
+
+#[tokio::test]
+async fn generate_mpd_applies_requested_minimum_segment_length() {
+    let (op, asset) = asset().await;
+
+    let segment_options = SegmentOptions {
+        min_segment_length_ms: 10_000,
+    };
+    let mpd =
+        dyndo_dash::builder::generate_mpd(&op, &asset, &segment_options, &DashOptions::default())
+            .await
+            .unwrap();
+    let mut xml = String::new();
+    mpd.serialize(quick_xml::se::Serializer::new(&mut xml))
+        .unwrap();
+
+    assert!(xml.contains("d=\"1036800\""));
 }
 
 async fn asset() -> (Operator, AssetDescriptor) {

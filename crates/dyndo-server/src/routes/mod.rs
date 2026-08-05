@@ -9,34 +9,49 @@ use axum::{
     routing::get,
 };
 use dyndo_core::asset_descriptor::AssetDescriptor;
+use dyndo_core::segment::SegmentOptions;
+use dyndo_dash::options::DashOptions;
+use dyndo_hls::options::HlsOptions;
 use opendal::Operator;
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, de::DeserializeOwned, de::IgnoredAny};
 use tower_http::cors::{Any, CorsLayer};
 
 use crate::error::ServerError;
 
 #[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct OutputParameters {
+struct RequestOptions<T> {
+    #[serde(alias = "a")]
     asset: String,
-    min_segment_length: Option<i32>,
-    #[serde(default, deserialize_with = "deserialize_segment_boundaries")]
-    segment_boundaries: Option<Vec<i32>>,
-}
-
-fn deserialize_segment_boundaries<'de, D>(deserializer: D) -> Result<Option<Vec<i32>>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    Vec::deserialize(deserializer).map(Some)
+    #[serde(flatten)]
+    segment_options: SegmentOptions,
+    #[serde(flatten)]
+    output_options: T,
 }
 
 struct OutputRoute<'a> {
-    parameters: OutputParameters,
+    options: &'a str,
     resource: &'a str,
 }
 
-impl OutputParameters {
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SegmentRouteOptions {}
+
+#[derive(Deserialize)]
+struct DisallowedRequestOptions {
+    #[serde(default, deserialize_with = "field_is_present")]
+    segment_boundaries: bool,
+}
+
+fn field_is_present<'de, D>(deserializer: D) -> Result<bool, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    IgnoredAny::deserialize(deserializer)?;
+    Ok(true)
+}
+
+impl<T> RequestOptions<T> {
     fn asset_path(&self) -> Result<String, ServerError> {
         let valid = !self.asset.is_empty()
             && !self.asset.starts_with('/')
@@ -54,25 +69,7 @@ impl OutputParameters {
     }
 
     async fn read_asset(&self, op: &Operator) -> Result<AssetDescriptor, ServerError> {
-        let mut asset = AssetDescriptor::read(op, &self.asset_path()?).await?;
-        if let Some(min_segment_length) = self.min_segment_length {
-            asset.min_segment_length = u64::try_from(min_segment_length).map_err(|_| {
-                ServerError::InvalidOptions("min_segment_length cannot be negative".into())
-            })?;
-        }
-        if let Some(segment_boundaries) = &self.segment_boundaries {
-            asset.segment_boundaries = segment_boundaries
-                .iter()
-                .map(|&boundary| {
-                    u64::try_from(boundary).map_err(|_| {
-                        ServerError::InvalidOptions(
-                            "segment_boundaries cannot contain negative values".into(),
-                        )
-                    })
-                })
-                .collect::<Result<Vec<_>, _>>()?;
-        }
-        Ok(asset)
+        Ok(AssetDescriptor::read(op, &self.asset_path()?).await?)
     }
 }
 
@@ -96,22 +93,34 @@ async fn dispatch(
     let route = parse_route(path.strip_prefix('/').unwrap_or(&path))?;
 
     match route.resource {
-        "index.mpd" => transport::dash_manifest(&op, &route.parameters).await,
-        "master.m3u8" => transport::hls_master(&op, &route.parameters).await,
+        // Generate the asset's DASH manifest.
+        "index.mpd" => {
+            let request_options = route.request_options::<DashOptions>()?;
+            transport::dash_manifest(&op, &request_options).await
+        }
+        // Generate the HLS multivariant playlist.
+        "master.m3u8" => {
+            let request_options = route.request_options::<HlsOptions>()?;
+            transport::hls_master(&op, &request_options).await
+        }
+        // Generate the media playlist for the track named by the filename.
         resource if !resource.contains('/') && resource.ends_with(".m3u8") => {
             let track_id = resource
                 .strip_suffix(".m3u8")
                 .ok_or_else(|| ServerError::NotFound(resource.to_string()))?;
-            transport::hls_media(&op, &route.parameters, track_id).await
+            let request_options = route.request_options::<HlsOptions>()?;
+            transport::hls_media(&op, &request_options, track_id).await
         }
+        // Serve initialization or media bytes for the track named by the path.
         resource => {
+            let request_options = route.request_options::<SegmentRouteOptions>()?;
             let (track_id, file) = resource
                 .split_once('/')
                 .ok_or_else(|| ServerError::NotFound(resource.to_string()))?;
             if file == "init.mp4" {
-                segment::initialization(&op, &route.parameters, track_id).await
+                segment::initialization(&op, &request_options, track_id).await
             } else {
-                segment::media(&op, &route.parameters, track_id, file).await
+                segment::media(&op, &request_options, track_id, file).await
             }
         }
     }
@@ -132,13 +141,22 @@ fn parse_route(path: &str) -> Result<OutputRoute<'_>, ServerError> {
         .and_then(|suffix| suffix.strip_prefix('/'))
         .filter(|resource| !resource.is_empty())
         .ok_or_else(|| ServerError::NotFound("missing output resource".into()))?;
-    let parameters =
-        rison::from_str(options).map_err(|error| ServerError::InvalidOptions(error.to_string()))?;
+    Ok(OutputRoute { options, resource })
+}
 
-    Ok(OutputRoute {
-        parameters,
-        resource,
-    })
+impl OutputRoute<'_> {
+    fn request_options<T: DeserializeOwned>(&self) -> Result<RequestOptions<T>, ServerError> {
+        let disallowed: DisallowedRequestOptions = rison::from_str(self.options)
+            .map_err(|error| ServerError::InvalidOptions(error.to_string()))?;
+        if disallowed.segment_boundaries {
+            return Err(ServerError::InvalidOptions(
+                "`segment_boundaries` belongs in the asset descriptor".into(),
+            ));
+        }
+
+        rison::from_str(self.options)
+            .map_err(|error| ServerError::InvalidOptions(error.to_string()))
+    }
 }
 
 fn closing_parenthesis(value: &str) -> Option<usize> {
@@ -189,30 +207,57 @@ mod tests {
     #[test]
     fn parse_route_accepts_a_nested_asset_path() {
         let route = parse_route("(asset:foo/asset)/index.mpd").unwrap();
+        let request_options = route.request_options::<DashOptions>().unwrap();
 
-        assert_eq!(route.parameters.asset, "foo/asset");
+        assert_eq!(request_options.asset, "foo/asset");
     }
 
     #[test]
-    fn parse_route_accepts_segment_options() {
-        let route = parse_route(
-            "(asset:asset,min_segment_length:3000,segment_boundaries:!(1000,2000))/master.m3u8",
-        )
-        .unwrap();
+    fn parse_route_accepts_asset_alias() {
+        let route = parse_route("(a:foo/asset)/index.mpd").unwrap();
+        let request_options = route.request_options::<DashOptions>().unwrap();
 
-        assert_eq!(route.parameters.segment_boundaries, Some(vec![1000, 2000]));
+        assert_eq!(request_options.asset, "foo/asset");
+    }
+
+    #[test]
+    fn parse_route_accepts_min_segment_length() {
+        let route = parse_route("(asset:asset,min_segment_length:3000)/master.m3u8").unwrap();
+        let request_options = route.request_options::<HlsOptions>().unwrap();
+
+        assert_eq!(request_options.segment_options.min_segment_length_ms, 3000);
+    }
+
+    #[test]
+    fn parse_route_accepts_msl_alias() {
+        let route = parse_route("(asset:asset,msl:3000)/master.m3u8").unwrap();
+        let request_options = route.request_options::<HlsOptions>().unwrap();
+
+        assert_eq!(request_options.segment_options.min_segment_length_ms, 3000);
+    }
+
+    #[test]
+    fn parse_route_rejects_segment_boundaries() {
+        let route =
+            parse_route("(asset:asset,segment_boundaries:!(1000,2000))/master.m3u8").unwrap();
+        let request_options = route.request_options::<HlsOptions>();
+
+        assert!(matches!(
+            request_options,
+            Err(ServerError::InvalidOptions(_))
+        ));
     }
 
     #[test]
     fn asset_path_rejects_parent_traversal() {
-        let parameters = OutputParameters {
+        let request_options = RequestOptions {
             asset: "foo/../asset".into(),
-            min_segment_length: None,
-            segment_boundaries: None,
+            segment_options: SegmentOptions::default(),
+            output_options: SegmentRouteOptions::default(),
         };
 
         assert!(matches!(
-            parameters.asset_path(),
+            request_options.asset_path(),
             Err(ServerError::InvalidAssetPath(_))
         ));
     }
@@ -258,6 +303,20 @@ mod tests {
 
         assert!(
             status == StatusCode::OK && String::from_utf8_lossy(&body).contains("#EXT-X-ENDLIST")
+        );
+    }
+
+    #[tokio::test]
+    async fn hls_media_route_applies_msl_alias() {
+        let (_dir, app) = app("asset");
+
+        let response = request(app, "/out/(asset:asset,msl:10000)/video-main.m3u8").await;
+        let status = response.status();
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+
+        assert!(
+            status == StatusCode::OK
+                && String::from_utf8_lossy(&body).contains("#EXT-X-TARGETDURATION:12")
         );
     }
 

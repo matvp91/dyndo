@@ -1,6 +1,23 @@
 use std::ops::Range;
+use std::str::FromStr;
+
+use serde::{Deserialize, Serialize};
 
 use crate::track::{Fragment, Track};
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SegmentOptions {
+    #[serde(default, rename = "min_segment_length", alias = "msl")]
+    pub min_segment_length_ms: u64,
+}
+
+impl FromStr for SegmentOptions {
+    type Err = rison::Error;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        rison::from_str(value)
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Segment {
@@ -111,6 +128,30 @@ fn snap_cuts(cumulative: &[u64], timescale: u32, boundaries_ms: &[u64]) -> Vec<u
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn default_options_use_zero_minimum_segment_length() {
+        assert_eq!(SegmentOptions::default().min_segment_length_ms, 0);
+    }
+
+    #[test]
+    fn options_accept_min_segment_length_in_rison() {
+        let options: SegmentOptions = "(min_segment_length:10000)".parse().unwrap();
+
+        assert_eq!(options.min_segment_length_ms, 10_000);
+    }
+
+    #[test]
+    fn options_accept_msl_alias_in_rison() {
+        let options: SegmentOptions = "(msl:10000)".parse().unwrap();
+
+        assert_eq!(options.min_segment_length_ms, 10_000);
+    }
+
+    #[test]
+    fn options_reject_negative_minimum_segment_length() {
+        assert!("(msl:-1)".parse::<SegmentOptions>().is_err());
+    }
 
     fn fragments(durations: &[u64]) -> Vec<Fragment> {
         let mut byte_offset = 100;

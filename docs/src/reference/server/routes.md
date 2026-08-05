@@ -9,8 +9,8 @@ GET /out/<options>/<resource>
 ```
 
 `<options>` is a **Rison** object — a compact, URL-friendly object notation, so
-`(asset:demo,min_segment_length:6000)` is the equivalent of the JSON
-`{"asset":"demo","min_segment_length":6000}` — carrying the asset to serve and
+`(asset:demo,msl:6000)` is the equivalent of the JSON
+`{"asset":"demo","msl":6000}` — carrying the asset to serve and
 how to segment it. `<resource>` names what to return from it.
 Because the options travel in the path rather than a query string, a manifest
 and every segment it references share one prefix, and the relative URLs inside a
@@ -33,18 +33,18 @@ and ending at its matching `)`:
 
 ```text
 /out/(asset:movies/big-buck-bunny)/index.mpd
-/out/(asset:demo,min_segment_length:6000)/master.m3u8
-/out/(asset:demo,min_segment_length:6000,segment_boundaries:!(30000,60000))/index.mpd
+/out/(asset:demo,msl:6000)/master.m3u8
 ```
 
 | Key | Type | Description |
 |---|---|---|
 | `asset` | string | **Required.** Path to the descriptor, relative to the storage root, **without** the `.json` extension. |
-| `min_segment_length` | integer | Overrides the descriptor's [`min_segment_length`](../asset-json.md#segmentation), in milliseconds. |
-| `segment_boundaries` | array of integers | Overrides the descriptor's [`segment_boundaries`](../asset-json.md#segmentation), in milliseconds. Written as a Rison array: `!(1000,2000)`. |
+| `a` | string | Alias for `asset`. |
+| `min_segment_length` | integer | Minimum served segment length in milliseconds. Whole fragments are grouped until this length is reached. Defaults to `0`. |
+| `msl` | integer | Alias for `min_segment_length`. |
 
-Unknown keys are rejected. Both segmentation keys override the descriptor's own
-values for that request only; nothing is written back.
+Unknown keys are rejected. Segment boundaries are asset-specific and can only
+be supplied by the descriptor.
 
 ### The `asset` key
 
@@ -111,7 +111,7 @@ DASH `SegmentTimeline` and the URIs in the HLS media playlists.
 
 Because segmentation options change where segment edges fall, a `<time>` is only
 valid for the same options that produced it. Requesting a segment under
-different `min_segment_length` or `segment_boundaries` values than the manifest
+different `min_segment_length` values than the manifest
 was generated with will usually `404` — which is why the options live in the
 shared path prefix.
 
@@ -120,7 +120,7 @@ shared path prefix.
 | Code | When |
 |---|---|
 | `200 OK` | The manifest or segment was generated and returned; also the `/health` probe. |
-| `400 Bad Request` | The path does not begin with a Rison object, the object is malformed or has an unmatched `)`, it carries an unknown key, `asset` is invalid, or a segmentation value is negative. |
+| `400 Bad Request` | The path does not begin with a Rison object, the object is malformed or has an unmatched `)`, it carries an unknown key, `asset` is invalid, or `min_segment_length` is negative. |
 | `404 Not Found` | No resource followed the options object; `<track-id>` matches no track; a segment filename is not `<integer>.m4s`; `<time>` is not a segment boundary; or the descriptor does not exist. |
 | `500 Internal Server Error` | The descriptor JSON is malformed; a source file is unreadable or is not valid, supported CMAF; or manifest serialization failed. |
 

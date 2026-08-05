@@ -5,22 +5,22 @@ use axum::{
 use dyndo_core::track::Track;
 use opendal::Operator;
 
-use super::OutputParameters;
+use super::{RequestOptions, SegmentRouteOptions};
 use crate::error::ServerError;
 
 pub(super) async fn initialization(
     op: &Operator,
-    parameters: &OutputParameters,
+    request_options: &RequestOptions<SegmentRouteOptions>,
     track_id: &str,
 ) -> Result<Response, ServerError> {
-    let (track, content_type) = read_track(op, parameters, track_id).await?;
+    let (track, content_type) = read_track(op, request_options, track_id).await?;
     let bytes = track.read_initialization(op).await?;
     Ok(([(CONTENT_TYPE, content_type)], bytes).into_response())
 }
 
 pub(super) async fn media(
     op: &Operator,
-    parameters: &OutputParameters,
+    request_options: &RequestOptions<SegmentRouteOptions>,
     track_id: &str,
     file: &str,
 ) -> Result<Response, ServerError> {
@@ -29,7 +29,7 @@ pub(super) async fn media(
         .ok_or_else(|| ServerError::NotFound(file.to_string()))?
         .parse::<u64>()
         .map_err(|_| ServerError::NotFound(file.to_string()))?;
-    let asset = parameters.read_asset(op).await?;
+    let asset = request_options.read_asset(op).await?;
     let descriptor = asset
         .track(track_id)
         .ok_or_else(|| ServerError::NotFound(format!("track {track_id}")))?;
@@ -37,7 +37,10 @@ pub(super) async fn media(
     let track = Track::probe(op, &path, Some(descriptor.kind.clone())).await?;
     let mut start_time = track.earliest_presentation_time();
 
-    for segment in track.segments(&asset.segment_boundaries, asset.min_segment_length) {
+    for segment in track.segments(
+        &asset.segment_boundaries,
+        request_options.segment_options.min_segment_length_ms,
+    ) {
         if start_time == time {
             let bytes = track.read_range(op, segment.byte_range()).await?;
             return Ok(([(CONTENT_TYPE, track.mime_type())], bytes).into_response());
@@ -54,10 +57,10 @@ pub(super) async fn media(
 
 async fn read_track(
     op: &Operator,
-    parameters: &OutputParameters,
+    request_options: &RequestOptions<SegmentRouteOptions>,
     track_id: &str,
 ) -> Result<(Track, &'static str), ServerError> {
-    let asset = parameters.read_asset(op).await?;
+    let asset = request_options.read_asset(op).await?;
     let descriptor = asset
         .track(track_id)
         .ok_or_else(|| ServerError::NotFound(format!("track {track_id}")))?;

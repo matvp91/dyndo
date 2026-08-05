@@ -5,6 +5,7 @@ use std::collections::HashSet;
 use std::time::Duration;
 
 use dyndo_core::asset_descriptor::{AssetDescriptor, TrackDescriptor, TrackKind};
+use dyndo_core::segment::SegmentOptions;
 use dyndo_core::track::{Track, TrackError};
 use dyndo_core::track_helpers::{average_bitrate, max_bitrate, read_all_tracks};
 use hls_m3u8::tags::{ExtXMap, ExtXMedia, VariantStream};
@@ -12,6 +13,7 @@ use hls_m3u8::types::{Channels, ClosedCaptions, MediaType, PlaylistType, StreamD
 use hls_m3u8::{MasterPlaylist, MediaPlaylist, MediaSegment};
 use opendal::Operator;
 
+use crate::options::HlsOptions;
 use crate::roles;
 
 const AUDIO_GROUP_ID: &str = "audio";
@@ -40,10 +42,12 @@ pub enum HlsError {
 pub async fn generate_master_playlist(
     op: &Operator,
     asset: &AssetDescriptor,
+    segment_options: &SegmentOptions,
+    _hls_options: &HlsOptions,
 ) -> Result<MasterPlaylist<'static>, HlsError> {
     ensure_unique_rendition_names(asset)?;
     let tracks = read_all_tracks(op, asset).await?;
-    build_master_playlist(asset, &tracks)
+    build_master_playlist(asset, &tracks, segment_options)
 }
 
 /// Generates the static HLS media playlist for one asset track.
@@ -56,10 +60,12 @@ pub async fn generate_media_playlist(
     op: &Operator,
     asset: &AssetDescriptor,
     descriptor: &TrackDescriptor,
+    segment_options: &SegmentOptions,
+    _hls_options: &HlsOptions,
 ) -> Result<MediaPlaylist<'static>, HlsError> {
     let path = asset.track_path(descriptor);
     let track = Track::probe(op, &path, Some(descriptor.kind.clone())).await?;
-    build_media_playlist(asset, descriptor, &track)
+    build_media_playlist(asset, descriptor, &track, segment_options)
 }
 
 /// Serializes a media playlist with `EXTINF` durations rounded to three decimals.
@@ -88,9 +94,13 @@ fn build_media_playlist(
     asset: &AssetDescriptor,
     descriptor: &TrackDescriptor,
     track: &Track,
+    segment_options: &SegmentOptions,
 ) -> Result<MediaPlaylist<'static>, HlsError> {
     let mut start_time = track.earliest_presentation_time();
-    let segments = track.segments(&asset.segment_boundaries, asset.min_segment_length);
+    let segments = track.segments(
+        &asset.segment_boundaries,
+        segment_options.min_segment_length_ms,
+    );
     let target_duration = segments
         .iter()
         .map(|segment| rounded_duration_seconds(segment.duration(), track.timescale()))
@@ -156,6 +166,7 @@ fn ensure_unique_rendition_names(asset: &AssetDescriptor) -> Result<(), HlsError
 fn build_master_playlist(
     asset: &AssetDescriptor,
     tracks: &[Track],
+    segment_options: &SegmentOptions,
 ) -> Result<MasterPlaylist<'static>, HlsError> {
     let has_audio = tracks
         .iter()
@@ -168,16 +179,25 @@ fn build_master_playlist(
         .filter(|track| !matches!(track.kind(), TrackKind::Video(_)))
         .map(Track::codec)
         .collect::<Vec<_>>();
-    let rendition_bandwidth =
-        max_rendition_bandwidth(asset, tracks, |kind| matches!(kind, TrackKind::Audio(_)))
-            .saturating_add(max_rendition_bandwidth(asset, tracks, |kind| {
-                matches!(kind, TrackKind::Text(_))
-            }));
+    let rendition_bandwidth = max_rendition_bandwidth(asset, tracks, segment_options, |kind| {
+        matches!(kind, TrackKind::Audio(_))
+    })
+    .saturating_add(max_rendition_bandwidth(
+        asset,
+        tracks,
+        segment_options,
+        |kind| matches!(kind, TrackKind::Text(_)),
+    ));
     let rendition_average_bandwidth =
-        max_rendition_average_bandwidth(asset, tracks, |kind| matches!(kind, TrackKind::Audio(_)))
-            .saturating_add(max_rendition_average_bandwidth(asset, tracks, |kind| {
-                matches!(kind, TrackKind::Text(_))
-            }));
+        max_rendition_average_bandwidth(asset, tracks, segment_options, |kind| {
+            matches!(kind, TrackKind::Audio(_))
+        })
+        .saturating_add(max_rendition_average_bandwidth(
+            asset,
+            tracks,
+            segment_options,
+            |kind| matches!(kind, TrackKind::Text(_)),
+        ));
 
     let variants = asset
         .tracks
@@ -195,11 +215,18 @@ fn build_master_playlist(
             let codecs = unique_codecs(
                 std::iter::once(track.codec()).chain(rendition_codecs.iter().copied()),
             );
-            let bandwidth = max_bitrate(track, &asset.segment_boundaries, asset.min_segment_length)
-                .saturating_add(rendition_bandwidth);
-            let average_bandwidth =
-                average_bitrate(track, &asset.segment_boundaries, asset.min_segment_length)
-                    .saturating_add(rendition_average_bandwidth);
+            let bandwidth = max_bitrate(
+                track,
+                &asset.segment_boundaries,
+                segment_options.min_segment_length_ms,
+            )
+            .saturating_add(rendition_bandwidth);
+            let average_bandwidth = average_bitrate(
+                track,
+                &asset.segment_boundaries,
+                segment_options.min_segment_length_ms,
+            )
+            .saturating_add(rendition_average_bandwidth);
             let mut stream_data = StreamData::builder();
             stream_data
                 .bandwidth(bandwidth)
@@ -359,12 +386,19 @@ fn selection_tuple(
 fn max_rendition_bandwidth(
     asset: &AssetDescriptor,
     tracks: &[Track],
+    segment_options: &SegmentOptions,
     include: impl Fn(&TrackKind) -> bool,
 ) -> u64 {
     tracks
         .iter()
         .filter(|track| include(track.kind()))
-        .map(|track| max_bitrate(track, &asset.segment_boundaries, asset.min_segment_length))
+        .map(|track| {
+            max_bitrate(
+                track,
+                &asset.segment_boundaries,
+                segment_options.min_segment_length_ms,
+            )
+        })
         .max()
         .unwrap_or(0)
 }
@@ -372,12 +406,19 @@ fn max_rendition_bandwidth(
 fn max_rendition_average_bandwidth(
     asset: &AssetDescriptor,
     tracks: &[Track],
+    segment_options: &SegmentOptions,
     include: impl Fn(&TrackKind) -> bool,
 ) -> u64 {
     tracks
         .iter()
         .filter(|track| include(track.kind()))
-        .map(|track| average_bitrate(track, &asset.segment_boundaries, asset.min_segment_length))
+        .map(|track| {
+            average_bitrate(
+                track,
+                &asset.segment_boundaries,
+                segment_options.min_segment_length_ms,
+            )
+        })
         .max()
         .unwrap_or(0)
 }

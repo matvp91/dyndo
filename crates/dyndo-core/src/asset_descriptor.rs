@@ -17,8 +17,6 @@ pub enum AssetDescriptorError {
 pub struct AssetDescriptor {
     #[serde(skip)]
     path: RelativePathBuf,
-    #[serde(default, skip_serializing_if = "is_zero")]
-    pub min_segment_length: u64,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub segment_boundaries: Vec<u64>,
     pub tracks: Vec<TrackDescriptor>,
@@ -134,10 +132,6 @@ pub struct TextKind {
     pub role: Option<Role>,
 }
 
-fn is_zero(value: &u64) -> bool {
-    *value == 0
-}
-
 #[cfg(test)]
 mod tests {
     use opendal::services::Memory;
@@ -201,13 +195,11 @@ mod tests {
     }
 
     #[test]
-    fn serialization_omits_default_segmentation_options() {
+    fn serialization_omits_default_segment_boundaries() {
         let asset = asset("asset.json", "video");
         let json = serde_json::to_value(asset).unwrap();
 
-        assert!(
-            json.get("min_segment_length").is_none() && json.get("segment_boundaries").is_none()
-        );
+        assert!(json.get("segment_boundaries").is_none());
     }
 
     #[test]

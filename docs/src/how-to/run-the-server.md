@@ -49,7 +49,7 @@ Nested descriptors work the same way: `assets/movies/big.json` is addressed as
 The same object can override how the asset is segmented for that request:
 
 ```text
-http://localhost:8080/out/(asset:asset,min_segment_length:6000)/index.mpd
+http://localhost:8080/out/(asset:asset,msl:6000)/index.mpd
 ```
 
 Parentheses are shell metacharacters, so quote these URLs when passing them to

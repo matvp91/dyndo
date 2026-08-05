@@ -7,6 +7,7 @@ use dash_mpd::{
     SegmentTimeline,
 };
 use dyndo_core::asset_descriptor::{AssetDescriptor, TrackDescriptor, TrackKind};
+use dyndo_core::segment::SegmentOptions;
 use dyndo_core::track::{Track, TrackError};
 use dyndo_core::track_helpers::{
     max_bitrate, max_duration_ms, max_segment_duration_ms, read_all_tracks,
@@ -14,6 +15,7 @@ use dyndo_core::track_helpers::{
 use opendal::Operator;
 
 use crate::adaptation_set_group::{self, AdaptationSetGroup};
+use crate::options::DashOptions;
 use crate::roles;
 
 const DASH_PROFILE: &str = "urn:mpeg:dash:profile:isoff-live:2011";
@@ -37,24 +39,35 @@ pub enum DashError {
 ///
 /// Returns a [`DashError`] when a track cannot be probed or tracks grouped into
 /// an AdaptationSet are not segment-aligned.
-pub async fn generate_mpd(op: &Operator, asset: &AssetDescriptor) -> Result<MPD, DashError> {
+pub async fn generate_mpd(
+    op: &Operator,
+    asset: &AssetDescriptor,
+    segment_options: &SegmentOptions,
+    _dash_options: &DashOptions,
+) -> Result<MPD, DashError> {
     let tracks = read_all_tracks(op, asset).await?;
-    build_mpd(asset, &tracks)
+    build_mpd(asset, &tracks, segment_options)
 }
 
-fn build_mpd(asset: &AssetDescriptor, tracks: &[Track]) -> Result<MPD, DashError> {
+fn build_mpd(
+    asset: &AssetDescriptor,
+    tracks: &[Track],
+    segment_options: &SegmentOptions,
+) -> Result<MPD, DashError> {
     let duration = Duration::from_millis(max_duration_ms(tracks));
     let groups = adaptation_set_group::group(asset, tracks);
-    if groups
-        .iter()
-        .any(|group| !group.is_segment_aligned(&asset.segment_boundaries, asset.min_segment_length))
-    {
+    if groups.iter().any(|group| {
+        !group.is_segment_aligned(
+            &asset.segment_boundaries,
+            segment_options.min_segment_length_ms,
+        )
+    }) {
         return Err(DashError::SegmentAlignment);
     }
     let adaptations = groups
         .iter()
         .enumerate()
-        .map(|(index, group)| adaptation_set(index, group, asset))
+        .map(|(index, group)| adaptation_set(index, group, asset, segment_options))
         .collect();
 
     Ok(MPD {
@@ -64,7 +77,7 @@ fn build_mpd(asset: &AssetDescriptor, tracks: &[Track]) -> Result<MPD, DashError
         minBufferTime: Some(Duration::from_millis(max_segment_duration_ms(
             tracks,
             &asset.segment_boundaries,
-            asset.min_segment_length,
+            segment_options.min_segment_length_ms,
         ))),
         mediaPresentationDuration: Some(duration),
         periods: vec![Period {
@@ -82,6 +95,7 @@ fn adaptation_set(
     index: usize,
     group: &AdaptationSetGroup<'_>,
     asset: &AssetDescriptor,
+    segment_options: &SegmentOptions,
 ) -> AdaptationSet {
     AdaptationSet {
         id: Some(index.to_string()),
@@ -92,11 +106,11 @@ fn adaptation_set(
         startWithSAP: Some(1),
         Role: roles::roles(group.content_type(), group.role()),
         Accessibility: roles::accessibility(group.content_type(), group.role()),
-        SegmentTemplate: Some(segment_template(group, asset)),
+        SegmentTemplate: Some(segment_template(group, asset, segment_options)),
         representations: group
             .members()
             .iter()
-            .map(|(descriptor, track)| representation(descriptor, track, asset))
+            .map(|(descriptor, track)| representation(descriptor, track, asset, segment_options))
             .collect(),
         ..Default::default()
     }
@@ -106,13 +120,14 @@ fn representation(
     descriptor: &TrackDescriptor,
     track: &Track,
     asset: &AssetDescriptor,
+    segment_options: &SegmentOptions,
 ) -> Representation {
     let mut representation = Representation {
         id: Some(descriptor.id.clone()),
         bandwidth: Some(max_bitrate(
             track,
             &asset.segment_boundaries,
-            asset.min_segment_length,
+            segment_options.min_segment_length_ms,
         )),
         codecs: Some(descriptor.codec.clone()),
         ..Default::default()
@@ -143,7 +158,11 @@ fn audio_channel_configuration(channels: u16) -> AudioChannelConfiguration {
     }
 }
 
-fn segment_template(group: &AdaptationSetGroup<'_>, asset: &AssetDescriptor) -> SegmentTemplate {
+fn segment_template(
+    group: &AdaptationSetGroup<'_>,
+    asset: &AssetDescriptor,
+    segment_options: &SegmentOptions,
+) -> SegmentTemplate {
     let track = group.members()[0].1;
 
     SegmentTemplate {
@@ -151,15 +170,22 @@ fn segment_template(group: &AdaptationSetGroup<'_>, asset: &AssetDescriptor) -> 
         presentationTimeOffset: Some(track.earliest_presentation_time()),
         initialization: Some(INITIALIZATION_TEMPLATE.to_string()),
         media: Some(MEDIA_TEMPLATE.to_string()),
-        SegmentTimeline: Some(segment_timeline(track, asset)),
+        SegmentTimeline: Some(segment_timeline(track, asset, segment_options)),
         ..Default::default()
     }
 }
 
-fn segment_timeline(track: &Track, asset: &AssetDescriptor) -> SegmentTimeline {
+fn segment_timeline(
+    track: &Track,
+    asset: &AssetDescriptor,
+    segment_options: &SegmentOptions,
+) -> SegmentTimeline {
     let mut segments: Vec<S> = Vec::new();
 
-    for segment in track.segments(&asset.segment_boundaries, asset.min_segment_length) {
+    for segment in track.segments(
+        &asset.segment_boundaries,
+        segment_options.min_segment_length_ms,
+    ) {
         match segments.last_mut() {
             Some(previous) if previous.d == segment.duration() => {
                 *previous.r.get_or_insert(0) += 1;
@@ -188,21 +214,21 @@ mod tests {
 
     #[test]
     fn generate_mpd_creates_a_static_manifest() {
-        let mpd = build_mpd(&asset(), &[]).unwrap();
+        let mpd = build_mpd(&asset(), &[], &SegmentOptions::default()).unwrap();
 
         assert_eq!(mpd.mpdtype.as_deref(), Some("static"));
     }
 
     #[test]
     fn generate_mpd_uses_the_segment_based_profile() {
-        let mpd = build_mpd(&asset(), &[]).unwrap();
+        let mpd = build_mpd(&asset(), &[], &SegmentOptions::default()).unwrap();
 
         assert_eq!(mpd.profiles.as_deref(), Some(DASH_PROFILE));
     }
 
     #[test]
     fn generate_mpd_creates_one_period() {
-        let mpd = build_mpd(&asset(), &[]).unwrap();
+        let mpd = build_mpd(&asset(), &[], &SegmentOptions::default()).unwrap();
 
         assert_eq!(mpd.periods.len(), 1);
     }
