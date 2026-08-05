@@ -136,7 +136,7 @@ mod tests {
         ];
 
         assert_eq!(
-            max_segment_duration_ms(&tracks, &SegmentOptions::new(None)),
+            max_segment_duration_ms(&tracks, &SegmentOptions::default()),
             334
         );
     }
@@ -152,7 +152,7 @@ mod tests {
             ],
         );
 
-        assert_eq!(max_bitrate(&track, &SegmentOptions::new(None)), 16_000);
+        assert_eq!(max_bitrate(&track, &SegmentOptions::default()), 16_000);
     }
 
     #[test]
@@ -166,7 +166,7 @@ mod tests {
             ],
         );
 
-        assert_eq!(average_bitrate(&track, &SegmentOptions::new(None)), 12_000);
+        assert_eq!(average_bitrate(&track, &SegmentOptions::default()), 12_000);
     }
 
     #[test]
@@ -175,8 +175,8 @@ mod tests {
 
         assert_eq!(
             (
-                max_bitrate(&track, &SegmentOptions::new(None)),
-                average_bitrate(&track, &SegmentOptions::new(None))
+                max_bitrate(&track, &SegmentOptions::default()),
+                average_bitrate(&track, &SegmentOptions::default())
             ),
             (0, 0)
         );

@@ -56,7 +56,6 @@ impl From<SegmentArgs> for SegmentOptions {
         Self {
             min_segment_length_ms: args.min_segment_length,
             text_segment_length_ms: args.text_segment_length,
-            // Empty defers to the asset's own splice points.
             segment_boundaries: Vec::new(),
         }
     }
@@ -114,7 +113,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 // Indexing records a track's codec and kind, neither of which
                 // depends on how it is fragmented, so the defaults will do.
-                let options = SegmentOptions::new(Some(&descriptor));
+                let options = SegmentOptions::default();
                 let track = Track::probe(&op, &path, None, &options).await?;
                 input.apply(&mut descriptor.add_track(&track).kind);
             }

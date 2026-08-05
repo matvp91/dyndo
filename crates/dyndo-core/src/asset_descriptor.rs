@@ -18,8 +18,6 @@ pub enum AssetDescriptorError {
 pub struct AssetDescriptor {
     #[serde(skip)]
     path: RelativePathBuf,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub segment_boundaries: Vec<u64>,
     pub tracks: Vec<TrackDescriptor>,
 }
 
@@ -202,14 +200,6 @@ mod tests {
     }
 
     #[test]
-    fn serialization_omits_default_segment_boundaries() {
-        let asset = asset("asset.json", "video");
-        let json = serde_json::to_value(asset).unwrap();
-
-        assert!(json.get("segment_boundaries").is_none());
-    }
-
-    #[test]
     fn json_round_trip_preserves_track_metadata() {
         let asset = asset("asset.json", "video");
         let json = serde_json::to_vec(&asset).unwrap();
@@ -279,7 +269,6 @@ mod tests {
                 codec: "avc1.640028".to_string(),
                 kind: video_kind(),
             }],
-            ..AssetDescriptor::default()
         }
     }
 

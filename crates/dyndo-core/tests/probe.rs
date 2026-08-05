@@ -48,7 +48,7 @@ async fn probe_reads_fragmented_wvtt_metadata() {
 #[tokio::test]
 async fn probe_exposes_valid_initialization_and_declared_segment_ranges() {
     let (op, track, source) = probe_fixture("video_avc_1080.mp4").await;
-    let options = SegmentOptions::new(None);
+    let options = SegmentOptions::default();
     let initialization_range = track.initialization_range();
     let segment = track.segments(&options).into_iter().next().unwrap();
 
@@ -139,7 +139,7 @@ async fn probe_fragments_a_subtitle_at_its_splice_points() {
 
     let durations = |track: &Track| {
         track
-            .segments(&SegmentOptions::new(None))
+            .segments(&SegmentOptions::default())
             .iter()
             .map(|segment| segment.duration())
             .collect::<Vec<_>>()
@@ -159,7 +159,7 @@ async fn probe_rejects_a_file_that_is_not_a_cmaf_track() {
         &op,
         RelativePath::new("track.bin"),
         None,
-        &SegmentOptions::new(None),
+        &SegmentOptions::default(),
     )
     .await
     {
@@ -174,7 +174,7 @@ async fn probe_rejects_a_file_that_is_not_a_cmaf_track() {
 }
 
 async fn probe_fixture(name: &str) -> (Operator, Track, Vec<u8>) {
-    probe_fixture_with(name, &SegmentOptions::new(None)).await
+    probe_fixture_with(name, &SegmentOptions::default()).await
 }
 
 async fn probe_fixture_with(name: &str, options: &SegmentOptions) -> (Operator, Track, Vec<u8>) {
@@ -191,7 +191,7 @@ fn options(text_segment_length_ms: u64, boundaries_ms: &[u64]) -> SegmentOptions
     SegmentOptions {
         text_segment_length_ms,
         segment_boundaries: boundaries_ms.to_vec(),
-        ..SegmentOptions::new(None)
+        ..SegmentOptions::default()
     }
 }
 
@@ -203,7 +203,7 @@ async fn probe_fixture_error(name: &str) -> TrackError {
         &op,
         RelativePath::new(name),
         None,
-        &SegmentOptions::new(None),
+        &SegmentOptions::default(),
     )
     .await
     {

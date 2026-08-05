@@ -3,10 +3,9 @@ use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
 
-use crate::asset_descriptor::AssetDescriptor;
 use crate::track::{Fragment, Track};
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SegmentOptions {
     /// The shortest a served segment may be; fragments are grouped until they
     /// reach it.
@@ -18,25 +17,9 @@ pub struct SegmentOptions {
     /// grid, leaving the asset's splice points as the only cuts.
     #[serde(default, rename = "text_segment_length", alias = "tsl")]
     pub text_segment_length_ms: u64,
-    /// Times a segment has to start at, taken from the asset unless a request
-    /// names its own.
+    /// Times a segment has to start at.
     #[serde(default, rename = "segment_boundaries", alias = "sb")]
     pub segment_boundaries: Vec<u64>,
-}
-
-impl SegmentOptions {
-    /// Options with dyndo's defaults — group nothing, cut subtitle tracks only at
-    /// splice points — taking those splice points from `descriptor` when there is
-    /// one to take them from.
-    pub fn new(descriptor: Option<&AssetDescriptor>) -> Self {
-        Self {
-            min_segment_length_ms: 0,
-            text_segment_length_ms: 0,
-            segment_boundaries: descriptor
-                .map(|descriptor| descriptor.segment_boundaries.clone())
-                .unwrap_or_default(),
-        }
-    }
 }
 
 impl FromStr for SegmentOptions {
@@ -152,8 +135,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn options_without_a_descriptor_group_nothing_and_cut_text_only_at_splice_points() {
-        let options = SegmentOptions::new(None);
+    fn default_options_group_nothing_and_cut_text_only_at_splice_points() {
+        let options = SegmentOptions::default();
 
         assert_eq!(
             (
@@ -206,31 +189,11 @@ mod tests {
         assert_eq!(options.segment_boundaries, [1_000, 2_000]);
     }
 
-    #[test]
-    fn options_take_their_boundaries_from_the_descriptor() {
-        let options = SegmentOptions::new(Some(&asset(&[7_400])));
-
-        assert_eq!(options.segment_boundaries, [7_400]);
-    }
-
-    fn asset(boundaries_ms: &[u64]) -> AssetDescriptor {
-        serde_json::from_value(serde_json::json!({
-            "segment_boundaries": boundaries_ms,
-            "tracks": [],
-        }))
-        .unwrap()
-    }
-
-    #[test]
-    fn options_reject_negative_minimum_segment_length() {
-        assert!("(msl:-1)".parse::<SegmentOptions>().is_err());
-    }
-
     fn options(min_segment_length_ms: u64, boundaries_ms: &[u64]) -> SegmentOptions {
         SegmentOptions {
             min_segment_length_ms,
             segment_boundaries: boundaries_ms.to_vec(),
-            ..SegmentOptions::new(None)
+            ..SegmentOptions::default()
         }
     }
 

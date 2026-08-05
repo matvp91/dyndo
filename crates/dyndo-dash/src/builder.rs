@@ -45,10 +45,8 @@ pub async fn generate_mpd(
     segment_options: &SegmentOptions,
     compact: bool,
 ) -> Result<MPD, DashError> {
-    let mut segment_options = segment_options.clone();
-    segment_options.segment_boundaries = asset.segment_boundaries.clone();
-    let tracks = probe_all_tracks(op, asset, &segment_options).await?;
-    build_mpd(asset, &tracks, &segment_options, compact)
+    let tracks = probe_all_tracks(op, asset, segment_options).await?;
+    build_mpd(asset, &tracks, segment_options, compact)
 }
 
 fn build_mpd(
@@ -199,21 +197,21 @@ mod tests {
 
     #[test]
     fn generate_mpd_creates_a_static_manifest() {
-        let mpd = build_mpd(&asset(), &[], &SegmentOptions::new(None), false).unwrap();
+        let mpd = build_mpd(&asset(), &[], &SegmentOptions::default(), false).unwrap();
 
         assert_eq!(mpd.mpdtype.as_deref(), Some("static"));
     }
 
     #[test]
     fn generate_mpd_uses_the_segment_based_profile() {
-        let mpd = build_mpd(&asset(), &[], &SegmentOptions::new(None), false).unwrap();
+        let mpd = build_mpd(&asset(), &[], &SegmentOptions::default(), false).unwrap();
 
         assert_eq!(mpd.profiles.as_deref(), Some(DASH_PROFILE));
     }
 
     #[test]
     fn generate_mpd_creates_one_period() {
-        let mpd = build_mpd(&asset(), &[], &SegmentOptions::new(None), false).unwrap();
+        let mpd = build_mpd(&asset(), &[], &SegmentOptions::default(), false).unwrap();
 
         assert_eq!(mpd.periods.len(), 1);
     }
