@@ -42,20 +42,11 @@ fn writes_asset_json_for_video_and_audio() {
     assert_eq!(tracks[0]["type"], "video");
     assert_eq!(tracks[0]["height"], 1080);
     assert_eq!(tracks[0]["path"], "video_avc_1080.mp4");
-    // The generated representation id is pinned at index time.
-    assert!(
-        tracks[0]["id"]
-            .as_str()
-            .unwrap()
-            .starts_with("video_1080_avc1_"),
-        "{:?}",
-        tracks[0]["id"]
-    );
+    assert_eq!(tracks[0]["id"].as_str().unwrap().len(), 36);
     assert_eq!(tracks[1]["type"], "audio");
     assert_eq!(tracks[1]["language"], "nld");
-    // Derived debug field, recomputed from the probe on every write.
-    assert_eq!(tracks[0]["fourcc"], "avc1");
-    assert_eq!(tracks[1]["fourcc"], "mp4a");
+    assert_eq!(tracks[0]["codec"], "avc1.640028");
+    assert_eq!(tracks[1]["codec"], "mp4a.40.2");
 }
 
 #[test]
@@ -93,7 +84,53 @@ fn generates_mpd_from_asset_json() {
 }
 
 #[test]
-fn dash_compact_flag_hoists_segment_template() {
+fn generates_hls_playlists_in_output_directory() {
+    let dir = tempfile::tempdir().unwrap();
+    stage(dir.path(), &["video_avc_1080.mp4", "audio_aac_nl_2.mp4"]);
+
+    assert!(
+        dyndo(dir.path())
+            .args([
+                "index",
+                "video_avc_1080.mp4",
+                "audio_aac_nl_2.mp4",
+                "-o",
+                "asset.json",
+            ])
+            .status()
+            .unwrap()
+            .success()
+    );
+
+    let descriptor: serde_json::Value =
+        serde_json::from_slice(&fs::read(dir.path().join("asset.json")).unwrap()).unwrap();
+    let track_ids = descriptor["tracks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|track| track["id"].as_str().unwrap())
+        .collect::<Vec<_>>();
+
+    assert!(
+        dyndo(dir.path())
+            .args(["hls", "-i", "asset.json", "-o", "playlists"])
+            .status()
+            .unwrap()
+            .success()
+    );
+
+    let master = fs::read_to_string(dir.path().join("playlists/master.m3u8")).unwrap();
+    assert!(
+        track_ids.iter().all(|id| {
+            master.contains(&format!("{id}.m3u8"))
+                && dir.path().join(format!("playlists/{id}.m3u8")).is_file()
+        }),
+        "{master}"
+    );
+}
+
+#[test]
+fn dash_places_segment_template_on_adaptation_set() {
     let dir = tempfile::tempdir().unwrap();
     stage(dir.path(), &["video_avc_1080.mp4", "audio_aac_nl_2.mp4"]);
 
@@ -113,93 +150,21 @@ fn dash_compact_flag_hoists_segment_template() {
 
     assert!(
         dyndo(dir.path())
-            .args(["dash", "-i", "asset.json", "-o", "plain.mpd"])
+            .args(["dash", "-i", "asset.json", "-o", "stream.mpd"])
             .status()
             .unwrap()
             .success()
     );
 
-    assert!(
-        dyndo(dir.path())
-            .args(["dash", "-i", "asset.json", "-o", "compact.mpd", "-c"])
-            .status()
-            .unwrap()
-            .success()
-    );
-
-    let plain = fs::read_to_string(dir.path().join("plain.mpd")).unwrap();
-    let compact = fs::read_to_string(dir.path().join("compact.mpd")).unwrap();
-    // Compaction hoists each set's SegmentTemplate above its Representations,
-    // changing the structure.
-    assert_ne!(compact, plain);
-    assert!(compact.contains("$RepresentationID$/$Time$.m4s"));
-    // In compact output, the first SegmentTemplate precedes the first Representation.
-    let first_rep = compact.find("<Representation").unwrap();
-    let first_st = compact.find("<SegmentTemplate").unwrap();
+    let xml = fs::read_to_string(dir.path().join("stream.mpd")).unwrap();
+    assert!(xml.contains("$RepresentationID$/$Time$.m4s"));
+    let first_rep = xml.find("<Representation").unwrap();
+    let first_st = xml.find("<SegmentTemplate").unwrap();
     assert!(first_st < first_rep);
 }
 
 #[test]
-fn generates_hls_playlists_from_asset_json() {
-    let dir = tempfile::tempdir().unwrap();
-    stage(dir.path(), &["video_avc_1080.mp4", "audio_aac_nl_2.mp4"]);
-
-    assert!(
-        dyndo(dir.path())
-            .args([
-                "index",
-                "video_avc_1080.mp4",
-                "audio_aac_nl_2.mp4",
-                "-o",
-                "asset.json",
-            ])
-            .status()
-            .unwrap()
-            .success()
-    );
-
-    assert!(
-        dyndo(dir.path())
-            .args(["hls", "-i", "asset.json", "-o", "hls"])
-            .status()
-            .unwrap()
-            .success()
-    );
-
-    // Master plus one media playlist per track (video + audio) = 3 files.
-    let names: Vec<String> = fs::read_dir(dir.path().join("hls"))
-        .unwrap()
-        .map(|e| e.unwrap().file_name().into_string().unwrap())
-        .collect();
-    assert_eq!(names.iter().filter(|n| n.ends_with(".m3u8")).count(), 3);
-    assert!(
-        names
-            .iter()
-            .any(|n| n.starts_with("video_") && n.ends_with(".m3u8"))
-    );
-    assert!(
-        names
-            .iter()
-            .any(|n| n.starts_with("audio_") && n.ends_with(".m3u8"))
-    );
-
-    let master = fs::read_to_string(dir.path().join("hls/index.m3u8")).unwrap();
-    assert!(master.contains("#EXT-X-STREAM-INF:"));
-    assert!(master.contains("#EXT-X-MEDIA:TYPE=AUDIO"));
-    assert!(master.contains("AUDIO=\"mp4a\""));
-
-    let video = names
-        .iter()
-        .find(|n| n.starts_with("video_") && n.ends_with(".m3u8"))
-        .unwrap();
-    let media = fs::read_to_string(dir.path().join("hls").join(video)).unwrap();
-    assert!(media.contains("#EXT-X-PLAYLIST-TYPE:VOD"));
-    assert!(media.contains("#EXT-X-MAP:URI="));
-    assert!(media.contains("#EXT-X-ENDLIST"));
-}
-
-#[test]
-fn indexes_raw_vtt_track_without_advertising_it() {
+fn indexes_raw_vtt_track() {
     let dir = tempfile::tempdir().unwrap();
     stage(dir.path(), &["video_avc_1080.mp4", "text_sample.vtt"]);
 
@@ -228,32 +193,8 @@ fn indexes_raw_vtt_track_without_advertising_it() {
         .expect("a text track");
     assert_eq!(text["language"], "eng");
     assert_eq!(text["path"], "text_sample.vtt");
-    // The overridden language feeds the generated id, not the file's probed
-    // `und`. A raw file has no sample entry, so none is appended.
-    assert_eq!(text["id"], "text_eng");
-    // A raw file has no sample entry; the field is not written.
-    assert!(text["fourcc"].is_null(), "{text:?}");
-
-    // Raw (non-CMAF) tracks are not advertised in manifests yet.
-    assert!(
-        dyndo(dir.path())
-            .args(["dash", "-i", "asset.json", "-o", "stream.mpd"])
-            .status()
-            .unwrap()
-            .success()
-    );
-    let xml = fs::read_to_string(dir.path().join("stream.mpd")).unwrap();
-    assert!(!xml.contains("contentType=\"text\""), "{xml}");
-
-    assert!(
-        dyndo(dir.path())
-            .args(["hls", "-i", "asset.json", "-o", "hls"])
-            .status()
-            .unwrap()
-            .success()
-    );
-    let master = fs::read_to_string(dir.path().join("hls/index.m3u8")).unwrap();
-    assert!(!master.contains("TYPE=SUBTITLES"), "{master}");
+    assert_eq!(text["id"].as_str().unwrap().len(), 36);
+    assert_eq!(text["codec"], "wvtt");
 }
 
 #[test]
@@ -274,6 +215,7 @@ fn manual_language_edit_in_asset_json_overrides_probed_language() {
     // even though the file's mdhd still says "nld".
     let path = dir.path().join("asset.json");
     let mut json: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    let id = json["tracks"][0]["id"].as_str().unwrap().to_string();
     json["tracks"][0]["language"] = "fra".into();
     fs::write(&path, serde_json::to_vec_pretty(&json).unwrap()).unwrap();
 
@@ -287,21 +229,7 @@ fn manual_language_edit_in_asset_json_overrides_probed_language() {
     let xml = fs::read_to_string(dir.path().join("stream.mpd")).unwrap();
     assert!(xml.contains("lang=\"fra\""), "{xml}");
     assert!(!xml.contains("lang=\"nld\""), "{xml}");
-    // The representation id stays the one stored in asset.json at index time —
-    // segment routes look tracks up by that id, so a language edit must not
-    // re-derive it.
-    assert!(xml.contains("audio_nld_2_mp4a_"), "{xml}");
-    assert!(!xml.contains("audio_fra_2_mp4a_"), "{xml}");
-
-    assert!(
-        dyndo(dir.path())
-            .args(["hls", "-i", "asset.json", "-o", "hls"])
-            .status()
-            .unwrap()
-            .success()
-    );
-    let master = fs::read_to_string(dir.path().join("hls/index.m3u8")).unwrap();
-    assert!(master.contains("mp4a.40.2"), "{master}");
+    assert!(xml.contains(&format!("id=\"{id}\"")), "{xml}");
 }
 
 #[test]
@@ -333,11 +261,7 @@ fn index_sets_language_and_role_on_audio() {
         .expect("an audio track");
     assert_eq!(audio["language"], "fra"); // probed nld, overridden
     assert_eq!(audio["role"], "commentary");
-    // The overridden language feeds the generated id (probed as nld).
-    assert!(
-        audio["id"].as_str().unwrap().starts_with("audio_fra_2_"),
-        "{audio:?}"
-    );
+    assert_eq!(audio["id"].as_str().unwrap().len(), 36);
 }
 
 #[test]

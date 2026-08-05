@@ -1,55 +1,52 @@
-//! Manifest/playlist responders for every protocol. Each is a thin handler:
-//! read the asset (every track's header probed) and hand it to the
-//! protocol's generator. Media segments are protocol-agnostic and live in
-//! `super::segment`.
-
 use axum::{
     http::header::CONTENT_TYPE,
     response::{IntoResponse, Response},
 };
-use dyndo_core::asset::Asset;
 use opendal::Operator;
+use serde::Serialize;
 
+use super::OutputParameters;
 use crate::error::ServerError;
 
 const DASH_CONTENT_TYPE: &str = "application/dash+xml";
 const HLS_CONTENT_TYPE: &str = "application/vnd.apple.mpegurl";
 
-/// `dash/index.mpd` — the asset's DASH manifest. It describes every
-/// representation, so the whole asset is read.
 pub(super) async fn dash_manifest(
     op: &Operator,
-    asset_path: &str,
+    parameters: &OutputParameters,
 ) -> Result<Response, ServerError> {
-    let asset = Asset::read_with_headers(op, asset_path).await?;
-    let xml = dyndo_core::dash::generate_mpd(&asset, true);
+    let asset = parameters.read_asset(op).await?;
+    let mpd = dyndo_dash::builder::generate_mpd(op, &asset).await?;
+    let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+    let mut serializer = quick_xml::se::Serializer::new(&mut xml);
+    serializer.indent(' ', 2);
+    mpd.serialize(serializer)
+        .map_err(|error| ServerError::Serialization(error.to_string()))?;
     Ok(([(CONTENT_TYPE, DASH_CONTENT_TYPE)], xml).into_response())
 }
 
-/// `hls/index.m3u8` — the asset's HLS multivariant playlist. Every rendition
-/// is described, so the whole asset is read.
-pub(super) async fn hls_master(op: &Operator, asset_path: &str) -> Result<Response, ServerError> {
-    let asset = Asset::read_with_headers(op, asset_path).await?;
-    let playlist = dyndo_core::hls::generate_master(&asset);
-    Ok(([(CONTENT_TYPE, HLS_CONTENT_TYPE)], playlist).into_response())
+pub(super) async fn hls_master(
+    op: &Operator,
+    parameters: &OutputParameters,
+) -> Result<Response, ServerError> {
+    let asset = parameters.read_asset(op).await?;
+    let playlist = dyndo_hls::builder::generate_master_playlist(op, &asset).await?;
+    Ok(([(CONTENT_TYPE, HLS_CONTENT_TYPE)], playlist.to_string()).into_response())
 }
 
-/// `hls/{repr}.m3u8` — one rendition's HLS media playlist.
 pub(super) async fn hls_media(
     op: &Operator,
-    asset_path: &str,
-    repr: &str,
+    parameters: &OutputParameters,
+    track_id: &str,
 ) -> Result<Response, ServerError> {
-    let mut asset = Asset::read(op, asset_path).await?;
-    let idx = asset
-        .find_track_index(op, repr)
-        .await?
-        .ok_or_else(|| ServerError::NotFound(format!("no representation {repr}")))?;
-    let track = &asset.tracks[idx];
-    let playlist = dyndo_core::hls::generate_media(
-        track,
-        &asset.segment_boundaries_ms,
-        asset.min_segment_length_ms,
-    );
-    Ok(([(CONTENT_TYPE, HLS_CONTENT_TYPE)], playlist).into_response())
+    let asset = parameters.read_asset(op).await?;
+    let descriptor = asset
+        .track(track_id)
+        .ok_or_else(|| ServerError::NotFound(format!("track {track_id}")))?;
+    let playlist = dyndo_hls::builder::generate_media_playlist(op, &asset, descriptor).await?;
+    Ok((
+        [(CONTENT_TYPE, HLS_CONTENT_TYPE)],
+        dyndo_hls::builder::serialize_media_playlist(&playlist),
+    )
+        .into_response())
 }

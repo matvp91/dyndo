@@ -636,7 +636,11 @@ version = "0.3.4"
 dependencies = [
  "clap",
  "dyndo-core",
+ "dyndo-dash",
+ "dyndo-hls",
  "opendal",
+ "quick-xml 0.40.1",
+ "relative-path",
  "serde",
  "serde_json",
  "tempfile",
@@ -648,19 +652,40 @@ name = "dyndo-core"
 version = "0.3.4"
 dependencies = [
  "bytes",
- "dash-mpd",
  "futures-util",
- "hls_m3u8",
  "mp4-atom",
  "opendal",
- "quick-xml 0.40.1",
  "relative-path",
  "serde",
  "serde_json",
- "tempfile",
  "thiserror 2.0.18",
  "tokio",
  "tokio-util",
+ "uuid",
+]
+
+[[package]]
+name = "dyndo-dash"
+version = "0.3.4"
+dependencies = [
+ "dash-mpd",
+ "dyndo-core",
+ "opendal",
+ "quick-xml 0.40.1",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "dyndo-hls"
+version = "0.3.4"
+dependencies = [
+ "dyndo-core",
+ "hls_m3u8",
+ "opendal",
+ "serde_json",
+ "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -669,8 +694,12 @@ version = "0.3.4"
 dependencies = [
  "axum",
  "dyndo-core",
+ "dyndo-dash",
+ "dyndo-hls",
  "figment",
  "opendal",
+ "quick-xml 0.40.1",
+ "rison",
  "serde",
  "tempfile",
  "thiserror 2.0.18",
@@ -2092,6 +2121,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "rison"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "be9869afaceab9dc1e590cd87df39f6e7291e663470ae8f61642bb9d3bcf9381"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "rust-ini"
 version = "0.21.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2414,6 +2452,12 @@ dependencies = [
  "cpufeatures",
  "digest 0.11.3",
 ]
+
+[[package]]
+name = "sha1_smol"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bbfa15b3dddfee50a0fff136974b3e1bde555604ba463834a7eb7deb6417705d"
 
 [[package]]
 name = "sha2"
@@ -2859,6 +2903,7 @@ dependencies = [
  "getrandom 0.4.3",
  "js-sys",
  "serde_core",
+ "sha1_smol",
  "wasm-bindgen",
 ]
 

@@ -2,40 +2,51 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use dyndo_core::error::CoreError;
+use dyndo_core::asset_descriptor::AssetDescriptorError;
+use dyndo_core::track::TrackError;
+use dyndo_dash::builder::DashError;
+use dyndo_hls::builder::HlsError;
 
-/// The server's HTTP-facing error type; each variant maps to a status code
-/// in [`IntoResponse`].
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum ServerError {
+    #[error("invalid output options: {0}")]
+    InvalidOptions(String),
+    #[error("invalid asset path: {0}")]
+    InvalidAssetPath(String),
+    #[error("resource not found: {0}")]
     NotFound(String),
-    BadRequest(String),
-    Internal(String),
+    #[error("segment time overflow for track {0}")]
+    SegmentTimeOverflow(String),
+    #[error(transparent)]
+    AssetDescriptor(#[from] AssetDescriptorError),
+    #[error(transparent)]
+    Track(#[from] TrackError),
+    #[error(transparent)]
+    Dash(#[from] DashError),
+    #[error(transparent)]
+    Hls(#[from] HlsError),
+    #[error("manifest serialization failed: {0}")]
+    Serialization(String),
 }
 
 impl IntoResponse for ServerError {
     fn into_response(self) -> Response {
-        let (status, msg) = match self {
-            ServerError::NotFound(m) => (StatusCode::NOT_FOUND, m),
-            ServerError::BadRequest(m) => (StatusCode::BAD_REQUEST, m),
-            ServerError::Internal(m) => (StatusCode::INTERNAL_SERVER_ERROR, m),
-        };
-        (status, msg).into_response()
-    }
-}
-
-/// Map a [`CoreError`] onto an HTTP status. A missing object (OpenDAL
-/// `NotFound`) is a 404; every other failure — malformed descriptor JSON,
-/// unreadable or unsupported media, other I/O — is a 500, because the asset
-/// files are server-owned and a bad one is our problem, not the client's.
-impl From<CoreError> for ServerError {
-    fn from(e: CoreError) -> Self {
-        match &e {
-            CoreError::Storage(oe) if oe.kind() == opendal::ErrorKind::NotFound => {
-                ServerError::NotFound(e.to_string())
+        let status = match &self {
+            Self::InvalidOptions(_) | Self::InvalidAssetPath(_) => StatusCode::BAD_REQUEST,
+            Self::NotFound(_) => StatusCode::NOT_FOUND,
+            Self::AssetDescriptor(AssetDescriptorError::Storage(error))
+                if error.kind() == opendal::ErrorKind::NotFound =>
+            {
+                StatusCode::NOT_FOUND
             }
-            _ => ServerError::Internal(e.to_string()),
-        }
+            Self::SegmentTimeOverflow(_)
+            | Self::AssetDescriptor(_)
+            | Self::Track(_)
+            | Self::Dash(_)
+            | Self::Hls(_)
+            | Self::Serialization(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        };
+        (status, self.to_string()).into_response()
     }
 }
 
@@ -44,62 +55,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn not_found_variant_maps_to_404() {
-        assert_eq!(
-            ServerError::NotFound("x".into()).into_response().status(),
-            StatusCode::NOT_FOUND
-        );
+    fn invalid_options_maps_to_bad_request() {
+        let response = ServerError::InvalidOptions("bad rison".into()).into_response();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
 
     #[test]
-    fn bad_request_variant_maps_to_400() {
-        assert_eq!(
-            ServerError::BadRequest("x".into()).into_response().status(),
-            StatusCode::BAD_REQUEST
-        );
-    }
+    fn missing_resource_maps_to_not_found() {
+        let response = ServerError::NotFound("missing".into()).into_response();
 
-    #[test]
-    fn internal_variant_maps_to_500() {
-        assert_eq!(
-            ServerError::Internal("x".into()).into_response().status(),
-            StatusCode::INTERNAL_SERVER_ERROR
-        );
-    }
-
-    #[test]
-    fn core_storage_not_found_maps_to_404() {
-        let e = CoreError::Storage(opendal::Error::new(opendal::ErrorKind::NotFound, "missing"));
-        assert_eq!(
-            ServerError::from(e).into_response().status(),
-            StatusCode::NOT_FOUND
-        );
-    }
-
-    #[test]
-    fn core_container_maps_to_500() {
-        let e = CoreError::Container("bad box".into());
-        assert_eq!(
-            ServerError::from(e).into_response().status(),
-            StatusCode::INTERNAL_SERVER_ERROR
-        );
-    }
-
-    #[test]
-    fn core_unsupported_format_maps_to_500() {
-        let e = CoreError::UnsupportedFormat("xyz".into());
-        assert_eq!(
-            ServerError::from(e).into_response().status(),
-            StatusCode::INTERNAL_SERVER_ERROR
-        );
-    }
-
-    #[test]
-    fn core_storage_other_kind_maps_to_500() {
-        let e = CoreError::Storage(opendal::Error::new(opendal::ErrorKind::Unexpected, "boom"));
-        assert_eq!(
-            ServerError::from(e).into_response().status(),
-            StatusCode::INTERNAL_SERVER_ERROR
-        );
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
     }
 }

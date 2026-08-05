@@ -1,0 +1,291 @@
+use bytes::Bytes;
+use mp4_atom::{Codec, FourCC, Hvcc};
+use opendal::Operator;
+use relative_path::RelativePath;
+use std::ops::Range;
+
+use crate::asset_descriptor::{AudioKind, TextKind, TrackKind, VideoKind};
+use crate::box_reader::{self, BoxReaderError, Boxes};
+use crate::track::Fragment;
+use crate::track_source::TrackSource;
+
+#[derive(Debug, thiserror::Error)]
+pub enum TrackProbeError {
+    #[error(transparent)]
+    BoxReader(#[from] BoxReaderError),
+    #[error(transparent)]
+    Storage(#[from] opendal::Error),
+    #[error("unsupported track format")]
+    UnsupportedFormat,
+    #[error("unsupported video sample entry")]
+    UnsupportedVideoSampleEntry,
+    #[error("unsupported audio sample entry")]
+    UnsupportedAudioSampleEntry,
+    #[error("unsupported track handler")]
+    UnsupportedTrackHandler,
+    #[error("video track has no sample duration")]
+    MissingFrameRate,
+    #[error("unsupported codec {0}")]
+    UnsupportedCodec(String),
+    #[error("segment offset overflows")]
+    SegmentOffsetOverflow,
+    #[error("segment range overflows")]
+    SegmentRangeOverflow,
+}
+
+pub(crate) struct ProbedTrack {
+    pub codec: String,
+    pub kind: TrackKind,
+    pub timescale: u32,
+    pub earliest_presentation_time: u64,
+    pub initialization_range: Range<u64>,
+    pub fragments: Vec<Fragment>,
+    pub source: TrackSource,
+}
+
+pub(crate) async fn probe(
+    op: &Operator,
+    path: &RelativePath,
+) -> Result<ProbedTrack, TrackProbeError> {
+    match path.extension() {
+        Some("mp4") => probe_mp4(op, path).await,
+        Some("vtt") => probe_vtt(op, path).await,
+        _ => Err(TrackProbeError::UnsupportedFormat),
+    }
+}
+
+async fn probe_mp4(op: &Operator, path: &RelativePath) -> Result<ProbedTrack, TrackProbeError> {
+    let boxes = box_reader::scan(op, path.as_str()).await?;
+
+    Ok(ProbedTrack {
+        codec: track_codec(&boxes)?,
+        kind: track_kind(&boxes)?,
+        timescale: boxes.sidx.timescale,
+        earliest_presentation_time: boxes.sidx.earliest_presentation_time,
+        initialization_range: 0..boxes.moov_end,
+        fragments: track_fragments(&boxes)?,
+        source: TrackSource::Stored,
+    })
+}
+
+fn track_codec(boxes: &Boxes) -> Result<String, TrackProbeError> {
+    let codec = &boxes.moov.trak[0].mdia.minf.stbl.stsd.codecs[0];
+    match codec {
+        Codec::Avc1(entry) => Ok(format!(
+            "avc1.{:02x}{:02x}{:02x}",
+            entry.avcc.avc_profile_indication,
+            entry.avcc.profile_compatibility,
+            entry.avcc.avc_level_indication
+        )),
+        Codec::Av01(entry) => {
+            let tier = if entry.av1c.seq_tier_0 { 'H' } else { 'M' };
+            let bit_depth = if entry.av1c.twelve_bit {
+                12
+            } else if entry.av1c.high_bitdepth {
+                10
+            } else {
+                8
+            };
+            Ok(format!(
+                "av01.{}.{:02}{tier}.{bit_depth:02}",
+                entry.av1c.seq_profile, entry.av1c.seq_level_idx_0
+            ))
+        }
+        Codec::Hvc1(entry) => Ok(hevc_codec("hvc1", &entry.hvcc)),
+        Codec::Hev1(entry) => Ok(hevc_codec("hev1", &entry.hvcc)),
+        Codec::Mp4a(entry) => Ok(format!(
+            "mp4a.40.{}",
+            entry.esds.es_desc.dec_config.dec_specific.profile
+        )),
+        Codec::Ac3(_) => Ok("ac-3".to_string()),
+        Codec::Eac3(_) => Ok("ec-3".to_string()),
+        Codec::Wvtt(_) => Ok("wvtt".to_string()),
+        codec => Err(TrackProbeError::UnsupportedCodec(codec_name(codec))),
+    }
+}
+
+fn track_kind(boxes: &Boxes) -> Result<TrackKind, TrackProbeError> {
+    let track = &boxes.moov.trak[0];
+    let handler = track.mdia.hdlr.handler;
+    let sample_entry = &track.mdia.minf.stbl.stsd.codecs[0];
+
+    if handler == FourCC::new(b"vide") {
+        let visual = match sample_entry {
+            Codec::Avc1(entry) => &entry.visual,
+            Codec::Av01(entry) => &entry.visual,
+            Codec::Hvc1(entry) => &entry.visual,
+            Codec::Hev1(entry) => &entry.visual,
+            _ => return Err(TrackProbeError::UnsupportedVideoSampleEntry),
+        };
+        Ok(TrackKind::Video(VideoKind {
+            width: u32::from(visual.width),
+            height: u32::from(visual.height),
+            frame_rate: frame_rate(boxes)?,
+        }))
+    } else if handler == FourCC::new(b"soun") {
+        let audio = match sample_entry {
+            Codec::Mp4a(entry) => &entry.audio,
+            Codec::Ac3(entry) => &entry.audio,
+            Codec::Eac3(entry) => &entry.audio,
+            _ => return Err(TrackProbeError::UnsupportedAudioSampleEntry),
+        };
+        Ok(TrackKind::Audio(AudioKind {
+            sample_rate: audio.sample_rate.integer() as u32,
+            channels: audio.channel_count,
+            language: language(boxes),
+            role: None,
+        }))
+    } else if handler == FourCC::new(b"text") {
+        Ok(TrackKind::Text(TextKind {
+            language: language(boxes),
+            role: None,
+        }))
+    } else {
+        Err(TrackProbeError::UnsupportedTrackHandler)
+    }
+}
+
+fn frame_rate(boxes: &Boxes) -> Result<String, TrackProbeError> {
+    let track = &boxes.moov.trak[0];
+    let track_id = track.tkhd.track_id;
+    let fragment = boxes
+        .moof
+        .traf
+        .iter()
+        .find(|fragment| fragment.tfhd.track_id == track_id)
+        .ok_or(TrackProbeError::MissingFrameRate)?;
+    let sample_duration = fragment
+        .trun
+        .iter()
+        .flat_map(|run| &run.entries)
+        .next()
+        .and_then(|sample| sample.duration)
+        .or(fragment.tfhd.default_sample_duration)
+        .or_else(|| {
+            boxes
+                .moov
+                .mvex
+                .as_ref()
+                .and_then(|extensions| {
+                    extensions
+                        .trex
+                        .iter()
+                        .find(|defaults| defaults.track_id == track_id)
+                })
+                .map(|defaults| defaults.default_sample_duration)
+        })
+        .filter(|duration| *duration != 0)
+        .ok_or(TrackProbeError::MissingFrameRate)?;
+    let timescale = track.mdia.mdhd.timescale;
+    if timescale == 0 {
+        return Err(TrackProbeError::MissingFrameRate);
+    }
+    let divisor = greatest_common_divisor(timescale, sample_duration);
+
+    Ok(format!(
+        "{}/{}",
+        timescale / divisor,
+        sample_duration / divisor
+    ))
+}
+
+fn greatest_common_divisor(mut left: u32, mut right: u32) -> u32 {
+    while right != 0 {
+        (left, right) = (right, left % right);
+    }
+    left
+}
+
+fn track_fragments(boxes: &Boxes) -> Result<Vec<Fragment>, TrackProbeError> {
+    let mut byte_offset = boxes
+        .sidx_end
+        .checked_add(boxes.sidx.first_offset)
+        .ok_or(TrackProbeError::SegmentOffsetOverflow)?;
+    let mut fragments = Vec::with_capacity(boxes.sidx.references.len());
+
+    for reference in &boxes.sidx.references {
+        let byte_size = u64::from(reference.reference_size);
+        let fragment = Fragment::new(
+            byte_offset,
+            byte_size,
+            u64::from(reference.subsegment_duration),
+        )
+        .ok_or(TrackProbeError::SegmentRangeOverflow)?;
+        fragments.push(fragment);
+        byte_offset = byte_offset
+            .checked_add(byte_size)
+            .ok_or(TrackProbeError::SegmentOffsetOverflow)?;
+    }
+
+    Ok(fragments)
+}
+
+fn language(boxes: &Boxes) -> String {
+    let language = boxes.moov.trak[0].mdia.mdhd.language.as_str();
+    if language.is_empty() {
+        "und".to_string()
+    } else {
+        language.to_string()
+    }
+}
+
+fn hevc_codec(prefix: &str, hvcc: &Hvcc) -> String {
+    let profile_space = match hvcc.general_profile_space {
+        0 => String::new(),
+        value => ((b'A' + value - 1) as char).to_string(),
+    };
+    let compatibility = u32::from_be_bytes(hvcc.general_profile_compatibility_flags).reverse_bits();
+    let tier = if hvcc.general_tier_flag { 'H' } else { 'L' };
+    let mut codec = format!(
+        "{prefix}.{profile_space}{}.{compatibility:x}.{tier}{}",
+        hvcc.general_profile_idc, hvcc.general_level_idc
+    );
+
+    if let Some(end) = hvcc
+        .general_constraint_indicator_flags
+        .iter()
+        .rposition(|&byte| byte != 0)
+    {
+        for byte in &hvcc.general_constraint_indicator_flags[..=end] {
+            codec.push_str(&format!(".{byte:02x}"));
+        }
+    }
+
+    codec
+}
+
+fn codec_name(codec: &Codec) -> String {
+    format!("{codec:?}")
+        .split(['(', ' ', '{'])
+        .next()
+        .unwrap_or("unknown")
+        .to_string()
+}
+
+async fn probe_vtt(_op: &Operator, _path: &RelativePath) -> Result<ProbedTrack, TrackProbeError> {
+    // TODO: Convert the raw VTT into an in-memory WVTT CMAF track.
+    Ok(ProbedTrack {
+        codec: "wvtt".to_string(),
+        kind: TrackKind::Text(TextKind {
+            language: "und".to_string(),
+            role: None,
+        }),
+        timescale: 1000,
+        earliest_presentation_time: 0,
+        initialization_range: 0..0,
+        fragments: Vec::new(),
+        source: TrackSource::Memory {
+            bytes: Bytes::new(),
+        },
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn greatest_common_divisor_reduces_frame_rate_ratio() {
+        assert_eq!(greatest_common_divisor(1000, 500), 500);
+    }
+}

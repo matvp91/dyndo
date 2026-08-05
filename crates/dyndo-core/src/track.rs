@@ -1,351 +1,152 @@
-//! The `Track`: one struct for every media type, with the per-type fields
-//! split off into [`Metadata`]. Tracks (de)serialize directly to and from
-//! descriptor (`asset.json`) entries, with the probed [`Header`] kept off
-//! the wire.
+use std::ops::Range;
 
 use bytes::Bytes;
 use opendal::Operator;
-use relative_path::RelativePath;
-use serde::{Deserialize, Serialize};
+use relative_path::{RelativePath, RelativePathBuf};
+use uuid::Uuid;
 
-use crate::codec::Codec;
-use crate::error::CoreError;
-use crate::header::Header;
-use crate::metadata::Metadata;
-use crate::segment::Segment;
-use crate::segment_utils;
+use crate::asset_descriptor::TrackKind;
+use crate::track_probe::{self, TrackProbeError};
+use crate::track_source::{TrackSource, TrackSourceError};
 
-/// One of the asset's tracks: the identity and location every media type
-/// shares, with the per-type fields split off into `metadata`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, thiserror::Error)]
+pub enum TrackError {
+    #[error(transparent)]
+    Probe(#[from] TrackProbeError),
+    #[error(transparent)]
+    Source(#[from] TrackSourceError),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Fragment {
+    pub(crate) byte_offset: u64,
+    pub(crate) byte_size: u64,
+    pub(crate) duration: u64,
+}
+
+impl Fragment {
+    pub(crate) fn new(byte_offset: u64, byte_size: u64, duration: u64) -> Option<Self> {
+        byte_offset.checked_add(byte_size)?;
+        Some(Self {
+            byte_offset,
+            byte_size,
+            duration,
+        })
+    }
+
+    pub(crate) fn byte_range(&self) -> Range<u64> {
+        self.byte_offset..self.byte_offset + self.byte_size
+    }
+
+    pub(crate) fn duration(&self) -> u64 {
+        self.duration
+    }
+}
+
 pub struct Track {
-    /// The representation id manifests and segment routes key by. Generated
-    /// from the probed fields by [`Track::read`] when the track is first
-    /// read; serialization writes it verbatim, so the descriptor pins it and
-    /// later reads take it from there. A descriptor must carry a non-empty
-    /// id — deserialization requires the field, and it is never regenerated
-    /// on read.
-    pub id: String,
-    /// Path of the track's file, relative to the asset descriptor
-    /// (`asset.json`) that declares it. Reads resolve it against the
-    /// descriptor's location on the fly; it is never stored resolved.
-    pub path: String,
-    /// The track file's parsed header, `None` until probed. Never on the
-    /// wire; read through the accessors on `Track`.
-    #[serde(skip)]
-    header: Option<Header>,
-    /// The track's media type and its per-type fields, tagged on the wire by
-    /// `"type": "video"|"audio"|"text"`.
-    #[serde(flatten)]
-    pub metadata: Metadata,
+    id: Uuid,
+    path: RelativePathBuf,
+    codec: String,
+    kind: TrackKind,
+    timescale: u32,
+    earliest_presentation_time: u64,
+    initialization_range: Range<u64>,
+    fragments: Vec<Fragment>,
+    source: TrackSource,
 }
 
 impl Track {
-    /// Read the track file at `path`, relative to `asset_descriptor_path`'s
-    /// directory, through `op`: its header and the metadata the file
-    /// declares. Each read fetches the file for itself; the two run
-    /// concurrently. The track keeps the descriptor-relative `path` and is
-    /// returned unnamed (empty id): the id derives from the probed fields
-    /// via [`Track::generate_id`], which the caller invokes once the track's
-    /// initial metadata is settled, so the id reflects any initial overrides.
-    ///
-    /// # Errors
-    /// [`CoreError::UnsupportedFormat`] if `path`'s extension maps to no
-    /// supported format; otherwise any [`CoreError`] from reading or parsing
-    /// the track.
-    pub async fn read(
+    pub async fn probe(
         op: &Operator,
-        asset_descriptor_path: &str,
-        path: &str,
-    ) -> Result<Track, CoreError> {
-        let resolved = resolve(asset_descriptor_path, path);
-        let (header, metadata) =
-            tokio::try_join!(Header::read(op, &resolved), Metadata::read(op, &resolved))?;
-        let track = Track {
-            id: String::new(),
-            path: path.to_string(),
-            header: Some(header),
-            metadata,
-        };
-        Ok(track)
+        path: &RelativePath,
+        kind: Option<TrackKind>,
+    ) -> Result<Self, TrackError> {
+        let probed = track_probe::probe(op, path).await?;
+        let kind = kind.unwrap_or(probed.kind);
+        let id = Uuid::new_v5(&Uuid::NAMESPACE_URL, path.as_str().as_bytes());
+
+        Ok(Self {
+            id,
+            path: path.to_owned(),
+            codec: probed.codec,
+            kind,
+            timescale: probed.timescale,
+            earliest_presentation_time: probed.earliest_presentation_time,
+            initialization_range: probed.initialization_range,
+            fragments: probed.fragments,
+            source: probed.source,
+        })
     }
 
-    /// Read the header of the track file at the track's `path`, relative to
-    /// `asset_descriptor_path`'s directory, through `op` and store it, e.g.
-    /// after deserializing the track from a descriptor.
-    ///
-    /// # Errors
-    /// [`CoreError::UnsupportedFormat`] if the path's extension maps to no
-    /// supported format; otherwise any [`CoreError`] from reading or
-    /// parsing the file.
-    pub async fn read_header(
-        &mut self,
-        op: &Operator,
-        asset_descriptor_path: &str,
-    ) -> Result<(), CoreError> {
-        let resolved = resolve(asset_descriptor_path, &self.path);
-        self.header = Some(Header::read(op, &resolved).await?);
-        Ok(())
+    pub fn id(&self) -> String {
+        format!("{}_{}", self.content_type(), self.id)
     }
 
-    /// The track file's parsed header.
-    ///
-    /// # Panics
-    /// If the track has not been probed (`header` is `None`).
-    fn header(&self) -> &Header {
-        self.header.as_ref().expect("track not probed")
+    pub fn path(&self) -> &RelativePath {
+        &self.path
     }
 
-    /// Generate a representation id from the track's distinguishing fields:
-    /// the media type and the fields that separate its renditions, with the
-    /// sample-entry codingname and the bandwidth appended —
-    /// `video_{height}_{sample_entry}_{bandwidth}`,
-    /// `audio_{language}_{channels}_{sample_entry}_{bandwidth}`, or
-    /// `text_{language}_{sample_entry}_{bandwidth}`. A raw file has no
-    /// sample entry and gets neither appended. Ignores the stored
-    /// [`Track::id`].
-    ///
-    /// # Panics
-    /// If the track has not been probed: the appended fields read the
-    /// header.
-    pub fn generate_id(&self) -> String {
-        let id = match &self.metadata {
-            Metadata::Video(v) => format!("video_{}", v.height),
-            Metadata::Audio(a) => format!("audio_{}_{}", a.language, a.channels),
-            Metadata::Text(t) => format!("text_{}", t.language),
-        };
-        match self.sample_entry() {
-            Some(entry) => format!("{id}_{entry}_{}", self.bandwidth()),
-            None => id,
+    pub fn kind(&self) -> &TrackKind {
+        &self.kind
+    }
+
+    /// Returns the DASH media content type represented by the track.
+    pub fn content_type(&self) -> &'static str {
+        match self.kind {
+            TrackKind::Video(_) => "video",
+            TrackKind::Audio(_) => "audio",
+            TrackKind::Text(_) => "text",
         }
     }
 
-    /// The MIME type of the track's file: the CMAF container type for its
-    /// media type (`video/mp4`, `audio/mp4`, or `application/mp4`), or
-    /// `text/vtt` for a raw VTT file.
-    ///
-    /// # Panics
-    /// If the track has not been probed.
+    /// Returns the media type of the track's CMAF representation.
     pub fn mime_type(&self) -> &'static str {
-        match (self.header(), &self.metadata) {
-            (Header::Raw(_), _) => "text/vtt",
-            (Header::Cmaf(_), Metadata::Video(_)) => "video/mp4",
-            (Header::Cmaf(_), Metadata::Audio(_)) => "audio/mp4",
-            (Header::Cmaf(_), Metadata::Text(_)) => "application/mp4",
+        match self.kind {
+            TrackKind::Video(_) => "video/mp4",
+            TrackKind::Audio(_) => "audio/mp4",
+            TrackKind::Text(_) => "application/mp4",
         }
     }
 
-    /// The track's codec (e.g. `"avc1.640028"`), or `None` for a raw file: a
-    /// plain `.vtt` declares no codec. Read from the descriptor-declared
-    /// metadata, so it needs no probe.
-    pub fn codec(&self) -> Option<&Codec> {
-        match &self.metadata {
-            Metadata::Video(v) => Some(&v.codec),
-            Metadata::Audio(a) => Some(&a.codec),
-            Metadata::Text(t) => t.codec.as_ref(),
-        }
+    pub fn codec(&self) -> &str {
+        &self.codec
     }
 
-    /// The sample-entry codingname of the track's codec (e.g. `"avc1"`,
-    /// `"mp4a"`), or `None` for a raw file: a plain `.vtt` has no sample
-    /// entry.
-    ///
-    /// # Panics
-    /// If the track has not been probed.
-    pub fn sample_entry(&self) -> Option<&str> {
-        match self.header() {
-            Header::Cmaf(h) => Some(&h.codec.id),
-            Header::Raw(_) => None,
-        }
-    }
-
-    /// The track's average bitrate in bits/s, derived from its segment
-    /// sizes and duration. `0` for raw tracks: a raw file declares no
-    /// bitrate of its own.
-    ///
-    /// # Panics
-    /// If the track has not been probed.
-    pub fn bandwidth(&self) -> u32 {
-        match self.header() {
-            Header::Cmaf(h) => h.bandwidth(),
-            Header::Raw(_) => 0,
-        }
-    }
-
-    /// Units per second for durations in this track. `1000` for raw
-    /// tracks: a raw file declares no timescale of its own, so it counts
-    /// in milliseconds.
-    ///
-    /// # Panics
-    /// If the track has not been probed.
     pub fn timescale(&self) -> u32 {
-        match self.header() {
-            Header::Cmaf(h) => h.timescale,
-            Header::Raw(_) => 1000,
-        }
+        self.timescale
     }
 
-    /// Presentation time of the first (sub)segment, in the track
-    /// timescale. `0` for raw tracks: a raw file carries no offset.
-    ///
-    /// # Panics
-    /// If the track has not been probed.
+    /// Returns the track's earliest presentation time in timescale units.
     pub fn earliest_presentation_time(&self) -> u64 {
-        match self.header() {
-            Header::Cmaf(h) => h.earliest_presentation_time,
-            Header::Raw(_) => 0,
-        }
+        self.earliest_presentation_time
     }
 
-    /// Frame rate as a (numerator, denominator) ratio, in frames per
-    /// second. `(0, 1)` when the track declares no sample duration, or
-    /// for raw tracks.
-    ///
-    /// # Panics
-    /// If the track has not been probed.
-    pub fn frame_rate(&self) -> (u32, u32) {
-        match self.header() {
-            Header::Cmaf(h) => h.frame_rate(),
-            Header::Raw(_) => (0, 1),
-        }
+    /// Returns the byte range containing the track's CMAF initialization segment.
+    pub fn initialization_range(&self) -> Range<u64> {
+        self.initialization_range.clone()
     }
 
-    /// The track's served (sub)segments, in presentation order: the header's
-    /// raw CMAF fragments grouped to at least `min_length_ms`, never across
-    /// a splice point in `boundaries_ms`. A `min_length_ms` of 0 serves each
-    /// fragment as its own segment. Both values come from the asset
-    /// descriptor; manifest builders and the segment route must pass the
-    /// same pair or advertised segment times will not resolve. Empty for
-    /// raw tracks: a raw file has no segment map of its own — its
-    /// segmentation follows the asset's other tracks.
-    ///
-    /// # Panics
-    /// If the track has not been probed.
-    pub fn segments(&self, boundaries_ms: &[u64], min_length_ms: u64) -> Vec<Segment> {
-        let Header::Cmaf(h) = self.header() else {
-            return Vec::new();
-        };
-        segment_utils::group_segments(&h.segments, h.timescale, boundaries_ms, min_length_ms)
+    pub(crate) fn fragments(&self) -> &[Fragment] {
+        &self.fragments
     }
 
-    /// Read the bytes of the track's init segment (`ftyp`+`moov`) through
-    /// `op`, resolving the track's `path` against `asset_descriptor_path`'s
-    /// directory. Empty for raw tracks: a raw file has no init segment.
-    ///
-    /// # Errors
-    /// [`CoreError::Storage`] if the ranged read fails.
-    ///
-    /// # Panics
-    /// If the track has not been probed.
-    pub async fn read_init_segment(
-        &self,
-        op: &Operator,
-        asset_descriptor_path: &str,
-    ) -> Result<Bytes, CoreError> {
-        let Header::Cmaf(h) = self.header() else {
-            return Ok(Bytes::new());
-        };
-        let resolved = resolve(asset_descriptor_path, &self.path);
-        let range = h.init_segment().range();
-        Ok(op.read_with(&resolved).range(range).await?.to_bytes())
-    }
-
-    /// Read the bytes of the served (sub)segment starting at presentation
-    /// `time` (in the track timescale) through `op`, resolving the track's
-    /// `path` against `asset_descriptor_path`'s directory. `time` is matched
-    /// against the served segments — pass the same grouping pair the
-    /// manifest was built with. `None` when no (sub)segment starts at
-    /// `time` — always the case for a raw track, which has no segment map
-    /// of its own.
-    ///
-    /// # Errors
-    /// [`CoreError::Storage`] if the ranged read fails.
-    ///
-    /// # Panics
-    /// If the track has not been probed.
-    pub async fn read_segment(
-        &self,
-        op: &Operator,
-        asset_descriptor_path: &str,
-        time: u64,
-        boundaries_ms: &[u64],
-        min_length_ms: u64,
-    ) -> Result<Option<Bytes>, CoreError> {
-        let mut start = self.earliest_presentation_time();
-        for seg in self.segments(boundaries_ms, min_length_ms) {
-            if start == time {
-                let resolved = resolve(asset_descriptor_path, &self.path);
-                let buf = op.read_with(&resolved).range(seg.range()).await?;
-                return Ok(Some(buf.to_bytes()));
-            }
-            start += seg.duration;
-        }
-        Ok(None)
-    }
-
-    /// This track's total presentation duration, in milliseconds. `0` for
-    /// raw tracks: a raw file declares no duration of its own.
-    ///
-    /// # Panics
-    /// If the track has not been probed.
+    /// Returns the total duration of the track's fragments in milliseconds.
     pub fn duration_ms(&self) -> u64 {
-        let Header::Cmaf(cmaf) = self.header() else {
-            return 0;
-        };
-        units_to_ms(cmaf.duration(), cmaf.timescale)
-    }
-
-    /// The longest served (sub)segment in this track, in milliseconds,
-    /// under the same grouping pair as [`Track::segments`]. `0` if it has
-    /// none, or for raw tracks: a raw file has no segment map of its own.
-    ///
-    /// # Panics
-    /// If the track has not been probed.
-    pub fn max_segment_duration_ms(&self, boundaries_ms: &[u64], min_length_ms: u64) -> u64 {
-        let Header::Cmaf(cmaf) = self.header() else {
-            return 0;
-        };
-        self.segments(boundaries_ms, min_length_ms)
+        let duration_units: u128 = self
+            .fragments
             .iter()
-            .map(|s| units_to_ms(s.duration, cmaf.timescale))
-            .max()
-            .unwrap_or(0)
-    }
-}
-
-/// Convert a count of `timescale`-units to milliseconds, truncating toward
-/// zero.
-fn units_to_ms(units: u64, timescale: u32) -> u64 {
-    (units as u128 * 1000 / timescale as u128) as u64
-}
-
-/// Resolve `path`, given relative to `asset_descriptor_path`'s directory,
-/// into a normalized storage path.
-fn resolve(asset_descriptor_path: &str, path: &str) -> String {
-    RelativePath::new(asset_descriptor_path)
-        .parent()
-        .expect("descriptor path always has a parent")
-        .join(path)
-        .normalize()
-        .into_string()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn resolve_joins_a_sibling_against_the_descriptor_dir() {
-        assert_eq!(resolve("out/asset.json", "video.mp4"), "out/video.mp4");
+            .map(|reference| u128::from(reference.duration()))
+            .sum();
+        let duration_ms = duration_units * 1000 / u128::from(self.timescale);
+        u64::try_from(duration_ms).unwrap_or(u64::MAX)
     }
 
-    #[test]
-    fn resolve_normalizes_parent_segments() {
-        assert_eq!(resolve("out/asset.json", "../video.mp4"), "video.mp4");
+    pub async fn read_range(&self, op: &Operator, range: Range<u64>) -> Result<Bytes, TrackError> {
+        Ok(self.source.read_range(op, &self.path, range).await?)
     }
 
-    #[test]
-    fn resolve_from_a_root_descriptor_is_the_path_itself() {
-        assert_eq!(resolve("asset.json", "subs/eng.vtt"), "subs/eng.vtt");
+    /// Reads the track's CMAF initialization segment.
+    pub async fn read_initialization(&self, op: &Operator) -> Result<Bytes, TrackError> {
+        self.read_range(op, self.initialization_range()).await
     }
 }

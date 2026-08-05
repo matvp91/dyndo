@@ -1,58 +1,68 @@
-//! Media resource handlers shared by every protocol: the init segment and the
-//! media (sub)segments are the same CMAF bytes regardless of manifest format.
-
 use axum::{
     http::header::CONTENT_TYPE,
     response::{IntoResponse, Response},
 };
-use dyndo_core::asset::Asset;
+use dyndo_core::track::Track;
 use opendal::Operator;
 
+use super::OutputParameters;
 use crate::error::ServerError;
 
-/// `{repr}/init.mp4` — the representation's initialization segment.
-pub(super) async fn init_segment(
+pub(super) async fn initialization(
     op: &Operator,
-    asset_path: &str,
-    repr: &str,
+    parameters: &OutputParameters,
+    track_id: &str,
 ) -> Result<Response, ServerError> {
-    let mut asset = Asset::read(op, asset_path).await?;
-    let idx = asset
-        .find_track_index(op, repr)
-        .await?
-        .ok_or_else(|| ServerError::NotFound(format!("no representation {repr}")))?;
-    let track = &asset.tracks[idx];
-    let bytes = track.read_init_segment(op, asset_path).await?;
-    Ok(([(CONTENT_TYPE, track.mime_type())], bytes).into_response())
+    let (track, content_type) = read_track(op, parameters, track_id).await?;
+    let bytes = track.read_initialization(op).await?;
+    Ok(([(CONTENT_TYPE, content_type)], bytes).into_response())
 }
 
-/// `{repr}/{time}.m4s` — the media segment starting at presentation `time`.
-pub(super) async fn media_segment(
+pub(super) async fn media(
     op: &Operator,
-    asset_path: &str,
-    repr: &str,
-    seg: &str,
+    parameters: &OutputParameters,
+    track_id: &str,
+    file: &str,
 ) -> Result<Response, ServerError> {
-    let time: u64 = seg
+    let time = file
         .strip_suffix(".m4s")
-        .ok_or_else(|| ServerError::NotFound(format!("unknown segment: {seg}")))?
-        .parse()
-        .map_err(|_| ServerError::BadRequest(format!("invalid segment time: {seg}")))?;
-    let mut asset = Asset::read(op, asset_path).await?;
-    let idx = asset
-        .find_track_index(op, repr)
-        .await?
-        .ok_or_else(|| ServerError::NotFound(format!("no representation {repr}")))?;
-    let track = &asset.tracks[idx];
-    let bytes = track
-        .read_segment(
-            op,
-            asset_path,
-            time,
-            &asset.segment_boundaries_ms,
-            asset.min_segment_length_ms,
-        )
-        .await?
-        .ok_or_else(|| ServerError::NotFound(format!("no segment at time {time}")))?;
-    Ok(([(CONTENT_TYPE, track.mime_type())], bytes).into_response())
+        .ok_or_else(|| ServerError::NotFound(file.to_string()))?
+        .parse::<u64>()
+        .map_err(|_| ServerError::NotFound(file.to_string()))?;
+    let asset = parameters.read_asset(op).await?;
+    let descriptor = asset
+        .track(track_id)
+        .ok_or_else(|| ServerError::NotFound(format!("track {track_id}")))?;
+    let path = asset.track_path(descriptor);
+    let track = Track::probe(op, &path, Some(descriptor.kind.clone())).await?;
+    let mut start_time = track.earliest_presentation_time();
+
+    for segment in track.segments(&asset.segment_boundaries, asset.min_segment_length) {
+        if start_time == time {
+            let bytes = track.read_range(op, segment.byte_range()).await?;
+            return Ok(([(CONTENT_TYPE, track.mime_type())], bytes).into_response());
+        }
+        start_time = start_time
+            .checked_add(segment.duration())
+            .ok_or_else(|| ServerError::SegmentTimeOverflow(track_id.to_string()))?;
+    }
+
+    Err(ServerError::NotFound(format!(
+        "segment {file} for track {track_id}"
+    )))
+}
+
+async fn read_track(
+    op: &Operator,
+    parameters: &OutputParameters,
+    track_id: &str,
+) -> Result<(Track, &'static str), ServerError> {
+    let asset = parameters.read_asset(op).await?;
+    let descriptor = asset
+        .track(track_id)
+        .ok_or_else(|| ServerError::NotFound(format!("track {track_id}")))?;
+    let path = asset.track_path(descriptor);
+    let track = Track::probe(op, &path, Some(descriptor.kind.clone())).await?;
+    let content_type = track.mime_type();
+    Ok((track, content_type))
 }

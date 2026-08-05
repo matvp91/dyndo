@@ -1,0 +1,19 @@
+[package]
+name = "dyndo-dash"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+dash-mpd = { version = "0.20", default-features = false }
+dyndo-core = { path = "../dyndo-core" }
+opendal = { version = "0.58", default-features = false }
+quick-xml = { version = "0.40", features = ["serialize"] }
+serde = "1"
+thiserror = "2"
+
+[dev-dependencies]
+serde_json = "1"
