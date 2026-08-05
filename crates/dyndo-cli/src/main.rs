@@ -61,10 +61,10 @@ impl SegmentArgs {
     /// nothing.
     fn assign_to(&self, options: &mut SegmentOptions) {
         if self.min_length != 0 {
-            options.min_length_ms = self.min_length;
+            options.min_length = self.min_length;
         }
         if self.text_length != 0 {
-            options.text_length_ms = self.text_length;
+            options.text_length = self.text_length;
         }
         if !self.boundaries.is_empty() {
             options.boundaries = self.boundaries.clone();

@@ -1,8 +1,7 @@
 //! The subtitle model every parser in this crate produces: a list of cues, each
 //! holding a time span and its text.
 
-/// One timed caption: `text`, shown over the half-open interval
-/// `[start_ms, end_ms)`.
+/// One timed caption: `text`, shown over the half-open interval `[start, end)`.
 ///
 /// Styling and positioning are deliberately absent. Every source format spells
 /// them differently, and dyndo packages subtitles rather than renders them, so
@@ -10,15 +9,15 @@
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Cue {
     /// Presentation start, in milliseconds from the start of the timeline.
-    pub start_ms: u64,
-    /// Presentation end, in milliseconds. Never precedes `start_ms`.
-    pub end_ms: u64,
+    pub start: u64,
+    /// Presentation end, in milliseconds. Never precedes `start`.
+    pub end: u64,
     /// The caption text. Multi-line captions keep their `\n` separators.
     pub text: String,
 }
 
 /// A parsed subtitle: the cues of a single text track, in presentation order
-/// (by `start_ms`, then `end_ms`).
+/// (by `start`, then `end`).
 ///
 /// Cues may overlap — two captions on screen at once is ordinary — so this is a
 /// list of what was authored, not a gapless timeline. Reconciling overlaps and

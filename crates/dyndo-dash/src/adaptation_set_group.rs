@@ -68,8 +68,10 @@ impl<'a> AdaptationSetGroup<'a> {
                 && candidate
                     .segments(options)
                     .iter()
-                    .map(|segment| segment.duration())
-                    .eq(reference_segments.iter().map(|segment| segment.duration()))
+                    .map(|segment| segment.raw_duration())
+                    .eq(reference_segments
+                        .iter()
+                        .map(|segment| segment.raw_duration()))
         })
     }
 }

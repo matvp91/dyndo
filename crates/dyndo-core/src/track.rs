@@ -22,16 +22,16 @@ pub enum TrackError {
 pub(crate) struct Fragment {
     pub(crate) byte_offset: u64,
     pub(crate) byte_size: u64,
-    pub(crate) duration: u64,
+    pub(crate) raw_duration: u64,
 }
 
 impl Fragment {
-    pub(crate) fn new(byte_offset: u64, byte_size: u64, duration: u64) -> Option<Self> {
+    pub(crate) fn new(byte_offset: u64, byte_size: u64, raw_duration: u64) -> Option<Self> {
         byte_offset.checked_add(byte_size)?;
         Some(Self {
             byte_offset,
             byte_size,
-            duration,
+            raw_duration,
         })
     }
 
@@ -39,8 +39,9 @@ impl Fragment {
         self.byte_offset..self.byte_offset + self.byte_size
     }
 
-    pub(crate) fn duration(&self) -> u64 {
-        self.duration
+    /// Returns the fragment's duration in the track's timescale units.
+    pub(crate) fn raw_duration(&self) -> u64 {
+        self.raw_duration
     }
 }
 
@@ -141,14 +142,14 @@ impl Track {
     }
 
     /// Returns the total duration of the track's fragments in milliseconds.
-    pub fn duration_ms(&self) -> u64 {
-        let duration_units: u128 = self
+    pub fn duration(&self) -> u64 {
+        let raw_duration: u128 = self
             .fragments
             .iter()
-            .map(|reference| u128::from(reference.duration()))
+            .map(|fragment| u128::from(fragment.raw_duration()))
             .sum();
-        let duration_ms = duration_units * 1000 / u128::from(self.timescale);
-        u64::try_from(duration_ms).unwrap_or(u64::MAX)
+        let duration = raw_duration * 1000 / u128::from(self.timescale);
+        u64::try_from(duration).unwrap_or(u64::MAX)
     }
 
     /// Reads a byte range of the track. Pass the `options` it was probed under, so
@@ -211,25 +212,25 @@ mod tests {
     }
 
     #[test]
-    fn duration_ms_converts_timescale_units() {
+    fn duration_converts_timescale_units() {
         let track = test_track(
             video_kind(),
             90_000,
             vec![Fragment::new(0, 10, 295_200).unwrap()],
         );
 
-        assert_eq!(track.duration_ms(), 3_280);
+        assert_eq!(track.duration(), 3_280);
     }
 
     #[test]
-    fn duration_ms_truncates_fractional_milliseconds() {
+    fn duration_truncates_fractional_milliseconds() {
         let track = test_track(
             video_kind(),
             3_000,
             vec![Fragment::new(0, 10, 3_001).unwrap()],
         );
 
-        assert_eq!(track.duration_ms(), 1_000);
+        assert_eq!(track.duration(), 1_000);
     }
 
     #[test]

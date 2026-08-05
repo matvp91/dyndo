@@ -218,7 +218,7 @@ mod tests {
     #[test]
     fn serialization_keeps_segment_options_the_asset_asked_for() {
         let mut asset = asset("asset.json", "video");
-        asset.segment_options.min_length_ms = 3_000;
+        asset.segment_options.min_length = 3_000;
         let json = serde_json::to_value(asset).unwrap();
 
         assert_eq!(
@@ -236,7 +236,7 @@ mod tests {
         let asset: AssetDescriptor = serde_json::from_str(json).unwrap();
 
         assert_eq!(asset.segment_options.boundaries, [7_400]);
-        assert_eq!(asset.segment_options.min_length_ms, 0);
+        assert_eq!(asset.segment_options.min_length, 0);
     }
 
     #[test]
@@ -245,7 +245,7 @@ mod tests {
 
         let asset: AssetDescriptor = serde_json::from_str(json).unwrap();
 
-        assert_eq!(asset.segment_options.min_length_ms, 3_000);
+        assert_eq!(asset.segment_options.min_length, 3_000);
         assert_eq!(asset.segment_options.boundaries, [7_400]);
     }
 
