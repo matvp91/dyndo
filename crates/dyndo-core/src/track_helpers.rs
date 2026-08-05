@@ -195,14 +195,14 @@ mod tests {
         TrackKind::Audio(AudioKind {
             sample_rate: 48_000,
             channels: 2,
-            language: "eng".to_string(),
+            language: "eng".parse().unwrap(),
             role: None,
         })
     }
 
     fn text_kind() -> TrackKind {
         TrackKind::Text(TextKind {
-            language: "eng".to_string(),
+            language: "eng".parse().unwrap(),
             role: None,
         })
     }

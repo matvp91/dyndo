@@ -11,6 +11,7 @@ use dyndo_core::track_helpers::{average_bitrate, max_bitrate, read_all_tracks};
 use hls_m3u8::tags::{ExtXMap, ExtXMedia, VariantStream};
 use hls_m3u8::types::{Channels, ClosedCaptions, MediaType, PlaylistType, StreamData, UFloat};
 use hls_m3u8::{MasterPlaylist, MediaPlaylist, MediaSegment};
+use language_tags::LanguageTag;
 use opendal::Operator;
 
 use crate::options::HlsOptions;
@@ -339,7 +340,7 @@ fn media_entry(
         .media_type(media_type)
         .uri(format!("{}.m3u8", descriptor.id))
         .group_id(group_id)
-        .language(language.to_owned())
+        .language(language.to_string())
         .name(roles::name(language, role))
         .is_default(is_default)
         .is_autoselect(is_autoselect)
@@ -375,7 +376,7 @@ fn selection_tuple_is_unique(asset: &AssetDescriptor, descriptor: &TrackDescript
 
 fn selection_tuple(
     descriptor: &TrackDescriptor,
-) -> Option<(bool, &str, Option<dyndo_core::role::Role>)> {
+) -> Option<(bool, &LanguageTag, Option<dyndo_core::role::Role>)> {
     match &descriptor.kind {
         TrackKind::Video(_) => None,
         TrackKind::Audio(audio) => Some((true, &audio.language, audio.role)),

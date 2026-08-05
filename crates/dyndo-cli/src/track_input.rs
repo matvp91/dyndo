@@ -2,12 +2,13 @@ use std::str::FromStr;
 
 use dyndo_core::asset_descriptor::TrackKind;
 use dyndo_core::role::Role;
+use language_tags::LanguageTag;
 use relative_path::RelativePathBuf;
 
 #[derive(Debug, Clone)]
 pub(crate) struct TrackInput {
     pub(crate) path: RelativePathBuf,
-    language: Option<String>,
+    language: Option<LanguageTag>,
     role: Option<Role>,
 }
 
@@ -46,7 +47,14 @@ impl FromStr for TrackInput {
         for field in fields {
             match field.split_once('=') {
                 Some(("language", value)) => {
-                    language = (!value.is_empty()).then(|| value.to_string());
+                    language = if value.is_empty() {
+                        None
+                    } else {
+                        let tag = value
+                            .parse::<LanguageTag>()
+                            .map_err(|_| format!("invalid language tag: {value}"))?;
+                        Some(tag)
+                    };
                 }
                 Some(("role", value)) => {
                     role = if value.is_empty() {
@@ -88,9 +96,28 @@ mod tests {
         let input: TrackInput = "audio.mp4,language=fra,role=commentary".parse().unwrap();
 
         assert_eq!(
-            (input.language.as_deref(), input.role),
+            (input.language.as_ref().map(LanguageTag::as_str), input.role),
             (Some("fra"), Some(Role::Commentary))
         );
+    }
+
+    #[test]
+    fn parse_accepts_bcp47_language_tag() {
+        let input: TrackInput = "audio.mp4,language=pt-BR".parse().unwrap();
+
+        assert_eq!(
+            input.language.as_ref().map(LanguageTag::as_str),
+            Some("pt-BR")
+        );
+    }
+
+    #[test]
+    fn parse_rejects_malformed_language_tag() {
+        let error = "audio.mp4,language=not_a_tag"
+            .parse::<TrackInput>()
+            .unwrap_err();
+
+        assert_eq!(error, "invalid language tag: not_a_tag");
     }
 
     #[test]
@@ -126,7 +153,7 @@ mod tests {
         };
         assert_eq!(
             (audio.language, audio.role),
-            ("fra".to_string(), Some(Role::Commentary))
+            ("fra".parse().unwrap(), Some(Role::Commentary))
         );
     }
 
@@ -134,7 +161,7 @@ mod tests {
     fn apply_overrides_text_language_and_role() {
         let input: TrackInput = "text.vtt,language=nld,role=subtitle".parse().unwrap();
         let mut kind = TrackKind::Text(TextKind {
-            language: "und".to_string(),
+            language: "und".parse().unwrap(),
             role: None,
         });
 
@@ -145,7 +172,7 @@ mod tests {
         };
         assert_eq!(
             (text.language, text.role),
-            ("nld".to_string(), Some(Role::Subtitle))
+            ("nld".parse().unwrap(), Some(Role::Subtitle))
         );
     }
 
@@ -168,7 +195,7 @@ mod tests {
         TrackKind::Audio(AudioKind {
             sample_rate: 48_000,
             channels: 2,
-            language: "nld".to_string(),
+            language: "nld".parse().unwrap(),
             role: None,
         })
     }

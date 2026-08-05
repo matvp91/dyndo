@@ -1,11 +1,12 @@
 use std::ops::Range;
 
 use bytes::Bytes;
+use language_tags::LanguageTag;
 use mp4_atom::{Codec, FourCC, Hvcc};
 use opendal::Operator;
 use relative_path::RelativePath;
 
-use crate::asset_descriptor::{AudioKind, TextKind, TrackKind, VideoKind};
+use crate::asset_descriptor::{AudioKind, TextKind, TrackKind, VideoKind, undetermined_language};
 use crate::box_reader::{self, BoxReaderError, Boxes};
 use crate::track::Fragment;
 use crate::track_source::TrackSource;
@@ -221,13 +222,9 @@ fn track_fragments(boxes: &Boxes) -> Result<Vec<Fragment>, TrackProbeError> {
     Ok(fragments)
 }
 
-fn language(boxes: &Boxes) -> String {
+fn language(boxes: &Boxes) -> LanguageTag {
     let language = boxes.moov.trak[0].mdia.mdhd.language.as_str();
-    if language.is_empty() {
-        "und".to_string()
-    } else {
-        language.to_string()
-    }
+    language.parse().unwrap_or_else(|_| undetermined_language())
 }
 
 fn hevc_codec(prefix: &str, hvcc: &Hvcc) -> String {
@@ -268,7 +265,7 @@ async fn probe_vtt(_op: &Operator, _path: &RelativePath) -> Result<ProbedTrack, 
     Ok(ProbedTrack {
         codec: "wvtt".to_string(),
         kind: TrackKind::Text(TextKind {
-            language: "und".to_string(),
+            language: undetermined_language(),
             role: None,
         }),
         timescale: 1000,

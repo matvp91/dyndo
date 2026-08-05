@@ -91,7 +91,7 @@ Video tracks carry no `language` or `role`.
 |---|---|---|
 | `sample_rate` | integer | Sampling rate, in Hz. |
 | `channels` | integer | Number of audio channels (e.g. `2` for stereo, `6` for 5.1). |
-| `language` | string | Language code as declared by the source's `mdhd` box, or `und` when the source declares none. Always written. |
+| `language` | string | Well-formed BCP 47 language tag declared by the source's `mdhd` box, or `und` when the source declares none or the field is omitted. Always written. |
 | `role` | string *(optional)* | The track's declared purpose. Omitted when unset. See [Track roles](./roles.md). |
 
 ```json
@@ -123,7 +123,7 @@ ISO-BMFF), which is probed and served like any other CMAF track, or a **raw
 
 | Field | Type | Description |
 |---|---|---|
-| `language` | string | Language code from the source's `mdhd` box for CMAF `wvtt`, or `und` for a raw `.vtt` (WebVTT declares no language). Always written. |
+| `language` | string | Well-formed BCP 47 language tag from the source's `mdhd` box for CMAF `wvtt`, or `und` for a raw `.vtt` or an omitted field. Always written. |
 | `role` | string *(optional)* | The track's declared purpose. Omitted when unset, which DASH renders as `subtitle`. See [Track roles](./roles.md). |
 
 A CMAF `wvtt` track and a raw `.vtt` track:

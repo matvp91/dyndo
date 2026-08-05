@@ -1,3 +1,4 @@
+use language_tags::LanguageTag;
 use opendal::Operator;
 use relative_path::{RelativePath, RelativePathBuf};
 use serde::{Deserialize, Serialize};
@@ -120,16 +121,22 @@ pub struct VideoKind {
 pub struct AudioKind {
     pub sample_rate: u32,
     pub channels: u16,
-    pub language: String,
+    #[serde(default = "undetermined_language")]
+    pub language: LanguageTag,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub role: Option<Role>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TextKind {
-    pub language: String,
+    #[serde(default = "undetermined_language")]
+    pub language: LanguageTag,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub role: Option<Role>,
+}
+
+pub(crate) fn undetermined_language() -> LanguageTag {
+    "und".parse().expect("und is a well-formed language tag")
 }
 
 #[cfg(test)]
@@ -209,6 +216,35 @@ mod tests {
         let decoded: AssetDescriptor = serde_json::from_slice(&json).unwrap();
 
         assert_eq!(decoded.tracks, asset.tracks);
+    }
+
+    #[test]
+    fn language_tag_deserialization_accepts_bcp47_tag() {
+        let kind: TextKind = serde_json::from_str(r#"{"language":"pt-BR"}"#).unwrap();
+
+        assert_eq!(kind.language.as_str(), "pt-BR");
+    }
+
+    #[test]
+    fn audio_language_defaults_to_und_when_missing() {
+        let kind: AudioKind =
+            serde_json::from_str(r#"{"sample_rate":48000,"channels":2}"#).unwrap();
+
+        assert_eq!(kind.language.as_str(), "und");
+    }
+
+    #[test]
+    fn text_language_defaults_to_und_when_missing() {
+        let kind: TextKind = serde_json::from_str("{}").unwrap();
+
+        assert_eq!(kind.language.as_str(), "und");
+    }
+
+    #[test]
+    fn language_tag_deserialization_rejects_malformed_tag() {
+        let result = serde_json::from_str::<TextKind>(r#"{"language":"not_a_tag"}"#);
+
+        assert!(result.is_err());
     }
 
     #[tokio::test]

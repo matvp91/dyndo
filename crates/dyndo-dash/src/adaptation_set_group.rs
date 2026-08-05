@@ -17,8 +17,8 @@ impl<'a> AdaptationSetGroup<'a> {
     fn new(key: String, descriptor: &'a TrackDescriptor, track: &'a Track) -> Self {
         let language = match &descriptor.kind {
             TrackKind::Video(_) => None,
-            TrackKind::Audio(audio) => Some(audio.language.clone()),
-            TrackKind::Text(text) => Some(text.language.clone()),
+            TrackKind::Audio(audio) => Some(audio.language.to_string()),
+            TrackKind::Text(text) => Some(text.language.to_string()),
         };
         let role = match &descriptor.kind {
             TrackKind::Video(_) => None,

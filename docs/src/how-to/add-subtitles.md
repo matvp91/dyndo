@@ -76,9 +76,10 @@ HLS media playlist is empty (`#EXT-X-TARGETDURATION:0`, no segments) and its DAS
 
 ## Set the language
 
-The `language` value is an [ISO 639-2](https://www.loc.gov/standards/iso639-2/php/code_list.php)
-three-letter code (`eng`, `nld`, `fra`, …). dyndo stores whatever you give it and
-copies it into the manifests, so use codes your target players understand.
+The `language` value is a BCP 47 language tag. Both short tags such as `en` and
+region-specific tags such as `pt-BR` are accepted; the existing three-letter
+forms (`eng`, `nld`, `fra`, …) remain supported. dyndo rejects malformed tags
+and copies accepted tags into manifests unchanged.
 
 The `language` stored in `asset.json` is authoritative. To relabel a track,
 either re-index it with a new `language=` override or edit the field in the JSON

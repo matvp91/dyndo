@@ -67,9 +67,9 @@ opt-in, while a lone commentary track is auto-selectable. See the
 Text renditions are never marked `DEFAULT` in HLS — subtitles stay off until the
 viewer enables them, or until the player acts on `FORCED`.
 
-The role also names the rendition: an HLS rendition's `NAME` is its language plus
-the role's label, so `caption` on an English track reads `eng (Captions)`. Two
-renditions in one group cannot share a `NAME`.
+The role also names the rendition: an HLS rendition's `NAME` uses the English
+language name plus the role's label, so `caption` on an English track reads
+`English (Captions)`. Two renditions in one group cannot share a `NAME`.
 
 ## Examples
 

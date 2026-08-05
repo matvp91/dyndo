@@ -27,6 +27,7 @@ async fn generate_master_playlist_emits_video_variant_and_audio_rendition() {
         "TYPE=AUDIO",
         "GROUP-ID=\"audio\"",
         "LANGUAGE=\"nld\"",
+        "NAME=\"Dutch\"",
         "URI=\"audio-nld.m3u8\"",
         "RESOLUTION=1920x1080",
         "FRAME-RATE=25",

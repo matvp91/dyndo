@@ -24,8 +24,9 @@ dyndo index [OPTIONS] <INPUTS>...
 Each input is a comma-separated descriptor whose **first field is the file
 path**; the remaining fields are `key=value` overrides:
 
-- `language` — a language code; overrides the language probed from the file.
-  Applied to audio and text tracks.
+- `language` — a BCP 47 language tag, such as `en`, `eng`, or `pt-BR`; overrides
+  the language probed from the file. Applied to audio and text tracks. Malformed
+  tags are rejected.
 - `role` — the track's purpose; never probed, so this is the only way to set it
   apart from editing the JSON. Applied to audio and text tracks. One of `main`,
   `alternate`, `commentary`, `dub`, `description`,
