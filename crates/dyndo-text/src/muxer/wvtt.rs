@@ -1,14 +1,13 @@
-//! Packing a [`Subtitle`] into a CMAF `wvtt` track (ISO/IEC 14496-30).
-
-use std::ops::Range;
+//! Packing a fragmented subtitle into a CMAF `wvtt` track (ISO/IEC 14496-30).
 
 use mp4_atom::{
-    Atom, Buf, BufMut, Codec, Decode, Dinf, Dref, Encode, FourCC, Ftyp, Hdlr, Mdat, Mdhd, Mdia,
-    Mfhd, Minf, Moof, Moov, Mvex, Mvhd, Nmhd, PlainText, SegmentReference, Sidx, Stbl, Stco, Stsd,
-    Styp, Tfdt, Tfhd, Tkhd, Traf, Trak, Trex, Trun, TrunEntry, Url, VttC, Wvtt,
+    BufMut, Codec, Dinf, Dref, Encode, FourCC, Ftyp, Hdlr, Mdat, Mdhd, Mdia, Mfhd, Minf, Moof,
+    Moov, Mvex, Mvhd, Nmhd, PlainText, SegmentReference, Sidx, Stbl, Stco, Stsd, Styp, Tfdt, Tfhd,
+    Tkhd, Traf, Trak, Trex, Trun, TrunEntry, Url, VttC, Wvtt,
 };
 
-use crate::subtitle::{Cue, Subtitle};
+use super::atoms::{Payl, Vttc, Vtte};
+use crate::fragmenter::{Fragment, Sample};
 
 /// Milliseconds map 1:1 onto media time.
 const TIMESCALE: u32 = 1_000;
@@ -23,49 +22,40 @@ pub enum WvttError {
     Atom(#[from] mp4_atom::Error),
 }
 
-/// Pack a [`Subtitle`] into a single fragmented `wvtt` track: `ftyp` · `moov` ·
-/// `sidx` · one `styp` · `moof` · `mdat` per fragment. The `sidx` sits ahead of
-/// the fragments and gives each one's size and duration, so a reader can index
-/// the whole track from the head of the file.
+/// Pack fragments of a subtitle into a single fragmented `wvtt` track: `ftyp` ·
+/// `moov` · `sidx` · one `styp` · `moof` · `mdat` per fragment. The `sidx` sits
+/// ahead of the fragments and gives each one's size and duration, so a reader can
+/// index the whole track from the head of the file.
 ///
-/// The cues are tiled into samples that cover the timeline from 0 with no holes,
-/// as the format requires: cues on screen together share one sample, and an
-/// interval no cue covers becomes an empty sample.
+/// Divide a subtitle with [`fragment`](crate::fragmenter::fragment) to get
+/// fragments ending on the asset's clock, so every text track of an asset carries
+/// the same fragment timeline and stays segment-aligned with its siblings. The
+/// track runs to the end of the last fragment.
 ///
-/// A fragment then ends at every splice point in `boundaries` and at every
-/// multiple of `text_length`. Those cut times come from the asset's clock, never
-/// from where the cues happen to fall, so every text track of an asset carries
-/// the same fragment timeline and stays segment-aligned with its siblings. A cue
-/// crossing a cut is split and appears in both fragments. A `text_length` of 0
-/// asks for no grid, leaving the splice points as the only cuts.
+/// Each sample is written as one `vttc` per cue on screen over it, or as a single
+/// `vtte` where no cue is — the empty box the format spends on an interval
+/// showing nothing. That the samples tile their fragment without holes is what
+/// makes the track legal.
 ///
 /// The track declares no language; that belongs to the transport.
 ///
 /// # Errors
 ///
-/// [`WvttError::Empty`] if no cue ends after time 0, since the result would be a
-/// track with no fragments to index, and [`WvttError::Atom`] if a box fails to
+/// [`WvttError::Empty`] if the fragments run to time 0, since the result would be
+/// a track with nothing to index, and [`WvttError::Atom`] if a box fails to
 /// encode.
-pub fn pack(
-    subtitle: &Subtitle,
-    boundaries: &[u64],
-    text_length: u64,
-) -> Result<Vec<u8>, WvttError> {
-    let Some(track_end) = subtitle.cues.iter().map(|cue| cue.end).max() else {
-        return Err(WvttError::Empty);
-    };
-    let cuts = cuts(track_end, boundaries, text_length);
-    let samples = tile(subtitle, track_end, &cuts);
-    if samples.is_empty() {
+pub fn pack(fragments: &[Fragment]) -> Result<Vec<u8>, WvttError> {
+    let track_end = fragments.last().map_or(0, |fragment| fragment.end);
+    if track_end == 0 {
         return Err(WvttError::Empty);
     }
 
-    let mut fragments = Vec::new();
-    let mut references = Vec::new();
-    for (index, group) in group(&samples, &cuts).into_iter().enumerate() {
-        let fragment = fragment(index, &samples[group.clone()])?;
-        references.push(reference(fragment.len(), &samples[group]));
-        fragments.push(fragment);
+    let mut encoded = Vec::with_capacity(fragments.len());
+    let mut references = Vec::with_capacity(fragments.len());
+    for (index, fragment) in fragments.iter().enumerate() {
+        let bytes = encode(index, fragment)?;
+        references.push(reference(bytes.len(), fragment));
+        encoded.push(bytes);
     }
 
     let mut track = Vec::new();
@@ -79,122 +69,39 @@ pub fn pack(
         references,
     }
     .encode(&mut track)?;
-    for fragment in fragments {
+    for fragment in encoded {
         track.extend_from_slice(&fragment);
     }
 
     Ok(track)
 }
 
-/// One sample: the cues on screen over `[start, end)`. No cues means a gap,
-/// which the format still spends a sample on.
-struct Sample<'a> {
-    start: u64,
-    end: u64,
-    texts: Vec<&'a str>,
-}
-
-impl Sample<'_> {
-    fn duration(&self) -> u64 {
-        self.end - self.start
+/// The cues on screen over a sample, each a `vttc` carrying its text. An
+/// interval showing nothing is a lone `vtte`, which the format still spends a
+/// sample on.
+fn write_sample<B: BufMut>(sample: &Sample, buf: &mut B) -> mp4_atom::Result<()> {
+    if sample.cues.is_empty() {
+        return Vtte.encode(buf);
     }
 
-    fn write<B: BufMut>(&self, buf: &mut B) -> mp4_atom::Result<()> {
-        if self.texts.is_empty() {
-            return Vtte.encode(buf);
+    for cue in &sample.cues {
+        Vttc {
+            payl: Payl {
+                text: cue.text.clone(),
+            },
         }
-
-        for text in &self.texts {
-            Vttc {
-                payl: Payl {
-                    text: (*text).to_string(),
-                },
-            }
-            .encode(buf)?;
-        }
-
-        Ok(())
+        .encode(buf)?;
     }
+
+    Ok(())
 }
 
-/// The times a fragment has to end at: the asset's splice points plus the
-/// `text_length` grid, keeping only what falls strictly inside the track.
-fn cuts(track_end: u64, boundaries: &[u64], text_length: u64) -> Vec<u64> {
-    let mut cuts: Vec<u64> = boundaries
-        .iter()
-        .copied()
-        .filter(|&boundary| boundary > 0 && boundary < track_end)
-        .collect();
-
-    let mut time = text_length;
-    while text_length > 0 && time < track_end {
-        cuts.push(time);
-        time = time.saturating_add(text_length);
-    }
-
-    cuts.sort_unstable();
-    cuts.dedup();
-    cuts
-}
-
-/// Cut the timeline at every cue edge and every fragment cut, then fill each
-/// interval with the cues covering it.
-fn tile<'a>(subtitle: &'a Subtitle, track_end: u64, cuts: &[u64]) -> Vec<Sample<'a>> {
-    let mut edges = Vec::with_capacity(2 * subtitle.cues.len() + cuts.len() + 2);
-    edges.push(0);
-    edges.push(track_end);
-    for cue in &subtitle.cues {
-        edges.push(cue.start);
-        edges.push(cue.end);
-    }
-    edges.extend_from_slice(cuts);
-    edges.sort_unstable();
-    edges.dedup();
-
-    let mut samples = Vec::with_capacity(edges.len() - 1);
-    let mut active: Vec<&Cue> = Vec::new();
-    let mut next = 0;
-    for edge in edges.windows(2) {
-        let (start, end) = (edge[0], edge[1]);
-        while let Some(cue) = subtitle.cues.get(next).filter(|cue| cue.start <= start) {
-            active.push(cue);
-            next += 1;
-        }
-        active.retain(|cue| cue.end > start);
-
-        samples.push(Sample {
-            start,
-            end,
-            // No cue edge falls inside the interval, so every still-active cue
-            // spans all of it.
-            texts: active.iter().map(|cue| cue.text.as_str()).collect(),
-        });
-    }
-
-    samples
-}
-
-/// Split the samples into one fragment per cut, the last running to the end of
-/// the track.
-fn group(samples: &[Sample], cuts: &[u64]) -> Vec<Range<usize>> {
-    let mut groups = Vec::new();
-    let mut start = 0;
-    for (index, sample) in samples.iter().enumerate() {
-        if index + 1 == samples.len() || cuts.binary_search(&sample.end).is_ok() {
-            groups.push(start..index + 1);
-            start = index + 1;
-        }
-    }
-
-    groups
-}
-
-fn fragment(index: usize, samples: &[Sample]) -> Result<Vec<u8>, WvttError> {
+fn encode(index: usize, fragment: &Fragment) -> Result<Vec<u8>, WvttError> {
     let mut data = Vec::new();
-    let mut entries = Vec::with_capacity(samples.len());
-    for sample in samples {
+    let mut entries = Vec::with_capacity(fragment.samples.len());
+    for sample in &fragment.samples {
         let offset = data.len();
-        sample.write(&mut data)?;
+        write_sample(sample, &mut data)?;
         entries.push(TrunEntry {
             duration: Some(milliseconds(sample.duration())),
             size: Some(u32::try_from(data.len() - offset).expect("a sample fits in u32 bytes")),
@@ -214,7 +121,7 @@ fn fragment(index: usize, samples: &[Sample]) -> Result<Vec<u8>, WvttError> {
                 ..Tfhd::default()
             },
             tfdt: Some(Tfdt {
-                base_media_decode_time: samples[0].start,
+                base_media_decode_time: fragment.start,
             }),
             trun: vec![Trun {
                 data_offset: Some(0),
@@ -243,13 +150,11 @@ fn fragment(index: usize, samples: &[Sample]) -> Result<Vec<u8>, WvttError> {
     Ok(bytes)
 }
 
-fn reference(size: usize, samples: &[Sample]) -> SegmentReference {
-    let duration = samples.iter().map(Sample::duration).sum();
-
+fn reference(size: usize, fragment: &Fragment) -> SegmentReference {
     SegmentReference {
         reference_type: false,
         reference_size: u32::try_from(size).expect("a fragment fits in u32 bytes"),
-        subsegment_duration: milliseconds(duration),
+        subsegment_duration: milliseconds(fragment.duration()),
         // Every text sample can be decoded on its own.
         starts_with_sap: true,
         sap_type: 1,
@@ -359,76 +264,18 @@ fn moov(duration: u64) -> Moov {
     }
 }
 
-/// `VTTCueBox`: one cue within a sample. Styling, positioning, and cue
-/// identifiers are all optional boxes this crate does not model, leaving the
-/// payload as the only child.
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct Vttc {
-    payl: Payl,
-}
-
-impl Atom for Vttc {
-    const KIND: FourCC = FourCC::new(b"vttc");
-
-    fn decode_body<B: Buf>(buf: &mut B) -> mp4_atom::Result<Self> {
-        Ok(Self {
-            payl: Payl::decode(buf)?,
-        })
-    }
-
-    fn encode_body<B: BufMut>(&self, buf: &mut B) -> mp4_atom::Result<()> {
-        self.payl.encode(buf)
-    }
-}
-
-/// `CuePayloadBox`: the cue text, as UTF-8 filling the box.
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct Payl {
-    text: String,
-}
-
-impl Atom for Payl {
-    const KIND: FourCC = FourCC::new(b"payl");
-
-    fn decode_body<B: Buf>(buf: &mut B) -> mp4_atom::Result<Self> {
-        let size = buf.remaining();
-        let text = String::from_utf8(buf.slice(size).to_vec())
-            .map_err(|error| mp4_atom::Error::InvalidString(error.to_string()))?;
-        buf.advance(size);
-
-        Ok(Self { text })
-    }
-
-    fn encode_body<B: BufMut>(&self, buf: &mut B) -> mp4_atom::Result<()> {
-        self.text.as_bytes().encode(buf)
-    }
-}
-
-/// `VTTEmptyCueBox`: a sample covering an interval with nothing on screen.
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct Vtte;
-
-impl Atom for Vtte {
-    const KIND: FourCC = FourCC::new(b"vtte");
-
-    fn decode_body<B: Buf>(_buf: &mut B) -> mp4_atom::Result<Self> {
-        Ok(Self)
-    }
-
-    fn encode_body<B: BufMut>(&self, _buf: &mut B) -> mp4_atom::Result<()> {
-        Ok(())
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use mp4_atom::Decode;
+    use mp4_atom::{Buf, Decode};
 
     use super::*;
+    use crate::fragmenter::fragment;
+    use crate::subtitle::{Cue, Subtitle};
 
     #[test]
     fn packs_an_indexable_track() {
-        let track = pack(&subtitle(&[(0, 1_000, "A")]), &[], 0).unwrap();
+        let subtitle = subtitle(&[(0, 1_000, "A")]);
+        let track = pack(&fragment(&subtitle, &[], 0)).unwrap();
 
         let mut buf = track.as_slice();
         let ftyp = Ftyp::decode(&mut buf).unwrap();
@@ -449,7 +296,8 @@ mod tests {
 
     #[test]
     fn describes_a_text_track_carrying_webvtt() {
-        let track = pack(&subtitle(&[(0, 1_000, "A")]), &[], 0).unwrap();
+        let subtitle = subtitle(&[(0, 1_000, "A")]);
+        let track = pack(&fragment(&subtitle, &[], 0)).unwrap();
         let moov = moov_of(&track);
         let mdia = &moov.trak[0].mdia;
 
@@ -469,7 +317,8 @@ mod tests {
 
     #[test]
     fn declares_the_track_duration_from_the_last_cue() {
-        let track = pack(&subtitle(&[(0, 1_000, "A"), (4_000, 6_500, "B")]), &[], 0).unwrap();
+        let subtitle = subtitle(&[(0, 1_000, "A"), (4_000, 6_500, "B")]);
+        let track = pack(&fragment(&subtitle, &[], 0)).unwrap();
         let moov = moov_of(&track);
 
         assert_eq!(
@@ -480,12 +329,8 @@ mod tests {
 
     #[test]
     fn every_reference_matches_its_fragment() {
-        let track = pack(
-            &subtitle(&[(0, 1_000, "A"), (2_000, 3_000, "B")]),
-            &[],
-            1_000,
-        )
-        .unwrap();
+        let subtitle = subtitle(&[(0, 1_000, "A"), (2_000, 3_000, "B")]);
+        let track = pack(&fragment(&subtitle, &[], 1_000)).unwrap();
         let (sidx, fragments) = fragments_of(&track);
 
         assert_eq!(
@@ -502,7 +347,8 @@ mod tests {
 
     #[test]
     fn references_are_random_access_media() {
-        let track = pack(&subtitle(&[(0, 1_000, "A")]), &[], 0).unwrap();
+        let subtitle = subtitle(&[(0, 1_000, "A")]);
+        let track = pack(&fragment(&subtitle, &[], 0)).unwrap();
         let (sidx, _) = fragments_of(&track);
 
         let reference = &sidx.references[0];
@@ -517,23 +363,9 @@ mod tests {
     }
 
     #[test]
-    fn tiles_gaps_between_cues() {
-        let track = pack(&subtitle(&[(0, 1_000, "A"), (2_000, 3_000, "B")]), &[], 0).unwrap();
-        let (_, fragments) = fragments_of(&track);
-
-        assert_eq!(
-            fragments[0]
-                .samples
-                .iter()
-                .map(|sample| sample.duration)
-                .collect::<Vec<_>>(),
-            [1_000, 1_000, 1_000]
-        );
-    }
-
-    #[test]
     fn a_gap_becomes_an_empty_cue_sample() {
-        let track = pack(&subtitle(&[(0, 1_000, "A"), (2_000, 3_000, "B")]), &[], 0).unwrap();
+        let subtitle = subtitle(&[(0, 1_000, "A"), (2_000, 3_000, "B")]);
+        let track = pack(&fragment(&subtitle, &[], 0)).unwrap();
         let (_, fragments) = fragments_of(&track);
 
         let gap = &fragments[0].samples[1];
@@ -542,7 +374,8 @@ mod tests {
 
     #[test]
     fn a_cue_sample_carries_its_text() {
-        let track = pack(&subtitle(&[(0, 1_000, "Hello")]), &[], 0).unwrap();
+        let subtitle = subtitle(&[(0, 1_000, "Hello")]);
+        let track = pack(&fragment(&subtitle, &[], 0)).unwrap();
         let (_, fragments) = fragments_of(&track);
 
         let sample = &fragments[0].samples[0];
@@ -558,7 +391,8 @@ mod tests {
 
     #[test]
     fn simultaneous_cues_share_one_sample() {
-        let track = pack(&subtitle(&[(0, 2_000, "A"), (1_000, 3_000, "B")]), &[], 0).unwrap();
+        let subtitle = subtitle(&[(0, 2_000, "A"), (1_000, 3_000, "B")]);
+        let track = pack(&fragment(&subtitle, &[], 0)).unwrap();
         let (_, fragments) = fragments_of(&track);
 
         // [0,1000)=A, [1000,2000)=A+B, [2000,3000)=B
@@ -573,46 +407,9 @@ mod tests {
     }
 
     #[test]
-    fn a_zero_length_leaves_the_whole_track_in_one_fragment() {
-        let track = pack(&subtitle(&[(0, 1_000, "A"), (2_000, 3_000, "B")]), &[], 0).unwrap();
-        let (_, fragments) = fragments_of(&track);
-
-        assert_eq!(fragments.len(), 1);
-        assert_eq!(fragments[0].samples.len(), 3);
-    }
-
-    #[test]
-    fn fragments_end_on_the_text_segment_grid() {
-        let cues = subtitle(&[(0, 1_000, "A"), (2_000, 3_000, "B"), (4_000, 5_000, "C")]);
-        let track = pack(&cues, &[], 2_000).unwrap();
-        let (_, fragments) = fragments_of(&track);
-
-        assert_eq!(
-            fragments
-                .iter()
-                .map(|fragment| (fragment.start, fragment.duration))
-                .collect::<Vec<_>>(),
-            [(0, 2_000), (2_000, 2_000), (4_000, 1_000)]
-        );
-    }
-
-    #[test]
-    fn a_fragment_closes_at_a_splice_point() {
-        let track = pack(&subtitle(&[(0, 6_000, "A")]), &[2_000], 0).unwrap();
-        let (_, fragments) = fragments_of(&track);
-
-        assert_eq!(
-            fragments
-                .iter()
-                .map(|fragment| (fragment.start, fragment.duration))
-                .collect::<Vec<_>>(),
-            [(0, 2_000), (2_000, 4_000)]
-        );
-    }
-
-    #[test]
-    fn splice_points_and_the_grid_combine() {
-        let track = pack(&subtitle(&[(0, 10_000, "A")]), &[7_400], 4_000).unwrap();
+    fn each_fragment_declares_its_own_start_and_duration() {
+        let subtitle = subtitle(&[(0, 10_000, "A")]);
+        let track = pack(&fragment(&subtitle, &[7_400], 4_000)).unwrap();
         let (_, fragments) = fragments_of(&track);
 
         assert_eq!(
@@ -625,57 +422,9 @@ mod tests {
     }
 
     #[test]
-    fn text_tracks_of_one_asset_share_a_fragment_timeline() {
-        let boundaries = [7_400];
-        let one = pack(
-            &subtitle(&[(0, 1_000, "a"), (5_000, 9_000, "b")]),
-            &boundaries,
-            3_000,
-        );
-        let other = pack(
-            &subtitle(&[(0, 4_000, "x"), (4_500, 9_000, "y"), (8_000, 9_000, "z")]),
-            &boundaries,
-            3_000,
-        );
-
-        let timeline = |track: &[u8]| {
-            fragments_of(track)
-                .1
-                .iter()
-                .map(|fragment| (fragment.start, fragment.duration))
-                .collect::<Vec<_>>()
-        };
-        assert_eq!(timeline(&one.unwrap()), timeline(&other.unwrap()));
-    }
-
-    #[test]
-    fn a_cue_crossing_a_cut_appears_in_both_fragments() {
-        let track = pack(&subtitle(&[(0, 6_000, "A")]), &[2_000], 0).unwrap();
-        let (_, fragments) = fragments_of(&track);
-
-        let texts: Vec<String> = fragments
-            .iter()
-            .map(|fragment| {
-                Vttc::decode(&mut fragment.samples[0].bytes.as_slice())
-                    .unwrap()
-                    .payl
-                    .text
-            })
-            .collect();
-        assert_eq!(texts, ["A".to_string(), "A".to_string()]);
-    }
-
-    #[test]
-    fn cuts_outside_the_track_are_ignored() {
-        let track = pack(&subtitle(&[(0, 2_000, "A")]), &[0, 2_000, 9_000], 2_000).unwrap();
-        let (_, fragments) = fragments_of(&track);
-
-        assert_eq!(fragments.len(), 1);
-    }
-
-    #[test]
     fn samples_follow_the_mdat_header() {
-        let track = pack(&subtitle(&[(0, 1_000, "A")]), &[], 0).unwrap();
+        let subtitle = subtitle(&[(0, 1_000, "A")]);
+        let track = pack(&fragment(&subtitle, &[], 0)).unwrap();
         let (_, fragments) = fragments_of(&track);
 
         assert_eq!(
@@ -686,26 +435,18 @@ mod tests {
 
     #[test]
     fn a_subtitle_without_cues_is_rejected() {
-        let error = pack(&Subtitle::default(), &[], 0).unwrap_err();
+        let subtitle = subtitle(&[]);
+        let error = pack(&fragment(&subtitle, &[], 0)).unwrap_err();
 
         assert!(matches!(error, WvttError::Empty));
     }
 
     #[test]
     fn a_subtitle_ending_at_time_zero_is_rejected() {
-        let error = pack(&subtitle(&[(0, 0, "A")]), &[], 0).unwrap_err();
+        let subtitle = subtitle(&[(0, 0, "A")]);
+        let error = pack(&fragment(&subtitle, &[], 0)).unwrap_err();
 
         assert!(matches!(error, WvttError::Empty));
-    }
-
-    #[test]
-    fn a_track_starting_after_time_zero_opens_with_a_gap() {
-        let track = pack(&subtitle(&[(2_000, 3_000, "A")]), &[], 0).unwrap();
-        let (_, fragments) = fragments_of(&track);
-
-        let opening = &fragments[0].samples[0];
-        assert_eq!(opening.duration, 2_000);
-        assert_eq!(Vtte::decode(&mut opening.bytes.as_slice()).unwrap(), Vtte);
     }
 
     fn subtitle(cues: &[(u64, u64, &str)]) -> Subtitle {
@@ -731,7 +472,6 @@ mod tests {
     }
 
     struct FragmentSample {
-        duration: u32,
         bytes: Vec<u8>,
     }
 
@@ -765,7 +505,6 @@ mod tests {
                 .map(|entry| {
                     let size = entry.size.unwrap() as usize;
                     let sample = FragmentSample {
-                        duration: entry.duration.unwrap(),
                         bytes: mdat.data[offset..offset + size].to_vec(),
                     };
                     offset += size;
