@@ -23,14 +23,14 @@ pub(super) async fn initialization(
     Ok(([(CONTENT_TYPE, track.mime_type())], bytes).into_response())
 }
 
-/// Serves one segment as the packaged CMAF bytes it is stored as.
+/// Serves the segment starting at `time` as the packaged CMAF bytes it is stored as.
 pub(super) async fn media(
     op: &Operator,
     context: &RequestContext<()>,
     track_id: &str,
-    file: &str,
+    time: u64,
 ) -> Result<Response, ServerError> {
-    let (track, segment_options, range) = locate(op, context, track_id, file, ".m4s").await?;
+    let (track, segment_options, range) = locate(op, context, track_id, time).await?;
     let bytes = track.read_range(op, &segment_options, range).await?;
 
     Ok(([(CONTENT_TYPE, track.mime_type())], bytes).into_response())
@@ -46,9 +46,9 @@ pub(super) async fn text(
     op: &Operator,
     context: &RequestContext<()>,
     track_id: &str,
-    file: &str,
+    time: u64,
 ) -> Result<Response, ServerError> {
-    let (track, segment_options, range) = locate(op, context, track_id, file, ".vtt").await?;
+    let (track, segment_options, range) = locate(op, context, track_id, time).await?;
     let bytes = track.read_range(op, &segment_options, range).await?;
     let fragments = wvtt::unpack(&bytes, track.timescale())?;
     let subtitle = fragmenter::merge(&fragments);
@@ -56,21 +56,16 @@ pub(super) async fn text(
     Ok(([(CONTENT_TYPE, "text/vtt")], vtt::write(&subtitle)).into_response())
 }
 
-/// The track `track_id` names and the byte range of the segment `file` names.
+/// The track `track_id` names and the byte range of the segment starting at `time`.
 ///
-/// Segment start times are cumulative rather than stored, so the time in the
-/// filename has to be one a segment begins at; a time inside one names nothing.
+/// Segment start times are cumulative rather than stored, so `time` has to be one a
+/// segment begins at; a time inside one names nothing.
 async fn locate(
     op: &Operator,
     context: &RequestContext<()>,
     track_id: &str,
-    file: &str,
-    extension: &str,
+    time: u64,
 ) -> Result<(Track, SegmentOptions, Range<u64>), ServerError> {
-    let time = file
-        .strip_suffix(extension)
-        .and_then(|time| time.parse::<u64>().ok())
-        .ok_or_else(|| ServerError::NotFound(file.to_string()))?;
     let (track, segment_options) = read_track(op, context, track_id).await?;
 
     let mut start_time = track.earliest_presentation_time();
@@ -84,7 +79,7 @@ async fn locate(
     }
 
     Err(ServerError::NotFound(format!(
-        "segment {file} for track {track_id}"
+        "segment {time} for track {track_id}"
     )))
 }
 

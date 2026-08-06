@@ -21,7 +21,12 @@ pub(crate) fn build_router(op: Operator) -> Router {
     let cors = CorsLayer::new().allow_origin(Any).allow_methods(Any);
     Router::new()
         .route("/health", get(health))
-        .route("/out/{options}/{*resource}", get(dispatch))
+        // The two shapes an output path takes: something naming the whole asset, and
+        // one file of one track. Each resource is then named by its extension rather
+        // than assumed from what is left, since a route parameter spans a whole path
+        // segment and so cannot carry the extension itself.
+        .route("/out/{options}/{resource}", get(manifest))
+        .route("/out/{options}/{track_id}/{file}", get(track_file))
         .with_state(op)
         .layer(cors)
 }
@@ -30,45 +35,51 @@ async fn health() -> StatusCode {
     StatusCode::OK
 }
 
-async fn dispatch(
+/// A manifest describing the whole asset, or the media playlist of one track.
+async fn manifest(
     State(op): State<Operator>,
     Path((options, resource)): Path<(String, String)>,
 ) -> Result<Response, ServerError> {
-    match resource.as_str() {
-        // Generate the asset's DASH manifest.
-        "index.mpd" => {
+    let not_found = || ServerError::NotFound(resource.clone());
+
+    match resource.rsplit_once('.').ok_or_else(not_found)? {
+        ("index", "mpd") => {
             let context = parse_context::<DashOptions>(&options)?;
             transport::dash_manifest(&op, &context).await
         }
-        // Generate the HLS multivariant playlist.
-        "master.m3u8" => {
+        ("master", "m3u8") => {
             let context = parse_context::<HlsOptions>(&options)?;
             transport::hls_master(&op, &context).await
         }
-        // Generate the media playlist for the track named by the filename.
-        resource if !resource.contains('/') && resource.ends_with(".m3u8") => {
-            let track_id = resource
-                .strip_suffix(".m3u8")
-                .ok_or_else(|| ServerError::NotFound(resource.to_string()))?;
+        (track_id, "m3u8") => {
             let context = parse_context::<HlsOptions>(&options)?;
             transport::hls_media(&op, &context, track_id).await
         }
-        // Serve initialization bytes, a WebVTT document, or media bytes for the
-        // track named by the path.
-        resource => {
-            let context = parse_context::<()>(&options)?;
-            let (track_id, file) = resource
-                .split_once('/')
-                .ok_or_else(|| ServerError::NotFound(resource.to_string()))?;
-            if file == "init.mp4" {
-                segment::initialization(&op, &context, track_id).await
-            } else if file.ends_with(".vtt") {
-                segment::text(&op, &context, track_id, file).await
-            } else {
-                segment::media(&op, &context, track_id, file).await
-            }
-        }
+        _ => Err(not_found()),
     }
+}
+
+/// One file of one track: its initialization segment, or one media segment as either
+/// the packaged bytes it is stored as or the WebVTT document those bytes hold.
+async fn track_file(
+    State(op): State<Operator>,
+    Path((options, track_id, file)): Path<(String, String, String)>,
+) -> Result<Response, ServerError> {
+    let context = parse_context::<()>(&options)?;
+    let not_found = || ServerError::NotFound(file.clone());
+
+    match file.rsplit_once('.').ok_or_else(not_found)? {
+        ("init", "mp4") => segment::initialization(&op, &context, &track_id).await,
+        (time, "m4s") => segment::media(&op, &context, &track_id, segment_time(time, &file)?).await,
+        (time, "vtt") => segment::text(&op, &context, &track_id, segment_time(time, &file)?).await,
+        _ => Err(not_found()),
+    }
+}
+
+/// The presentation time a segment filename names.
+fn segment_time(name: &str, file: &str) -> Result<u64, ServerError> {
+    name.parse()
+        .map_err(|_| ServerError::NotFound(file.to_string()))
 }
 
 #[cfg(test)]
@@ -230,12 +241,31 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn catch_all_route_supports_nested_asset_path() {
+    async fn a_nested_asset_path_resolves() {
         let (_dir, app) = app("foo/asset");
 
         let response = request(app, "/out/(asset:foo%2Fasset)/index.mpd").await;
 
         assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    /// The extension names the resource, so anything else is addressed at nothing
+    /// rather than falling through to a handler.
+    #[tokio::test]
+    async fn an_unnamed_resource_returns_not_found() {
+        let (_dir, app) = app("asset");
+
+        for uri in [
+            "/out/(asset:asset)/index.txt",
+            "/out/(asset:asset)/index",
+            "/out/(asset:asset)/video-main/0.txt",
+            "/out/(asset:asset)/video-main/0",
+            "/out/(asset:asset)/video-main/0.m4s/extra",
+        ] {
+            let response = request(app.clone(), uri).await;
+
+            assert_eq!(response.status(), StatusCode::NOT_FOUND, "for {uri}");
+        }
     }
 
     #[tokio::test]
