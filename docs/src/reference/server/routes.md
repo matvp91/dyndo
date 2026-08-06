@@ -62,17 +62,18 @@ one.
 
 ### Transport options
 
-DASH resources accept one transport-specific option:
+DASH resources accept two transport-specific options:
 
 | Full key | Shorthand | Type | Default | Description |
 |---|---|---|---|---|
 | `compact` | `c` | boolean | `false` | Hoist segment-template data shared by DASH representations to their adaptation set. |
+| `multi_period` | `mp` | boolean | `false` | Open a `Period` at each [segment boundary](#segmentation-options) rather than describing the asset as one. |
 
 HLS resources accept one:
 
 | Full key | Shorthand | Type | Default | Description |
 |---|---|---|---|---|
-| `wvtt` | `w` | boolean | `false` | Point text renditions at packaged `wvtt` segments rather than WebVTT documents. |
+| `wvtt` | — | boolean | `false` | Point text renditions at packaged `wvtt` segments rather than WebVTT documents. |
 
 The supported shorthand map is therefore `asset` → `a`, `min_length` → `sml`,
 `text_length` → `stl`, `boundaries` → `sb`, `compact` → `c`, and `wvtt` → `w`.

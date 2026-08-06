@@ -115,8 +115,8 @@ fragments until the requested duration is reached, while respecting the
 descriptor's [`segment_options.boundaries`](../reference/asset-json.md#segmentation).
 Every segment flag overrides the matching option in that block, and
 `--segment-boundaries` and `--segment-text-length` are accepted alongside it.
-Each command also takes one transport-specific flag: `--compact` for DASH, and
-`--wvtt` for HLS.
+DASH also takes `--compact` and `--multi-period`, the latter opening a `Period`
+at each boundary; HLS takes `--wvtt`.
 
 ## Next steps
 

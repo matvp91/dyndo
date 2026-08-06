@@ -18,6 +18,9 @@ pub(crate) struct DashArgs {
     /// Hoist common segment information in the MPD.
     #[arg(long, default_value_t = false)]
     compact: bool,
+    /// Split the manifest into a Period at each segment boundary.
+    #[arg(long = "multi-period", default_value_t = false)]
+    multi_period: bool,
 }
 
 pub(super) async fn run(op: &Operator, args: DashArgs) -> Result<(), Box<dyn std::error::Error>> {
@@ -25,6 +28,7 @@ pub(super) async fn run(op: &Operator, args: DashArgs) -> Result<(), Box<dyn std
     args.segment.assign_to(&mut descriptor.segment_options);
     let dash_options = dyndo_dash::options::DashOptions {
         compact: args.compact,
+        multi_period: args.multi_period,
     };
     let mpd = dyndo_dash::builder::generate_mpd(op, &descriptor, &dash_options).await?;
     let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
