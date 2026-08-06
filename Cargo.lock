@@ -704,6 +704,7 @@ dependencies = [
  "dyndo-core",
  "dyndo-dash",
  "dyndo-hls",
+ "dyndo-text",
  "figment",
  "opendal",
  "quick-xml 0.40.1",

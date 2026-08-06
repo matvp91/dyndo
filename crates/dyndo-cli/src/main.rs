@@ -97,6 +97,10 @@ struct HlsArgs {
     output: String,
     #[command(flatten)]
     segment: SegmentArgs,
+    /// Point text renditions at packaged wvtt segments rather than WebVTT
+    /// documents.
+    #[arg(long, default_value_t = false)]
+    wvtt: bool,
 }
 
 /// Build the filesystem operator, rooted at `OPENDAL_FS_ROOT` (default `.`).
@@ -147,7 +151,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let output = RelativePathBuf::from(args.output);
             op.create_dir(&format!("{output}/")).await?;
 
-            let hls_options = dyndo_hls::options::HlsOptions::default();
+            let hls_options = dyndo_hls::options::HlsOptions { wvtt: args.wvtt };
             let master =
                 dyndo_hls::builder::generate_master_playlist(&op, &descriptor, &hls_options)
                     .await?;

@@ -6,6 +6,7 @@ use dyndo_core::asset_descriptor::AssetDescriptorError;
 use dyndo_core::track::TrackError;
 use dyndo_dash::builder::DashError;
 use dyndo_hls::builder::HlsError;
+use dyndo_text::demuxer::UnpackError;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ServerError {
@@ -23,6 +24,8 @@ pub enum ServerError {
     Dash(#[from] DashError),
     #[error(transparent)]
     Hls(#[from] HlsError),
+    #[error(transparent)]
+    Unpack(#[from] UnpackError),
     #[error("manifest serialization failed: {0}")]
     Serialization(String),
 }
@@ -42,6 +45,7 @@ impl IntoResponse for ServerError {
             | Self::Track(_)
             | Self::Dash(_)
             | Self::Hls(_)
+            | Self::Unpack(_)
             | Self::Serialization(_) => StatusCode::INTERNAL_SERVER_ERROR,
         };
         (status, self.to_string()).into_response()
