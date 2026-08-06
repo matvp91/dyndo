@@ -7,7 +7,8 @@
 pub mod wvtt;
 
 /// What stops a fragmented subtitle from being written out: one error for the
-/// whole direction rather than one per container.
+/// whole direction rather than one per container, mirroring
+/// [`UnpackError`](crate::demuxer::UnpackError) on the way back.
 #[derive(Debug, thiserror::Error)]
 pub enum PackError {
     #[error("subtitle covers no time")]

@@ -1,4 +1,4 @@
-//! VTT parsing: a document in, a [`Subtitle`] out.
+//! VTT parsing and writing: a document in, a [`Subtitle`] out, and back again.
 
 use crate::subtitle::{Cue, Subtitle};
 
@@ -50,6 +50,47 @@ pub fn parse(document: &str) -> Result<Subtitle, VttError> {
     cues.sort_by_key(|cue| (cue.start, cue.end));
 
     Ok(Subtitle { cues })
+}
+
+impl Subtitle {
+    /// Write the subtitle as a WebVTT document: the `WEBVTT` signature, then each
+    /// cue's timing and text.
+    ///
+    /// Timings are absolute and always long-form `HH:MM:SS.mmm`, so a document
+    /// written here is on the same clock as the track it came from. No
+    /// `X-TIMESTAMP-MAP` follows the signature: the times need no mapping, and a
+    /// player that honours the header would re-time every cue against the
+    /// presentation's first timestamp.
+    ///
+    /// Cue identifiers and settings are absent, as they are throughout this
+    /// crate. A subtitle with no cues writes the signature alone, which is a
+    /// valid document and still a segment a playlist can point at.
+    pub fn write(&self) -> String {
+        let mut document = String::from("WEBVTT\n");
+        for cue in &self.cues {
+            document.push('\n');
+            document.push_str(&write_timestamp(cue.start));
+            document.push_str(" --> ");
+            document.push_str(&write_timestamp(cue.end));
+            document.push('\n');
+            document.push_str(&cue.text);
+            document.push('\n');
+        }
+
+        document
+    }
+}
+
+fn write_timestamp(timestamp: u32) -> String {
+    let millis = timestamp % 1_000;
+    let seconds = timestamp / 1_000;
+
+    format!(
+        "{:02}:{:02}:{:02}.{millis:03}",
+        seconds / 3_600,
+        seconds / 60 % 60,
+        seconds % 60
+    )
 }
 
 fn is_signature(line: &str) -> bool {
@@ -129,6 +170,58 @@ fn parse_timestamp(timestamp: &str) -> Result<u32, VttError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn writes_a_subtitle_without_cues_as_the_signature_alone() {
+        let subtitle = Subtitle::default();
+
+        assert_eq!(subtitle.write(), "WEBVTT\n");
+    }
+
+    #[test]
+    fn writes_a_cue_after_the_signature() {
+        let subtitle = subtitle(&[(4_000, 6_500, "Hello")]);
+
+        assert_eq!(
+            subtitle.write(),
+            "WEBVTT\n\n00:00:04.000 --> 00:00:06.500\nHello\n"
+        );
+    }
+
+    #[test]
+    fn writes_a_blank_line_between_cues() {
+        let subtitle = subtitle(&[(0, 1_000, "A"), (1_000, 2_000, "B")]);
+
+        assert_eq!(
+            subtitle.write(),
+            "WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nA\n\n00:00:01.000 --> 00:00:02.000\nB\n"
+        );
+    }
+
+    #[test]
+    fn writes_timestamps_past_an_hour() {
+        let subtitle = subtitle(&[(3_661_001, 7_322_002, "x")]);
+
+        assert!(
+            subtitle
+                .write()
+                .contains("01:01:01.001 --> 02:02:02.002\nx")
+        );
+    }
+
+    #[test]
+    fn writes_a_multi_line_cue_with_its_breaks_intact() {
+        let subtitle = subtitle(&[(0, 1_000, "first\nsecond")]);
+
+        assert!(subtitle.write().ends_with("\nfirst\nsecond\n"));
+    }
+
+    #[test]
+    fn parse_reads_back_what_write_wrote() {
+        let subtitle = subtitle(&[(0, 2_000, "A"), (1_500, 4_000, "multi\nline")]);
+
+        assert_eq!(parse(&subtitle.write()).unwrap(), subtitle);
+    }
 
     #[test]
     fn parses_a_single_cue() {
@@ -337,5 +430,18 @@ mod tests {
     #[test]
     fn rejects_a_garbage_timestamp() {
         assert!(parse_timestamp("abc").is_err());
+    }
+
+    fn subtitle(cues: &[(u32, u32, &str)]) -> Subtitle {
+        Subtitle {
+            cues: cues
+                .iter()
+                .map(|&(start, end, text)| Cue {
+                    start,
+                    end,
+                    text: text.to_string(),
+                })
+                .collect(),
+        }
     }
 }
