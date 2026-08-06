@@ -41,7 +41,7 @@ never written back. A block equal to the defaults is omitted from the file.
 |---|---|---|---|
 | `min_length` | integer | `0` | Minimum served segment length, in **milliseconds**. Whole fragments are grouped until this length is reached; `0` serves every fragment as its own segment. |
 | `text_length` | integer | `0` | Length of each segment of a subtitle track dyndo packages from a `.vtt`. Unlike `min_length` this is exact, since dyndo fragments those tracks itself. `0` asks for no grid, leaving the splice points as the only cuts. |
-| `boundaries` | array of integers | `[]` | Splice points, in **milliseconds** from the start of the presentation, e.g. for ad insertion. A served segment never spans one, so a segment edge exists at every splice point. Treated as a set: order and duplicates don't matter. Each point is snapped per track to the nearest fragment boundary (audio fragment rasters cannot hit arbitrary millisecond positions); an exact tie snaps earlier. |
+| `boundaries` | array of integers | `[]` | Splice points, in **milliseconds** from the start of the presentation, e.g. for ad insertion. A served segment never spans one, so a segment edge exists at every splice point. Treated as a set: order and duplicates don't matter. Each point is snapped per track to the first fragment boundary at or after it (audio fragment rasters cannot hit arbitrary millisecond positions), so a segment never opens on content from before the splice point. |
 
 Grouping is applied while generating manifests and serving segments; stored CMAF
 files are never modified.

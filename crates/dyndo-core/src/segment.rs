@@ -99,6 +99,13 @@ fn group_fragments(
     segments
 }
 
+/// The fragment edges the boundaries fall on, as counts of fragments.
+///
+/// A boundary lands on the first edge at or after it rather than the nearest one,
+/// so a segment never opens on content from before the boundary. The nearest edge
+/// can be the one before, and a track spliced there carries the tail of the
+/// outgoing part as a short fragment the boundary falls inside — snapping back
+/// would open the new segment on that tail and leave the splice uncut.
 fn snap_cuts(cumulative: &[u64], timescale: u32, boundaries: &[u32]) -> Vec<usize> {
     let mut cuts: Vec<usize> = boundaries
         .iter()
@@ -106,15 +113,7 @@ fn snap_cuts(cumulative: &[u64], timescale: u32, boundaries: &[u32]) -> Vec<usiz
             let target = u128::from(boundary) * u128::from(timescale);
             let index = cumulative
                 .partition_point(|&raw_duration| u128::from(raw_duration) * 1000 < target);
-            if index == 0 {
-                0
-            } else if index == cumulative.len() {
-                cumulative.len() - 1
-            } else {
-                let below = target - u128::from(cumulative[index - 1]) * 1000;
-                let above = u128::from(cumulative[index]) * 1000 - target;
-                if below <= above { index - 1 } else { index }
-            }
+            index.min(cumulative.len() - 1)
         })
         .collect();
     cuts.sort_unstable();
@@ -237,8 +236,25 @@ mod tests {
     }
 
     #[test]
-    fn equidistant_boundary_snaps_to_earlier_edge() {
-        assert_eq!(snap_cuts(&[0, 1000, 2000], 1000, &[1500]), vec![1]);
+    fn boundary_inside_a_fragment_snaps_to_the_following_edge() {
+        assert_eq!(snap_cuts(&[0, 1000, 2000], 1000, &[1200]), vec![2]);
+    }
+
+    #[test]
+    fn boundary_inside_a_splice_fragment_cuts_where_the_splice_does() {
+        // A spliced track carries the tail of the outgoing part as a short
+        // fragment, and the boundary its siblings splice at can land inside that
+        // tail rather than on either edge of it.
+        let fragments = fragments(&[92_160, 8_192, 83_968, 92_160]);
+        let segments = group_fragments(&fragments, 48_000, &options(3_000, &[2_000]));
+
+        assert_eq!(
+            segments
+                .iter()
+                .map(Segment::raw_duration)
+                .collect::<Vec<_>>(),
+            vec![100_352, 176_128]
+        );
     }
 
     #[test]
@@ -249,7 +265,7 @@ mod tests {
     #[test]
     fn unordered_duplicate_boundaries_produce_unique_sorted_cuts() {
         assert_eq!(
-            snap_cuts(&[0, 1000, 2000, 3000], 1000, &[2500, 1000, 1000]),
+            snap_cuts(&[0, 1000, 2000, 3000], 1000, &[2000, 1000, 1000]),
             vec![1, 2]
         );
     }
