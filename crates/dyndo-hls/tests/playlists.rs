@@ -38,6 +38,38 @@ async fn generate_master_playlist_emits_video_variant_and_audio_rendition() {
 }
 
 #[tokio::test]
+async fn generate_master_playlist_leaves_wvtt_out_of_codecs_for_a_webvtt_rendition() {
+    let (op, asset) = subtitled_asset().await;
+
+    let playlist =
+        dyndo_hls::builder::generate_master_playlist(&op, &asset, &HlsOptions::default())
+            .await
+            .unwrap()
+            .to_string();
+
+    assert!(
+        playlist.contains("CODECS=\"avc1.640028,mp4a.40.2\""),
+        "wvtt advertised for a WebVTT rendition in {playlist}"
+    );
+}
+
+#[tokio::test]
+async fn generate_master_playlist_advertises_wvtt_when_the_packaged_track_is_asked_for() {
+    let (op, asset) = subtitled_asset().await;
+    let options = HlsOptions { wvtt: true };
+
+    let playlist = dyndo_hls::builder::generate_master_playlist(&op, &asset, &options)
+        .await
+        .unwrap()
+        .to_string();
+
+    assert!(
+        playlist.contains("wvtt"),
+        "missing wvtt codec in {playlist}"
+    );
+}
+
+#[tokio::test]
 async fn generate_media_playlist_emits_vod_timing_and_relative_uris() {
     let (op, asset) = asset().await;
     let descriptor = asset.track("video-main").unwrap();
@@ -118,6 +150,29 @@ async fn asset() -> (Operator, AssetDescriptor) {
     .await
     .unwrap();
     let asset = AssetDescriptor::read(&op, "asset.json").await.unwrap();
+    (op, asset)
+}
+
+/// The same asset with a raw `.vtt` subtitle track alongside.
+async fn subtitled_asset() -> (Operator, AssetDescriptor) {
+    let (op, mut asset) = asset().await;
+    op.write(
+        "subtitles_nld.vtt",
+        "WEBVTT\n\n00:00.000 --> 00:02.000\nHello\n",
+    )
+    .await
+    .unwrap();
+    asset.tracks.push(
+        serde_json::from_value(serde_json::json!({
+            "id": "text-nld",
+            "path": "subtitles_nld.vtt",
+            "codec": "wvtt",
+            "type": "text",
+            "language": "nld"
+        }))
+        .unwrap(),
+    );
+
     (op, asset)
 }
 

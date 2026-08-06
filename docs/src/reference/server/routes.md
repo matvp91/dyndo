@@ -68,11 +68,15 @@ DASH resources accept one transport-specific option:
 |---|---|---|---|---|
 | `compact` | `c` | boolean | `false` | Hoist segment-template data shared by DASH representations to their adaptation set. |
 
-HLS currently has no transport-specific options.
+HLS resources accept one:
+
+| Full key | Shorthand | Type | Default | Description |
+|---|---|---|---|---|
+| `wvtt` | `w` | boolean | `false` | Point text renditions at packaged `wvtt` segments rather than WebVTT documents. |
 
 The supported shorthand map is therefore `asset` → `a`, `min_length` → `sml`,
-`text_length` → `stl`, `boundaries` → `sb`, and `compact` → `c`. The forms are
-equivalent:
+`text_length` → `stl`, `boundaries` → `sb`, `compact` → `c`, and `wvtt` → `w`.
+The forms are equivalent:
 
 ```text
 /out/(asset:demo,min_length:6000,compact:!t)/index.mpd
@@ -100,6 +104,7 @@ configured storage backend.
 | `<track-id>.m3u8` | One track's HLS media playlist. | `application/vnd.apple.mpegurl` |
 | `<track-id>/init.mp4` | A track's CMAF initialization segment. | `video/mp4`, `audio/mp4`, or `application/mp4` |
 | `<track-id>/<time>.m4s` | The media segment starting at presentation `<time>`. | `video/mp4`, `audio/mp4`, or `application/mp4` |
+| `<track-id>/<time>.vtt` | The same segment of a text track, as a WebVTT document. | `text/vtt` |
 
 `<track-id>` is a track's `id` exactly as recorded in the descriptor (for
 example `video_6b745be5-2791-5d95-8ce5-8f8bde29e2fe`). Because manifests emit
@@ -124,10 +129,36 @@ the player there. Only `index.mpd` and the `.m3u8` resources are
 protocol-specific. See
 [One source, two protocols](../../explanation/two-protocols.md) for why.
 
+## Two spellings of one text segment
+
+A text segment answers to both extensions at once, and they describe the same
+segment: the same cut points, the same duration, the same bytes underneath.
+
+```text
+/out/(asset:demo)/text_3b519953-…/0.m4s   → packaged wvtt bytes
+/out/(asset:demo)/text_3b519953-…/0.vtt   → the WebVTT document those bytes hold
+```
+
+A `.vtt` request resolves the segment exactly as a `.m4s` request does, then reads
+the cues back out of the packaged bytes. The document carries the absolute
+timestamps the source used and no `X-TIMESTAMP-MAP`, since the times are already
+on the presentation's clock.
+
+Which one a player asks for is the manifest's business: DASH always references
+`.m4s`, while HLS references `.vtt` unless the request passes
+[`wvtt`](#transport-options). `<track-id>/init.mp4` stays available for the track
+either way, and is simply not referenced by a WebVTT rendition — a WebVTT segment
+needs no initialization.
+
+A text track that arrived as a CMAF `wvtt` file another packager wrote has no
+document to serve; `.vtt` on such a track answers `500`, and `wvtt` is the way to
+serve it.
+
 ## Segment addressing
 
 A media segment is addressed by its **presentation start time**, an integer in
-the track's own timescale, with a `.m4s` extension. The server re-derives the
+the track's own timescale, with a `.m4s` extension — or `.vtt` for a text track
+served as a document. The server re-derives the
 track's segment list for the request's segmentation options, then walks it
 accumulating durations from the track's earliest presentation time until it
 finds an exact match.
@@ -149,8 +180,8 @@ shared path prefix.
 |---|---|
 | `200 OK` | The manifest or segment was generated and returned; also the `/health` probe. |
 | `400 Bad Request` | The options path segment is malformed Rison, a DASH or HLS manifest request carries an unknown option, or a segment length is negative. |
-| `404 Not Found` | The path does not contain separate options and resource components; `<track-id>` matches no track; a segment filename is not `<integer>.m4s`; `<time>` is not a segment boundary; or the descriptor does not exist. |
-| `500 Internal Server Error` | The descriptor JSON is malformed; a source file is unreadable or is not valid, supported CMAF; or manifest serialization failed. |
+| `404 Not Found` | The path does not contain separate options and resource components; `<track-id>` matches no track; a segment filename is not `<integer>.m4s` or `<integer>.vtt`; `<time>` is not a segment boundary; or the descriptor does not exist. |
+| `500 Internal Server Error` | The descriptor JSON is malformed; a source file is unreadable or is not valid, supported CMAF; a `.vtt` was asked of a text track whose cues cannot be read back; or manifest serialization failed. |
 
 The split between `404` and `500` reflects ownership: a **missing** object is
 treated as a client addressing error, while a **malformed** descriptor or

@@ -18,8 +18,7 @@ pub(super) async fn dash_manifest(
     context: &RequestContext<DashOptions>,
 ) -> Result<Response, ServerError> {
     let asset = context.read_asset(op).await?;
-    let mpd =
-        dyndo_dash::builder::generate_mpd(op, &asset, context.transport_options.compact).await?;
+    let mpd = dyndo_dash::builder::generate_mpd(op, &asset, &context.transport_options).await?;
     let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
     let mut serializer = quick_xml::se::Serializer::new(&mut xml);
     serializer.indent(' ', 2);

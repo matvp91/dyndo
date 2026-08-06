@@ -21,7 +21,12 @@ pub(crate) fn build_router(op: Operator) -> Router {
     let cors = CorsLayer::new().allow_origin(Any).allow_methods(Any);
     Router::new()
         .route("/health", get(health))
-        .route("/out/{options}/{*resource}", get(dispatch))
+        // The two shapes an output path takes: something naming the whole asset, and
+        // one file of one track. Each resource is then named by its extension rather
+        // than assumed from what is left, since a route parameter spans a whole path
+        // segment and so cannot carry the extension itself.
+        .route("/out/{options}/{resource}", get(manifest))
+        .route("/out/{options}/{track_id}/{file}", get(track_file))
         .with_state(op)
         .layer(cors)
 }
@@ -30,42 +35,51 @@ async fn health() -> StatusCode {
     StatusCode::OK
 }
 
-async fn dispatch(
+/// A manifest describing the whole asset, or the media playlist of one track.
+async fn manifest(
     State(op): State<Operator>,
     Path((options, resource)): Path<(String, String)>,
 ) -> Result<Response, ServerError> {
-    match resource.as_str() {
-        // Generate the asset's DASH manifest.
-        "index.mpd" => {
+    let not_found = || ServerError::NotFound(resource.clone());
+
+    match resource.rsplit_once('.').ok_or_else(not_found)? {
+        ("index", "mpd") => {
             let context = parse_context::<DashOptions>(&options)?;
             transport::dash_manifest(&op, &context).await
         }
-        // Generate the HLS multivariant playlist.
-        "master.m3u8" => {
+        ("master", "m3u8") => {
             let context = parse_context::<HlsOptions>(&options)?;
             transport::hls_master(&op, &context).await
         }
-        // Generate the media playlist for the track named by the filename.
-        resource if !resource.contains('/') && resource.ends_with(".m3u8") => {
-            let track_id = resource
-                .strip_suffix(".m3u8")
-                .ok_or_else(|| ServerError::NotFound(resource.to_string()))?;
+        (track_id, "m3u8") => {
             let context = parse_context::<HlsOptions>(&options)?;
             transport::hls_media(&op, &context, track_id).await
         }
-        // Serve initialization or media bytes for the track named by the path.
-        resource => {
-            let context = parse_context::<()>(&options)?;
-            let (track_id, file) = resource
-                .split_once('/')
-                .ok_or_else(|| ServerError::NotFound(resource.to_string()))?;
-            if file == "init.mp4" {
-                segment::initialization(&op, &context, track_id).await
-            } else {
-                segment::media(&op, &context, track_id, file).await
-            }
-        }
+        _ => Err(not_found()),
     }
+}
+
+/// One file of one track: its initialization segment, or one media segment as either
+/// the packaged bytes it is stored as or the WebVTT document those bytes hold.
+async fn track_file(
+    State(op): State<Operator>,
+    Path((options, track_id, file)): Path<(String, String, String)>,
+) -> Result<Response, ServerError> {
+    let context = parse_context::<()>(&options)?;
+    let not_found = || ServerError::NotFound(file.clone());
+
+    match file.rsplit_once('.').ok_or_else(not_found)? {
+        ("init", "mp4") => segment::initialization(&op, &context, &track_id).await,
+        (time, "m4s") => segment::media(&op, &context, &track_id, segment_time(time, &file)?).await,
+        (time, "vtt") => segment::text(&op, &context, &track_id, segment_time(time, &file)?).await,
+        _ => Err(not_found()),
+    }
+}
+
+/// The presentation time a segment filename names.
+fn segment_time(name: &str, file: &str) -> Result<u64, ServerError> {
+    name.parse()
+        .map_err(|_| ServerError::NotFound(file.to_string()))
 }
 
 #[cfg(test)]
@@ -152,12 +166,106 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn catch_all_route_supports_nested_asset_path() {
+    async fn text_segment_route_returns_a_webvtt_document() {
+        let (_dir, app) = app("asset");
+
+        let response = request(app, "/out/(asset:asset)/text-nld/0.vtt").await;
+        let status = response.status();
+        let content_type = response
+            .headers()
+            .get("content-type")
+            .map(|value| value.to_str().unwrap().to_string());
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+
+        assert_eq!(
+            (status, content_type.as_deref(), body.starts_with(b"WEBVTT")),
+            (StatusCode::OK, Some("text/vtt"), true),
+            "unexpected body: {}",
+            String::from_utf8_lossy(&body)
+        );
+    }
+
+    #[tokio::test]
+    async fn text_segment_route_serves_the_cues_the_document_holds() {
+        let (_dir, app) = app("asset");
+
+        let response = request(app, "/out/(asset:asset)/text-nld/0.vtt").await;
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let document = String::from_utf8(body.to_vec()).unwrap();
+
+        assert!(
+            document.contains("00:00:00.000 --> 00:00:02.000\nHello"),
+            "unexpected body: {document}"
+        );
+    }
+
+    /// The same segment stays addressable as packaged bytes, which is what DASH
+    /// asks for while HLS asks for the document.
+    #[tokio::test]
+    async fn media_segment_route_still_serves_a_text_track_as_packaged_bytes() {
+        let (_dir, app) = app("asset");
+
+        let response = request(app, "/out/(asset:asset)/text-nld/0.m4s").await;
+        let status = response.status();
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+
+        assert_eq!((status, &body[4..8]), (StatusCode::OK, b"styp".as_slice()));
+    }
+
+    #[tokio::test]
+    async fn hls_media_route_points_a_text_track_at_vtt_segments() {
+        let (_dir, app) = app("asset");
+
+        let response = request(app, "/out/(asset:asset)/text-nld.m3u8").await;
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let playlist = String::from_utf8(body.to_vec()).unwrap();
+
+        assert!(
+            playlist.contains("text-nld/0.vtt") && !playlist.contains("EXT-X-MAP"),
+            "unexpected playlist: {playlist}"
+        );
+    }
+
+    #[tokio::test]
+    async fn hls_media_route_points_a_text_track_at_packaged_segments_on_request() {
+        let (_dir, app) = app("asset");
+
+        let response = request(app, "/out/(asset:asset,wvtt:!t)/text-nld.m3u8").await;
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        let playlist = String::from_utf8(body.to_vec()).unwrap();
+
+        assert!(
+            playlist.contains("text-nld/0.m4s") && playlist.contains("text-nld/init.mp4"),
+            "unexpected playlist: {playlist}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_nested_asset_path_resolves() {
         let (_dir, app) = app("foo/asset");
 
         let response = request(app, "/out/(asset:foo%2Fasset)/index.mpd").await;
 
         assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    /// The extension names the resource, so anything else is addressed at nothing
+    /// rather than falling through to a handler.
+    #[tokio::test]
+    async fn an_unnamed_resource_returns_not_found() {
+        let (_dir, app) = app("asset");
+
+        for uri in [
+            "/out/(asset:asset)/index.txt",
+            "/out/(asset:asset)/index",
+            "/out/(asset:asset)/video-main/0.txt",
+            "/out/(asset:asset)/video-main/0",
+            "/out/(asset:asset)/video-main/0.m4s/extra",
+        ] {
+            let response = request(app.clone(), uri).await;
+
+            assert_eq!(response.status(), StatusCode::NOT_FOUND, "for {uri}");
+        }
     }
 
     #[tokio::test]
@@ -198,6 +306,11 @@ mod tests {
             asset_path.parent().unwrap().join("audio_aac_nl_2.mp4"),
         )
         .unwrap();
+        fs::write(
+            asset_path.parent().unwrap().join("subtitles_nld.vtt"),
+            "WEBVTT\n\n00:00.000 --> 00:02.000\nHello\n",
+        )
+        .unwrap();
         fs::write(asset_path, asset_json()).unwrap();
         let op = Operator::new(Fs::default().root(dir.path().to_str().unwrap())).unwrap();
         (dir, build_router(op))
@@ -222,6 +335,13 @@ mod tests {
               "type": "audio",
               "sample_rate": 48000,
               "channels": 2,
+              "language": "nld"
+            },
+            {
+              "id": "text-nld",
+              "path": "subtitles_nld.vtt",
+              "codec": "wvtt",
+              "type": "text",
               "language": "nld"
             }
           ]

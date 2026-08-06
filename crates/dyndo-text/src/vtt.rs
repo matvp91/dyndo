@@ -1,4 +1,4 @@
-//! VTT parsing: a document in, a [`Subtitle`] out.
+//! VTT parsing and writing: a document in, a [`Subtitle`] out, and back again.
 
 use crate::subtitle::{Cue, Subtitle};
 
@@ -7,7 +7,7 @@ const TIMING_ARROW: &str = "-->";
 const NON_CUE_KEYWORDS: [&str; 3] = ["NOTE", "STYLE", "REGION"];
 
 #[derive(Debug, thiserror::Error)]
-pub enum VttError {
+pub enum ParseError {
     #[error("missing WEBVTT signature")]
     MissingSignature,
     #[error("malformed timestamp {0:?}")]
@@ -24,15 +24,15 @@ pub enum VttError {
 ///
 /// # Errors
 ///
-/// [`VttError`] if the `WEBVTT` signature is absent, or if a cue's timing line
+/// [`ParseError`] if the `WEBVTT` signature is absent, or if a cue's timing line
 /// does not parse. A document that would otherwise drop captions is rejected
 /// outright instead of yielding a subtitle that is silently short.
-pub fn parse(document: &str) -> Result<Subtitle, VttError> {
+pub fn parse(document: &str) -> Result<Subtitle, ParseError> {
     let document = document.strip_prefix('\u{feff}').unwrap_or(document);
     let mut lines = document.lines();
 
     if !is_signature(lines.next().unwrap_or_default()) {
-        return Err(VttError::MissingSignature);
+        return Err(ParseError::MissingSignature);
     }
 
     let mut cues = Vec::new();
@@ -52,12 +52,50 @@ pub fn parse(document: &str) -> Result<Subtitle, VttError> {
     Ok(Subtitle { cues })
 }
 
+/// Write a subtitle as a WebVTT document: the `WEBVTT` signature, then each cue's
+/// timing and text.
+///
+/// Timings are absolute and always long-form `HH:MM:SS.mmm`, so a document written
+/// here is on the same clock as the track it came from. No `X-TIMESTAMP-MAP` follows
+/// the signature: the times need no mapping, and a player that honours the header
+/// would re-time every cue against the presentation's first timestamp.
+///
+/// Cue identifiers and settings are absent, as they are throughout this crate. A
+/// subtitle with no cues writes the signature alone, which is a valid document and
+/// still a segment a playlist can point at.
+pub fn write(subtitle: &Subtitle) -> String {
+    let mut document = String::from("WEBVTT\n");
+    for cue in &subtitle.cues {
+        document.push('\n');
+        document.push_str(&write_timestamp(cue.start));
+        document.push_str(" --> ");
+        document.push_str(&write_timestamp(cue.end));
+        document.push('\n');
+        document.push_str(&cue.text);
+        document.push('\n');
+    }
+
+    document
+}
+
+fn write_timestamp(timestamp: u32) -> String {
+    let millis = timestamp % 1_000;
+    let seconds = timestamp / 1_000;
+
+    format!(
+        "{:02}:{:02}:{:02}.{millis:03}",
+        seconds / 3_600,
+        seconds / 60 % 60,
+        seconds % 60
+    )
+}
+
 fn is_signature(line: &str) -> bool {
     line.strip_prefix("WEBVTT")
         .is_some_and(|rest| rest.is_empty() || rest.starts_with([' ', '\t']))
 }
 
-fn parse_block(block: &[&str]) -> Result<Option<Cue>, VttError> {
+fn parse_block(block: &[&str]) -> Result<Option<Cue>, ParseError> {
     let keyword = block
         .first()
         .and_then(|line| line.split_whitespace().next());
@@ -79,7 +117,7 @@ fn parse_block(block: &[&str]) -> Result<Option<Cue>, VttError> {
     }))
 }
 
-fn parse_timing(line: &str) -> Result<(u32, u32), VttError> {
+fn parse_timing(line: &str) -> Result<(u32, u32), ParseError> {
     let (start, end) = line
         .split_once(TIMING_ARROW)
         .expect("callers only pass timing lines");
@@ -87,15 +125,15 @@ fn parse_timing(line: &str) -> Result<(u32, u32), VttError> {
     let end = parse_timestamp(end.split_whitespace().next().unwrap_or_default())?;
 
     if end < start {
-        return Err(VttError::NegativeDuration(start));
+        return Err(ParseError::NegativeDuration(start));
     }
 
     Ok((start, end))
 }
 
 /// Accepts `HH:MM:SS.mmm` and `MM:SS.mmm`.
-fn parse_timestamp(timestamp: &str) -> Result<u32, VttError> {
-    let malformed = || VttError::MalformedTimestamp(timestamp.to_string());
+fn parse_timestamp(timestamp: &str) -> Result<u32, ParseError> {
+    let malformed = || ParseError::MalformedTimestamp(timestamp.to_string());
 
     let (clock, millis) = timestamp.split_once('.').ok_or_else(malformed)?;
     if millis.len() != 3 {
@@ -131,6 +169,54 @@ mod tests {
     use super::*;
 
     #[test]
+    fn writes_a_subtitle_without_cues_as_the_signature_alone() {
+        let subtitle = Subtitle::default();
+
+        assert_eq!(write(&subtitle), "WEBVTT\n");
+    }
+
+    #[test]
+    fn writes_a_cue_after_the_signature() {
+        let subtitle = subtitle(&[(4_000, 6_500, "Hello")]);
+
+        assert_eq!(
+            write(&subtitle),
+            "WEBVTT\n\n00:00:04.000 --> 00:00:06.500\nHello\n"
+        );
+    }
+
+    #[test]
+    fn writes_a_blank_line_between_cues() {
+        let subtitle = subtitle(&[(0, 1_000, "A"), (1_000, 2_000, "B")]);
+
+        assert_eq!(
+            write(&subtitle),
+            "WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nA\n\n00:00:01.000 --> 00:00:02.000\nB\n"
+        );
+    }
+
+    #[test]
+    fn writes_timestamps_past_an_hour() {
+        let subtitle = subtitle(&[(3_661_001, 7_322_002, "x")]);
+
+        assert!(write(&subtitle).contains("01:01:01.001 --> 02:02:02.002\nx"));
+    }
+
+    #[test]
+    fn writes_a_multi_line_cue_with_its_breaks_intact() {
+        let subtitle = subtitle(&[(0, 1_000, "first\nsecond")]);
+
+        assert!(write(&subtitle).ends_with("\nfirst\nsecond\n"));
+    }
+
+    #[test]
+    fn parse_reads_back_what_write_wrote() {
+        let subtitle = subtitle(&[(0, 2_000, "A"), (1_500, 4_000, "multi\nline")]);
+
+        assert_eq!(parse(&write(&subtitle)).unwrap(), subtitle);
+    }
+
+    #[test]
     fn parses_a_single_cue() {
         let subtitle = parse("WEBVTT\n\n00:00.000 --> 00:02.000\nHello").unwrap();
 
@@ -162,14 +248,14 @@ mod tests {
     fn rejects_a_missing_signature() {
         let error = parse("00:00.000 --> 00:01.000\nx").unwrap_err();
 
-        assert!(matches!(error, VttError::MissingSignature));
+        assert!(matches!(error, ParseError::MissingSignature));
     }
 
     #[test]
     fn rejects_a_signature_run_into_other_text() {
         let error = parse("WEBVTTISH\n\n00:00.000 --> 00:01.000\nx").unwrap_err();
 
-        assert!(matches!(error, VttError::MissingSignature));
+        assert!(matches!(error, ParseError::MissingSignature));
     }
 
     #[test]
@@ -268,7 +354,7 @@ mod tests {
     fn rejects_an_end_before_its_start() {
         let error = parse("WEBVTT\n\n00:05.000 --> 00:02.000\nx").unwrap_err();
 
-        assert!(matches!(error, VttError::NegativeDuration(5_000)));
+        assert!(matches!(error, ParseError::NegativeDuration(5_000)));
     }
 
     #[test]
@@ -277,7 +363,7 @@ mod tests {
         // here is what keeps a packer from meeting a time it cannot write.
         let error = parse("WEBVTT\n\n99999999:00:00.000 --> 99999999:00:01.000\nx").unwrap_err();
 
-        assert!(matches!(error, VttError::MalformedTimestamp(_)));
+        assert!(matches!(error, ParseError::MalformedTimestamp(_)));
     }
 
     #[test]
@@ -290,7 +376,7 @@ mod tests {
 
         let error = parse(document).unwrap_err();
 
-        assert!(matches!(error, VttError::MalformedTimestamp(_)));
+        assert!(matches!(error, ParseError::MalformedTimestamp(_)));
     }
 
     #[test]
@@ -337,5 +423,18 @@ mod tests {
     #[test]
     fn rejects_a_garbage_timestamp() {
         assert!(parse_timestamp("abc").is_err());
+    }
+
+    fn subtitle(cues: &[(u32, u32, &str)]) -> Subtitle {
+        Subtitle {
+            cues: cues
+                .iter()
+                .map(|&(start, end, text)| Cue {
+                    start,
+                    end,
+                    text: text.to_string(),
+                })
+                .collect(),
+        }
     }
 }

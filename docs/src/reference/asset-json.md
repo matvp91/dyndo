@@ -125,7 +125,10 @@ ISO-BMFF), which is probed and served like any other CMAF track, or a **raw
 > as it is read, so nothing is written beside it and the `.vtt` stays the source
 > of truth; its segments are cut where the asset's splice points and
 > [`text_length`](#segmentation) say. The descriptor format below is the same for
-> both, and `codec` is `wvtt` either way.
+> both, and `codec` is `wvtt` either way — it records how the track is packaged,
+> not how it is delivered. HLS unpacks a segment back into a WebVTT document
+> unless the request asks for `wvtt`; see
+> [Add a subtitle track](../how-to/add-subtitles.md#choose-how-hls-delivers-subtitles).
 
 | Field | Type | Description |
 |---|---|---|

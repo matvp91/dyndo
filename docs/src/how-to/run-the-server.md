@@ -61,9 +61,9 @@ http://localhost:8080/out/(asset:asset,min_length:6000,compact:!t)/index.mpd
 http://localhost:8080/out/(a:asset,sml:6000,c:!t)/index.mpd
 ```
 
-`asset`/`a` selects the descriptor, `min_length`/`sml` controls shared
-segmentation, and `compact`/`c` is specific to the DASH transport. HLS currently
-has no transport-specific options.
+`asset`/`a` selects the descriptor and `min_length`/`sml` controls shared
+segmentation. Each transport has one option of its own: `compact`/`c` for DASH,
+and `wvtt`/`w` for HLS.
 
 Parentheses are shell metacharacters, so quote these URLs when passing them to
 `curl` or a player from a shell. See the

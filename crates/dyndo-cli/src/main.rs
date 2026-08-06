@@ -97,6 +97,10 @@ struct HlsArgs {
     output: String,
     #[command(flatten)]
     segment: SegmentArgs,
+    /// Point text renditions at packaged wvtt segments rather than WebVTT
+    /// documents.
+    #[arg(long, default_value_t = false)]
+    wvtt: bool,
 }
 
 /// Build the filesystem operator, rooted at `OPENDAL_FS_ROOT` (default `.`).
@@ -133,7 +137,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Command::Dash(args) => {
             let mut descriptor = AssetDescriptor::read(&op, &args.input).await?;
             args.segment.assign_to(&mut descriptor.segment_options);
-            let mpd = dyndo_dash::builder::generate_mpd(&op, &descriptor, args.compact).await?;
+            let dash_options = dyndo_dash::options::DashOptions {
+                compact: args.compact,
+            };
+            let mpd = dyndo_dash::builder::generate_mpd(&op, &descriptor, &dash_options).await?;
             let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
             let mut serializer = quick_xml::se::Serializer::new(&mut xml);
             serializer.indent(' ', 2);
@@ -147,7 +154,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let output = RelativePathBuf::from(args.output);
             op.create_dir(&format!("{output}/")).await?;
 
-            let hls_options = dyndo_hls::options::HlsOptions::default();
+            let hls_options = dyndo_hls::options::HlsOptions { wvtt: args.wvtt };
             let master =
                 dyndo_hls::builder::generate_master_playlist(&op, &descriptor, &hls_options)
                     .await?;

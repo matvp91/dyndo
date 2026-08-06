@@ -42,11 +42,11 @@ pub enum HlsError {
 pub async fn generate_master_playlist(
     op: &Operator,
     asset: &AssetDescriptor,
-    _hls_options: &HlsOptions,
+    hls_options: &HlsOptions,
 ) -> Result<MasterPlaylist<'static>, HlsError> {
     ensure_unique_rendition_names(asset)?;
     let tracks = Track::probe_all(op, asset).await?;
-    build_master_playlist(asset, &tracks, &asset.segment_options)
+    build_master_playlist(asset, &tracks, &asset.segment_options, hls_options)
 }
 
 /// Generates the static HLS media playlist for one asset track.
@@ -59,12 +59,12 @@ pub async fn generate_media_playlist(
     op: &Operator,
     asset: &AssetDescriptor,
     descriptor: &TrackDescriptor,
-    _hls_options: &HlsOptions,
+    hls_options: &HlsOptions,
 ) -> Result<MediaPlaylist<'static>, HlsError> {
     let path = asset.track_path(descriptor);
     let segment_options = &asset.segment_options;
     let track = Track::probe(op, &path, Some(descriptor.kind.clone()), segment_options).await?;
-    build_media_playlist(descriptor, &track, segment_options)
+    build_media_playlist(descriptor, &track, segment_options, hls_options)
 }
 
 /// Serializes a media playlist with `EXTINF` durations rounded to three decimals.
@@ -89,11 +89,24 @@ pub fn serialize_media_playlist(playlist: &MediaPlaylist<'_>) -> String {
     output
 }
 
+/// Whether HLS serves a track of this kind as plain WebVTT documents rather than
+/// as packaged CMAF `wvtt` segments.
+///
+/// Only a text track has cues to serve, and a text source is a WebVTT document,
+/// so the request's option decides the rest. A plain WebVTT rendition carries no
+/// initialization segment and no codec, which is what the two callers act on.
+fn serves_plain_vtt(kind: &TrackKind, options: &HlsOptions) -> bool {
+    !options.wvtt && matches!(kind, TrackKind::Text(_))
+}
+
 fn build_media_playlist(
     descriptor: &TrackDescriptor,
     track: &Track,
     segment_options: &SegmentOptions,
+    hls_options: &HlsOptions,
 ) -> Result<MediaPlaylist<'static>, HlsError> {
+    let plain_vtt = serves_plain_vtt(track.kind(), hls_options);
+    let extension = if plain_vtt { "vtt" } else { "m4s" };
     let mut start_time = track.earliest_presentation_time();
     let segments = track.segments(segment_options);
     let target_duration = segments
@@ -110,8 +123,8 @@ fn build_media_playlist(
             let mut builder = MediaSegment::builder();
             builder
                 .duration(duration)
-                .uri(format!("{}/{start_time}.m4s", descriptor.id));
-            if index == 0 {
+                .uri(format!("{}/{start_time}.{extension}", descriptor.id));
+            if index == 0 && !plain_vtt {
                 builder.map(ExtXMap::new(format!("{}/init.mp4", descriptor.id)));
             }
 
@@ -162,6 +175,7 @@ fn build_master_playlist(
     asset: &AssetDescriptor,
     tracks: &[Track],
     segment_options: &SegmentOptions,
+    hls_options: &HlsOptions,
 ) -> Result<MasterPlaylist<'static>, HlsError> {
     let has_audio = tracks
         .iter()
@@ -169,9 +183,12 @@ fn build_master_playlist(
     let has_subtitles = tracks
         .iter()
         .any(|track| matches!(track.kind(), TrackKind::Text(_)));
+    // A plain WebVTT rendition has no codec to advertise, and naming `wvtt` would
+    // tell a player to expect a packaged track instead.
     let rendition_codecs = tracks
         .iter()
         .filter(|track| !matches!(track.kind(), TrackKind::Video(_)))
+        .filter(|track| !serves_plain_vtt(track.kind(), hls_options))
         .map(Track::codec)
         .collect::<Vec<_>>();
     let rendition_bandwidth = max_rendition_bandwidth(tracks, segment_options, |kind| {
@@ -393,7 +410,85 @@ fn max_rendition_average_bandwidth(
 
 #[cfg(test)]
 mod tests {
+    use opendal::services::Memory;
+
     use super::*;
+
+    const DOCUMENT: &str = "WEBVTT\n\n00:00.000 --> 00:02.000\nHello\n";
+
+    #[tokio::test]
+    async fn a_text_track_carries_vtt_segments_and_no_initialization_map() {
+        let (op, asset) = subtitle_asset().await;
+
+        let playlist =
+            generate_media_playlist(&op, &asset, &asset.tracks[0], &HlsOptions::default())
+                .await
+                .unwrap();
+        let serialized = serialize_media_playlist(&playlist);
+
+        assert!(
+            serialized.contains("text-nld/0.vtt") && !serialized.contains("EXT-X-MAP"),
+            "unexpected playlist:\n{serialized}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_text_track_keeps_packaged_segments_when_wvtt_is_asked_for() {
+        let (op, asset) = subtitle_asset().await;
+        let options = HlsOptions { wvtt: true };
+
+        let playlist = generate_media_playlist(&op, &asset, &asset.tracks[0], &options)
+            .await
+            .unwrap();
+        let serialized = serialize_media_playlist(&playlist);
+
+        assert!(
+            serialized.contains("text-nld/0.m4s") && serialized.contains("text-nld/init.mp4"),
+            "unexpected playlist:\n{serialized}"
+        );
+    }
+
+    #[test]
+    fn plain_vtt_serves_a_text_track_unless_wvtt_is_asked_for() {
+        let text = text_kind();
+
+        assert!(serves_plain_vtt(&text, &HlsOptions::default()));
+        assert!(!serves_plain_vtt(&text, &HlsOptions { wvtt: true }));
+    }
+
+    #[test]
+    fn plain_vtt_never_serves_a_track_that_is_not_text() {
+        let audio = TrackKind::Audio(
+            serde_json::from_value(serde_json::json!({"sample_rate": 48000, "channels": 2}))
+                .unwrap(),
+        );
+
+        assert!(!serves_plain_vtt(&audio, &HlsOptions::default()));
+    }
+
+    fn text_kind() -> TrackKind {
+        TrackKind::Text(serde_json::from_value(serde_json::json!({"language": "nld"})).unwrap())
+    }
+
+    /// An asset of one raw `.vtt` track, held in memory.
+    async fn subtitle_asset() -> (Operator, AssetDescriptor) {
+        let op = Operator::new(Memory::default()).unwrap();
+        op.write("subtitles.vtt", DOCUMENT).await.unwrap();
+        let asset: AssetDescriptor = serde_json::from_value(serde_json::json!({
+            "tracks": [
+                {
+                    "id": "text-nld",
+                    "path": "subtitles.vtt",
+                    "codec": "wvtt",
+                    "type": "text",
+                    "language": "nld"
+                }
+            ]
+        }))
+        .unwrap();
+
+        (op, asset)
+    }
 
     #[test]
     fn frame_rate_rounds_to_three_decimal_places() {

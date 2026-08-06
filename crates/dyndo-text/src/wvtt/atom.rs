@@ -1,4 +1,4 @@
-//! The boxes [`mp4_atom`] does not model.
+//! The cue boxes [`mp4_atom`] does not model.
 //!
 //! ISO/IEC 14496-30 fills a text sample with cue boxes: a `vttc` for each cue on
 //! screen over it, or a lone `vtte` where none is. Only a cue's payload is

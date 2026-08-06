@@ -1,23 +1,50 @@
-//! Packing a fragmented subtitle into a CMAF `wvtt` track (ISO/IEC 14496-30).
+//! The CMAF `wvtt` container (ISO/IEC 14496-30): fragments in, bytes out, and back.
+//!
+//! Filed by level rather than by direction, because the two directions do not meet
+//! at the same one. [`pack`] writes a whole track — `ftyp`, `moov`, `sidx` and every
+//! fragment — while [`unpack`] reads one served segment, which is fragments and
+//! nothing else. Where they do mirror each other is further down, at a fragment,
+//! which is why one module holds both halves of that pair.
+//!
+//! Nothing here knows what a [`Subtitle`](crate::subtitle::Subtitle) is. Cues arrive
+//! already divided into samples and leave the same way; turning samples back into a
+//! subtitle is [`merge`](crate::fragmenter::merge)'s job.
 
-use mp4_atom::{
-    BufMut, Codec, Dinf, Dref, Encode, FourCC, Ftyp, Hdlr, Mdat, Mdhd, Mdia, Mfhd, Minf, Moof,
-    Moov, Mvex, Mvhd, Nmhd, PlainText, SegmentReference, Sidx, Stbl, Stco, Stsd, Styp, Tfdt, Tfhd,
-    Tkhd, Traf, Trak, Trex, Trun, TrunEntry, Url, VttC, Wvtt,
-};
+mod atom;
+mod fragment;
+mod track;
 
-use super::atoms::{Payl, Vttc, Vtte};
-use crate::fragmenter::{Fragment, Sample};
+use mp4_atom::{Any, DecodeMaybe, Encode, Moof, Sidx};
+
+use crate::fragmenter::Fragment;
 
 /// Milliseconds map 1:1 onto media time.
 const TIMESCALE: u32 = 1_000;
 
 const TRACK_ID: u32 = 1;
 
+/// What stops fragments from being written out as a track.
 #[derive(Debug, thiserror::Error)]
-pub enum WvttError {
+pub enum PackError {
     #[error("subtitle covers no time")]
     Empty,
+    #[error(transparent)]
+    Atom(#[from] mp4_atom::Error),
+}
+
+/// What stops a served segment from being read back.
+#[derive(Debug, thiserror::Error)]
+pub enum UnpackError {
+    #[error("fragment carries no base decode time")]
+    MissingBaseTime,
+    #[error("fragment carries no sample durations")]
+    MissingSampleTiming,
+    #[error("sample data overruns the fragment")]
+    SampleOutOfRange,
+    #[error("a fragment header and its sample data do not pair up")]
+    UnpairedFragment,
+    #[error("time {0} does not fit in the milliseconds a cue counts")]
+    TimeOverflow(u64),
     #[error(transparent)]
     Atom(#[from] mp4_atom::Error),
 }
@@ -41,26 +68,26 @@ pub enum WvttError {
 ///
 /// # Errors
 ///
-/// [`WvttError::Empty`] if the fragments run to time 0, since the result would be
-/// a track with nothing to index, and [`WvttError::Atom`] if a box fails to
+/// [`PackError::Empty`] if the fragments run to time 0, since the result would be
+/// a track with nothing to index, and [`PackError::Atom`] if a box fails to
 /// encode.
-pub fn pack(fragments: &[Fragment]) -> Result<Vec<u8>, WvttError> {
+pub fn pack(fragments: &[Fragment]) -> Result<Vec<u8>, PackError> {
     let track_end = fragments.last().map_or(0, |fragment| fragment.end);
     if track_end == 0 {
-        return Err(WvttError::Empty);
+        return Err(PackError::Empty);
     }
 
     let mut encoded = Vec::with_capacity(fragments.len());
     let mut references = Vec::with_capacity(fragments.len());
     for (index, fragment) in fragments.iter().enumerate() {
-        let bytes = encode(index, fragment)?;
-        references.push(reference(bytes.len(), fragment));
+        let bytes = fragment::encode(index, fragment)?;
+        references.push(track::reference(bytes.len(), fragment));
         encoded.push(bytes);
     }
 
     let mut track = Vec::new();
-    ftyp().encode(&mut track)?;
-    moov(u64::from(track_end)).encode(&mut track)?;
+    track::ftyp().encode(&mut track)?;
+    track::moov(u64::from(track_end)).encode(&mut track)?;
     Sidx {
         reference_id: TRACK_ID,
         timescale: TIMESCALE,
@@ -76,194 +103,61 @@ pub fn pack(fragments: &[Fragment]) -> Result<Vec<u8>, WvttError> {
     Ok(track)
 }
 
-/// The cues on screen over a sample, each a `vttc` carrying its text. An
-/// interval showing nothing is a lone `vtte`, which the format still spends a
-/// sample on.
-fn write_sample<B: BufMut>(sample: &Sample, buf: &mut B) -> mp4_atom::Result<()> {
-    if sample.cues.is_empty() {
-        return Vtte.encode(buf);
-    }
+/// Unpack one served segment of a `wvtt` track into the fragments it carries.
+///
+/// `segment` holds the whole byte range a segment resolves to: one or more
+/// `styp` · `moof` · `mdat` triples, since a segment groups several fragments once
+/// a minimum length asks it to. `timescale` is the track's, as probed — only a
+/// track this crate packed is guaranteed to count in milliseconds.
+///
+/// The result stops at the samples: pass it to
+/// [`merge`](crate::fragmenter::merge) for the cues they carry. This reads back
+/// what [`pack`] wrote, and no more. A `wvtt` track from another packager may carry
+/// cue settings, identifiers and styling that a cue has nowhere to hold, and those
+/// boxes are ignored rather than reported.
+///
+/// # Errors
+///
+/// [`UnpackError`] if a box fails to decode, if a fragment carries no base decode
+/// time or sample durations, if the fragment headers and sample data do not pair
+/// up, if the sample sizes overrun their `mdat`, or if a time does not fit the
+/// milliseconds a cue counts.
+pub fn unpack(segment: &[u8], timescale: u32) -> Result<Vec<Fragment>, UnpackError> {
+    let mut fragments = Vec::new();
+    let mut header: Option<Moof> = None;
+    let mut buf = segment;
 
-    for cue in &sample.cues {
-        Vttc {
-            payl: Payl {
-                text: cue.text.clone(),
-            },
+    while let Some(atom) = Any::decode_maybe(&mut buf)? {
+        match atom {
+            Any::Moof(moof) => {
+                if header.replace(moof).is_some() {
+                    return Err(UnpackError::UnpairedFragment);
+                }
+            }
+            Any::Mdat(mdat) => {
+                let header = header.take().ok_or(UnpackError::UnpairedFragment)?;
+                fragments.push(fragment::decode(&header, &mdat.data, timescale)?);
+            }
+            _ => {}
         }
-        .encode(buf)?;
     }
 
-    Ok(())
-}
-
-fn encode(index: usize, fragment: &Fragment) -> Result<Vec<u8>, WvttError> {
-    let mut data = Vec::new();
-    let mut entries = Vec::with_capacity(fragment.samples.len());
-    for sample in &fragment.samples {
-        let offset = data.len();
-        write_sample(sample, &mut data)?;
-        entries.push(TrunEntry {
-            duration: Some(sample.duration()),
-            size: Some(u32::try_from(data.len() - offset).expect("a sample fits in u32 bytes")),
-            ..TrunEntry::default()
-        });
+    // A truncated read ends the loop rather than failing to decode, so a fragment
+    // header left without its data is how that surfaces.
+    if header.is_some() {
+        return Err(UnpackError::UnpairedFragment);
     }
 
-    let mut moof = Moof {
-        mfhd: Mfhd {
-            sequence_number: u32::try_from(index + 1)
-                .expect("a track has fewer than u32 fragments"),
-        },
-        traf: vec![Traf {
-            tfhd: Tfhd {
-                track_id: TRACK_ID,
-                default_base_is_moof: true,
-                ..Tfhd::default()
-            },
-            tfdt: Some(Tfdt {
-                base_media_decode_time: u64::from(fragment.start),
-            }),
-            trun: vec![Trun {
-                data_offset: Some(0),
-                entries,
-            }],
-            ..Traf::default()
-        }],
-    };
-
-    let mut bytes = Vec::new();
-    styp().encode(&mut bytes)?;
-
-    // `default_base_is_moof` anchors the offset at the moof, and the samples
-    // start just past the mdat header. Encoding it twice measures the moof
-    // without changing its length: the offset field is present either way.
-    let moof_start = bytes.len();
-    moof.encode(&mut bytes)?;
-    let data_offset = bytes.len() - moof_start + 8;
-    moof.traf[0].trun[0].data_offset =
-        Some(i32::try_from(data_offset).expect("a fragment fits in i32 bytes"));
-    bytes.truncate(moof_start);
-    moof.encode(&mut bytes)?;
-
-    Mdat { data }.encode(&mut bytes)?;
-
-    Ok(bytes)
-}
-
-fn reference(size: usize, fragment: &Fragment) -> SegmentReference {
-    SegmentReference {
-        reference_type: false,
-        reference_size: u32::try_from(size).expect("a fragment fits in u32 bytes"),
-        subsegment_duration: fragment.duration(),
-        // Every text sample can be decoded on its own.
-        starts_with_sap: true,
-        sap_type: 1,
-        sap_delta_time: 0,
-    }
-}
-
-fn ftyp() -> Ftyp {
-    Ftyp {
-        major_brand: FourCC::new(b"iso6"),
-        minor_version: 0,
-        compatible_brands: vec![
-            FourCC::new(b"iso6"),
-            FourCC::new(b"cmfc"),
-            FourCC::new(b"cmft"),
-        ],
-    }
-}
-
-fn styp() -> Styp {
-    Styp {
-        major_brand: FourCC::new(b"msdh"),
-        minor_version: 0,
-        compatible_brands: vec![
-            FourCC::new(b"msdh"),
-            FourCC::new(b"msix"),
-            FourCC::new(b"cmfs"),
-        ],
-    }
-}
-
-fn moov(duration: u64) -> Moov {
-    Moov {
-        mvhd: Mvhd {
-            creation_time: 0,
-            modification_time: 0,
-            timescale: TIMESCALE,
-            duration,
-            rate: 1.into(),
-            volume: 1.into(),
-            matrix: Default::default(),
-            next_track_id: TRACK_ID + 1,
-        },
-        mvex: Some(Mvex {
-            mehd: None,
-            trex: vec![Trex {
-                track_id: TRACK_ID,
-                default_sample_description_index: 1,
-                ..Trex::default()
-            }],
-        }),
-        trak: vec![Trak {
-            tkhd: Tkhd {
-                track_id: TRACK_ID,
-                duration,
-                enabled: true,
-                in_movie: true,
-                ..Tkhd::default()
-            },
-            mdia: Mdia {
-                mdhd: Mdhd {
-                    timescale: TIMESCALE,
-                    duration,
-                    language: "und".to_string(),
-                    ..Mdhd::default()
-                },
-                hdlr: Hdlr {
-                    handler: FourCC::new(b"text"),
-                    name: "dyndo".to_string(),
-                },
-                minf: Minf {
-                    nmhd: Some(Nmhd {}),
-                    dinf: Dinf {
-                        dref: Dref {
-                            // An empty location marks the media as self-contained.
-                            urls: vec![Url {
-                                location: String::new(),
-                            }],
-                        },
-                    },
-                    stbl: Stbl {
-                        stsd: Stsd {
-                            codecs: vec![Codec::Wvtt(Wvtt {
-                                plaintext: PlainText {
-                                    data_reference_index: 1,
-                                },
-                                config: VttC {
-                                    config: "WEBVTT\n".to_string(),
-                                },
-                                label: None,
-                                btrt: None,
-                            })],
-                        },
-                        stco: Some(Stco::default()),
-                        ..Stbl::default()
-                    },
-                    ..Minf::default()
-                },
-            },
-            ..Trak::default()
-        }],
-        ..Moov::default()
-    }
+    Ok(fragments)
 }
 
 #[cfg(test)]
 mod tests {
-    use mp4_atom::{Buf, Decode};
+    use mp4_atom::{
+        Buf, Codec, Decode, FourCC, Ftyp, Mdat, Mfhd, Moov, Styp, Tfdt, Tfhd, Traf, Trun, TrunEntry,
+    };
 
+    use super::atom::{Payl, Vttc, Vtte};
     use super::*;
     use crate::fragmenter::fragment;
     use crate::subtitle::{Cue, Subtitle};
@@ -430,19 +324,11 @@ mod tests {
     }
 
     #[test]
-    fn a_subtitle_without_cues_is_rejected() {
-        let subtitle = subtitle(&[]);
-        let error = pack(&fragment(&subtitle, &[], 0)).unwrap_err();
-
-        assert!(matches!(error, WvttError::Empty));
-    }
-
-    #[test]
     fn a_subtitle_ending_at_time_zero_is_rejected() {
         let subtitle = subtitle(&[(0, 0, "A")]);
         let error = pack(&fragment(&subtitle, &[], 0)).unwrap_err();
 
-        assert!(matches!(error, WvttError::Empty));
+        assert!(matches!(error, PackError::Empty));
     }
 
     fn subtitle(cues: &[(u32, u32, &str)]) -> Subtitle {
@@ -523,5 +409,81 @@ mod tests {
         }
 
         (sidx, fragments)
+    }
+
+    #[test]
+    fn rejects_a_fragment_without_a_base_decode_time() {
+        let fragment = handmade(None, &[(Some(1_000), Some(0))], &[]);
+
+        let error = unpack(&fragment, 1_000).unwrap_err();
+
+        assert!(matches!(error, UnpackError::MissingBaseTime));
+    }
+
+    #[test]
+    fn rejects_a_sample_without_a_duration() {
+        let fragment = handmade(Some(0), &[(None, Some(0))], &[]);
+
+        let error = unpack(&fragment, 1_000).unwrap_err();
+
+        assert!(matches!(error, UnpackError::MissingSampleTiming));
+    }
+
+    #[test]
+    fn rejects_samples_that_overrun_their_data() {
+        let fragment = handmade(Some(0), &[(Some(1_000), Some(64))], &[0; 4]);
+
+        let error = unpack(&fragment, 1_000).unwrap_err();
+
+        assert!(matches!(error, UnpackError::SampleOutOfRange));
+    }
+
+    #[test]
+    fn rejects_a_time_past_the_milliseconds_a_cue_counts() {
+        let fragment = handmade(Some(5_000_000_000), &[(Some(0), Some(0))], &[]);
+
+        let error = unpack(&fragment, 1_000).unwrap_err();
+
+        assert!(matches!(error, UnpackError::TimeOverflow(5_000_000_000)));
+    }
+
+    /// A fragment built by hand, for the shapes the packer never writes. Each entry
+    /// is a sample's `(duration, size)`.
+    fn handmade(base: Option<u64>, entries: &[(Option<u32>, Option<u32>)], data: &[u8]) -> Vec<u8> {
+        let header = Moof {
+            mfhd: Mfhd { sequence_number: 1 },
+            traf: vec![Traf {
+                tfhd: Tfhd {
+                    track_id: 1,
+                    default_base_is_moof: true,
+                    ..Tfhd::default()
+                },
+                tfdt: base.map(|base_media_decode_time| Tfdt {
+                    base_media_decode_time,
+                }),
+                trun: vec![Trun {
+                    data_offset: Some(0),
+                    entries: entries
+                        .iter()
+                        .map(|&(duration, size)| TrunEntry {
+                            duration,
+                            size,
+                            ..TrunEntry::default()
+                        })
+                        .collect(),
+                }],
+                ..Traf::default()
+            }],
+        };
+
+        let mut bytes = Vec::new();
+        header.encode(&mut bytes).unwrap();
+        Mdat {
+            data: data.to_vec(),
+        }
+        .encode(&mut bytes)
+        .unwrap();
+
+        bytes
     }
 }

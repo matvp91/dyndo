@@ -80,6 +80,11 @@ splice points and
 [`text_length`](../reference/asset-json.md#segmentation) say, rather than
 recovered from a file, which is why those cuts are exact instead of snapped.
 
+Serving such a track to HLS runs the same path backwards: the segment is resolved
+from that index as usual, and the cues are read back out of the packaged bytes
+into a WebVTT document. The index is the one both forms are cut from, so the two
+never disagree about where a segment starts.
+
 ## Why an 800 MB file parses like an 8 MB one
 
 The header region — `moov` + `sidx` + first `moof` — is a fixed, small part of
