@@ -10,7 +10,7 @@ use crate::box_reader::{self, BoxReaderError, Boxes};
 use crate::track::Fragment;
 
 #[derive(Debug, thiserror::Error)]
-pub enum TrackProbeError {
+pub enum ProbeError {
     #[error(transparent)]
     BoxReader(#[from] BoxReaderError),
     #[error(transparent)]
@@ -31,7 +31,7 @@ pub enum TrackProbeError {
     SegmentRangeOverflow,
 }
 
-pub(crate) struct ProbedTrack {
+pub(crate) struct Probed {
     pub codec: String,
     pub kind: TrackKind,
     pub timescale: u32,
@@ -40,23 +40,20 @@ pub(crate) struct ProbedTrack {
     pub fragments: Vec<Fragment>,
 }
 
-pub(crate) async fn probe(
-    op: &Operator,
-    path: &RelativePath,
-) -> Result<ProbedTrack, TrackProbeError> {
+pub(crate) async fn probe(op: &Operator, path: &RelativePath) -> Result<Probed, ProbeError> {
     let boxes = box_reader::scan(op, path.as_str()).await?;
 
-    Ok(ProbedTrack {
-        codec: track_codec(&boxes)?,
-        kind: track_kind(&boxes)?,
+    Ok(Probed {
+        codec: codec(&boxes)?,
+        kind: kind(&boxes)?,
         timescale: boxes.sidx.timescale,
         earliest_presentation_time: boxes.sidx.earliest_presentation_time,
         initialization_range: 0..boxes.moov_end,
-        fragments: track_fragments(&boxes)?,
+        fragments: fragments(&boxes)?,
     })
 }
 
-fn track_codec(boxes: &Boxes) -> Result<String, TrackProbeError> {
+fn codec(boxes: &Boxes) -> Result<String, ProbeError> {
     let codec = &boxes.moov.trak[0].mdia.minf.stbl.stsd.codecs[0];
     match codec {
         Codec::Avc1(entry) => Ok(format!(
@@ -88,11 +85,11 @@ fn track_codec(boxes: &Boxes) -> Result<String, TrackProbeError> {
         Codec::Ac3(_) => Ok("ac-3".to_string()),
         Codec::Eac3(_) => Ok("ec-3".to_string()),
         Codec::Wvtt(_) => Ok("wvtt".to_string()),
-        codec => Err(TrackProbeError::UnsupportedCodec(codec_name(codec))),
+        codec => Err(ProbeError::UnsupportedCodec(codec_name(codec))),
     }
 }
 
-fn track_kind(boxes: &Boxes) -> Result<TrackKind, TrackProbeError> {
+fn kind(boxes: &Boxes) -> Result<TrackKind, ProbeError> {
     let track = &boxes.moov.trak[0];
     let handler = track.mdia.hdlr.handler;
     let sample_entry = &track.mdia.minf.stbl.stsd.codecs[0];
@@ -103,7 +100,7 @@ fn track_kind(boxes: &Boxes) -> Result<TrackKind, TrackProbeError> {
             Codec::Av01(entry) => &entry.visual,
             Codec::Hvc1(entry) => &entry.visual,
             Codec::Hev1(entry) => &entry.visual,
-            _ => return Err(TrackProbeError::UnsupportedVideoSampleEntry),
+            _ => return Err(ProbeError::UnsupportedVideoSampleEntry),
         };
         Ok(TrackKind::Video(VideoKind {
             width: u32::from(visual.width),
@@ -115,7 +112,7 @@ fn track_kind(boxes: &Boxes) -> Result<TrackKind, TrackProbeError> {
             Codec::Mp4a(entry) => &entry.audio,
             Codec::Ac3(entry) => &entry.audio,
             Codec::Eac3(entry) => &entry.audio,
-            _ => return Err(TrackProbeError::UnsupportedAudioSampleEntry),
+            _ => return Err(ProbeError::UnsupportedAudioSampleEntry),
         };
         Ok(TrackKind::Audio(AudioKind {
             sample_rate: audio.sample_rate.integer() as u32,
@@ -129,11 +126,11 @@ fn track_kind(boxes: &Boxes) -> Result<TrackKind, TrackProbeError> {
             role: None,
         }))
     } else {
-        Err(TrackProbeError::UnsupportedTrackHandler)
+        Err(ProbeError::UnsupportedTrackHandler)
     }
 }
 
-fn frame_rate(boxes: &Boxes) -> Result<String, TrackProbeError> {
+fn frame_rate(boxes: &Boxes) -> Result<String, ProbeError> {
     let track = &boxes.moov.trak[0];
     let track_id = track.tkhd.track_id;
     let fragment = boxes
@@ -141,7 +138,7 @@ fn frame_rate(boxes: &Boxes) -> Result<String, TrackProbeError> {
         .traf
         .iter()
         .find(|fragment| fragment.tfhd.track_id == track_id)
-        .ok_or(TrackProbeError::MissingFrameRate)?;
+        .ok_or(ProbeError::MissingFrameRate)?;
     let sample_duration = fragment
         .trun
         .iter()
@@ -163,10 +160,10 @@ fn frame_rate(boxes: &Boxes) -> Result<String, TrackProbeError> {
                 .map(|defaults| defaults.default_sample_duration)
         })
         .filter(|duration| *duration != 0)
-        .ok_or(TrackProbeError::MissingFrameRate)?;
+        .ok_or(ProbeError::MissingFrameRate)?;
     let timescale = track.mdia.mdhd.timescale;
     if timescale == 0 {
-        return Err(TrackProbeError::MissingFrameRate);
+        return Err(ProbeError::MissingFrameRate);
     }
     let divisor = greatest_common_divisor(timescale, sample_duration);
 
@@ -184,11 +181,11 @@ fn greatest_common_divisor(mut left: u32, mut right: u32) -> u32 {
     left
 }
 
-fn track_fragments(boxes: &Boxes) -> Result<Vec<Fragment>, TrackProbeError> {
+fn fragments(boxes: &Boxes) -> Result<Vec<Fragment>, ProbeError> {
     let mut byte_offset = boxes
         .sidx_end
         .checked_add(boxes.sidx.first_offset)
-        .ok_or(TrackProbeError::SegmentOffsetOverflow)?;
+        .ok_or(ProbeError::SegmentOffsetOverflow)?;
     let mut fragments = Vec::with_capacity(boxes.sidx.references.len());
 
     for reference in &boxes.sidx.references {
@@ -198,11 +195,11 @@ fn track_fragments(boxes: &Boxes) -> Result<Vec<Fragment>, TrackProbeError> {
             byte_size,
             u64::from(reference.subsegment_duration),
         )
-        .ok_or(TrackProbeError::SegmentRangeOverflow)?;
+        .ok_or(ProbeError::SegmentRangeOverflow)?;
         fragments.push(fragment);
         byte_offset = byte_offset
             .checked_add(byte_size)
-            .ok_or(TrackProbeError::SegmentOffsetOverflow)?;
+            .ok_or(ProbeError::SegmentOffsetOverflow)?;
     }
 
     Ok(fragments)

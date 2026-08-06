@@ -1,9 +1,9 @@
 use std::path::PathBuf;
 
 use dyndo_core::asset_descriptor::TrackKind;
+use dyndo_core::probe::ProbeError;
 use dyndo_core::segment::SegmentOptions;
 use dyndo_core::track::{Track, TrackError};
-use dyndo_core::track_probe::TrackProbeError;
 use opendal::Operator;
 use opendal::services::Memory;
 use relative_path::RelativePath;
@@ -75,7 +75,7 @@ async fn probe_rejects_non_sap_codec_fixtures() {
         assert!(
             matches!(
                 error,
-                TrackError::Probe(TrackProbeError::BoxReader(
+                TrackError::Probe(ProbeError::BoxReader(
                     dyndo_core::box_reader::BoxReaderError::InvalidSidxReference
                 ))
             ),
@@ -168,7 +168,7 @@ async fn probe_rejects_a_file_that_is_not_a_cmaf_track() {
     };
 
     assert!(
-        matches!(error, TrackError::Probe(TrackProbeError::BoxReader(_))),
+        matches!(error, TrackError::Probe(ProbeError::BoxReader(_))),
         "unexpected error: {error}"
     );
 }
