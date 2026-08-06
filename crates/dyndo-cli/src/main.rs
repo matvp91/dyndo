@@ -137,7 +137,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Command::Dash(args) => {
             let mut descriptor = AssetDescriptor::read(&op, &args.input).await?;
             args.segment.assign_to(&mut descriptor.segment_options);
-            let mpd = dyndo_dash::builder::generate_mpd(&op, &descriptor, args.compact).await?;
+            let dash_options = dyndo_dash::options::DashOptions {
+                compact: args.compact,
+            };
+            let mpd = dyndo_dash::builder::generate_mpd(&op, &descriptor, &dash_options).await?;
             let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
             let mut serializer = quick_xml::se::Serializer::new(&mut xml);
             serializer.indent(' ', 2);

@@ -13,6 +13,7 @@ use opendal::Operator;
 
 use crate::adaptation_set_group::{self, AdaptationSetGroup};
 use crate::compact;
+use crate::options::DashOptions;
 use crate::roles;
 
 const DASH_PROFILE: &str = "urn:mpeg:dash:profile:isoff-live:2011";
@@ -39,17 +40,17 @@ pub enum DashError {
 pub async fn generate_mpd(
     op: &Operator,
     asset: &AssetDescriptor,
-    compact: bool,
+    dash_options: &DashOptions,
 ) -> Result<MPD, DashError> {
     let tracks = Track::probe_all(op, asset).await?;
-    build_mpd(asset, &tracks, &asset.segment_options, compact)
+    build_mpd(asset, &tracks, &asset.segment_options, dash_options)
 }
 
 fn build_mpd(
     asset: &AssetDescriptor,
     tracks: &[Track],
     segment_options: &SegmentOptions,
-    should_compact: bool,
+    dash_options: &DashOptions,
 ) -> Result<MPD, DashError> {
     let duration = Duration::from_millis(u64::from(max_duration(tracks)));
     let groups = adaptation_set_group::group(asset, tracks);
@@ -83,7 +84,7 @@ fn build_mpd(
         }],
         ..Default::default()
     };
-    if should_compact {
+    if dash_options.compact {
         compact::compact(&mut mpd);
     }
     Ok(mpd)
@@ -193,21 +194,39 @@ mod tests {
 
     #[test]
     fn generate_mpd_creates_a_static_manifest() {
-        let mpd = build_mpd(&asset(), &[], &SegmentOptions::default(), false).unwrap();
+        let mpd = build_mpd(
+            &asset(),
+            &[],
+            &SegmentOptions::default(),
+            &DashOptions::default(),
+        )
+        .unwrap();
 
         assert_eq!(mpd.mpdtype.as_deref(), Some("static"));
     }
 
     #[test]
     fn generate_mpd_uses_the_segment_based_profile() {
-        let mpd = build_mpd(&asset(), &[], &SegmentOptions::default(), false).unwrap();
+        let mpd = build_mpd(
+            &asset(),
+            &[],
+            &SegmentOptions::default(),
+            &DashOptions::default(),
+        )
+        .unwrap();
 
         assert_eq!(mpd.profiles.as_deref(), Some(DASH_PROFILE));
     }
 
     #[test]
     fn generate_mpd_creates_one_period() {
-        let mpd = build_mpd(&asset(), &[], &SegmentOptions::default(), false).unwrap();
+        let mpd = build_mpd(
+            &asset(),
+            &[],
+            &SegmentOptions::default(),
+            &DashOptions::default(),
+        )
+        .unwrap();
 
         assert_eq!(mpd.periods.len(), 1);
     }
