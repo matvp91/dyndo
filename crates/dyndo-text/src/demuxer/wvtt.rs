@@ -4,44 +4,30 @@ use mp4_atom::{Any, Atom, DecodeMaybe, Moof};
 
 use super::UnpackError;
 use crate::atoms::Vttc;
-use crate::subtitle::{Cue, Subtitle};
+use crate::fragmenter::{Fragment, Sample};
+use crate::subtitle::Cue;
 
-/// What one sample of a text track holds: the payloads on screen over
-/// `[start, end)`, in the milliseconds a [`Cue`] counts.
-struct Sample {
-    start: u32,
-    end: u32,
-    payloads: Vec<String>,
-}
-
-/// Unpack one served segment of a `wvtt` track into the cues it carries.
+/// Unpack one served segment of a `wvtt` track into the fragments it carries.
 ///
 /// `segment` holds the whole byte range a segment resolves to: one or more
 /// `styp` · `moof` · `mdat` triples, since a segment groups several fragments once
 /// a minimum length asks it to. `timescale` is the track's, as probed — only a
 /// track this crate packed is guaranteed to count in milliseconds.
 ///
-/// This reads back what [`pack`](crate::muxer::wvtt::pack) wrote, and no more: a
-/// cue's payload and the sample timing around it. A `wvtt` track from another
-/// packager may carry cue settings, identifiers and styling that have nowhere to
-/// go in a [`Subtitle`], and those boxes are ignored rather than reported.
+/// The result stops at the samples: pass it to
+/// [`merge`](crate::fragmenter::merge) for the cues they carry. This reads back
+/// what [`pack`](crate::muxer::wvtt::pack) wrote, and no more. A `wvtt` track from
+/// another packager may carry cue settings, identifiers and styling that a sample
+/// has nowhere to hold, and those boxes are ignored rather than reported.
 ///
 /// # Errors
 ///
 /// [`UnpackError`] if a box fails to decode, if a fragment carries no base decode
 /// time or sample durations, if the fragment headers and sample data do not pair
 /// up, if the sample sizes overrun their `mdat`, or if a time does not fit the
-/// milliseconds a cue counts.
-pub fn unpack(segment: &[u8], timescale: u32) -> Result<Subtitle, UnpackError> {
-    let mut cues = merge(&samples(segment, timescale)?);
-    cues.sort_by_key(|cue| (cue.start, cue.end));
-
-    Ok(Subtitle { cues })
-}
-
-/// The samples the segment's fragments tile, in the order they were written.
-fn samples(segment: &[u8], timescale: u32) -> Result<Vec<Sample>, UnpackError> {
-    let mut samples = Vec::new();
+/// milliseconds a sample counts.
+pub fn unpack(segment: &[u8], timescale: u32) -> Result<Vec<Fragment>, UnpackError> {
+    let mut fragments = Vec::new();
     let mut header: Option<Moof> = None;
     let mut buf = segment;
 
@@ -54,7 +40,7 @@ fn samples(segment: &[u8], timescale: u32) -> Result<Vec<Sample>, UnpackError> {
             }
             Any::Mdat(mdat) => {
                 let header = header.take().ok_or(UnpackError::UnpairedFragment)?;
-                read_fragment(&header, &mdat.data, timescale, &mut samples)?;
+                fragments.push(read_fragment(&header, &mdat.data, timescale)?);
             }
             _ => {}
         }
@@ -66,17 +52,15 @@ fn samples(segment: &[u8], timescale: u32) -> Result<Vec<Sample>, UnpackError> {
         return Err(UnpackError::UnpairedFragment);
     }
 
-    Ok(samples)
+    Ok(fragments)
 }
 
-/// The samples of one fragment, timed from the base decode time its `tfdt` carries
-/// and cut from `data` by the sizes its `trun` lists.
-fn read_fragment(
-    header: &Moof,
-    data: &[u8],
-    timescale: u32,
-    samples: &mut Vec<Sample>,
-) -> Result<(), UnpackError> {
+/// One fragment, its samples timed from the base decode time its `tfdt` carries and
+/// cut from `data` by the sizes its `trun` lists. The fragment spans the samples it
+/// holds, which tile it without holes.
+fn read_fragment(header: &Moof, data: &[u8], timescale: u32) -> Result<Fragment, UnpackError> {
+    let mut samples: Vec<Sample> = Vec::new();
+
     for traf in &header.traf {
         let tfdt = traf.tfdt.as_ref().ok_or(UnpackError::MissingBaseTime)?;
         let mut time = tfdt.base_media_decode_time;
@@ -95,10 +79,12 @@ fn read_fragment(
                 .checked_add(u64::from(duration))
                 .ok_or(UnpackError::TimeOverflow(time))?;
 
+            let start = milliseconds(time, timescale)?;
+            let end_time = milliseconds(next, timescale)?;
             samples.push(Sample {
-                start: milliseconds(time, timescale)?,
-                end: milliseconds(next, timescale)?,
-                payloads: payloads(sample)?,
+                start,
+                end: end_time,
+                cues: cues(sample, start, end_time)?,
             });
 
             offset = end;
@@ -106,13 +92,24 @@ fn read_fragment(
         }
     }
 
-    Ok(())
+    let start = samples.first().map_or(0, |sample| sample.start);
+    let end = samples.last().map_or(0, |sample| sample.end);
+
+    Ok(Fragment {
+        start,
+        end,
+        samples,
+    })
 }
 
-/// The cue payloads a sample carries, one per `vttc` on screen over it. A `vtte`
-/// carries none — the box the format spends on an interval showing nothing.
-fn payloads(sample: &[u8]) -> Result<Vec<String>, UnpackError> {
-    let mut payloads = Vec::new();
+/// The cues a sample carries, one per `vttc` on screen over it. A `vtte` carries
+/// none — the box the format spends on an interval showing nothing.
+///
+/// Each cue spans the sample, since a `vttc` records what is on screen without
+/// saying for how long: the authored span is only recoverable by merging the samples
+/// a cue runs across.
+fn cues(sample: &[u8], start: u32, end: u32) -> Result<Vec<Cue>, UnpackError> {
+    let mut cues = Vec::new();
     let mut buf = sample;
 
     while let Some(atom) = Any::decode_maybe(&mut buf)? {
@@ -121,53 +118,16 @@ fn payloads(sample: &[u8]) -> Result<Vec<String>, UnpackError> {
             continue;
         };
         if kind == Vttc::KIND {
-            let cue = Vttc::decode_body(&mut body.as_slice())?;
-            payloads.push(cue.payl.text);
+            let vttc = Vttc::decode_body(&mut body.as_slice())?;
+            cues.push(Cue {
+                start,
+                end,
+                text: vttc.payl.text,
+            });
         }
     }
 
-    Ok(payloads)
-}
-
-/// The cues the samples carry, each spanning every consecutive sample its payload
-/// appears in.
-///
-/// A cue outlasting a sample was written once per sample it covers, since its
-/// timing lives in the sample timing rather than in the cue box. Merging by
-/// payload recovers the span the cue was authored with. Two cues carrying the same
-/// text back to back merge into one; they render alike, so nothing is lost on
-/// screen.
-fn merge(samples: &[Sample]) -> Vec<Cue> {
-    let mut cues: Vec<Cue> = Vec::new();
-    let mut open: Vec<usize> = Vec::new();
-
-    for sample in samples {
-        let mut still_open = Vec::with_capacity(sample.payloads.len());
-        for text in &sample.payloads {
-            let carried_over = open
-                .iter()
-                .copied()
-                .find(|&cue| cues[cue].end == sample.start && cues[cue].text == *text);
-
-            match carried_over {
-                Some(cue) => {
-                    cues[cue].end = sample.end;
-                    still_open.push(cue);
-                }
-                None => {
-                    cues.push(Cue {
-                        start: sample.start,
-                        end: sample.end,
-                        text: text.clone(),
-                    });
-                    still_open.push(cues.len() - 1);
-                }
-            }
-        }
-        open = still_open;
-    }
-
-    cues
+    Ok(cues)
 }
 
 /// A media time in the milliseconds a [`Cue`] counts. The timescale comes from the
@@ -183,13 +143,14 @@ mod tests {
     use mp4_atom::{Encode, Mdat, Mfhd, Tfdt, Tfhd, Traf, Trun, TrunEntry};
 
     use super::*;
+    use crate::subtitle::Subtitle;
     use crate::{fragmenter, muxer};
 
     #[test]
     fn unpacks_a_single_cue() {
         let subtitle = subtitle(&[(0, 2_000, "Hello")]);
 
-        let unpacked = unpack(&segment(&subtitle, &[], 0), 1_000).unwrap();
+        let unpacked = merged(&segment(&subtitle, &[], 0), 1_000);
 
         assert_eq!(unpacked, subtitle);
     }
@@ -200,7 +161,7 @@ mod tests {
         // screen for all of them.
         let subtitle = subtitle(&[(0, 6_000, "A"), (1_000, 3_000, "B")]);
 
-        let unpacked = unpack(&segment(&subtitle, &[], 0), 1_000).unwrap();
+        let unpacked = merged(&segment(&subtitle, &[], 0), 1_000);
 
         assert_eq!(unpacked, subtitle);
     }
@@ -209,7 +170,7 @@ mod tests {
     fn merges_a_cue_across_the_fragments_of_one_segment() {
         let subtitle = subtitle(&[(0, 6_000, "A")]);
 
-        let unpacked = unpack(&segment(&subtitle, &[], 2_000), 1_000).unwrap();
+        let unpacked = merged(&segment(&subtitle, &[], 2_000), 1_000);
 
         assert_eq!(unpacked, subtitle);
     }
@@ -218,7 +179,7 @@ mod tests {
     fn keeps_cues_sharing_a_start_apart() {
         let subtitle = subtitle(&[(1_000, 2_000, "short"), (1_000, 4_000, "long")]);
 
-        let unpacked = unpack(&segment(&subtitle, &[], 0), 1_000).unwrap();
+        let unpacked = merged(&segment(&subtitle, &[], 0), 1_000);
 
         assert_eq!(unpacked, subtitle);
     }
@@ -228,7 +189,7 @@ mod tests {
         let subtitle = subtitle(&[(2_000, 3_000, "A")]);
 
         // The track opens with an empty sample covering [0, 2000).
-        let unpacked = unpack(&segment(&subtitle, &[], 0), 1_000).unwrap();
+        let unpacked = merged(&segment(&subtitle, &[], 0), 1_000);
 
         assert_eq!(unpacked, subtitle);
     }
@@ -237,7 +198,7 @@ mod tests {
     fn merges_two_cues_carrying_the_same_text_back_to_back() {
         let authored = subtitle(&[(0, 1_000, "same"), (1_000, 2_000, "same")]);
 
-        let unpacked = unpack(&segment(&authored, &[], 0), 1_000).unwrap();
+        let unpacked = merged(&segment(&authored, &[], 0), 1_000);
 
         assert_eq!(unpacked, subtitle(&[(0, 2_000, "same")]));
     }
@@ -246,7 +207,7 @@ mod tests {
     fn converts_media_time_in_another_timescale() {
         let authored = subtitle(&[(0, 2_000, "Hello")]);
 
-        let unpacked = unpack(&segment(&authored, &[], 0), 500).unwrap();
+        let unpacked = merged(&segment(&authored, &[], 0), 500);
 
         assert_eq!(unpacked, subtitle(&[(0, 4_000, "Hello")]));
     }
@@ -262,7 +223,7 @@ mod tests {
         .unwrap();
         let authored = crate::vtt::parse(&document).unwrap();
 
-        let unpacked = unpack(&segment(&authored, &[7_400], 4_000), 1_000).unwrap();
+        let unpacked = merged(&segment(&authored, &[7_400], 4_000), 1_000);
 
         assert_eq!(crate::vtt::parse(&unpacked.write()).unwrap(), authored);
     }
@@ -312,6 +273,11 @@ mod tests {
         let error = unpack(&fragment, 1_000).unwrap_err();
 
         assert!(matches!(error, UnpackError::TimeOverflow(5_000_000_000)));
+    }
+
+    /// The cues a segment carries: what a caller asks `unpack` for, merged.
+    fn merged(segment: &[u8], timescale: u32) -> Subtitle {
+        fragmenter::merge(&unpack(segment, timescale).unwrap())
     }
 
     fn subtitle(cues: &[(u32, u32, &str)]) -> Subtitle {

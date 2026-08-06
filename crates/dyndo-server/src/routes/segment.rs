@@ -7,6 +7,7 @@ use axum::{
 use dyndo_core::segment::SegmentOptions;
 use dyndo_core::track::Track;
 use dyndo_text::demuxer::wvtt;
+use dyndo_text::fragmenter;
 use opendal::Operator;
 
 use super::context::RequestContext;
@@ -50,7 +51,8 @@ pub(super) async fn text(
 ) -> Result<Response, ServerError> {
     let (track, segment_options, range) = locate(op, context, track_id, file, ".vtt").await?;
     let bytes = track.read_range(op, &segment_options, range).await?;
-    let subtitle = wvtt::unpack(&bytes, track.timescale())?;
+    let fragments = wvtt::unpack(&bytes, track.timescale())?;
+    let subtitle = fragmenter::merge(&fragments);
 
     Ok(([(CONTENT_TYPE, "text/vtt")], subtitle.write()).into_response())
 }

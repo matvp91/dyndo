@@ -1,4 +1,9 @@
-//! Dividing a [`Subtitle`] into the fragments a CMAF text track is built from.
+//! Dividing a [`Subtitle`] into the fragments a CMAF text track is built from,
+//! and joining those fragments back into one.
+//!
+//! [`fragment`] and [`merge`] are inverses: dividing a subtitle and merging the
+//! result returns the cues it was authored with. Only the timeline is reasoned
+//! about here — a container decides what to make of the fragments.
 //!
 //! Every time here is a millisecond, as on [`Cue`].
 
@@ -9,17 +14,22 @@ use crate::subtitle::{Cue, Subtitle};
 /// The cues on screen over `[start, end)`, in presentation order, or none where
 /// nothing is.
 ///
-/// The cues are the ones the subtitle was authored with, so one that began before
-/// the sample or outlasts it keeps its own span. No cue edge falls inside a
-/// sample, so each of them is on screen for all of it.
+/// No cue edge falls inside a sample, so each cue here is on screen for all of it
+/// and a cue's own span is the run of consecutive samples it appears in — which is
+/// how [`merge`] recovers it.
+///
+/// A cue carries the span it was authored with when [`fragment`] divided a subtitle.
+/// One read back out of a container carries the sample's span instead, since nothing
+/// there records the original. Only [`Cue::same_content`] decides whether a cue
+/// continues into the next sample, so neither producer has to agree with the other.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Sample<'a> {
+pub struct Sample {
     pub start: u32,
     pub end: u32,
-    pub cues: Vec<&'a Cue>,
+    pub cues: Vec<Cue>,
 }
 
-impl Sample<'_> {
+impl Sample {
     pub fn duration(&self) -> u32 {
         self.end - self.start
     }
@@ -27,13 +37,13 @@ impl Sample<'_> {
 
 /// Consecutive samples covering `[start, end)` without holes.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Fragment<'a> {
+pub struct Fragment {
     pub start: u32,
     pub end: u32,
-    pub samples: Vec<Sample<'a>>,
+    pub samples: Vec<Sample>,
 }
 
-impl Fragment<'_> {
+impl Fragment {
     pub fn duration(&self) -> u32 {
         self.end - self.start
     }
@@ -50,7 +60,7 @@ impl Fragment<'_> {
 ///
 /// The fragments run back to back from 0 to the end of the last cue, so a
 /// subtitle with no cues has nothing to divide and yields none at all.
-pub fn fragment<'a>(subtitle: &'a Subtitle, boundaries: &[u32], length: u32) -> Vec<Fragment<'a>> {
+pub fn fragment(subtitle: &Subtitle, boundaries: &[u32], length: u32) -> Vec<Fragment> {
     let end = subtitle.cues.iter().map(|cue| cue.end).max().unwrap_or(0);
     let clock = boundaries.iter().copied().chain(grid(length, end));
 
@@ -66,7 +76,7 @@ pub fn fragment<'a>(subtitle: &'a Subtitle, boundaries: &[u32], length: u32) -> 
 
 /// The samples tiling `[start, end)`: the cues reaching into it, cut wherever one
 /// comes or goes.
-fn samples<'a>(subtitle: &'a Subtitle, start: u32, end: u32) -> Vec<Sample<'a>> {
+fn samples(subtitle: &Subtitle, start: u32, end: u32) -> Vec<Sample> {
     let cues: Vec<&Cue> = subtitle
         .cues
         .iter()
@@ -81,11 +91,61 @@ fn samples<'a>(subtitle: &'a Subtitle, start: u32, end: u32) -> Vec<Sample<'a>> 
             end,
             cues: cues
                 .iter()
-                .copied()
                 .filter(|cue| cue.start <= start && cue.end > start)
+                .map(|&cue| cue.clone())
                 .collect(),
         })
         .collect()
+}
+
+/// The cues `fragments` carry, in presentation order: the inverse of [`fragment`].
+///
+/// A cue outlasting a sample appears in every one it covers, so each is followed
+/// across consecutive samples and the run it forms becomes one cue spanning them
+/// all. Runs are followed across fragment edges too, since a segment groups several
+/// fragments and a cue may span one.
+///
+/// The cue spans the samples rather than whatever span it arrived with, because a
+/// cue read out of a container has only the sample's. Continuation is decided by
+/// [`Cue::same_content`] for the same reason.
+///
+/// Two cues carrying the same content back to back merge into one spanning both.
+/// They were authored apart, but once the timeline is cut into samples nothing
+/// between them says so, and they render alike either way.
+pub fn merge(fragments: &[Fragment]) -> Subtitle {
+    let mut cues: Vec<Cue> = Vec::new();
+    // The cues the sample just read left on screen, as indices into `cues`.
+    let mut open: Vec<usize> = Vec::new();
+
+    for sample in fragments.iter().flat_map(|fragment| &fragment.samples) {
+        let mut still_open = Vec::with_capacity(sample.cues.len());
+        for cue in &sample.cues {
+            let carried_over = open
+                .iter()
+                .copied()
+                .find(|&open| cues[open].end == sample.start && cues[open].same_content(cue));
+
+            match carried_over {
+                Some(open) => {
+                    cues[open].end = sample.end;
+                    still_open.push(open);
+                }
+                None => {
+                    cues.push(Cue {
+                        start: sample.start,
+                        end: sample.end,
+                        ..cue.clone()
+                    });
+                    still_open.push(cues.len() - 1);
+                }
+            }
+        }
+        open = still_open;
+    }
+
+    cues.sort_by_key(|cue| (cue.start, cue.end));
+
+    Subtitle { cues }
 }
 
 /// Every multiple of `length` below `end`. A `length` of 0 asks for no grid.
@@ -240,12 +300,40 @@ mod tests {
     }
 
     #[test]
-    fn a_cue_keeps_its_own_span_inside_a_sample() {
-        let subtitle = subtitle(&[(0, 6_000, "A")]);
-        let fragments = fragment(&subtitle, &[2_000], 0);
+    fn merging_returns_the_cues_a_subtitle_was_authored_with() {
+        let subtitle = subtitle(&[(0, 1_000, "A"), (2_000, 3_000, "B"), (4_000, 5_000, "C")]);
 
-        let cue = fragments[1].samples[0].cues[0];
-        assert_eq!((cue.start, cue.end), (0, 6_000));
+        assert_eq!(merge(&fragment(&subtitle, &[7_400], 2_000)), subtitle);
+    }
+
+    #[test]
+    fn merging_recovers_a_cue_the_samples_split() {
+        // "B" coming and going cuts "A" across three samples.
+        let subtitle = subtitle(&[(0, 6_000, "A"), (1_000, 3_000, "B")]);
+
+        assert_eq!(merge(&fragment(&subtitle, &[], 0)), subtitle);
+    }
+
+    #[test]
+    fn merging_recovers_a_cue_that_spans_fragments() {
+        let subtitle = subtitle(&[(0, 6_000, "A")]);
+
+        assert_eq!(merge(&fragment(&subtitle, &[2_000], 2_000)), subtitle);
+    }
+
+    #[test]
+    fn merging_cues_carrying_the_same_text_back_to_back_yields_one() {
+        let authored = subtitle(&[(0, 1_000, "same"), (1_000, 2_000, "same")]);
+
+        assert_eq!(
+            merge(&fragment(&authored, &[], 0)),
+            subtitle(&[(0, 2_000, "same")])
+        );
+    }
+
+    #[test]
+    fn merging_nothing_yields_a_subtitle_without_cues() {
+        assert_eq!(merge(&[]), Subtitle::default());
     }
 
     #[test]
@@ -289,7 +377,7 @@ mod tests {
             .collect()
     }
 
-    fn samples_of<'a>(fragment: &'a Fragment) -> Vec<(u32, u32, Vec<&'a str>)> {
+    fn samples_of(fragment: &Fragment) -> Vec<(u32, u32, Vec<&str>)> {
         fragment
             .samples
             .iter()
