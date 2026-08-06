@@ -499,7 +499,10 @@ mod tests {
 
         let unpacked = merged(&segment(&authored, &[7_400], 4_000), 1_000);
 
-        assert_eq!(crate::vtt::parse(&unpacked.write()).unwrap(), authored);
+        assert_eq!(
+            crate::vtt::parse(&crate::vtt::write(&unpacked)).unwrap(),
+            authored
+        );
     }
 
     #[test]

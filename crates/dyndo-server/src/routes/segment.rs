@@ -6,7 +6,7 @@ use axum::{
 };
 use dyndo_core::segment::SegmentOptions;
 use dyndo_core::track::Track;
-use dyndo_text::{fragmenter, wvtt};
+use dyndo_text::{fragmenter, vtt, wvtt};
 use opendal::Operator;
 
 use super::context::RequestContext;
@@ -53,7 +53,7 @@ pub(super) async fn text(
     let fragments = wvtt::unpack(&bytes, track.timescale())?;
     let subtitle = fragmenter::merge(&fragments);
 
-    Ok(([(CONTENT_TYPE, "text/vtt")], subtitle.write()).into_response())
+    Ok(([(CONTENT_TYPE, "text/vtt")], vtt::write(&subtitle)).into_response())
 }
 
 /// The track `track_id` names and the byte range of the segment `file` names.
