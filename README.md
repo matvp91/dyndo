@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/images/logo.png" alt="dyndo" width="160" height="160">
+</p>
+
 # dyndo
 
 **Dynamic media packaging for adaptive streaming, in Rust.**
@@ -11,8 +15,8 @@ sources once into a tiny JSON descriptor; the server then generates DASH and HLS
 manifests and serves CMAF segments _on the fly_, straight from the original
 files via HTTP byte-range reads.
 
-> [!NOTE] `dyndo` is in early development. Both DASH and HLS are
-> implemented, served from the same CMAF sources.
+> [!NOTE] `dyndo` is in early development. Both DASH and HLS are implemented,
+> served from the same CMAF sources.
 
 ## 📖 Documentation
 
@@ -65,8 +69,8 @@ New here? The
 walks through the whole flow, including producing CMAF sources with ffmpeg.
 
 Prefer not to build at all? `dyndo-server` is published to Docker Hub as
-[`matvp91/dyndo-server`](https://hub.docker.com/r/matvp91/dyndo-server) —
-see **[Deploy with Docker](https://matvp91.github.io/dyndo/how-to/deploy-with-docker.html)**:
+[`matvp91/dyndo-server`](https://hub.docker.com/r/matvp91/dyndo-server) — see
+**[Deploy with Docker](https://matvp91.github.io/dyndo/how-to/deploy-with-docker.html)**:
 
 ```bash
 docker run --rm -p 8080:8080 -e DYNDO_FS__ROOT=/assets \
@@ -77,8 +81,8 @@ docker run --rm -p 8080:8080 -e DYNDO_FS__ROOT=/assets \
 
 `dyndo` is a Cargo workspace of five crates — three libraries and two binaries —
 with a strictly one-way dependency direction. `dyndo-core` knows nothing about
-manifests; the two manifest crates know nothing about each other; neither library
-layer knows anything about CLI or HTTP concerns.
+manifests; the two manifest crates know nothing about each other; neither
+library layer knows anything about CLI or HTTP concerns.
 
 ```text
 binaries     dyndo-cli          dyndo-server
@@ -88,13 +92,13 @@ manifests       dyndo-dash     dyndo-hls
 core                   dyndo-core
 ```
 
-| Crate                                 | Kind                    | Responsibility                                                                                                                                                                                          |
-| ------------------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Crate                                 | Kind                    | Responsibility                                                                                                                                                                                                            |
+| ------------------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [`dyndo-core`](crates/dyndo-core)     | library                 | CMAF header parsing (bounded memory via `mp4-atom`), the `Track` domain model, segment grouping, the `asset.json` serde contract, and RFC 6381 codec strings. Reads bytes through [OpenDAL](https://opendal.apache.org/). |
-| [`dyndo-dash`](crates/dyndo-dash)     | library                 | DASH MPD generation: adaptation-set grouping, segment templates and timelines, DASH role signalling.                                                                                                     |
-| [`dyndo-hls`](crates/dyndo-hls)       | library                 | HLS playlist generation: the multivariant playlist, per-track media playlists, rendition groups and HLS role signalling.                                                                                 |
-| [`dyndo-cli`](crates/dyndo-cli)       | binary (`dyndo`)        | The indexing and offline-manifest CLI.                                                                                                                                                                   |
-| [`dyndo-server`](crates/dyndo-server) | binary (`dyndo-server`) | The dynamic packaging HTTP server, built on [Axum](https://github.com/tokio-rs/axum).                                                                                                                    |
+| [`dyndo-dash`](crates/dyndo-dash)     | library                 | DASH MPD generation: adaptation-set grouping, segment templates and timelines, DASH role signalling.                                                                                                                      |
+| [`dyndo-hls`](crates/dyndo-hls)       | library                 | HLS playlist generation: the multivariant playlist, per-track media playlists, rendition groups and HLS role signalling.                                                                                                  |
+| [`dyndo-cli`](crates/dyndo-cli)       | binary (`dyndo`)        | The indexing and offline-manifest CLI.                                                                                                                                                                                    |
+| [`dyndo-server`](crates/dyndo-server) | binary (`dyndo-server`) | The dynamic packaging HTTP server, built on [Axum](https://github.com/tokio-rs/axum).                                                                                                                                     |
 
 Both binaries call the same `dyndo-dash` and `dyndo-hls` builders, so the CLI's
 offline manifests and the server's generated ones are identical.
@@ -127,9 +131,9 @@ CI publishes. The guide's sources live in [`docs/`](docs/) and are published to
 GitHub Pages by the same workflow.
 
 Tests run against small, committed header-only CMAF fixtures under
-[`fixtures`](fixtures) — just enough of each file (`ftyp` + `moov` +
-`sidx` + first `moof`) to exercise parsing end to end without shipping gigabytes
-of media.
+[`fixtures`](fixtures) — just enough of each file (`ftyp` + `moov` + `sidx` +
+first `moof`) to exercise parsing end to end without shipping gigabytes of
+media.
 
 ## Releasing
 
@@ -144,6 +148,7 @@ The script bumps the workspace version (inherited by all five crates), commits
 [`.github/workflows/release.yml`](.github/workflows/release.yml), which verifies
 the tag matches `Cargo.toml`, re-runs the CI gate, builds `dyndo` and
 `dyndo-server` for Linux and macOS, and publishes a GitHub Release with the
-binaries and a `dyndo-v<version>-SHA256SUMS.txt` checksums file. The same tag push also builds and publishes a
-multi-arch (`linux/amd64` + `linux/arm64`) `dyndo-server` image to Docker Hub,
-tagged `:<version>`, `:<major>.<minor>`, and `:latest`.
+binaries and a `dyndo-v<version>-SHA256SUMS.txt` checksums file. The same tag
+push also builds and publishes a multi-arch (`linux/amd64` + `linux/arm64`)
+`dyndo-server` image to Docker Hub, tagged `:<version>`, `:<major>.<minor>`, and
+`:latest`.
