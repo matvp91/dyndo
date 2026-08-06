@@ -4,6 +4,7 @@
 //! [`fragmenter`] divides one into the fragments a track is built from, and a
 //! [`muxer`] writes those fragments out in a container.
 
+mod atoms;
 pub mod fragmenter;
 pub mod muxer;
 pub mod subtitle;

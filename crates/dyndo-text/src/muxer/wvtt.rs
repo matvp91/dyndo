@@ -6,21 +6,14 @@ use mp4_atom::{
     Tkhd, Traf, Trak, Trex, Trun, TrunEntry, Url, VttC, Wvtt,
 };
 
-use super::atoms::{Payl, Vttc, Vtte};
+use super::PackError;
+use crate::atoms::{Payl, Vttc, Vtte};
 use crate::fragmenter::{Fragment, Sample};
 
 /// Milliseconds map 1:1 onto media time.
 const TIMESCALE: u32 = 1_000;
 
 const TRACK_ID: u32 = 1;
-
-#[derive(Debug, thiserror::Error)]
-pub enum WvttError {
-    #[error("subtitle covers no time")]
-    Empty,
-    #[error(transparent)]
-    Atom(#[from] mp4_atom::Error),
-}
 
 /// Pack fragments of a subtitle into a single fragmented `wvtt` track: `ftyp` ·
 /// `moov` · `sidx` · one `styp` · `moof` · `mdat` per fragment. The `sidx` sits
@@ -41,13 +34,13 @@ pub enum WvttError {
 ///
 /// # Errors
 ///
-/// [`WvttError::Empty`] if the fragments run to time 0, since the result would be
-/// a track with nothing to index, and [`WvttError::Atom`] if a box fails to
+/// [`PackError::Empty`] if the fragments run to time 0, since the result would be
+/// a track with nothing to index, and [`PackError::Atom`] if a box fails to
 /// encode.
-pub fn pack(fragments: &[Fragment]) -> Result<Vec<u8>, WvttError> {
+pub fn pack(fragments: &[Fragment]) -> Result<Vec<u8>, PackError> {
     let track_end = fragments.last().map_or(0, |fragment| fragment.end);
     if track_end == 0 {
-        return Err(WvttError::Empty);
+        return Err(PackError::Empty);
     }
 
     let mut encoded = Vec::with_capacity(fragments.len());
@@ -96,7 +89,7 @@ fn write_sample<B: BufMut>(sample: &Sample, buf: &mut B) -> mp4_atom::Result<()>
     Ok(())
 }
 
-fn encode(index: usize, fragment: &Fragment) -> Result<Vec<u8>, WvttError> {
+fn encode(index: usize, fragment: &Fragment) -> Result<Vec<u8>, PackError> {
     let mut data = Vec::new();
     let mut entries = Vec::with_capacity(fragment.samples.len());
     for sample in &fragment.samples {
@@ -434,7 +427,7 @@ mod tests {
         let subtitle = subtitle(&[]);
         let error = pack(&fragment(&subtitle, &[], 0)).unwrap_err();
 
-        assert!(matches!(error, WvttError::Empty));
+        assert!(matches!(error, PackError::Empty));
     }
 
     #[test]
@@ -442,7 +435,7 @@ mod tests {
         let subtitle = subtitle(&[(0, 0, "A")]);
         let error = pack(&fragment(&subtitle, &[], 0)).unwrap_err();
 
-        assert!(matches!(error, WvttError::Empty));
+        assert!(matches!(error, PackError::Empty));
     }
 
     fn subtitle(cues: &[(u32, u32, &str)]) -> Subtitle {

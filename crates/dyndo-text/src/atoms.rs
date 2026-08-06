@@ -14,8 +14,8 @@ use mp4_atom::{Atom, Buf, BufMut, Decode, Encode, FourCC};
 /// `VTTCueBox`: one cue on screen over a sample, leaving the payload as its only
 /// child.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct Vttc {
-    pub(super) payl: Payl,
+pub(crate) struct Vttc {
+    pub(crate) payl: Payl,
 }
 
 impl Atom for Vttc {
@@ -34,8 +34,8 @@ impl Atom for Vttc {
 
 /// `CuePayloadBox`: the cue text, as UTF-8 filling the box.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct Payl {
-    pub(super) text: String,
+pub(crate) struct Payl {
+    pub(crate) text: String,
 }
 
 impl Atom for Payl {
@@ -57,7 +57,7 @@ impl Atom for Payl {
 
 /// `VTTEmptyCueBox`: a sample covering an interval with nothing on screen.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct Vtte;
+pub(crate) struct Vtte;
 
 impl Atom for Vtte {
     const KIND: FourCC = FourCC::new(b"vtte");
