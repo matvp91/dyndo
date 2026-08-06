@@ -14,8 +14,7 @@ use ::opendal::raw::{
 use ::opendal::{
     Buffer, BytesRange, Capability, EntryMode, Error, ErrorKind, Metadata, OperationContext, Result,
 };
-use dyndo_text::muxer::wvtt;
-use dyndo_text::{fragmenter, vtt};
+use dyndo_text::{fragmenter, vtt, wvtt};
 
 /// Serves `.vtt` documents as `wvtt` tracks, packed on read.
 ///

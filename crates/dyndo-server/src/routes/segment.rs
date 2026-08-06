@@ -6,8 +6,7 @@ use axum::{
 };
 use dyndo_core::segment::SegmentOptions;
 use dyndo_core::track::Track;
-use dyndo_text::demuxer::wvtt;
-use dyndo_text::fragmenter;
+use dyndo_text::{fragmenter, wvtt};
 use opendal::Operator;
 
 use super::context::RequestContext;

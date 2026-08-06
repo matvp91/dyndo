@@ -1,4 +1,4 @@
-//! The boxes [`mp4_atom`] does not model.
+//! The cue boxes [`mp4_atom`] does not model.
 //!
 //! ISO/IEC 14496-30 fills a text sample with cue boxes: a `vttc` for each cue on
 //! screen over it, or a lone `vtte` where none is. Only a cue's payload is
@@ -14,8 +14,8 @@ use mp4_atom::{Atom, Buf, BufMut, Decode, Encode, FourCC};
 /// `VTTCueBox`: one cue on screen over a sample, leaving the payload as its only
 /// child.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Vttc {
-    pub(crate) payl: Payl,
+pub(super) struct Vttc {
+    pub(super) payl: Payl,
 }
 
 impl Atom for Vttc {
@@ -34,8 +34,8 @@ impl Atom for Vttc {
 
 /// `CuePayloadBox`: the cue text, as UTF-8 filling the box.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Payl {
-    pub(crate) text: String,
+pub(super) struct Payl {
+    pub(super) text: String,
 }
 
 impl Atom for Payl {
@@ -57,7 +57,7 @@ impl Atom for Payl {
 
 /// `VTTEmptyCueBox`: a sample covering an interval with nothing on screen.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Vtte;
+pub(super) struct Vtte;
 
 impl Atom for Vtte {
     const KIND: FourCC = FourCC::new(b"vtte");
