@@ -20,8 +20,9 @@ use crate::subtitle::{Cue, Subtitle};
 ///
 /// A cue carries the span it was authored with when [`fragment`] divided a subtitle.
 /// One read back out of a container carries the sample's span instead, since nothing
-/// there records the original. Only [`Cue::same_content`] decides whether a cue
-/// continues into the next sample, so neither producer has to agree with the other.
+/// there records the original. Neither producer has to agree with the other, because
+/// [`merge`] compares everything but the span to decide whether a cue continues into
+/// the next sample.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Sample {
     pub start: u32,
@@ -106,8 +107,8 @@ fn samples(subtitle: &Subtitle, start: u32, end: u32) -> Vec<Sample> {
 /// fragments and a cue may span one.
 ///
 /// The cue spans the samples rather than whatever span it arrived with, because a
-/// cue read out of a container has only the sample's. Continuation is decided by
-/// [`Cue::same_content`] for the same reason.
+/// cue read out of a container has only the sample's — which is also why
+/// continuation is decided by everything but the span.
 ///
 /// Two cues carrying the same content back to back merge into one spanning both.
 /// They were authored apart, but once the timeline is cut into samples nothing
@@ -120,10 +121,13 @@ pub fn merge(fragments: &[Fragment]) -> Subtitle {
     for sample in fragments.iter().flat_map(|fragment| &fragment.samples) {
         let mut still_open = Vec::with_capacity(sample.cues.len());
         for cue in &sample.cues {
+            // Every field but the span decides whether a cue continues, so a field
+            // added to `Cue` belongs in this comparison too — a caption differing
+            // only in how it is presented is a different caption.
             let carried_over = open
                 .iter()
                 .copied()
-                .find(|&open| cues[open].end == sample.start && cues[open].same_content(cue));
+                .find(|&open| cues[open].end == sample.start && cues[open].text == cue.text);
 
             match carried_over {
                 Some(open) => {

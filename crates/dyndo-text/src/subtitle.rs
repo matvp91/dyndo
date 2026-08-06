@@ -21,18 +21,6 @@ pub struct Cue {
     pub text: String,
 }
 
-impl Cue {
-    /// Whether two cues carry the same caption, ignoring when it is on screen.
-    ///
-    /// A [`Sample`](crate::fragmenter::Sample) records what is on screen, not how
-    /// long for, so this is what decides whether a cue continues into the next one.
-    /// Every field but the span belongs here: a caption differing only in how it is
-    /// presented is a different caption.
-    pub fn same_content(&self, other: &Self) -> bool {
-        self.text == other.text
-    }
-}
-
 /// A parsed subtitle: the cues of a single text track, in presentation order
 /// (by `start`, then `end`).
 ///
