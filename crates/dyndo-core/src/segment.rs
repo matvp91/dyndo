@@ -9,16 +9,16 @@ pub struct SegmentOptions {
     /// The shortest a served segment may be, in milliseconds; fragments are
     /// grouped until they reach it.
     #[serde(default, alias = "sml", alias = "segment_min_length")]
-    pub min_length: u64,
+    pub min_length: u32,
     /// How long each segment of a packaged subtitle track is, in milliseconds.
     /// Unlike `min_length` this is exact, since dyndo fragments those tracks
     /// itself rather than grouping what a file already contains. Zero asks for no
     /// grid, leaving the asset's splice points as the only cuts.
     #[serde(default, alias = "stl", alias = "segment_text_length")]
-    pub text_length: u64,
+    pub text_length: u32,
     /// Times a segment has to start at, in milliseconds.
     #[serde(default, alias = "sb", alias = "segment_boundaries")]
-    pub boundaries: Vec<u64>,
+    pub boundaries: Vec<u32>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -61,7 +61,7 @@ fn group_fragments(
             .map(|fragment| Segment {
                 byte_offset: fragment.byte_offset,
                 byte_size: fragment.byte_size,
-                raw_duration: fragment.raw_duration,
+                raw_duration: u64::from(fragment.raw_duration),
             })
             .collect();
     }
@@ -70,7 +70,7 @@ fn group_fragments(
     let mut cumulative = Vec::with_capacity(fragments.len() + 1);
     cumulative.push(0u64);
     for fragment in fragments {
-        cumulative.push(cumulative[cumulative.len() - 1] + fragment.raw_duration());
+        cumulative.push(cumulative[cumulative.len() - 1] + u64::from(fragment.raw_duration()));
     }
     let cuts = snap_cuts(&cumulative, timescale, &options.boundaries);
 
@@ -99,7 +99,7 @@ fn group_fragments(
     segments
 }
 
-fn snap_cuts(cumulative: &[u64], timescale: u32, boundaries: &[u64]) -> Vec<usize> {
+fn snap_cuts(cumulative: &[u64], timescale: u32, boundaries: &[u32]) -> Vec<usize> {
     let mut cuts: Vec<usize> = boundaries
         .iter()
         .map(|&boundary| {
@@ -133,7 +133,7 @@ mod tests {
         assert_eq!((options.min_length, options.text_length), (0, 0));
     }
 
-    fn options(min_length: u64, boundaries: &[u64]) -> SegmentOptions {
+    fn options(min_length: u32, boundaries: &[u32]) -> SegmentOptions {
         SegmentOptions {
             min_length,
             boundaries: boundaries.to_vec(),
@@ -141,7 +141,7 @@ mod tests {
         }
     }
 
-    fn fragments(raw_durations: &[u64]) -> Vec<Fragment> {
+    fn fragments(raw_durations: &[u32]) -> Vec<Fragment> {
         let mut byte_offset = 100;
         raw_durations
             .iter()

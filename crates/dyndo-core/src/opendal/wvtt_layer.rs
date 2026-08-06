@@ -14,22 +14,23 @@ use ::opendal::raw::{
 use ::opendal::{
     Buffer, BytesRange, Capability, EntryMode, Error, ErrorKind, Metadata, OperationContext, Result,
 };
-use dyndo_text::{vtt, wvtt};
+use dyndo_text::muxer::wvtt;
+use dyndo_text::{fragmenter, vtt};
 
 /// Serves `.vtt` documents as `wvtt` tracks, packed on read.
 ///
 /// The tracks are fragmented at `boundaries` and on the `text_length` grid (see
-/// [`wvtt::pack`]), so the layer carries the asset's segmentation policy and
+/// [`fragmenter::fragment`]), so the layer carries the asset's segmentation policy and
 /// belongs to the operator serving one request rather than to a process-wide
 /// one.
 #[derive(Debug, Clone)]
 pub struct WvttLayer {
-    boundaries: Arc<[u64]>,
-    text_length: u64,
+    boundaries: Arc<[u32]>,
+    text_length: u32,
 }
 
 impl WvttLayer {
-    pub fn new(boundaries: &[u64], text_length: u64) -> Self {
+    pub fn new(boundaries: &[u32], text_length: u32) -> Self {
         Self {
             boundaries: boundaries.into(),
             text_length,
@@ -43,8 +44,8 @@ impl WvttLayer {
             .await?;
         let document = String::from_utf8(stream.read_all().await?.to_vec()).map_err(unpackable)?;
         let subtitle = vtt::parse(&document).map_err(unpackable)?;
-        let packed =
-            wvtt::pack(&subtitle, &self.boundaries, self.text_length).map_err(unpackable)?;
+        let fragments = fragmenter::fragment(&subtitle, &self.boundaries, self.text_length);
+        let packed = wvtt::pack(&fragments).map_err(unpackable)?;
 
         Ok(Buffer::from(packed))
     }
