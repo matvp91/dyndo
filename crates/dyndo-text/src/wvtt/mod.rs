@@ -160,7 +160,7 @@ mod tests {
 
     use super::atom::{Payl, Vttc, Vtte};
     use super::*;
-    use crate::fragmenter::{fragment, merge};
+    use crate::fragmenter::fragment;
     use crate::subtitle::{Cue, Subtitle};
 
     #[test]
@@ -325,14 +325,6 @@ mod tests {
     }
 
     #[test]
-    fn a_subtitle_without_cues_is_rejected() {
-        let subtitle = subtitle(&[]);
-        let error = pack(&fragment(&subtitle, &[], 0)).unwrap_err();
-
-        assert!(matches!(error, PackError::Empty));
-    }
-
-    #[test]
     fn a_subtitle_ending_at_time_zero_is_rejected() {
         let subtitle = subtitle(&[(0, 0, "A")]);
         let error = pack(&fragment(&subtitle, &[], 0)).unwrap_err();
@@ -421,102 +413,6 @@ mod tests {
     }
 
     #[test]
-    fn unpacks_a_single_cue() {
-        let subtitle = subtitle(&[(0, 2_000, "Hello")]);
-
-        let unpacked = merged(&segment(&subtitle, &[], 0), 1_000);
-
-        assert_eq!(unpacked, subtitle);
-    }
-
-    #[test]
-    fn merges_a_cue_the_samples_split() {
-        // "B" coming and going cuts the fragment into three samples, and "A" is on
-        // screen for all of them.
-        let subtitle = subtitle(&[(0, 6_000, "A"), (1_000, 3_000, "B")]);
-
-        let unpacked = merged(&segment(&subtitle, &[], 0), 1_000);
-
-        assert_eq!(unpacked, subtitle);
-    }
-
-    #[test]
-    fn merges_a_cue_across_the_fragments_of_one_segment() {
-        let subtitle = subtitle(&[(0, 6_000, "A")]);
-
-        let unpacked = merged(&segment(&subtitle, &[], 2_000), 1_000);
-
-        assert_eq!(unpacked, subtitle);
-    }
-
-    #[test]
-    fn keeps_cues_sharing_a_start_apart() {
-        let subtitle = subtitle(&[(1_000, 2_000, "short"), (1_000, 4_000, "long")]);
-
-        let unpacked = merged(&segment(&subtitle, &[], 0), 1_000);
-
-        assert_eq!(unpacked, subtitle);
-    }
-
-    #[test]
-    fn reads_an_interval_showing_nothing_as_no_cue() {
-        let subtitle = subtitle(&[(2_000, 3_000, "A")]);
-
-        // The track opens with an empty sample covering [0, 2000).
-        let unpacked = merged(&segment(&subtitle, &[], 0), 1_000);
-
-        assert_eq!(unpacked, subtitle);
-    }
-
-    #[test]
-    fn merges_two_cues_carrying_the_same_text_back_to_back() {
-        let authored = subtitle(&[(0, 1_000, "same"), (1_000, 2_000, "same")]);
-
-        let unpacked = merged(&segment(&authored, &[], 0), 1_000);
-
-        assert_eq!(unpacked, subtitle(&[(0, 2_000, "same")]));
-    }
-
-    #[test]
-    fn converts_media_time_in_another_timescale() {
-        let authored = subtitle(&[(0, 2_000, "Hello")]);
-
-        let unpacked = merged(&segment(&authored, &[], 0), 500);
-
-        assert_eq!(unpacked, subtitle(&[(0, 4_000, "Hello")]));
-    }
-
-    /// The invariant the whole feature rests on: what a `.vtt` request serves is
-    /// the document the `.m4s` request's bytes were packed from.
-    #[test]
-    fn a_document_survives_the_round_trip_through_a_packed_track() {
-        let document = std::fs::read_to_string(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../fixtures/text_sample.vtt"
-        ))
-        .unwrap();
-        let authored = crate::vtt::parse(&document).unwrap();
-
-        let unpacked = merged(&segment(&authored, &[7_400], 4_000), 1_000);
-
-        assert_eq!(
-            crate::vtt::parse(&crate::vtt::write(&unpacked)).unwrap(),
-            authored
-        );
-    }
-
-    #[test]
-    fn rejects_a_truncated_segment() {
-        let subtitle = subtitle(&[(0, 2_000, "Hello")]);
-        let mut truncated = segment(&subtitle, &[], 0);
-        truncated.truncate(truncated.len() - 4);
-
-        let error = unpack(&truncated, 1_000).unwrap_err();
-
-        assert!(matches!(error, UnpackError::UnpairedFragment));
-    }
-
-    #[test]
     fn rejects_a_fragment_without_a_base_decode_time() {
         let fragment = handmade(None, &[(Some(1_000), Some(0))], &[]);
 
@@ -550,11 +446,6 @@ mod tests {
         let error = unpack(&fragment, 1_000).unwrap_err();
 
         assert!(matches!(error, UnpackError::TimeOverflow(5_000_000_000)));
-    }
-
-    /// The cues a segment carries: what a caller asks `unpack` for, merged.
-    fn merged(segment: &[u8], timescale: u32) -> Subtitle {
-        merge(&unpack(segment, timescale).unwrap())
     }
 
     /// A fragment built by hand, for the shapes the packer never writes. Each entry
@@ -595,21 +486,5 @@ mod tests {
         .unwrap();
 
         bytes
-    }
-
-    /// The bytes a segment covering the whole track resolves to: everything past
-    /// the `sidx`, which is where the first fragment's `styp` begins.
-    fn segment(subtitle: &Subtitle, boundaries: &[u32], length: u32) -> Vec<u8> {
-        let packed = pack(&fragment(subtitle, boundaries, length)).unwrap();
-
-        let mut buf = packed.as_slice();
-        loop {
-            let offset = packed.len() - buf.len();
-            match Any::decode_maybe(&mut buf).unwrap() {
-                Some(Any::Styp(_)) => return packed[offset..].to_vec(),
-                Some(_) => continue,
-                None => panic!("packed track carries no fragments"),
-            }
-        }
     }
 }

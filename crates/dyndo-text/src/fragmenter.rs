@@ -322,6 +322,13 @@ mod tests {
     }
 
     #[test]
+    fn merging_keeps_cues_sharing_a_start_apart() {
+        let subtitle = subtitle(&[(1_000, 2_000, "short"), (1_000, 4_000, "long")]);
+
+        assert_eq!(merge(&fragment(&subtitle, &[], 0)), subtitle);
+    }
+
+    #[test]
     fn merging_cues_carrying_the_same_text_back_to_back_yields_one() {
         let authored = subtitle(&[(0, 1_000, "same"), (1_000, 2_000, "same")]);
 
