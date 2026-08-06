@@ -10,7 +10,7 @@ pub struct HlsOptions {
     /// rendition needs no initialization segment. Ask for `wvtt` when a client
     /// wants the packaged track, or when a text track came from a `wvtt` file
     /// another packager wrote and so cannot be unpacked.
-    #[serde(default, alias = "w")]
+    #[serde(default)]
     pub wvtt: bool,
 }
 
@@ -21,12 +21,5 @@ mod tests {
     #[test]
     fn wvtt_defaults_to_false() {
         assert!(!HlsOptions::default().wvtt);
-    }
-
-    #[test]
-    fn wvtt_accepts_shorthand() {
-        let options: HlsOptions = serde_json::from_str(r#"{"w":true}"#).unwrap();
-
-        assert!(options.wvtt);
     }
 }

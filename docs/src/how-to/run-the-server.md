@@ -63,7 +63,7 @@ http://localhost:8080/out/(a:asset,sml:6000,c:!t)/index.mpd
 
 `asset`/`a` selects the descriptor and `min_length`/`sml` controls shared
 segmentation. Each transport has one option of its own: `compact`/`c` for DASH,
-and `wvtt`/`w` for HLS.
+and `wvtt` for HLS.
 
 Parentheses are shell metacharacters, so quote these URLs when passing them to
 `curl` or a player from a shell. See the
@@ -129,8 +129,8 @@ back to defaults and environment variables.
 
 The server answers `GET /health` with `200 OK`. Use it as a container or
 load-balancer liveness probe; it never collides with a stream route. See
-[Deploy with Docker](./deploy-with-docker.md#health-checks) for wiring it into an
-orchestrator.
+[Deploy with Docker](./deploy-with-docker.md#health-checks) for wiring it into
+an orchestrator.
 
 ## Serving to browser players
 
