@@ -58,6 +58,15 @@ That is why the same `<track-id>/<time>.m4s` value appears in both a DASH
 `SegmentTimeline` `$Time$` and an HLS media-playlist URI: they are computed from
 the same running sum of segment durations.
 
+Subtitles are where the two protocols genuinely want different bytes, and even
+there the index is shared. DASH references a text segment as packaged `wvtt`;
+HLS references the same segment as a `.vtt` document, because that is the form its
+players handle most widely. The server resolves both spellings identically — same
+cut points, same duration, same byte range — and reads the cues back out of those
+bytes for the `.vtt` one. So the difference is a rendering of one segment, not a
+second segmentation: what changes is the container the cues arrive in, never where
+the cuts fall.
+
 ## Roles render per protocol, from one source
 
 A track's *role* — its author-declared purpose, such as a commentary audio track

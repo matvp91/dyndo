@@ -18,6 +18,7 @@ dyndo hls --input <INPUT> [OPTIONS]
 | `--segment-min-length <MILLISECONDS>` | Minimum served segment length. | `0` |
 | `--segment-text-length <MILLISECONDS>` | Length of each segment of a subtitle track packaged from a `.vtt`. | `0` |
 | `--segment-boundaries <MILLISECONDS,…>` | Splice points a segment may not span. | none |
+| `--wvtt` | Point text renditions at packaged `wvtt` segments rather than WebVTT documents. | off |
 | `-h, --help` | Print help. | |
 
 ## Description
@@ -40,8 +41,8 @@ wrote hls/text_3b519953-3963-56be-8c59-ae1cd0e6d5b4.m3u8
 
 The CLI and the server share one playlist builder, so these files match what
 the server's [`master.m3u8` and `<id>.m3u8` routes](../server/routes.md) return
-for the same descriptor and segmentation options. HLS currently has no
-transport-specific options.
+for the same descriptor and segmentation options — pass `--wvtt` here and `wvtt`
+there to get the same playlists.
 
 ## The multivariant playlist
 
@@ -49,7 +50,7 @@ transport-specific options.
 #EXTM3U
 #EXT-X-MEDIA:TYPE=AUDIO,URI="audio_….m3u8",GROUP-ID="audio",LANGUAGE="nld",NAME="Dutch (Main)",DEFAULT=YES,AUTOSELECT=YES,CHANNELS="2"
 #EXT-X-MEDIA:TYPE=SUBTITLES,URI="text_….m3u8",GROUP-ID="subtitles",LANGUAGE="eng",NAME="English (Captions)",AUTOSELECT=YES,CHARACTERISTICS="…"
-#EXT-X-STREAM-INF:BANDWIDTH=16818378,AVERAGE-BANDWIDTH=5004734,CODECS="avc1.640028,mp4a.40.2,wvtt",RESOLUTION=1920x1080,FRAME-RATE=25.000,AUDIO="audio",SUBTITLES="subtitles",CLOSED-CAPTIONS=NONE
+#EXT-X-STREAM-INF:BANDWIDTH=16818378,AVERAGE-BANDWIDTH=5004734,CODECS="avc1.640028,mp4a.40.2",RESOLUTION=1920x1080,FRAME-RATE=25.000,AUDIO="audio",SUBTITLES="subtitles",CLOSED-CAPTIONS=NONE
 video_….m3u8
 #EXT-X-INDEPENDENT-SEGMENTS
 ```
@@ -78,7 +79,7 @@ track produces a multivariant playlist with renditions but no variants.
 |---|---|
 | `BANDWIDTH` | The video track's peak bitrate, plus the peak bitrate of the highest audio rendition, plus that of the highest text rendition. |
 | `AVERAGE-BANDWIDTH` | The same sum computed from average bitrates. |
-| `CODECS` | The video track's codec followed by every non-video track's codec, de-duplicated in first-seen order. |
+| `CODECS` | The video track's codec followed by every non-video track's codec, de-duplicated in first-seen order. A text rendition served as WebVTT contributes nothing, since WebVTT has no codec identifier; with `--wvtt` it contributes `wvtt`. |
 | `RESOLUTION` | `<width>x<height>` from the descriptor. |
 | `FRAME-RATE` | The `frame_rate` ratio evaluated and rounded to three decimals. |
 | `AUDIO` / `SUBTITLES` | Present only when the asset has audio / text tracks. |
@@ -114,10 +115,36 @@ time in the track's timescale.
 ## Text tracks
 
 Text tracks are advertised as `TYPE=SUBTITLES` renditions and each gets a media
-playlist listing real segments, whichever source form it came from. A CMAF `wvtt`
-track is indexed from its own `sidx`; a raw `.vtt` is parsed and packaged into
-`wvtt` as it is read, and its segments follow the splice points and
+playlist listing real segments. Its segments follow the splice points and
 [`segment_options.text_length`](../asset-json.md#segmentation).
+
+By default a text rendition points at **WebVTT documents** rather than packaged
+segments, since that is the form HLS players handle most widely:
+
+```text
+#EXTM3U
+#EXT-X-VERSION:3
+#EXT-X-TARGETDURATION:4
+#EXT-X-PLAYLIST-TYPE:VOD
+#EXTINF:4.000,
+text_…/0.vtt
+#EXTINF:4.000,
+text_…/4000.vtt
+…
+#EXT-X-ENDLIST
+```
+
+There is no `EXT-X-MAP`: a WebVTT rendition needs no initialization segment. Each
+`.vtt` holds the cues on screen over its segment, with the absolute timestamps
+the source document used, and no `X-TIMESTAMP-MAP` — the times are already on the
+presentation's clock.
+
+`--wvtt` points the rendition at `<id>/<time>.m4s` with an `EXT-X-MAP` instead,
+which is how the track is served to DASH either way. The two forms describe the
+same segments — the same cut points, the same durations — so the choice changes
+only how each one is delivered. Reach for `--wvtt` when a client wants the
+packaged track, or when a text track came from a `wvtt` file another packager
+wrote and so has no document to serve.
 
 ## Examples
 
@@ -129,6 +156,12 @@ Group fragments into served segments of at least six seconds where possible:
 
 ```bash
 dyndo hls -i asset.json -o hls --segment-min-length 6000
+```
+
+Point text renditions at packaged `wvtt` segments instead of WebVTT documents:
+
+```bash
+dyndo hls -i asset.json -o hls --wvtt
 ```
 
 Resulting layout:
