@@ -3,8 +3,8 @@
 //! Filed by level rather than by direction, because the two directions do not meet
 //! at the same one. [`pack`] writes a whole track — `ftyp`, `moov`, `sidx` and every
 //! fragment — while [`unpack`] reads one served segment, which is fragments and
-//! nothing else. Where they do mirror each other is further down, at a fragment and
-//! at a sample, and each of those modules holds both halves of its pair.
+//! nothing else. Where they do mirror each other is further down, at a fragment,
+//! which is why one module holds both halves of that pair.
 //!
 //! Nothing here knows what a [`Subtitle`](crate::subtitle::Subtitle) is. Cues arrive
 //! already divided into samples and leave the same way; turning samples back into a
@@ -12,7 +12,6 @@
 
 mod atom;
 mod fragment;
-mod sample;
 mod track;
 
 use mp4_atom::{Any, DecodeMaybe, Encode, Moof, Sidx};
