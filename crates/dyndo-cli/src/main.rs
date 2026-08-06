@@ -44,15 +44,15 @@ enum Command {
 struct SegmentArgs {
     /// Minimum served segment length in milliseconds.
     #[arg(long = "segment-min-length", default_value_t = 0)]
-    min_length: u64,
+    min_length: u32,
     /// Length of each segment of a packaged subtitle track, in milliseconds. Zero
     /// cuts one only at the asset's splice points.
     #[arg(long = "segment-text-length", default_value_t = 0)]
-    text_length: u64,
+    text_length: u32,
     /// Times a segment has to start at, in milliseconds:
     /// `--segment-boundaries 30000,60000`.
     #[arg(long = "segment-boundaries", value_delimiter = ',')]
-    boundaries: Vec<u64>,
+    boundaries: Vec<u32>,
 }
 
 impl SegmentArgs {

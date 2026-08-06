@@ -13,7 +13,7 @@ pub enum VttError {
     #[error("malformed timestamp {0:?}")]
     MalformedTimestamp(String),
     #[error("cue at {0}ms ends before it starts")]
-    NegativeDuration(u64),
+    NegativeDuration(u32),
 }
 
 /// Parse a VTT document into a [`Subtitle`].
@@ -79,7 +79,7 @@ fn parse_block(block: &[&str]) -> Result<Option<Cue>, VttError> {
     }))
 }
 
-fn parse_timing(line: &str) -> Result<(u64, u64), VttError> {
+fn parse_timing(line: &str) -> Result<(u32, u32), VttError> {
     let (start, end) = line
         .split_once(TIMING_ARROW)
         .expect("callers only pass timing lines");
@@ -94,14 +94,14 @@ fn parse_timing(line: &str) -> Result<(u64, u64), VttError> {
 }
 
 /// Accepts `HH:MM:SS.mmm` and `MM:SS.mmm`.
-fn parse_timestamp(timestamp: &str) -> Result<u64, VttError> {
+fn parse_timestamp(timestamp: &str) -> Result<u32, VttError> {
     let malformed = || VttError::MalformedTimestamp(timestamp.to_string());
 
     let (clock, millis) = timestamp.split_once('.').ok_or_else(malformed)?;
     if millis.len() != 3 {
         return Err(malformed());
     }
-    let millis: u64 = millis.parse().map_err(|_| malformed())?;
+    let millis: u32 = millis.parse().map_err(|_| malformed())?;
 
     // Reading right to left lets the optional hours field fall out the end.
     let mut fields = clock.rsplit(':');
@@ -112,9 +112,9 @@ fn parse_timestamp(timestamp: &str) -> Result<u64, VttError> {
         return Err(malformed());
     }
 
-    let hours: u64 = hours.parse().map_err(|_| malformed())?;
-    let minutes: u64 = minutes.parse().map_err(|_| malformed())?;
-    let seconds: u64 = seconds.parse().map_err(|_| malformed())?;
+    let hours: u32 = hours.parse().map_err(|_| malformed())?;
+    let minutes: u32 = minutes.parse().map_err(|_| malformed())?;
+    let seconds: u32 = seconds.parse().map_err(|_| malformed())?;
     if minutes > 59 || seconds > 59 {
         return Err(malformed());
     }
@@ -269,6 +269,15 @@ mod tests {
         let error = parse("WEBVTT\n\n00:05.000 --> 00:02.000\nx").unwrap_err();
 
         assert!(matches!(error, VttError::NegativeDuration(5_000)));
+    }
+
+    #[test]
+    fn rejects_a_timestamp_no_track_could_reach() {
+        // Milliseconds are a u32, which runs out after 1193 hours. Rejecting it
+        // here is what keeps a packer from meeting a time it cannot write.
+        let error = parse("WEBVTT\n\n99999999:00:00.000 --> 99999999:00:01.000\nx").unwrap_err();
+
+        assert!(matches!(error, VttError::MalformedTimestamp(_)));
     }
 
     #[test]

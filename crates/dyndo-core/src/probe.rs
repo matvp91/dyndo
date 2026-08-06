@@ -190,12 +190,8 @@ fn fragments(boxes: &Boxes) -> Result<Vec<Fragment>, ProbeError> {
 
     for reference in &boxes.sidx.references {
         let byte_size = u64::from(reference.reference_size);
-        let fragment = Fragment::new(
-            byte_offset,
-            byte_size,
-            u64::from(reference.subsegment_duration),
-        )
-        .ok_or(ProbeError::SegmentRangeOverflow)?;
+        let fragment = Fragment::new(byte_offset, byte_size, reference.subsegment_duration)
+            .ok_or(ProbeError::SegmentRangeOverflow)?;
         fragments.push(fragment);
         byte_offset = byte_offset
             .checked_add(byte_size)

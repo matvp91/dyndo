@@ -60,7 +60,7 @@ pub fn pack(fragments: &[Fragment]) -> Result<Vec<u8>, WvttError> {
 
     let mut track = Vec::new();
     ftyp().encode(&mut track)?;
-    moov(track_end).encode(&mut track)?;
+    moov(u64::from(track_end)).encode(&mut track)?;
     Sidx {
         reference_id: TRACK_ID,
         timescale: TIMESCALE,
@@ -103,7 +103,7 @@ fn encode(index: usize, fragment: &Fragment) -> Result<Vec<u8>, WvttError> {
         let offset = data.len();
         write_sample(sample, &mut data)?;
         entries.push(TrunEntry {
-            duration: Some(milliseconds(sample.duration())),
+            duration: Some(sample.duration()),
             size: Some(u32::try_from(data.len() - offset).expect("a sample fits in u32 bytes")),
             ..TrunEntry::default()
         });
@@ -121,7 +121,7 @@ fn encode(index: usize, fragment: &Fragment) -> Result<Vec<u8>, WvttError> {
                 ..Tfhd::default()
             },
             tfdt: Some(Tfdt {
-                base_media_decode_time: fragment.start,
+                base_media_decode_time: u64::from(fragment.start),
             }),
             trun: vec![Trun {
                 data_offset: Some(0),
@@ -154,16 +154,12 @@ fn reference(size: usize, fragment: &Fragment) -> SegmentReference {
     SegmentReference {
         reference_type: false,
         reference_size: u32::try_from(size).expect("a fragment fits in u32 bytes"),
-        subsegment_duration: milliseconds(fragment.duration()),
+        subsegment_duration: fragment.duration(),
         // Every text sample can be decoded on its own.
         starts_with_sap: true,
         sap_type: 1,
         sap_delta_time: 0,
     }
-}
-
-fn milliseconds(duration: u64) -> u32 {
-    u32::try_from(duration).expect("a track is shorter than u32 milliseconds")
 }
 
 fn ftyp() -> Ftyp {
@@ -449,7 +445,7 @@ mod tests {
         assert!(matches!(error, WvttError::Empty));
     }
 
-    fn subtitle(cues: &[(u64, u64, &str)]) -> Subtitle {
+    fn subtitle(cues: &[(u32, u32, &str)]) -> Subtitle {
         Subtitle {
             cues: cues
                 .iter()

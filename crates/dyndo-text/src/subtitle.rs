@@ -6,12 +6,17 @@
 /// Styling and positioning are deliberately absent. Every source format spells
 /// them differently, and dyndo packages subtitles rather than renders them, so
 /// the model keeps only what the formats agree on — when, and what.
+///
+/// Times are milliseconds, and a text track's timescale is always 1000, so they
+/// are the media times a packager writes rather than something to be converted.
+/// Their `u32` runs out after 49 days, which a parser is expected to reject
+/// rather than leave for a packager to discover.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Cue {
     /// Presentation start, in milliseconds from the start of the timeline.
-    pub start: u64,
+    pub start: u32,
     /// Presentation end, in milliseconds. Never precedes `start`.
-    pub end: u64,
+    pub end: u32,
     /// The caption text. Multi-line captions keep their `\n` separators.
     pub text: String,
 }

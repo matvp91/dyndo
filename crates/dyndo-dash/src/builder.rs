@@ -51,7 +51,7 @@ fn build_mpd(
     segment_options: &SegmentOptions,
     should_compact: bool,
 ) -> Result<MPD, DashError> {
-    let duration = Duration::from_millis(max_duration(tracks));
+    let duration = Duration::from_millis(u64::from(max_duration(tracks)));
     let groups = adaptation_set_group::group(asset, tracks);
     if groups
         .iter()
@@ -69,10 +69,10 @@ fn build_mpd(
         xmlns: Some(DASH_XMLNS.to_string()),
         mpdtype: Some("static".to_string()),
         profiles: Some(DASH_PROFILE.to_string()),
-        minBufferTime: Some(Duration::from_millis(max_segment_duration(
+        minBufferTime: Some(Duration::from_millis(u64::from(max_segment_duration(
             tracks,
             segment_options,
-        ))),
+        )))),
         mediaPresentationDuration: Some(duration),
         periods: vec![Period {
             id: Some("0".to_string()),

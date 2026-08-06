@@ -187,7 +187,7 @@ async fn probe_fixture_with(name: &str, options: &SegmentOptions) -> (Operator, 
     (op, track, source)
 }
 
-fn options(text_length: u64, boundaries: &[u64]) -> SegmentOptions {
+fn options(text_length: u32, boundaries: &[u32]) -> SegmentOptions {
     SegmentOptions {
         text_length,
         boundaries: boundaries.to_vec(),

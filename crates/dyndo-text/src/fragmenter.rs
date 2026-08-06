@@ -14,13 +14,13 @@ use crate::subtitle::{Cue, Subtitle};
 /// sample, so each of them is on screen for all of it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Sample<'a> {
-    pub start: u64,
-    pub end: u64,
+    pub start: u32,
+    pub end: u32,
     pub cues: Vec<&'a Cue>,
 }
 
 impl Sample<'_> {
-    pub fn duration(&self) -> u64 {
+    pub fn duration(&self) -> u32 {
         self.end - self.start
     }
 }
@@ -28,13 +28,13 @@ impl Sample<'_> {
 /// Consecutive samples covering `[start, end)` without holes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Fragment<'a> {
-    pub start: u64,
-    pub end: u64,
+    pub start: u32,
+    pub end: u32,
     pub samples: Vec<Sample<'a>>,
 }
 
 impl Fragment<'_> {
-    pub fn duration(&self) -> u64 {
+    pub fn duration(&self) -> u32 {
         self.end - self.start
     }
 }
@@ -50,7 +50,7 @@ impl Fragment<'_> {
 ///
 /// The fragments run back to back from 0 to the end of the last cue, so a
 /// subtitle with no cues has nothing to divide and yields none at all.
-pub fn fragment<'a>(subtitle: &'a Subtitle, boundaries: &[u64], length: u64) -> Vec<Fragment<'a>> {
+pub fn fragment<'a>(subtitle: &'a Subtitle, boundaries: &[u32], length: u32) -> Vec<Fragment<'a>> {
     let end = subtitle.cues.iter().map(|cue| cue.end).max().unwrap_or(0);
     let clock = boundaries.iter().copied().chain(grid(length, end));
 
@@ -66,7 +66,7 @@ pub fn fragment<'a>(subtitle: &'a Subtitle, boundaries: &[u64], length: u64) -> 
 
 /// The samples tiling `[start, end)`: the cues reaching into it, cut wherever one
 /// comes or goes.
-fn samples<'a>(subtitle: &'a Subtitle, start: u64, end: u64) -> Vec<Sample<'a>> {
+fn samples<'a>(subtitle: &'a Subtitle, start: u32, end: u32) -> Vec<Sample<'a>> {
     let cues: Vec<&Cue> = subtitle
         .cues
         .iter()
@@ -89,7 +89,7 @@ fn samples<'a>(subtitle: &'a Subtitle, start: u64, end: u64) -> Vec<Sample<'a>> 
 }
 
 /// Every multiple of `length` below `end`. A `length` of 0 asks for no grid.
-fn grid(length: u64, end: u64) -> impl Iterator<Item = u64> {
+fn grid(length: u32, end: u32) -> impl Iterator<Item = u32> {
     successors((length > 0).then_some(length), move |time| {
         time.checked_add(length)
     })
@@ -99,8 +99,8 @@ fn grid(length: u64, end: u64) -> impl Iterator<Item = u64> {
 /// The consecutive intervals `[start, end)` falls into when divided at each time
 /// in `at`. A time outside it names no interval, and a repeated one divides once,
 /// so both are ignored.
-fn intervals(start: u64, end: u64, at: impl IntoIterator<Item = u64>) -> Vec<(u64, u64)> {
-    let mut times: Vec<u64> = at
+fn intervals(start: u32, end: u32, at: impl IntoIterator<Item = u32>) -> Vec<(u32, u32)> {
+    let mut times: Vec<u32> = at
         .into_iter()
         .filter(|&time| time > start && time < end)
         .chain([start, end])
@@ -269,7 +269,7 @@ mod tests {
         );
     }
 
-    fn subtitle(cues: &[(u64, u64, &str)]) -> Subtitle {
+    fn subtitle(cues: &[(u32, u32, &str)]) -> Subtitle {
         Subtitle {
             cues: cues
                 .iter()
@@ -282,14 +282,14 @@ mod tests {
         }
     }
 
-    fn spans(fragments: &[Fragment]) -> Vec<(u64, u64)> {
+    fn spans(fragments: &[Fragment]) -> Vec<(u32, u32)> {
         fragments
             .iter()
             .map(|fragment| (fragment.start, fragment.end))
             .collect()
     }
 
-    fn samples_of<'a>(fragment: &'a Fragment) -> Vec<(u64, u64, Vec<&'a str>)> {
+    fn samples_of<'a>(fragment: &'a Fragment) -> Vec<(u32, u32, Vec<&'a str>)> {
         fragment
             .samples
             .iter()

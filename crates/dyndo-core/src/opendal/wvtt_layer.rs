@@ -25,12 +25,12 @@ use dyndo_text::{fragmenter, vtt};
 /// one.
 #[derive(Debug, Clone)]
 pub struct WvttLayer {
-    boundaries: Arc<[u64]>,
-    text_length: u64,
+    boundaries: Arc<[u32]>,
+    text_length: u32,
 }
 
 impl WvttLayer {
-    pub fn new(boundaries: &[u64], text_length: u64) -> Self {
+    pub fn new(boundaries: &[u32], text_length: u32) -> Self {
         Self {
             boundaries: boundaries.into(),
             text_length,

@@ -23,11 +23,11 @@ pub enum TrackError {
 pub(crate) struct Fragment {
     pub(crate) byte_offset: u64,
     pub(crate) byte_size: u64,
-    pub(crate) raw_duration: u64,
+    pub(crate) raw_duration: u32,
 }
 
 impl Fragment {
-    pub(crate) fn new(byte_offset: u64, byte_size: u64, raw_duration: u64) -> Option<Self> {
+    pub(crate) fn new(byte_offset: u64, byte_size: u64, raw_duration: u32) -> Option<Self> {
         byte_offset.checked_add(byte_size)?;
         Some(Self {
             byte_offset,
@@ -41,7 +41,7 @@ impl Fragment {
     }
 
     /// Returns the fragment's duration in the track's timescale units.
-    pub(crate) fn raw_duration(&self) -> u64 {
+    pub(crate) fn raw_duration(&self) -> u32 {
         self.raw_duration
     }
 }
@@ -165,14 +165,14 @@ impl Track {
     }
 
     /// Returns the total duration of the track's fragments in milliseconds.
-    pub fn duration(&self) -> u64 {
+    pub fn duration(&self) -> u32 {
         let raw_duration: u128 = self
             .fragments
             .iter()
             .map(|fragment| u128::from(fragment.raw_duration()))
             .sum();
         let duration = raw_duration * 1000 / u128::from(self.timescale);
-        u64::try_from(duration).unwrap_or(u64::MAX)
+        u32::try_from(duration).unwrap_or(u32::MAX)
     }
 
     /// Reads a byte range of the track. Pass the `options` it was probed under, so
@@ -206,14 +206,14 @@ impl Track {
 /// Returns the longest video duration in milliseconds, or the longest audio
 /// duration when no video track is present. Text tracks do not determine
 /// presentation length.
-pub fn max_duration(tracks: &[Track]) -> u64 {
+pub fn max_duration(tracks: &[Track]) -> u32 {
     max_matching_duration(tracks, |kind| matches!(kind, TrackKind::Video(_))).unwrap_or_else(|| {
         max_matching_duration(tracks, |kind| matches!(kind, TrackKind::Audio(_))).unwrap_or(0)
     })
 }
 
 /// Returns the longest audio or video segment duration in milliseconds.
-pub fn max_segment_duration(tracks: &[Track], options: &SegmentOptions) -> u64 {
+pub fn max_segment_duration(tracks: &[Track], options: &SegmentOptions) -> u32 {
     tracks
         .iter()
         .filter(|track| matches!(track.kind(), TrackKind::Video(_) | TrackKind::Audio(_)))
@@ -222,7 +222,7 @@ pub fn max_segment_duration(tracks: &[Track], options: &SegmentOptions) -> u64 {
             track.segments(options).into_iter().map(move |segment| {
                 let duration =
                     (u128::from(segment.raw_duration()) * 1000).div_ceil(u128::from(timescale));
-                u64::try_from(duration).unwrap_or(u64::MAX)
+                u32::try_from(duration).unwrap_or(u32::MAX)
             })
         })
         .max()
@@ -264,7 +264,7 @@ pub fn average_bitrate(track: &Track, options: &SegmentOptions) -> u64 {
     u64::try_from(scaled_bits.div_ceil(raw_duration)).unwrap_or(u64::MAX)
 }
 
-fn max_matching_duration(tracks: &[Track], include: impl Fn(&TrackKind) -> bool) -> Option<u64> {
+fn max_matching_duration(tracks: &[Track], include: impl Fn(&TrackKind) -> bool) -> Option<u32> {
     tracks
         .iter()
         .filter(|track| include(track.kind()))
@@ -430,7 +430,7 @@ mod tests {
         );
     }
 
-    fn track(kind: TrackKind, raw_duration: u64) -> Track {
+    fn track(kind: TrackKind, raw_duration: u32) -> Track {
         test_track(
             kind,
             1_000,
