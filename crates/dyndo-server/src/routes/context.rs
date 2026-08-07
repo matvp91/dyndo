@@ -1,6 +1,8 @@
 //! What a request asks of dyndo: which asset, how to segment it, and whatever the
 //! transport itself takes, all parsed from the rison fragment in the path.
 
+use std::borrow::Cow;
+
 use dyndo_core::asset_descriptor::AssetDescriptor;
 use dyndo_core::segment::SegmentOptions;
 use opendal::Operator;
@@ -44,10 +46,21 @@ impl<T> RequestContext<T> {
 }
 
 /// Parses the rison fragment a request carries in its path.
+///
+/// The enclosing parentheses are optional — `asset:foo,sml:3000` reads the same as
+/// `(asset:foo,sml:3000)` — which is the rison spec's o-rison, meant for exactly this
+/// place. The crate only parses whole values, so we supply the parentheses ourselves.
+/// A key never begins with one, so a fragment that does is already an object.
 pub(super) fn parse_context<T: DeserializeOwned>(
     fragment: &str,
 ) -> Result<RequestContext<T>, ServerError> {
-    rison::from_str(fragment).map_err(|error| ServerError::InvalidOptions(error.to_string()))
+    let object = if fragment.starts_with('(') {
+        Cow::Borrowed(fragment)
+    } else {
+        Cow::Owned(format!("({fragment})"))
+    };
+
+    rison::from_str(&object).map_err(|error| ServerError::InvalidOptions(error.to_string()))
 }
 
 #[cfg(test)]
@@ -125,6 +138,16 @@ mod tests {
         let context = parse_context::<HlsOptions>("(asset:asset)").unwrap();
 
         assert_eq!(context.segment_options, SegmentOptions::default());
+    }
+
+    #[test]
+    fn parse_context_accepts_a_fragment_without_the_enclosing_parentheses() {
+        let context =
+            parse_context::<HlsOptions>("asset:foo/asset,sml:3000,sb:!(1000,2000)").unwrap();
+
+        assert_eq!(context.asset, "foo/asset");
+        assert_eq!(context.segment_options.min_length, 3000);
+        assert_eq!(context.segment_options.boundaries, [1000, 2000]);
     }
 
     #[test]

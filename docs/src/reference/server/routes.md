@@ -28,12 +28,17 @@ see [Deploy with Docker](../../how-to/deploy-with-docker.md).
 
 ## The options object
 
-The first path segment after `/out/` must be a Rison object, beginning with `(`
-and ending at its matching `)`:
+The first path segment after `/out/` is a Rison object. The enclosing
+parentheses are optional — this is Rison's *o-rison* form, intended for exactly
+this place — so both of these name the same options:
+
+```text
+/out/(asset:demo,sml:6000)/master.m3u8
+/out/asset:demo,sml:6000/master.m3u8
+```
 
 ```text
 /out/(asset:movies%2Fbig-buck-bunny)/index.mpd
-/out/(asset:demo,sml:6000)/master.m3u8
 ```
 
 The options object must occupy one URL path segment. Percent-encode `/` as
