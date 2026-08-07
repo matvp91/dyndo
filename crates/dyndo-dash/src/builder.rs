@@ -46,7 +46,18 @@ pub async fn generate_mpd(
     build_mpd(asset, &tracks, &asset.segment_options, dash_options)
 }
 
-fn build_mpd(
+/// Generates a static DASH media presentation description from tracks the caller
+/// has already probed.
+///
+/// `asset.tracks` and `tracks` are paired positionally, so they must describe the
+/// same tracks in the same order. [`Track::probe_all`] returns them that way; a
+/// caller that drops tracks has to drop from both.
+///
+/// # Errors
+///
+/// Returns a [`DashError`] when tracks grouped into an AdaptationSet are not
+/// segment-aligned.
+pub fn build_mpd(
     asset: &AssetDescriptor,
     tracks: &[Track],
     segment_options: &SegmentOptions,

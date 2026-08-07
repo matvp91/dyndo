@@ -12,6 +12,10 @@ use dyndo_text::wvtt::UnpackError;
 pub enum ServerError {
     #[error("invalid transport options: {0}")]
     InvalidOptions(String),
+    #[error("invalid filter: {0}")]
+    InvalidFilter(String),
+    #[error("no track matches the filter")]
+    FilterMatchedNothing,
     #[error("resource not found: {0}")]
     NotFound(String),
     #[error("segment time overflow for track {0}")]
@@ -33,8 +37,8 @@ pub enum ServerError {
 impl IntoResponse for ServerError {
     fn into_response(self) -> Response {
         let status = match &self {
-            Self::InvalidOptions(_) => StatusCode::BAD_REQUEST,
-            Self::NotFound(_) => StatusCode::NOT_FOUND,
+            Self::InvalidOptions(_) | Self::InvalidFilter(_) => StatusCode::BAD_REQUEST,
+            Self::NotFound(_) | Self::FilterMatchedNothing => StatusCode::NOT_FOUND,
             Self::AssetDescriptor(AssetDescriptorError::Storage(error))
                 if error.kind() == opendal::ErrorKind::NotFound =>
             {
@@ -66,6 +70,21 @@ mod tests {
     #[test]
     fn missing_resource_maps_to_not_found() {
         let response = ServerError::NotFound("missing".into()).into_response();
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[test]
+    fn invalid_filter_maps_to_bad_request() {
+        let response = ServerError::InvalidFilter("bad expression".into()).into_response();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    /// A filter that matches nothing is an addressing error, like an unknown track.
+    #[test]
+    fn a_filter_matching_nothing_maps_to_not_found() {
+        let response = ServerError::FilterMatchedNothing.into_response();
 
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
     }

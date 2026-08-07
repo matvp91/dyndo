@@ -2,12 +2,14 @@ use axum::{
     http::header::CONTENT_TYPE,
     response::{IntoResponse, Response},
 };
+use dyndo_core::track::Track;
 use dyndo_dash::options::DashOptions;
 use dyndo_hls::options::HlsOptions;
 use opendal::Operator;
 use serde::Serialize;
 
 use super::context::RequestContext;
+use super::filter::{self, Filter};
 use crate::error::ServerError;
 
 const DASH_CONTENT_TYPE: &str = "application/dash+xml";
@@ -16,9 +18,17 @@ const HLS_CONTENT_TYPE: &str = "application/vnd.apple.mpegurl";
 pub(super) async fn dash_manifest(
     op: &Operator,
     context: &RequestContext<DashOptions>,
+    filter: Option<&Filter>,
 ) -> Result<Response, ServerError> {
     let asset = context.read_asset(op).await?;
-    let mpd = dyndo_dash::builder::generate_mpd(op, &asset, &context.transport_options).await?;
+    let tracks = Track::probe_all(op, &asset).await?;
+    let (asset, tracks) = filter::prune(asset, tracks, filter)?;
+    let mpd = dyndo_dash::builder::build_mpd(
+        &asset,
+        &tracks,
+        &asset.segment_options,
+        &context.transport_options,
+    )?;
     let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
     let mut serializer = quick_xml::se::Serializer::new(&mut xml);
     serializer.indent(' ', 2);
@@ -30,11 +40,17 @@ pub(super) async fn dash_manifest(
 pub(super) async fn hls_master(
     op: &Operator,
     context: &RequestContext<HlsOptions>,
+    filter: Option<&Filter>,
 ) -> Result<Response, ServerError> {
     let asset = context.read_asset(op).await?;
-    let playlist =
-        dyndo_hls::builder::generate_master_playlist(op, &asset, &context.transport_options)
-            .await?;
+    let tracks = Track::probe_all(op, &asset).await?;
+    let (asset, tracks) = filter::prune(asset, tracks, filter)?;
+    let playlist = dyndo_hls::builder::build_master_playlist(
+        &asset,
+        &tracks,
+        &asset.segment_options,
+        &context.transport_options,
+    )?;
     Ok(([(CONTENT_TYPE, HLS_CONTENT_TYPE)], playlist.to_string()).into_response())
 }
 

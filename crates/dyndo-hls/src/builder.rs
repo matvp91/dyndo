@@ -1,7 +1,6 @@
 //! HLS playlist construction from dyndo assets.
 
 use std::borrow::Cow;
-use std::collections::HashSet;
 use std::time::Duration;
 
 use dyndo_core::asset_descriptor::{AssetDescriptor, TrackDescriptor, TrackKind};
@@ -27,8 +26,6 @@ pub enum HlsError {
     Playlist(#[from] hls_m3u8::Error),
     #[error("invalid video frame rate: {0}")]
     InvalidFrameRate(String),
-    #[error("duplicate rendition name: {0}")]
-    DuplicateRenditionName(String),
     #[error("segment start time overflow for track {0}")]
     SegmentTimeOverflow(String),
 }
@@ -44,7 +41,6 @@ pub async fn generate_master_playlist(
     asset: &AssetDescriptor,
     hls_options: &HlsOptions,
 ) -> Result<MasterPlaylist<'static>, HlsError> {
-    ensure_unique_rendition_names(asset)?;
     let tracks = Track::probe_all(op, asset).await?;
     build_master_playlist(asset, &tracks, &asset.segment_options, hls_options)
 }
@@ -155,23 +151,17 @@ fn rounded_duration_seconds(raw_duration: u64, timescale: u32) -> u64 {
     u64::try_from((raw_duration + timescale / 2) / timescale).unwrap_or(u64::MAX)
 }
 
-fn ensure_unique_rendition_names(asset: &AssetDescriptor) -> Result<(), HlsError> {
-    let mut names = HashSet::new();
-    for descriptor in &asset.tracks {
-        let (group_id, language, role) = match &descriptor.kind {
-            TrackKind::Video(_) => continue,
-            TrackKind::Audio(audio) => (AUDIO_GROUP_ID, &audio.language, audio.role),
-            TrackKind::Text(text) => (SUBTITLES_GROUP_ID, &text.language, text.role),
-        };
-        let name = roles::name(language, role);
-        if !names.insert((group_id, name.clone())) {
-            return Err(HlsError::DuplicateRenditionName(name));
-        }
-    }
-    Ok(())
-}
-
-fn build_master_playlist(
+/// Generates an HLS multivariant playlist from tracks the caller has already
+/// probed.
+///
+/// `asset.tracks` and `tracks` are paired positionally, so they must describe the
+/// same tracks in the same order. [`Track::probe_all`] returns them that way; a
+/// caller that drops tracks has to drop from both.
+///
+/// # Errors
+///
+/// Returns an error when `hls_m3u8` rejects the resulting playlist.
+pub fn build_master_playlist(
     asset: &AssetDescriptor,
     tracks: &[Track],
     segment_options: &SegmentOptions,
@@ -538,39 +528,5 @@ mod tests {
     #[test]
     fn rounded_duration_seconds_rounds_half_up() {
         assert_eq!(rounded_duration_seconds(6_500, 1_000), 7);
-    }
-
-    #[test]
-    fn ensure_unique_rendition_names_rejects_duplicates_within_a_group() {
-        let asset: AssetDescriptor = serde_json::from_value(serde_json::json!({
-            "tracks": [
-                {
-                    "id": "audio-1",
-                    "path": "audio-1.mp4",
-                    "codec": "mp4a.40.2",
-                    "type": "audio",
-                    "sample_rate": 48000,
-                    "channels": 2,
-                    "language": "en",
-                    "role": "main"
-                },
-                {
-                    "id": "audio-2",
-                    "path": "audio-2.mp4",
-                    "codec": "mp4a.40.2",
-                    "type": "audio",
-                    "sample_rate": 48000,
-                    "channels": 2,
-                    "language": "en",
-                    "role": "main"
-                }
-            ]
-        }))
-        .unwrap();
-
-        assert!(matches!(
-            ensure_unique_rendition_names(&asset),
-            Err(HlsError::DuplicateRenditionName(_))
-        ));
     }
 }

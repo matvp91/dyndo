@@ -1,10 +1,11 @@
 mod context;
+mod filter;
 mod segment;
 mod transport;
 
 use axum::{
     Router,
-    extract::{Path, State},
+    extract::{Path, Query, RawQuery, State},
     http::StatusCode,
     response::Response,
     routing::get,
@@ -16,6 +17,7 @@ use tower_http::cors::{Any, CorsLayer};
 
 use crate::error::ServerError;
 use crate::routes::context::parse_context;
+use crate::routes::filter::FilterQuery;
 
 pub(crate) fn build_router(op: Operator) -> Router {
     let cors = CorsLayer::new().allow_origin(Any).allow_methods(Any);
@@ -36,20 +38,27 @@ async fn health() -> StatusCode {
 }
 
 /// A manifest describing the whole asset, or the media playlist of one track.
+///
+/// Only the whole-asset manifests read the filter: a media playlist describes one
+/// track, so narrowing the set cannot change it.
 async fn manifest(
     State(op): State<Operator>,
     Path((options, resource)): Path<(String, String)>,
+    Query(query): Query<FilterQuery>,
+    RawQuery(raw_query): RawQuery,
 ) -> Result<Response, ServerError> {
     let not_found = || ServerError::NotFound(resource.clone());
 
     match resource.rsplit_once('.').ok_or_else(not_found)? {
         ("index", "mpd") => {
             let context = parse_context::<DashOptions>(&options)?;
-            transport::dash_manifest(&op, &context).await
+            let filter = query.resolve(raw_query.as_deref())?;
+            transport::dash_manifest(&op, &context, filter.as_ref()).await
         }
         ("master", "m3u8") => {
             let context = parse_context::<HlsOptions>(&options)?;
-            transport::hls_master(&op, &context).await
+            let filter = query.resolve(raw_query.as_deref())?;
+            transport::hls_master(&op, &context, filter.as_ref()).await
         }
         (track_id, "m3u8") => {
             let context = parse_context::<HlsOptions>(&options)?;
@@ -249,6 +258,168 @@ mod tests {
         assert_eq!(response.status(), StatusCode::OK);
     }
 
+    #[tokio::test]
+    async fn dash_route_omits_a_filtered_track() {
+        let (_dir, app) = app("asset");
+
+        let mpd = body(request(app, "/out/(asset:asset)/index.mpd?f=type!=video").await).await;
+
+        assert!(
+            !mpd.contains("video-main") && mpd.contains("audio-nld") && mpd.contains("text-nld"),
+            "unexpected manifest: {mpd}"
+        );
+    }
+
+    #[tokio::test]
+    async fn hls_master_route_omits_a_filtered_track() {
+        let (_dir, app) = app("asset");
+
+        let playlist =
+            body(request(app, "/out/(asset:asset)/master.m3u8?f=type==video").await).await;
+
+        assert!(
+            playlist.contains("video-main")
+                && !playlist.contains("audio-nld")
+                && !playlist.contains("text-nld"),
+            "unexpected playlist: {playlist}"
+        );
+    }
+
+    /// Filtering reads probed tracks, so the codec compared against is the one the
+    /// source actually declares rather than the descriptor's claim.
+    #[tokio::test]
+    async fn a_filter_matches_a_probed_attribute() {
+        let (_dir, app) = app("asset");
+
+        let mpd =
+            body(request(app, "/out/(asset:asset)/index.mpd?f=codec==avc1.640028").await).await;
+
+        assert!(
+            mpd.contains("video-main") && !mpd.contains("audio-nld"),
+            "unexpected manifest: {mpd}"
+        );
+    }
+
+    /// A comparison against an attribute a track does not carry is false, so a
+    /// resolution cap on its own takes the audio and text tracks with it.
+    #[tokio::test]
+    async fn a_filter_drops_tracks_lacking_the_attribute() {
+        let (_dir, app) = app("asset");
+
+        let mpd = body(request(app, "/out/(asset:asset)/index.mpd?f=height%3C=1080").await).await;
+
+        assert!(
+            mpd.contains("video-main") && !mpd.contains("audio-nld") && !mpd.contains("text-nld"),
+            "unexpected manifest: {mpd}"
+        );
+    }
+
+    /// The `type!=…` idiom is how a filter spares the types it does not mean to
+    /// judge, which is what keeps a resolution cap from stripping the audio.
+    #[tokio::test]
+    async fn a_spared_type_survives_a_cap_it_cannot_satisfy() {
+        let (_dir, app) = app("asset");
+
+        let playlist = body(
+            request(
+                app,
+                "/out/(asset:asset)/master.m3u8?f=type!=video||height%3C=720",
+            )
+            .await,
+        )
+        .await;
+
+        assert!(
+            !playlist.contains("video-main")
+                && playlist.contains("audio-nld")
+                && playlist.contains("text-nld"),
+            "unexpected playlist: {playlist}"
+        );
+    }
+
+    #[tokio::test]
+    async fn both_filter_spellings_agree() {
+        let (_dir, app) = app("asset");
+
+        let short =
+            body(request(app.clone(), "/out/(asset:asset)/index.mpd?f=type==audio").await).await;
+        let long =
+            body(request(app, "/out/(asset:asset)/index.mpd?filter=type==audio").await).await;
+
+        assert_eq!(short, long);
+    }
+
+    #[tokio::test]
+    async fn a_filter_matching_no_track_returns_not_found() {
+        let (_dir, app) = app("asset");
+
+        let response = request(app, "/out/(asset:asset)/index.mpd?f=height%3C=720").await;
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn a_malformed_filter_returns_bad_request() {
+        let (_dir, app) = app("asset");
+
+        for filter in [
+            "heigth%3C=720",
+            "language%3Cnl",
+            "height==tall",
+            "height%3C=720(",
+        ] {
+            let uri = format!("/out/(asset:asset)/index.mpd?f={filter}");
+            let response = request(app.clone(), &uri).await;
+
+            assert_eq!(response.status(), StatusCode::BAD_REQUEST, "for {filter}");
+        }
+    }
+
+    #[tokio::test]
+    async fn passing_both_filter_spellings_returns_bad_request() {
+        let (_dir, app) = app("asset");
+
+        let response = request(
+            app,
+            "/out/(asset:asset)/index.mpd?f=type==video&filter=type==audio",
+        )
+        .await;
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    /// An unencoded `&&` splits the query string, leaving `f=type!=video` — which
+    /// parses on its own, so it would otherwise serve a filter nobody asked for.
+    #[tokio::test]
+    async fn an_unencoded_conjunction_returns_bad_request() {
+        let (_dir, app) = app("asset");
+
+        let response = request(
+            app,
+            "/out/(asset:asset)/index.mpd?f=type!=video&&height%3C=720",
+        )
+        .await;
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    /// A manifest's relative URIs carry no query string, so the routes they address
+    /// never see a filter and must not begin depending on one.
+    #[tokio::test]
+    async fn a_query_string_is_ignored_off_the_manifest_routes() {
+        let (_dir, app) = app("asset");
+
+        for uri in [
+            "/out/(asset:asset)/video-main.m3u8?f=type==audio",
+            "/out/(asset:asset)/video-main/init.mp4?f=type==audio",
+            "/out/(asset:asset)/text-nld/0.vtt?f=heigth%3C=720",
+        ] {
+            let response = request(app.clone(), uri).await;
+
+            assert_eq!(response.status(), StatusCode::OK, "for {uri}");
+        }
+    }
+
     /// The extension names the resource, so anything else is addressed at nothing
     /// rather than falling through to a handler.
     #[tokio::test]
@@ -290,6 +461,11 @@ mod tests {
         app.oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap())
             .await
             .unwrap()
+    }
+
+    async fn body(response: Response) -> String {
+        let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+        String::from_utf8_lossy(&bytes).into_owned()
     }
 
     fn app(asset: &str) -> (TempDir, Router) {

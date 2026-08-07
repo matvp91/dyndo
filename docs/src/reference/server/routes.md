@@ -5,7 +5,7 @@ The server exposes two things: a health probe, and a single output tree under
 
 ```text
 GET /health
-GET /out/<options>/<resource>
+GET /out/<options>/<resource>[?filter=<expression>]
 ```
 
 `<options>` is a **Rison** object — a compact, URL-friendly object notation, so
@@ -15,6 +15,10 @@ how to segment it. `<resource>` names what to return from it.
 Because the options travel in the path rather than a query string, a manifest
 and every segment it references share one prefix, and the relative URLs inside a
 manifest resolve correctly without rewriting.
+
+[`filter`](#filtering-tracks) is the exception, and deliberately so: it travels
+in the query string because it shapes a manifest without needing to reach the
+resources that manifest references.
 
 ## Health check
 
@@ -89,6 +93,143 @@ The forms are equivalent:
 ```
 
 Unknown keys are rejected for DASH and HLS manifest requests.
+
+## Filtering tracks
+
+A request can narrow which of an asset's tracks are served, so one descriptor
+covers every variation you want to offer — a resolution cap, one audio language,
+a version without subtitles — instead of one descriptor per variation.
+
+| Parameter | Shorthand | Applies to |
+|---|---|---|
+| `filter` | `f` | `index.mpd` and `master.m3u8` |
+
+```text
+/out/(asset:demo)/index.mpd?f=type!=video%7C%7Cheight%3C=720
+/out/(asset:demo)/master.m3u8?filter=type==audio
+```
+
+Passing both `filter` and `f` in one request is a `400`; they are the same
+option. Every other route ignores the query string — a media playlist describes
+one track, so there is nothing for a filter to narrow, and the relative URIs
+inside a manifest carry no query string anyway. A filter therefore shapes
+manifests and never gates addressing: a track a filter dropped stays fetchable
+by its own URL.
+
+The syntax follows [Unified Streaming's URL
+filters](https://docs.unified-streaming.com/documentation/vod/player-urls.html),
+so filters written for that stack read the same here.
+
+### Expression syntax
+
+A filter is a boolean expression over track attributes:
+
+```text
+attribute <operator> value
+expression && expression        both must hold
+expression || expression        either may hold
+( expression )                  grouping
+```
+
+`&&` binds tighter than `||`, so `a||b&&c` means `a||(b&&c)`. Wrap the
+enclosing expression in parentheses if you prefer — they are accepted but not
+required. Whitespace around operators is allowed.
+
+| Operator | Meaning | Applies to |
+|---|---|---|
+| `==` `!=` | equal, not equal | every attribute |
+| `<` `<=` `>` `>=` | ordering | numeric attributes only |
+
+An ordering operator on a textual attribute — `language<nl` — is a `400`.
+
+### Percent-encoding
+
+Three of the characters are not usable raw in a URL, and one of them fails in a
+way worth knowing about:
+
+| Character | Encode as | Why |
+|---|---|---|
+| `<` | `%3C` | Not a legal URI character. An unencoded `<` is rejected by the HTTP layer before dyndo sees the request. |
+| `>` | `%3E` | The same. |
+| `&&` | `%26%26` | `&` separates query parameters, so an unencoded `&&` splits the filter in two. |
+
+An unencoded `&&` is the dangerous one: `?f=type!=video&&height%3C=720` would
+arrive as `f=type!=video`, which is a *valid* filter on its own, and the request
+would otherwise succeed while quietly ignoring the height constraint. dyndo
+detects it and answers `400` rather than serving something you did not ask for.
+
+`|` is left alone by the HTTP layer, so `||` usually survives unencoded, but
+`%7C%7C` is the safe spelling. Any HTTP client that builds a URL properly
+handles all of this for you.
+
+### Attributes
+
+Filtering runs on **resolved** tracks — tracks dyndo has probed — so `bitrate`,
+`avg_bitrate` and `duration` are available, and `codec` is the value the source
+actually declares rather than the descriptor's claim.
+
+| Attribute | Type | Present on | Description |
+|---|---|---|---|
+| `type` | text | every track | `video`, `audio` or `text`. |
+| `id` | text | every track | The track's `id`, as it appears in manifest URLs. |
+| `codec` | text | every track | The probed codec, for example `avc1.640028`. |
+| `bitrate` | numeric | every track | Peak segment bitrate in bits per second. |
+| `avg_bitrate` | numeric | every track | Mean segment bitrate in bits per second. |
+| `duration` | numeric | every track | Track duration in milliseconds. |
+| `width` | numeric | video | Frame width in pixels. |
+| `height` | numeric | video | Frame height in pixels. |
+| `frame_rate` | text | video | The rate as written, for example `25/1`. |
+| `sample_rate` | numeric | audio | Samples per second. |
+| `channels` | numeric | audio | Channel count. |
+| `language` | text | audio, text | The track's language tag, compared exactly as the descriptor spells it. |
+| `role` | text | audio, text | One of the [track roles](../roles.md). |
+
+`bitrate` and `avg_bitrate` are derived from segment sizes, so they reflect the
+segmentation options the same request asked for.
+
+A textual value is not checked against what exists — `role==narrator` parses
+happily and simply matches no track. A numeric attribute does check: `height==tall`
+is a `400`.
+
+### What a filter keeps
+
+**A track is served only if the expression is true for that track.** Each track
+is judged on its own; nothing is judged as a group.
+
+**A comparison against an attribute the track does not carry is false, whatever
+the operator.** An audio track has no `height`, so `height<=720` is false for it
+— and so is `height!=720`, which reads backwards until you hold the rule in
+mind. The consequence matters:
+
+```text
+?f=height%3C=720        video capped at 720 — and every audio and
+                        subtitle track dropped with it
+```
+
+Sparing a type is the `type!=…` idiom, which works because `type` is the one
+attribute every track carries:
+
+| Goal | Filter |
+|---|---|
+| Cap video at 720, keep everything else | `type!=video\|\|height<=720` |
+| Video only, capped at 720 | `type==video&&height<=720` |
+| Everything but the audio | `type!=audio` |
+| Video up to 720 plus subtitles, no audio | `type!=audio&&(type!=video\|\|height<=720)` |
+| Dutch audio only, video untouched | `type!=audio\|\|language==nld` |
+| Drop low-bitrate video renditions | `type!=video\|\|bitrate>=800000` |
+
+Mind `&&` against `||` here: `type!=video&&height<=720` requires *both*, so it
+drops the audio it was meant to spare. Use `||` to spare, `&&` to narrow.
+
+A filter that leaves at least one track produces a manifest — dropping all video
+but keeping audio is a legitimate audio-only presentation. A filter that matches
+**nothing** is a `404`.
+
+### Caching
+
+The filter is part of the URL's query string, so a CDN in front of dyndo must
+include the query string in its cache key, or every filter will be served
+whichever variant was cached first.
 
 ### The `asset` key
 
@@ -184,8 +325,8 @@ shared path prefix.
 | Code | When |
 |---|---|
 | `200 OK` | The manifest or segment was generated and returned; also the `/health` probe. |
-| `400 Bad Request` | The options path segment is malformed Rison, a DASH or HLS manifest request carries an unknown option, or a segment length is negative. |
-| `404 Not Found` | The path does not contain separate options and resource components; `<track-id>` matches no track; a segment filename is not `<integer>.m4s` or `<integer>.vtt`; `<time>` is not a segment boundary; or the descriptor does not exist. |
+| `400 Bad Request` | The options path segment is malformed Rison, a DASH or HLS manifest request carries an unknown option, a segment length is negative, or the [filter](#filtering-tracks) is malformed — an unknown attribute, an ordering operator on a textual attribute, a non-numeric value for a numeric attribute, an unencoded `&&`, or both `filter` and `f` at once. |
+| `404 Not Found` | The path does not contain separate options and resource components; `<track-id>` matches no track; a segment filename is not `<integer>.m4s` or `<integer>.vtt`; `<time>` is not a segment boundary; the descriptor does not exist; or the [filter](#filtering-tracks) matched no track. |
 | `500 Internal Server Error` | The descriptor JSON is malformed; a source file is unreadable or is not valid, supported CMAF; a `.vtt` was asked of a text track whose cues cannot be read back; or manifest serialization failed. |
 
 The split between `404` and `500` reflects ownership: a **missing** object is
