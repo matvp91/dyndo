@@ -84,13 +84,18 @@ impl Decode for Decoder {
                 return Err(DecodeError::Stream("fragment does not open on a keyframe"));
             }
 
-            // Feeding a group of pictures one sample at a time means never flushing
-            // between them: openh264 hands back the picture for the sample just fed,
-            // and a flush mid-group errors out instead.
-            let picture = self.inner.decode_with_options(
-                &packet,
-                DecodeOptions::new().flush_after_decode(Flush::NoFlush),
-            )?;
+            // openh264 hands back the picture for the sample just fed, and flushing
+            // between samples of one group errors out — but the last sample has to be
+            // flushed, or a target that is its own group's keyframe holds its picture
+            // back and nothing comes out at all.
+            let flush = if index == target {
+                Flush::Flush
+            } else {
+                Flush::NoFlush
+            };
+            let picture = self
+                .inner
+                .decode_with_options(&packet, DecodeOptions::new().flush_after_decode(flush))?;
             if index == target {
                 let picture = picture.ok_or(DecodeError::EmptyFrame)?;
                 let (width, height) = picture.dimensions();
