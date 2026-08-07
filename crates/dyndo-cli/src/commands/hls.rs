@@ -29,7 +29,7 @@ pub(super) async fn run(op: &Operator, args: HlsArgs) -> Result<(), Box<dyn std:
 
     let hls_options = dyndo_hls::options::HlsOptions { wvtt: args.wvtt };
     let master =
-        dyndo_hls::builder::generate_master_playlist(op, &descriptor, &hls_options).await?;
+        dyndo_hls::builder::generate_master_playlist(op, &descriptor, &hls_options, None).await?;
     let master_path = output.join("master.m3u8");
     op.write(master_path.as_str(), master.to_string()).await?;
     println!("wrote {master_path}");

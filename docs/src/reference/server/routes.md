@@ -100,17 +100,16 @@ A request can narrow which of an asset's tracks are served, so one descriptor
 covers every variation you want to offer — a resolution cap, one audio language,
 a version without subtitles — instead of one descriptor per variation.
 
-| Parameter | Shorthand | Applies to |
-|---|---|---|
-| `filter` | `f` | `index.mpd` and `master.m3u8` |
+| Parameter | Applies to |
+|---|---|
+| `filter` | `index.mpd` and `master.m3u8` |
 
 ```text
-/out/(asset:demo)/index.mpd?f=type!=video%7C%7Cheight%3C=720
+/out/(asset:demo)/index.mpd?filter=type!=video%7C%7Cheight%3C=720
 /out/(asset:demo)/master.m3u8?filter=type==audio
 ```
 
-Passing both `filter` and `f` in one request is a `400`; they are the same
-option. Every other route ignores the query string — a media playlist describes
+Every other route ignores the query string — a media playlist describes
 one track, so there is nothing for a filter to narrow, and the relative URIs
 inside a manifest carry no query string anyway. A filter therefore shapes
 manifests and never gates addressing: a track a filter dropped stays fetchable
@@ -153,8 +152,8 @@ way worth knowing about:
 | `>` | `%3E` | The same. |
 | `&&` | `%26%26` | `&` separates query parameters, so an unencoded `&&` splits the filter in two. |
 
-An unencoded `&&` is the dangerous one: `?f=type!=video&&height%3C=720` would
-arrive as `f=type!=video`, which is a *valid* filter on its own, and the request
+An unencoded `&&` is the dangerous one: `?filter=type!=video&&height%3C=720` would
+arrive as `filter=type!=video`, which is a *valid* filter on its own, and the request
 would otherwise succeed while quietly ignoring the height constraint.
 
 What prevents that is a second rule: **a manifest request accepts no query
@@ -208,7 +207,7 @@ the operator.** An audio track has no `height`, so `height<=720` is false for it
 mind. The consequence matters:
 
 ```text
-?f=height%3C=720        video capped at 720 — and every audio and
+?filter=height%3C=720   video capped at 720 — and every audio and
                         subtitle track dropped with it
 ```
 
@@ -331,7 +330,7 @@ shared path prefix.
 | Code | When |
 |---|---|
 | `200 OK` | The manifest or segment was generated and returned; also the `/health` probe. |
-| `400 Bad Request` | The options path segment is malformed Rison, a DASH or HLS manifest request carries an unknown option or an unrecognised query parameter, a segment length is negative, or the [filter](#filtering-tracks) is malformed — an unknown attribute, an ordering operator on a textual attribute, a non-numeric value for a numeric attribute, or both `filter` and `f` at once. |
+| `400 Bad Request` | The options path segment is malformed Rison, a DASH or HLS manifest request carries an unknown option or an unrecognised query parameter, a segment length is negative, or the [filter](#filtering-tracks) is malformed — an unknown attribute, an ordering operator on a textual attribute, a non-numeric value for a numeric attribute. |
 | `404 Not Found` | The path does not contain separate options and resource components; `<track-id>` matches no track; a segment filename is not `<integer>.m4s` or `<integer>.vtt`; `<time>` is not a segment boundary; the descriptor does not exist; or the [filter](#filtering-tracks) matched no track. |
 | `500 Internal Server Error` | The descriptor JSON is malformed; a source file is unreadable or is not valid, supported CMAF; a `.vtt` was asked of a text track whose cues cannot be read back; or manifest serialization failed. |
 

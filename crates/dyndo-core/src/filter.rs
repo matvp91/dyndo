@@ -13,8 +13,8 @@
 //! and `duration` exist only once a track has been probed, and `codec` is then the
 //! probed value rather than the descriptor's claim.
 //!
-//! What a filter matching nothing should mean is the caller's to decide, so
-//! [`Filter::apply`] reports an empty result rather than treating it as an error.
+//! [`Filter::narrow`] is the way in, and it is only worth calling when a request
+//! actually carries a filter: an asset nobody narrowed needs no copy of itself.
 
 use winnow::ascii::{digit1, multispace0};
 use winnow::combinator::{
@@ -105,31 +105,50 @@ impl Filter {
             })
     }
 
-    /// Drops the tracks this filter rejects, returning what is left.
+    /// Narrows an asset to the tracks this filter keeps.
     ///
-    /// The descriptor list and the probed tracks are zipped and unzipped rather than
-    /// filtered apart, because the manifest builders pair them positionally: they take
-    /// ids from the descriptor and media facts from the track, and a `zip` over lists
-    /// that disagree would quietly emit one track's id for another track's media.
+    /// A narrowing that leaves at least one track is servable: dropping all video
+    /// while keeping audio is a legitimate audio-only presentation. One that leaves
+    /// nothing is [`FilterMatchedNothing`], since there is no manifest to build from
+    /// it.
     ///
-    /// Both may come back empty, when nothing matched.
-    #[must_use]
-    pub fn apply(
+    /// # Errors
+    ///
+    /// Returns [`FilterMatchedNothing`] when every track is rejected.
+    pub fn narrow(
         &self,
-        mut asset: AssetDescriptor,
+        asset: &AssetDescriptor,
         tracks: Vec<Track>,
-    ) -> (AssetDescriptor, Vec<Track>) {
-        let declared = std::mem::take(&mut asset.tracks);
-        let (descriptors, tracks): (Vec<_>, Vec<_>) = declared
+    ) -> Result<(AssetDescriptor, Vec<Track>), FilterMatchedNothing> {
+        let mut narrowed = asset.clone();
+
+        // Zipped and unzipped rather than filtered apart, because the manifest
+        // builders pair the two lists positionally: they take ids from the descriptor
+        // and media facts from the track, so lists that disagree would quietly emit
+        // one track's id for another track's media.
+        let (descriptors, tracks): (Vec<_>, Vec<_>) = std::mem::take(&mut narrowed.tracks)
             .into_iter()
             .zip(tracks)
-            .filter(|(descriptor, track)| self.0.matches(descriptor, track, &asset.segment_options))
+            .filter(|(descriptor, track)| {
+                self.0.matches(descriptor, track, &narrowed.segment_options)
+            })
             .unzip();
-        asset.tracks = descriptors;
+        if descriptors.is_empty() {
+            return Err(FilterMatchedNothing);
+        }
+        narrowed.tracks = descriptors;
 
-        (asset, tracks)
+        Ok((narrowed, tracks))
     }
 }
+
+/// A filter that matched no track at all.
+///
+/// Distinct from an asset that simply declares nothing: the request asked for a
+/// narrowing, and nothing survived it.
+#[derive(Debug, thiserror::Error)]
+#[error("no track matches the filter")]
+pub struct FilterMatchedNothing;
 
 #[derive(Debug, PartialEq, Eq)]
 enum Expr {

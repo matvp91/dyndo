@@ -14,8 +14,6 @@ pub enum ServerError {
     InvalidOptions(String),
     #[error("invalid filter: {0}")]
     InvalidFilter(String),
-    #[error("no track matches the filter")]
-    FilterMatchedNothing,
     #[error("resource not found: {0}")]
     NotFound(String),
     #[error("segment time overflow for track {0}")]
@@ -38,7 +36,12 @@ impl IntoResponse for ServerError {
     fn into_response(self) -> Response {
         let status = match &self {
             Self::InvalidOptions(_) | Self::InvalidFilter(_) => StatusCode::BAD_REQUEST,
-            Self::NotFound(_) | Self::FilterMatchedNothing => StatusCode::NOT_FOUND,
+            Self::NotFound(_) => StatusCode::NOT_FOUND,
+            // A filter that narrowed an asset down to nothing is an addressing error,
+            // like an unknown track id, rather than a fault in the asset.
+            Self::Dash(DashError::Filter(_)) | Self::Hls(HlsError::Filter(_)) => {
+                StatusCode::NOT_FOUND
+            }
             Self::AssetDescriptor(AssetDescriptorError::Storage(error))
                 if error.kind() == opendal::ErrorKind::NotFound =>
             {
@@ -58,6 +61,8 @@ impl IntoResponse for ServerError {
 
 #[cfg(test)]
 mod tests {
+    use dyndo_core::filter::FilterMatchedNothing;
+
     use super::*;
 
     #[test]
@@ -81,11 +86,15 @@ mod tests {
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
 
-    /// A filter that matches nothing is an addressing error, like an unknown track.
+    /// A filter that matches nothing is an addressing error, like an unknown track,
+    /// even though it reaches the server wrapped in a transport's error.
     #[test]
     fn a_filter_matching_nothing_maps_to_not_found() {
-        let response = ServerError::FilterMatchedNothing.into_response();
-
-        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        for error in [
+            ServerError::Dash(DashError::Filter(FilterMatchedNothing)),
+            ServerError::Hls(HlsError::Filter(FilterMatchedNothing)),
+        ] {
+            assert_eq!(error.into_response().status(), StatusCode::NOT_FOUND);
+        }
     }
 }

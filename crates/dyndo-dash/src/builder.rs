@@ -7,6 +7,7 @@ use dash_mpd::{
     SegmentTimeline,
 };
 use dyndo_core::asset_descriptor::{AssetDescriptor, TrackDescriptor, TrackKind};
+use dyndo_core::filter::{Filter, FilterMatchedNothing};
 use dyndo_core::segment::SegmentOptions;
 use dyndo_core::track::{Track, TrackError, max_bitrate, max_duration, max_segment_duration};
 use opendal::Operator;
@@ -29,35 +30,38 @@ pub enum DashError {
     Track(#[from] TrackError),
     #[error("tracks in an adaptation set are not segment-aligned")]
     SegmentAlignment,
+    #[error(transparent)]
+    Filter(#[from] FilterMatchedNothing),
 }
 
 /// Generates a static DASH media presentation description for an asset.
 ///
+/// `filter` narrows which of the asset's tracks the manifest describes; pass `None`
+/// to describe all of them.
+///
 /// # Errors
 ///
-/// Returns a [`DashError`] when a track cannot be probed or tracks grouped into
-/// an AdaptationSet are not segment-aligned.
+/// Returns a [`DashError`] when a track cannot be probed, the filter matches no
+/// track, or tracks grouped into an AdaptationSet are not segment-aligned.
 pub async fn generate_mpd(
     op: &Operator,
     asset: &AssetDescriptor,
     dash_options: &DashOptions,
+    filter: Option<&Filter>,
 ) -> Result<MPD, DashError> {
     let tracks = Track::probe_all(op, asset).await?;
-    build_mpd(asset, &tracks, &asset.segment_options, dash_options)
+    let Some(filter) = filter else {
+        return build_mpd(asset, &tracks, &asset.segment_options, dash_options);
+    };
+    let (asset, tracks) = filter.narrow(asset, tracks)?;
+    build_mpd(&asset, &tracks, &asset.segment_options, dash_options)
 }
 
-/// Generates a static DASH media presentation description from tracks the caller
-/// has already probed.
+/// Builds the manifest from tracks already probed and already narrowed.
 ///
 /// `asset.tracks` and `tracks` are paired positionally, so they must describe the
-/// same tracks in the same order. [`Track::probe_all`] returns them that way; a
-/// caller that drops tracks has to drop from both.
-///
-/// # Errors
-///
-/// Returns a [`DashError`] when tracks grouped into an AdaptationSet are not
-/// segment-aligned.
-pub fn build_mpd(
+/// same tracks in the same order.
+fn build_mpd(
     asset: &AssetDescriptor,
     tracks: &[Track],
     segment_options: &SegmentOptions,

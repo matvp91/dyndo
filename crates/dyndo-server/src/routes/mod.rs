@@ -261,7 +261,7 @@ mod tests {
     async fn dash_route_omits_a_filtered_track() {
         let (_dir, app) = app("asset");
 
-        let mpd = body(request(app, "/out/(asset:asset)/index.mpd?f=type!=video").await).await;
+        let mpd = body(request(app, "/out/(asset:asset)/index.mpd?filter=type!=video").await).await;
 
         assert!(
             !mpd.contains("video-main") && mpd.contains("audio-nld") && mpd.contains("text-nld"),
@@ -274,7 +274,7 @@ mod tests {
         let (_dir, app) = app("asset");
 
         let playlist =
-            body(request(app, "/out/(asset:asset)/master.m3u8?f=type==video").await).await;
+            body(request(app, "/out/(asset:asset)/master.m3u8?filter=type==video").await).await;
 
         assert!(
             playlist.contains("video-main")
@@ -290,8 +290,14 @@ mod tests {
     async fn a_filter_matches_a_probed_attribute() {
         let (_dir, app) = app("asset");
 
-        let mpd =
-            body(request(app, "/out/(asset:asset)/index.mpd?f=codec==avc1.640028").await).await;
+        let mpd = body(
+            request(
+                app,
+                "/out/(asset:asset)/index.mpd?filter=codec==avc1.640028",
+            )
+            .await,
+        )
+        .await;
 
         assert!(
             mpd.contains("video-main") && !mpd.contains("audio-nld"),
@@ -305,7 +311,8 @@ mod tests {
     async fn a_filter_drops_tracks_lacking_the_attribute() {
         let (_dir, app) = app("asset");
 
-        let mpd = body(request(app, "/out/(asset:asset)/index.mpd?f=height%3C=1080").await).await;
+        let mpd =
+            body(request(app, "/out/(asset:asset)/index.mpd?filter=height%3C=1080").await).await;
 
         assert!(
             mpd.contains("video-main") && !mpd.contains("audio-nld") && !mpd.contains("text-nld"),
@@ -322,7 +329,7 @@ mod tests {
         let playlist = body(
             request(
                 app,
-                "/out/(asset:asset)/master.m3u8?f=type!=video||height%3C=720",
+                "/out/(asset:asset)/master.m3u8?filter=type!=video||height%3C=720",
             )
             .await,
         )
@@ -337,22 +344,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn both_filter_spellings_agree() {
-        let (_dir, app) = app("asset");
-
-        let short =
-            body(request(app.clone(), "/out/(asset:asset)/index.mpd?f=type==audio").await).await;
-        let long =
-            body(request(app, "/out/(asset:asset)/index.mpd?filter=type==audio").await).await;
-
-        assert_eq!(short, long);
-    }
-
-    #[tokio::test]
     async fn a_filter_matching_no_track_returns_not_found() {
         let (_dir, app) = app("asset");
 
-        let response = request(app, "/out/(asset:asset)/index.mpd?f=height%3C=720").await;
+        let response = request(app, "/out/(asset:asset)/index.mpd?filter=height%3C=720").await;
 
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
     }
@@ -367,24 +362,11 @@ mod tests {
             "height==tall",
             "height%3C=720(",
         ] {
-            let uri = format!("/out/(asset:asset)/index.mpd?f={filter}");
+            let uri = format!("/out/(asset:asset)/index.mpd?filter={filter}");
             let response = request(app.clone(), &uri).await;
 
             assert_eq!(response.status(), StatusCode::BAD_REQUEST, "for {filter}");
         }
-    }
-
-    #[tokio::test]
-    async fn passing_both_filter_spellings_returns_bad_request() {
-        let (_dir, app) = app("asset");
-
-        let response = request(
-            app,
-            "/out/(asset:asset)/index.mpd?f=type==video&filter=type==audio",
-        )
-        .await;
-
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
 
     /// An unencoded `&&` splits the query string, leaving `f=type!=video` — which
@@ -396,7 +378,7 @@ mod tests {
 
         let response = request(
             app,
-            "/out/(asset:asset)/index.mpd?f=type!=video&&height%3C=720",
+            "/out/(asset:asset)/index.mpd?filter=type!=video&&height%3C=720",
         )
         .await;
 
@@ -421,9 +403,9 @@ mod tests {
         let (_dir, app) = app("asset");
 
         for uri in [
-            "/out/(asset:asset)/video-main.m3u8?f=type==audio",
-            "/out/(asset:asset)/video-main/init.mp4?f=type==audio",
-            "/out/(asset:asset)/text-nld/0.vtt?f=heigth%3C=720",
+            "/out/(asset:asset)/video-main.m3u8?filter=type==audio",
+            "/out/(asset:asset)/video-main/init.mp4?filter=type==audio",
+            "/out/(asset:asset)/text-nld/0.vtt?filter=heigth%3C=720",
         ] {
             let response = request(app.clone(), uri).await;
 

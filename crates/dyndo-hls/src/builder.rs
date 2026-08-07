@@ -4,6 +4,7 @@ use std::borrow::Cow;
 use std::time::Duration;
 
 use dyndo_core::asset_descriptor::{AssetDescriptor, TrackDescriptor, TrackKind};
+use dyndo_core::filter::{Filter, FilterMatchedNothing};
 use dyndo_core::segment::SegmentOptions;
 use dyndo_core::track::{Track, TrackError, average_bitrate, max_bitrate};
 use hls_m3u8::tags::{ExtXMap, ExtXMedia, VariantStream};
@@ -28,21 +29,31 @@ pub enum HlsError {
     InvalidFrameRate(String),
     #[error("segment start time overflow for track {0}")]
     SegmentTimeOverflow(String),
+    #[error(transparent)]
+    Filter(#[from] FilterMatchedNothing),
 }
 
 /// Generates an HLS multivariant playlist containing the asset's video tracks.
 ///
+/// `filter` narrows which of the asset's tracks the playlist describes; pass `None`
+/// to describe all of them.
+///
 /// # Errors
 ///
-/// Returns an error when a track cannot be probed or the resulting playlist is
-/// rejected by `hls_m3u8`.
+/// Returns an error when a track cannot be probed, the filter matches no track, or
+/// the resulting playlist is rejected by `hls_m3u8`.
 pub async fn generate_master_playlist(
     op: &Operator,
     asset: &AssetDescriptor,
     hls_options: &HlsOptions,
+    filter: Option<&Filter>,
 ) -> Result<MasterPlaylist<'static>, HlsError> {
     let tracks = Track::probe_all(op, asset).await?;
-    build_master_playlist(asset, &tracks, &asset.segment_options, hls_options)
+    let Some(filter) = filter else {
+        return build_master_playlist(asset, &tracks, &asset.segment_options, hls_options);
+    };
+    let (asset, tracks) = filter.narrow(asset, tracks)?;
+    build_master_playlist(&asset, &tracks, &asset.segment_options, hls_options)
 }
 
 /// Generates the static HLS media playlist for one asset track.
@@ -151,17 +162,11 @@ fn rounded_duration_seconds(raw_duration: u64, timescale: u32) -> u64 {
     u64::try_from((raw_duration + timescale / 2) / timescale).unwrap_or(u64::MAX)
 }
 
-/// Generates an HLS multivariant playlist from tracks the caller has already
-/// probed.
+/// Builds the playlist from tracks already probed and already narrowed.
 ///
 /// `asset.tracks` and `tracks` are paired positionally, so they must describe the
-/// same tracks in the same order. [`Track::probe_all`] returns them that way; a
-/// caller that drops tracks has to drop from both.
-///
-/// # Errors
-///
-/// Returns an error when `hls_m3u8` rejects the resulting playlist.
-pub fn build_master_playlist(
+/// same tracks in the same order.
+fn build_master_playlist(
     asset: &AssetDescriptor,
     tracks: &[Track],
     segment_options: &SegmentOptions,

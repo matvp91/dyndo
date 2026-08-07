@@ -26,7 +26,7 @@ pub(super) async fn run(op: &Operator, args: DashArgs) -> Result<(), Box<dyn std
     let dash_options = dyndo_dash::options::DashOptions {
         compact: args.compact,
     };
-    let mpd = dyndo_dash::builder::generate_mpd(op, &descriptor, &dash_options).await?;
+    let mpd = dyndo_dash::builder::generate_mpd(op, &descriptor, &dash_options, None).await?;
     let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
     let mut serializer = quick_xml::se::Serializer::new(&mut xml);
     serializer.indent(' ', 2);
