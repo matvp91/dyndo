@@ -28,9 +28,17 @@ pub fn supports(codec: &str) -> bool {
     codec.starts_with(AVC_SAMPLE_ENTRY)
 }
 
-/// Each cell's segment, as a byte range relative to the start of the one range the
-/// whole sheet is read from, and `None` for a cell holding no frame.
-type Cells = Vec<Option<Range<u64>>>;
+/// One cell's frame: the segment holding it, as a byte range relative to the start of
+/// the one range the whole sheet is read from, and the time it is shown at in the
+/// track's timescale.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Cell {
+    segment: Range<u64>,
+    time: u64,
+}
+
+/// Every cell of a sheet, `None` for those holding no frame.
+type Cells = Vec<Option<Cell>>;
 
 /// A sprite sheet to cut: how its thumbnails are laid out, and how far apart in the
 /// presentation they are taken.
@@ -68,8 +76,9 @@ impl Sprite {
     ///
     /// # Errors
     ///
-    /// Returns a [`ThumbnailError`] when the track is not AVC video, when no sheet
-    /// starts at `time`, or when a frame cannot be read, decoded, or encoded.
+    /// Returns a [`ThumbnailError`] when the track is not AVC video, when the
+    /// presentation does not reach `time`, or when a frame cannot be read, decoded,
+    /// or encoded.
     pub async fn generate(
         &self,
         op: &Operator,
@@ -115,14 +124,12 @@ impl Sprite {
     /// a single range. A cell is `None` once the presentation ends before the time it
     /// would show, which is how the trailing sheet of an asset comes out partly
     /// filled; two cells name the same segment when the cadence is shorter than one,
-    /// since only the frame a segment opens on is decoded out of it.
+    /// and each still shows its own frame out of it.
     ///
     /// Returns `None` when the sheet is addressed at nothing: a cadence or a grid of
-    /// zero asks for no thumbnails at all, `time` has to be one a sheet starts at,
-    /// and the presentation has to reach it.
+    /// zero asks for no thumbnails at all, and the presentation has to reach `time`.
     fn window(&self, track: &Track, time: u64) -> Option<(Range<u64>, Cells)> {
-        let duration = self.duration();
-        if duration == 0 || !time.is_multiple_of(duration) {
+        if self.duration() == 0 {
             return None;
         }
 
@@ -131,17 +138,36 @@ impl Sprite {
         // request asks for delivery in.
         let segments = track.segments(&SegmentOptions::default());
         let timescale = track.timescale();
+        let anchor = track.earliest_presentation_time();
         let found: Cells = (0..u64::from(self.cells()))
-            .map(|cell| segment_at(&segments, timescale, time + cell * u64::from(self.cadence)))
+            .map(|cell| {
+                let offset = raw_time(time + cell * u64::from(self.cadence), timescale);
+                segment_at(&segments, offset).map(|segment| Cell {
+                    segment,
+                    // Segment times are cumulative from the track's earliest
+                    // presentation time, while the fragment stamps its samples on the
+                    // media clock the decoder has to be asked in.
+                    time: anchor.saturating_add(offset),
+                })
+            })
             .collect();
-        let start = found.iter().flatten().map(|range| range.start).min()?;
-        let end = found.iter().flatten().map(|range| range.end).max()?;
+        let start = found
+            .iter()
+            .flatten()
+            .map(|cell| cell.segment.start)
+            .min()?;
+        let end = found.iter().flatten().map(|cell| cell.segment.end).max()?;
 
         Some((
             start..end,
             found
                 .into_iter()
-                .map(|segment| segment.map(|range| range.start - start..range.end - start))
+                .map(|cell| {
+                    cell.map(|cell| Cell {
+                        segment: cell.segment.start - start..cell.segment.end - start,
+                        time: cell.time,
+                    })
+                })
                 .collect(),
         ))
     }
@@ -151,7 +177,7 @@ impl Sprite {
 fn compose(
     initialization: &[u8],
     media: &[u8],
-    cells: &[Option<Range<u64>>],
+    cells: &Cells,
     sprite: Sprite,
     source: (u32, u32),
 ) -> Result<Bytes, ThumbnailError> {
@@ -162,31 +188,37 @@ fn compose(
         // A cell the presentation never reaches stays black. DASH-IF expects a
         // trailing sheet to be partly filled, and a player placing a cell by time
         // never asks for one of them.
-        let Some(range) = cell else { continue };
-        let fragment = media.get(range.start as usize..range.end as usize).ok_or(
-            ThumbnailError::Container("cell falls outside the range read"),
-        )?;
+        let Some(cell) = cell else { continue };
+        let fragment = media
+            .get(cell.segment.start as usize..cell.segment.end as usize)
+            .ok_or(ThumbnailError::Container(
+                "cell falls outside the range read",
+            ))?;
         let index = u32::try_from(index).expect("a sheet holds no more cells than its grid");
-        image.place(index, decoder.frame(fragment)?)?;
+        image.place(index, decoder.frame_at(fragment, cell.time)?)?;
     }
 
     image.encode()
 }
 
-/// The byte range of the segment covering `at` milliseconds into the presentation,
-/// or `None` when the track ends before it.
+/// A presentation time in milliseconds, counted in the track's own timescale.
+fn raw_time(at: u64, timescale: u32) -> u64 {
+    u64::try_from(u128::from(at) * u128::from(timescale) / 1000).unwrap_or(u64::MAX)
+}
+
+/// The byte range of the segment covering `offset` timescale units into the
+/// presentation, or `None` when the track ends before it.
 ///
 /// Segment presentation times are cumulative rather than stored, and run from the
 /// track's earliest presentation time — which is what a manifest hands a player as
-/// the thumbnail timeline's zero — so a time converts straight into an offset from
-/// the first segment with no anchor to add back in.
-fn segment_at(segments: &[Segment], timescale: u32, at: u64) -> Option<Range<u64>> {
-    let raw = u128::from(at) * u128::from(timescale) / 1000;
+/// the thumbnail timeline's zero — so an offset needs no anchor added back in to
+/// find the segment holding it.
+fn segment_at(segments: &[Segment], offset: u64) -> Option<Range<u64>> {
     let mut elapsed = 0u128;
 
     for segment in segments {
         elapsed += u128::from(segment.raw_duration());
-        if raw < elapsed {
+        if u128::from(offset) < elapsed {
             return Some(segment.byte_range());
         }
     }
@@ -241,11 +273,28 @@ mod tests {
         );
     }
 
+    /// A sheet is cut at the time asked for rather than at one the grid happens to
+    /// land on, and its cells step from there by the cadence: 10s at a 2s cadence
+    /// across a grid of two shows 10s, 12s, 14s and 16s.
     #[tokio::test]
-    async fn window_rejects_a_time_no_sheet_starts_at() {
+    async fn window_shows_the_times_asked_for() {
         let (_, track) = probe("video_avc_1080.mp4").await;
+        let sprite = Sprite {
+            grid: 2,
+            cell_width: 320,
+            cadence: 2_000,
+        };
 
-        assert!(SPRITE.window(&track, SPRITE.cadence.into()).is_none());
+        let (_, cells) = sprite.window(&track, 10_000).unwrap();
+
+        assert_eq!(
+            cells
+                .iter()
+                .flatten()
+                .map(|cell| cell.time / 90)
+                .collect::<Vec<_>>(),
+            vec![10_000, 12_000, 14_000, 16_000]
+        );
     }
 
     #[tokio::test]
@@ -302,17 +351,22 @@ mod tests {
         let (_, cells) = SPRITE.window(&track, 0).unwrap();
 
         assert_eq!(
-            (&cells[0], &cells[1]),
-            (
-                &Some(0..segments[0].byte_range().end - start),
-                &Some(segments[5].byte_range().start - start..segments[5].byte_range().end - start)
-            )
+            cells
+                .iter()
+                .flatten()
+                .map(|cell| cell.segment.clone())
+                .take(2)
+                .collect::<Vec<_>>(),
+            vec![
+                0..segments[0].byte_range().end - start,
+                segments[5].byte_range().start - start..segments[5].byte_range().end - start
+            ]
         );
     }
 
-    /// Below a segment's duration the cadence asks for frames between one keyframe
-    /// and the next, and only a keyframe is decoded, so consecutive cells land on the
-    /// same segment.
+    /// Below a segment's duration the cadence asks for frames between one keyframe and
+    /// the next, so consecutive cells read the same segment — and are decoded to
+    /// different times inside it.
     #[tokio::test]
     async fn window_repeats_a_segment_for_a_cadence_shorter_than_it() {
         let (_, track) = probe("video_avc_1080.mp4").await;
@@ -324,7 +378,11 @@ mod tests {
         .window(&track, 0)
         .unwrap();
 
-        assert_eq!(cells[0], cells[1]);
+        let (first, second) = (cells[0].as_ref().unwrap(), cells[1].as_ref().unwrap());
+        assert_eq!(
+            (first.segment == second.segment, second.time - first.time),
+            (true, 90_000)
+        );
     }
 
     /// The grid is the caller's to pick, and every derived quantity follows it.
@@ -342,8 +400,12 @@ mod tests {
     fn compose_refuses_a_cell_pointing_outside_the_bytes_read() {
         let initialization = std::fs::read(format!("{FIXTURES}/video_avc_1080.mp4")).unwrap();
 
-        let error =
-            compose(&initialization, &[], &[Some(0..10)], SPRITE, (1920, 1080)).unwrap_err();
+        let cells = vec![Some(Cell {
+            segment: 0..10,
+            time: 0,
+        })];
+
+        let error = compose(&initialization, &[], &cells, SPRITE, (1920, 1080)).unwrap_err();
 
         assert!(matches!(error, ThumbnailError::Container(_)), "{error}");
     }

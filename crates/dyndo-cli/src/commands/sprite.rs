@@ -22,8 +22,8 @@ pub(crate) struct SpriteArgs {
     /// Milliseconds between one thumbnail and the next.
     #[arg(long)]
     cadence: u32,
-    /// Presentation time the sheet's first thumbnail shows, in milliseconds. Has to
-    /// be a multiple of the sheet's own duration.
+    /// Presentation time the sheet's first thumbnail shows, in milliseconds. Each
+    /// thumbnail after it steps on by the cadence.
     #[arg(long, default_value_t = 0)]
     time: u64,
 }

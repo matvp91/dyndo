@@ -1,18 +1,21 @@
-//! Decoding the keyframe a fragment opens on.
+//! Decoding the frame shown at a given time.
 //!
 //! Storage and decoders disagree on how a frame's NAL units are delimited: a CMAF
 //! sample prefixes each unit with its length, while a decoder wants them separated
 //! by Annex-B start codes and preceded by the parameter sets that describe them.
 //! That translation, and the decoder it feeds, live here.
 //!
-//! Stopping at the keyframe is a choice, not a limit. Decoding on to an arbitrary
-//! time is a matter of feeding the samples that follow it, which costs the frames in
-//! between and needs the `trun` this module skips in order to tell one sample from
-//! the next; a thumbnail was judged not to be worth either.
+//! A time in the middle of a fragment costs the frames before it. Only the keyframe a
+//! fragment opens on decodes on its own, so reaching any later frame means feeding
+//! every sample from that keyframe up to it, and discarding all but the last. The
+//! `trun` is what says where one sample ends and the next begins, and what time each
+//! is shown at.
 
 use std::io::Cursor;
+use std::ops::Range;
 
-use mp4_atom::{Atom, Codec, Header, Mdat, Moov, ReadAtom, ReadFrom};
+use mp4_atom::{Atom, Codec, Header, Mdat, Moof, Moov, ReadAtom, ReadFrom};
+use openh264::decoder::{DecodeOptions, Flush};
 use openh264::formats::YUVSource;
 
 use crate::ThumbnailError;
@@ -21,16 +24,22 @@ use crate::ThumbnailError;
 /// in storage.
 const START_CODE: [u8; 4] = [0, 0, 0, 1];
 
-const NAL_NON_IDR: u8 = 1;
+/// The NAL unit type of a coded slice of an IDR picture.
 const NAL_IDR: u8 = 5;
-const NAL_SPS: u8 = 7;
-const NAL_PPS: u8 = 8;
 
 /// One decoded picture, as packed 8-bit RGB.
 pub(crate) struct Frame {
     pub(crate) width: u32,
     pub(crate) height: u32,
     pub(crate) rgb: Vec<u8>,
+}
+
+/// One sample of a fragment: where its NAL units sit in the fragment's `mdat`, and
+/// the time it is shown at in the track's timescale.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Sample {
+    bytes: Range<usize>,
+    time: u64,
 }
 
 /// A decoder configured by one track's initialization segment: openh264, plus the
@@ -72,65 +81,97 @@ impl AvcDecoder {
         })
     }
 
-    /// Decodes the keyframe `fragment` opens on.
+    /// Decodes the frame shown at `time` out of the fragment holding it, with `time`
+    /// in the track's timescale — the clock the fragment's own timestamps are in.
     ///
-    /// Every fragment opens on an IDR, so a frame never depends on the one decoded
-    /// before it: no picture here means a broken source, not a warm-up.
-    pub(crate) fn frame(&mut self, fragment: &[u8]) -> Result<Frame, ThumbnailError> {
-        let packet = self.keyframe(fragment)?;
-        let picture = self
-            .inner
-            .decode(&packet)?
-            .ok_or(ThumbnailError::EmptyFrame)?;
-        let (width, height) = picture.dimensions();
-        let mut rgb = vec![0u8; width * height * 3];
-        picture.write_rgb8(&mut rgb);
+    /// The frame shown at an instant is the last one presented at or before it, so a
+    /// time between two samples resolves to the earlier of them.
+    pub(crate) fn frame_at(&mut self, fragment: &[u8], time: u64) -> Result<Frame, ThumbnailError> {
+        let (moof, media) = read_fragment(fragment)?;
+        let samples = read_samples(&moof, media.len())?;
+        let target = target(&samples, time);
 
-        Ok(Frame {
-            width: width as u32,
-            height: height as u32,
-            rgb,
-        })
-    }
+        for (index, sample) in samples[..=target].iter().enumerate() {
+            let mut packet = if index == 0 {
+                self.parameters.clone()
+            } else {
+                Vec::new()
+            };
+            let idr = append_annex_b(&mut packet, &media[sample.bytes.clone()], self.length_size)?;
+            // Only a keyframe decodes without the frames before it, and probing
+            // rejects a source whose fragments open on anything else.
+            if index == 0 && !idr {
+                return Err(ThumbnailError::NoKeyframe);
+            }
 
-    /// The Annex-B packet holding the keyframe `fragment` opens on, prefixed with
-    /// the parameter sets that make it decodable with nothing else.
-    ///
-    /// Parameter sets the source repeats in-band are appended after those, since a
-    /// stream may change them at an IDR and the later ones win.
-    fn keyframe(&self, fragment: &[u8]) -> Result<Vec<u8>, ThumbnailError> {
-        let media = read_mdat(fragment)?;
-        let mut packet = self.parameters.clone();
-        let mut offset = 0;
+            // Feeding a group of pictures one sample at a time means never flushing
+            // between them: openh264 hands back the picture for the sample just fed,
+            // and a flush mid-group errors out instead.
+            let picture = self.inner.decode_with_options(
+                &packet,
+                DecodeOptions::new().flush_after_decode(Flush::NoFlush),
+            )?;
+            if index == target {
+                let picture = picture.ok_or(ThumbnailError::EmptyFrame)?;
+                let (width, height) = picture.dimensions();
+                let mut rgb = vec![0u8; width * height * 3];
+                picture.write_rgb8(&mut rgb);
 
-        while offset + self.length_size <= media.len() {
-            let length = media[offset..offset + self.length_size]
-                .iter()
-                .fold(0usize, |length, byte| (length << 8) | usize::from(*byte));
-            offset += self.length_size;
-            let unit = media
-                .get(offset..offset + length)
-                .ok_or(ThumbnailError::Container("nal unit runs past the mdat"))?;
-            offset += length;
-
-            match unit.first().map(|byte| byte & 0x1f) {
-                Some(kind @ (NAL_SPS | NAL_PPS | NAL_IDR)) => {
-                    packet.extend_from_slice(&START_CODE);
-                    packet.extend_from_slice(unit);
-                    if kind == NAL_IDR {
-                        return Ok(packet);
-                    }
-                }
-                // A coded slice that is not an IDR, reached before any IDR, means
-                // the fragment does not open on a keyframe after all.
-                Some(NAL_NON_IDR) => return Err(ThumbnailError::NoKeyframe),
-                Some(_) => {}
-                None => return Err(ThumbnailError::Container("empty nal unit")),
+                return Ok(Frame {
+                    width: width as u32,
+                    height: height as u32,
+                    rgb,
+                });
             }
         }
 
-        Err(ThumbnailError::NoKeyframe)
+        Err(ThumbnailError::Container("fragment holds no samples"))
     }
+}
+
+/// The sample whose picture is on screen at `time`: the last one shown at or before
+/// it, or the first sample when `time` precedes them all.
+///
+/// Samples are searched rather than indexed because presentation order is not decode
+/// order — a fragment carrying B-frames stores them out of the order they are shown.
+fn target(samples: &[Sample], time: u64) -> usize {
+    samples
+        .iter()
+        .enumerate()
+        .filter(|(_, sample)| sample.time <= time)
+        .max_by_key(|(_, sample)| sample.time)
+        .map_or(0, |(index, _)| index)
+}
+
+/// Appends one sample's NAL units to `packet` in Annex-B form, reporting whether the
+/// sample holds a coded slice of an IDR picture.
+fn append_annex_b(
+    packet: &mut Vec<u8>,
+    sample: &[u8],
+    length_size: usize,
+) -> Result<bool, ThumbnailError> {
+    let mut offset = 0;
+    let mut idr = false;
+
+    while offset + length_size <= sample.len() {
+        let length = sample[offset..offset + length_size]
+            .iter()
+            .fold(0usize, |length, byte| (length << 8) | usize::from(*byte));
+        offset += length_size;
+        let unit = sample
+            .get(offset..offset + length)
+            .ok_or(ThumbnailError::Container("nal unit runs past the sample"))?;
+        offset += length;
+
+        match unit.first().map(|byte| byte & 0x1f) {
+            Some(kind) => idr |= kind == NAL_IDR,
+            None => return Err(ThumbnailError::Container("empty nal unit")),
+        }
+        packet.extend_from_slice(&START_CODE);
+        packet.extend_from_slice(unit);
+    }
+
+    Ok(idr)
 }
 
 /// Walks the top-level boxes of an initialization segment to its `moov`.
@@ -149,9 +190,10 @@ fn read_moov(initialization: &[u8]) -> Result<Moov, ThumbnailError> {
     }
 }
 
-/// The payload of a fragment's `mdat`, which is its samples one after another.
-fn read_mdat(fragment: &[u8]) -> Result<&[u8], ThumbnailError> {
+/// A fragment's `moof`, and the `mdat` payload its samples fill.
+fn read_fragment(fragment: &[u8]) -> Result<(Moof, &[u8]), ThumbnailError> {
     let mut cursor = Cursor::new(fragment);
+    let mut moof = None;
 
     loop {
         let header = Header::read_from(&mut cursor)?;
@@ -159,18 +201,79 @@ fn read_mdat(fragment: &[u8]) -> Result<&[u8], ThumbnailError> {
             .size
             .ok_or(ThumbnailError::Container("box has no size"))?;
         let start = cursor.position() as usize;
+        if header.kind == Moof::KIND {
+            moof = Some(Moof::read_atom(&header, &mut cursor)?);
+            continue;
+        }
         if header.kind == Mdat::KIND {
-            return fragment
+            let media = fragment
                 .get(start..start + size)
-                .ok_or(ThumbnailError::Container("mdat runs past the fragment"));
+                .ok_or(ThumbnailError::Container("mdat runs past the fragment"))?;
+            return Ok((
+                moof.ok_or(ThumbnailError::Container("fragment has no moof"))?,
+                media,
+            ));
         }
         cursor.set_position((start + size) as u64);
     }
 }
 
+/// The samples a fragment holds, in decode order.
+///
+/// Sizes and durations come from the `trun` where it carries them and the `tfhd`
+/// defaults where it does not, and a sample's time is the fragment's decode time plus
+/// the durations before it plus its own composition offset.
+fn read_samples(moof: &Moof, media_len: usize) -> Result<Vec<Sample>, ThumbnailError> {
+    let traf = moof
+        .traf
+        .first()
+        .ok_or(ThumbnailError::Container("moof has no traf"))?;
+    let decode_time = traf
+        .tfdt
+        .as_ref()
+        .map_or(0, |tfdt| tfdt.base_media_decode_time);
+    let mut samples = Vec::new();
+    let mut offset = 0usize;
+    let mut elapsed = 0u64;
+
+    for run in &traf.trun {
+        for entry in &run.entries {
+            let size = entry
+                .size
+                .or(traf.tfhd.default_sample_size)
+                .ok_or(ThumbnailError::Container("trun entry has no sample size"))?
+                as usize;
+            let duration = entry.duration.or(traf.tfhd.default_sample_duration).ok_or(
+                ThumbnailError::Container("trun entry has no sample duration"),
+            )?;
+            let end = offset
+                .checked_add(size)
+                .filter(|end| *end <= media_len)
+                .ok_or(ThumbnailError::Container("sample runs past the mdat"))?;
+            let time =
+                i128::from(decode_time) + i128::from(elapsed) + i128::from(entry.cts.unwrap_or(0));
+
+            samples.push(Sample {
+                bytes: offset..end,
+                time: u64::try_from(time.max(0)).unwrap_or(u64::MAX),
+            });
+            offset = end;
+            elapsed += u64::from(duration);
+        }
+    }
+
+    if samples.is_empty() {
+        return Err(ThumbnailError::Container("fragment holds no samples"));
+    }
+
+    Ok(samples)
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs;
+
+    use mp4_atom::{Encode, Mfhd, Tfdt, Tfhd, Traf, Trun, TrunEntry};
 
     use super::*;
 
@@ -209,88 +312,125 @@ mod tests {
     }
 
     #[test]
-    fn keyframe_prefixes_the_parameter_sets_to_the_idr() {
-        let decoder = decoder();
-
-        let packet = decoder.keyframe(&fragment(&[(NAL_IDR, 3)])).unwrap();
+    fn samples_run_from_the_fragments_decode_time() {
+        let samples = read_samples(&moof(1_000, &[(10, 40, 0), (10, 40, 0)]), 100).unwrap();
 
         assert_eq!(
-            packet,
-            [&decoder.parameters[..], &START_CODE, &[NAL_IDR, 0, 0]].concat()
+            samples.iter().map(|sample| sample.time).collect::<Vec<_>>(),
+            vec![1_000, 1_040]
+        );
+    }
+
+    /// A composition offset is what puts a sample on screen somewhere other than
+    /// where its decode time falls, which is how a fragment carries B-frames.
+    #[test]
+    fn samples_carry_their_composition_offset() {
+        let samples = read_samples(&moof(0, &[(10, 40, 80), (10, 40, -40)]), 100).unwrap();
+
+        assert_eq!(
+            samples.iter().map(|sample| sample.time).collect::<Vec<_>>(),
+            vec![80, 0]
         );
     }
 
     #[test]
-    fn keyframe_skips_units_before_the_idr_it_does_not_need() {
-        let decoder = decoder();
-
-        let packet = decoder
-            .keyframe(&fragment(&[(6, 2), (NAL_IDR, 3)]))
-            .unwrap();
+    fn samples_follow_one_another_through_the_mdat() {
+        let samples = read_samples(&moof(0, &[(10, 40, 0), (20, 40, 0)]), 100).unwrap();
 
         assert_eq!(
-            packet.len(),
-            decoder.parameters.len() + START_CODE.len() + 3
+            samples
+                .iter()
+                .map(|sample| sample.bytes.clone())
+                .collect::<Vec<_>>(),
+            vec![0..10, 10..30]
         );
     }
 
     #[test]
-    fn keyframe_carries_parameter_sets_the_source_repeats_in_band() {
-        let decoder = decoder();
-
-        let packet = decoder
-            .keyframe(&fragment(&[(NAL_SPS, 2), (NAL_PPS, 2), (NAL_IDR, 3)]))
-            .unwrap();
-
-        assert_eq!(
-            packet.len(),
-            decoder.parameters.len() + START_CODE.len() * 3 + 2 + 2 + 3
-        );
-    }
-
-    #[test]
-    fn keyframe_stops_at_the_first_idr() {
-        let decoder = decoder();
-
-        let packet = decoder
-            .keyframe(&fragment(&[(NAL_IDR, 3), (NAL_IDR, 9)]))
-            .unwrap();
-
-        assert_eq!(
-            packet.len(),
-            decoder.parameters.len() + START_CODE.len() + 3
-        );
-    }
-
-    #[test]
-    fn keyframe_refuses_a_fragment_that_opens_on_a_coded_slice() {
-        let error = decoder()
-            .keyframe(&fragment(&[(NAL_NON_IDR, 3)]))
-            .unwrap_err();
-
-        assert!(matches!(error, ThumbnailError::NoKeyframe), "{error}");
-    }
-
-    #[test]
-    fn keyframe_refuses_a_fragment_holding_no_coded_slice() {
-        let error = decoder().keyframe(&fragment(&[])).unwrap_err();
-
-        assert!(matches!(error, ThumbnailError::NoKeyframe), "{error}");
-    }
-
-    #[test]
-    fn keyframe_refuses_a_unit_whose_length_runs_past_the_mdat() {
-        let media = [&u32::MAX.to_be_bytes()[..], &[NAL_IDR, 0, 0]].concat();
-        let fragment = [box_bytes(b"moof", &[]), box_bytes(b"mdat", &media)].concat();
-
-        let error = decoder().keyframe(&fragment).unwrap_err();
+    fn samples_refuse_to_run_past_the_mdat() {
+        let error = read_samples(&moof(0, &[(10, 40, 0), (20, 40, 0)]), 15).unwrap_err();
 
         assert!(matches!(error, ThumbnailError::Container(_)), "{error}");
     }
 
     #[test]
-    fn read_mdat_refuses_a_fragment_without_one() {
-        let error = read_mdat(&box_bytes(b"moof", &[])).unwrap_err();
+    fn target_is_the_sample_shown_at_the_time_asked_for() {
+        let samples =
+            read_samples(&moof(0, &[(10, 40, 0), (10, 40, 0), (10, 40, 0)]), 100).unwrap();
+
+        assert_eq!(target(&samples, 40), 1);
+    }
+
+    /// A time inside a sample's own span is still that sample, since it is the one on
+    /// screen until the next is presented.
+    #[test]
+    fn target_holds_a_sample_until_the_next_is_shown() {
+        let samples = read_samples(&moof(0, &[(10, 40, 0), (10, 40, 0)]), 100).unwrap();
+
+        assert_eq!(target(&samples, 39), 0);
+    }
+
+    /// Presentation order is not decode order, so the sample shown at a time can sit
+    /// anywhere in the fragment.
+    #[test]
+    fn target_searches_presentation_order_rather_than_decode_order() {
+        let samples =
+            read_samples(&moof(0, &[(10, 40, 80), (10, 40, -40), (10, 40, -40)]), 100).unwrap();
+
+        assert_eq!(
+            (
+                target(&samples, 0),
+                target(&samples, 40),
+                target(&samples, 80)
+            ),
+            (1, 2, 0)
+        );
+    }
+
+    #[test]
+    fn target_falls_back_to_the_first_sample_before_them_all() {
+        let samples = read_samples(&moof(1_000, &[(10, 40, 0)]), 100).unwrap();
+
+        assert_eq!(target(&samples, 0), 0);
+    }
+
+    #[test]
+    fn append_annex_b_replaces_each_length_prefix_with_a_start_code() {
+        let mut packet = Vec::new();
+
+        let idr = append_annex_b(&mut packet, &sample(&[(NAL_IDR, 3), (1, 2)]), 4).unwrap();
+
+        assert_eq!(
+            (packet, idr),
+            (
+                [&START_CODE[..], &[NAL_IDR, 0, 0], &START_CODE[..], &[1, 0]].concat(),
+                true
+            )
+        );
+    }
+
+    #[test]
+    fn append_annex_b_reports_a_sample_holding_no_idr() {
+        let mut packet = Vec::new();
+
+        let idr = append_annex_b(&mut packet, &sample(&[(1, 3)]), 4).unwrap();
+
+        assert!(!idr);
+    }
+
+    #[test]
+    fn append_annex_b_refuses_a_unit_whose_length_runs_past_the_sample() {
+        let mut packet = Vec::new();
+        let sample = [&u32::MAX.to_be_bytes()[..], &[NAL_IDR, 0, 0]].concat();
+
+        let error = append_annex_b(&mut packet, &sample, 4).unwrap_err();
+
+        assert!(matches!(error, ThumbnailError::Container(_)), "{error}");
+    }
+
+    #[test]
+    fn read_fragment_refuses_one_without_an_mdat() {
+        let error = read_fragment(&box_bytes(b"free", &[])).unwrap_err();
 
         assert!(matches!(error, ThumbnailError::Parse(_)), "{error}");
     }
@@ -303,18 +443,46 @@ mod tests {
         fs::read(format!("{FIXTURES}/{name}")).unwrap()
     }
 
-    /// A `moof`/`mdat` pair whose samples hold one length-prefixed NAL unit per
-    /// `(kind, length)` given. Only the length prefix and the first byte of each
-    /// unit carry meaning here, so the rest is left zeroed.
-    fn fragment(units: &[(u8, usize)]) -> Vec<u8> {
-        let mut media = Vec::new();
-        for (kind, length) in units {
-            media.extend_from_slice(&(*length as u32).to_be_bytes());
-            media.push(*kind);
-            media.extend(std::iter::repeat_n(0, length - 1));
+    /// A `moof` whose single track fragment holds one sample per `(size, duration,
+    /// composition offset)` given.
+    fn moof(decode_time: u64, samples: &[(u32, u32, i32)]) -> Moof {
+        Moof {
+            mfhd: Mfhd { sequence_number: 1 },
+            traf: vec![Traf {
+                tfhd: Tfhd {
+                    track_id: 1,
+                    ..Default::default()
+                },
+                tfdt: Some(Tfdt {
+                    base_media_decode_time: decode_time,
+                }),
+                trun: vec![Trun {
+                    data_offset: None,
+                    entries: samples
+                        .iter()
+                        .map(|(size, duration, cts)| TrunEntry {
+                            duration: Some(*duration),
+                            size: Some(*size),
+                            flags: None,
+                            cts: Some(*cts),
+                        })
+                        .collect(),
+                }],
+                ..Default::default()
+            }],
         }
+    }
 
-        [box_bytes(b"moof", &[]), box_bytes(b"mdat", &media)].concat()
+    /// One sample's bytes: a length-prefixed NAL unit per `(kind, length)` given.
+    /// Only the first byte of each unit carries meaning here, so the rest is zeroed.
+    fn sample(units: &[(u8, usize)]) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        for (kind, length) in units {
+            bytes.extend_from_slice(&(*length as u32).to_be_bytes());
+            bytes.push(*kind);
+            bytes.extend(std::iter::repeat_n(0, length - 1));
+        }
+        bytes
     }
 
     fn box_bytes(kind: &[u8; 4], body: &[u8]) -> Vec<u8> {
@@ -322,5 +490,17 @@ mod tests {
         bytes.extend_from_slice(kind);
         bytes.extend_from_slice(body);
         bytes
+    }
+
+    /// Kept honest against the encoder: a `moof` built here has to read back as one.
+    #[test]
+    fn the_test_moof_round_trips_through_the_container() {
+        let mut bytes = Vec::new();
+        moof(1_000, &[(10, 40, 0)]).encode(&mut bytes).unwrap();
+        let fragment = [bytes, box_bytes(b"mdat", &[0; 10])].concat();
+
+        let (moof, media) = read_fragment(&fragment).unwrap();
+
+        assert_eq!(read_samples(&moof, media.len()).unwrap().len(), 1);
     }
 }

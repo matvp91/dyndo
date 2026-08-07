@@ -39,17 +39,13 @@ async fn generate_refuses_a_track_that_is_not_video() {
     assert!(matches!(error, ThumbnailError::NotVideo(_)), "{error}");
 }
 
+/// The fixture runs for 1370.32s, so nothing is left to show past it.
 #[tokio::test]
-async fn generate_refuses_a_time_no_sheet_starts_at() {
+async fn generate_refuses_a_time_the_presentation_never_reaches() {
     let (op, track) = probe("video_avc_1080.mp4").await;
 
     let error = SPRITE
-        .generate(
-            &op,
-            &track,
-            &SegmentOptions::default(),
-            SPRITE.cadence.into(),
-        )
+        .generate(&op, &track, &SegmentOptions::default(), 1_400_000)
         .await
         .unwrap_err();
 
