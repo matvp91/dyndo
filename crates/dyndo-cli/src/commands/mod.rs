@@ -1,6 +1,7 @@
 mod dash;
 mod hls;
 mod index;
+mod sprite;
 
 use clap::{Args, Subcommand};
 use dyndo_core::segment::SegmentOptions;
@@ -18,6 +19,9 @@ pub(crate) enum Command {
     Dash(dash::DashArgs),
     /// Generate HLS playlists from an asset.json.
     Hls(hls::HlsArgs),
+    /// Cut one thumbnail sprite sheet from an asset.json, decoding it out of the
+    /// video rendition best suited to the thumbnail size asked for.
+    Sprite(sprite::SpriteArgs),
 }
 
 impl Command {
@@ -26,6 +30,7 @@ impl Command {
             Self::Index(args) => index::run(op, args).await,
             Self::Dash(args) => dash::run(op, args).await,
             Self::Hls(args) => hls::run(op, args).await,
+            Self::Sprite(args) => sprite::run(op, args).await,
         }
     }
 }
