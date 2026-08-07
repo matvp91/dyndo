@@ -115,7 +115,7 @@ impl Sprite {
     /// a single range. A cell is `None` once the presentation ends before the time it
     /// would show, which is how the trailing sheet of an asset comes out partly
     /// filled; two cells name the same segment when the cadence is shorter than one,
-    /// since the frames in between do not exist to be shown.
+    /// since only the frame a segment opens on is decoded out of it.
     ///
     /// Returns `None` when the sheet is addressed at nothing: a cadence or a grid of
     /// zero asks for no thumbnails at all, `time` has to be one a sheet starts at,
@@ -310,8 +310,9 @@ mod tests {
         );
     }
 
-    /// Below a segment's duration the cadence asks for frames that were never coded,
-    /// so consecutive cells land on the same segment.
+    /// Below a segment's duration the cadence asks for frames between one keyframe
+    /// and the next, and only a keyframe is decoded, so consecutive cells land on the
+    /// same segment.
     #[tokio::test]
     async fn window_repeats_a_segment_for_a_cadence_shorter_than_it() {
         let (_, track) = probe("video_avc_1080.mp4").await;

@@ -4,6 +4,11 @@
 //! sample prefixes each unit with its length, while a decoder wants them separated
 //! by Annex-B start codes and preceded by the parameter sets that describe them.
 //! That translation, and the decoder it feeds, live here.
+//!
+//! Stopping at the keyframe is a choice, not a limit. Decoding on to an arbitrary
+//! time is a matter of feeding the samples that follow it, which costs the frames in
+//! between and needs the `trun` this module skips in order to tell one sample from
+//! the next; a thumbnail was judged not to be worth either.
 
 use std::io::Cursor;
 
