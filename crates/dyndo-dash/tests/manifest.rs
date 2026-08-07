@@ -197,6 +197,74 @@ async fn generate_mpd_declares_a_period_continuous_with_the_one_before_it() {
     }));
 }
 
+/// Two boundaries close enough to snap to the same segment edge on every track
+/// leave the span between them with nothing to serve, so no period opens there.
+#[tokio::test]
+async fn generate_mpd_skips_a_period_no_track_can_cut_for() {
+    let (op, mut asset) = spliced_asset().await;
+    asset.segment_options.boundaries = vec![3_800, 3_840];
+
+    let mpd = dyndo_dash::builder::generate_mpd(&op, &asset, &multi_period())
+        .await
+        .unwrap();
+
+    assert_eq!(
+        mpd.periods
+            .iter()
+            .map(|period| (period.id.as_deref(), period.start))
+            .collect::<Vec<_>>(),
+        vec![
+            (Some("0"), Some(Duration::ZERO)),
+            (Some("1"), Some(Duration::from_millis(3_840))),
+        ]
+    );
+}
+
+/// A track ending before a span opens drops out of that period alone. The ids of
+/// the AdaptationSets around it stay put, since they are what a client matches a
+/// rendition on from one period to the next.
+#[tokio::test]
+async fn generate_mpd_drops_a_track_that_ended_and_keeps_the_other_ids() {
+    let (op, asset) = subtitled_spliced_asset().await;
+
+    let mpd = dyndo_dash::builder::generate_mpd(&op, &asset, &multi_period())
+        .await
+        .unwrap();
+
+    assert_eq!(
+        adaptation_set_ids(&mpd.periods[0]),
+        vec!["0", "1", "2"],
+        "the subtitles are the first AdaptationSet while they last"
+    );
+    assert_eq!(adaptation_set_ids(&mpd.periods[1]), vec!["1", "2"]);
+}
+
+/// The tracks that survive keep continuing the AdaptationSet holding their id,
+/// which is only true because dropping the subtitles left those ids alone.
+#[tokio::test]
+async fn generate_mpd_keeps_continuity_across_a_dropped_track() {
+    let (op, asset) = subtitled_spliced_asset().await;
+
+    let mpd = dyndo_dash::builder::generate_mpd(&op, &asset, &multi_period())
+        .await
+        .unwrap();
+
+    assert!(mpd.periods[1].adaptations.iter().all(|adaptation_set| {
+        adaptation_set.supplemental_property.iter().any(|property| {
+            property.schemeIdUri == "urn:mpeg:dash:period-continuity:2015"
+                && property.value.as_deref() == Some("0")
+        })
+    }));
+}
+
+fn adaptation_set_ids(period: &dash_mpd::Period) -> Vec<&str> {
+    period
+        .adaptations
+        .iter()
+        .map(|adaptation_set| adaptation_set.id.as_deref().unwrap())
+        .collect()
+}
+
 #[tokio::test]
 async fn generate_mpd_hands_every_segment_to_exactly_one_period() {
     let (op, asset) = spliced_asset().await;
@@ -275,6 +343,31 @@ async fn spliced_asset() -> (Operator, AssetDescriptor) {
     .await
     .unwrap();
     let asset = AssetDescriptor::read(&op, "asset.json").await.unwrap();
+    (op, asset)
+}
+
+/// The same asset with subtitles ending long before it does, listed first so that
+/// dropping them would renumber the tracks that outlast them.
+async fn subtitled_spliced_asset() -> (Operator, AssetDescriptor) {
+    let (op, mut asset) = spliced_asset().await;
+    op.write(
+        "subtitles_nld.vtt",
+        "WEBVTT\n\n00:00.000 --> 00:02.000\nHello\n",
+    )
+    .await
+    .unwrap();
+    asset.tracks.insert(
+        0,
+        serde_json::from_value(serde_json::json!({
+            "id": "text-nld",
+            "path": "subtitles_nld.vtt",
+            "codec": "wvtt",
+            "type": "text",
+            "language": "nld"
+        }))
+        .unwrap(),
+    );
+
     (op, asset)
 }
 

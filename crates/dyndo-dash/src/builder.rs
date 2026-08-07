@@ -68,11 +68,17 @@ fn build_mpd(
     } else {
         &[]
     };
-    let periods = segment_group::spans(boundaries, max_duration(tracks))
-        .iter()
-        .enumerate()
-        .map(|(index, span)| period(index, span, &groups, segment_options))
-        .collect();
+    let mut periods: Vec<Period> = Vec::new();
+    for span in segment_group::spans(boundaries, max_duration(tracks)) {
+        let next = period(
+            periods.len(),
+            &span,
+            periods.last(),
+            &groups,
+            segment_options,
+        );
+        periods.extend(next);
+    }
 
     let mut mpd = MPD {
         xmlns: Some(DASH_XMLNS.to_string()),
@@ -92,34 +98,56 @@ fn build_mpd(
     Ok(mpd)
 }
 
-/// The period a span covers, holding whatever each track has to give it.
+/// The period a span covers, holding whatever each track has to give it, or
+/// `None` when no track has anything.
+///
+/// A group's id is its index among all of them and never its position among those
+/// that survive: it is the key a client matches a rendition on across periods, so
+/// renumbering it would pair unrelated tracks.
 fn period(
     index: usize,
     span: &Range<u32>,
+    previous: Option<&Period>,
     groups: &[AdaptationSetGroup<'_>],
     segment_options: &SegmentOptions,
-) -> Period {
-    Period {
+) -> Option<Period> {
+    let adaptations: Vec<AdaptationSet> = groups
+        .iter()
+        .enumerate()
+        .filter_map(|(id, group)| adaptation_set(id, group, segment_options, previous, span))
+        .collect();
+    if adaptations.is_empty() {
+        return None;
+    }
+
+    Some(Period {
         id: Some(index.to_string()),
         start: Some(Duration::from_millis(u64::from(span.start))),
         duration: Some(Duration::from_millis(u64::from(span.end - span.start))),
-        adaptations: groups
-            .iter()
-            .enumerate()
-            .map(|(id, group)| adaptation_set(id, group, segment_options, index, span))
-            .collect(),
+        adaptations,
         ..Default::default()
-    }
+    })
 }
 
+/// The AdaptationSet for `group` within `span`, or `None` when none of its
+/// renditions reach that far.
 fn adaptation_set(
     id: usize,
     group: &AdaptationSetGroup<'_>,
     segment_options: &SegmentOptions,
-    period: usize,
+    previous: Option<&Period>,
     span: &Range<u32>,
-) -> AdaptationSet {
-    AdaptationSet {
+) -> Option<AdaptationSet> {
+    let representations: Vec<Representation> = group
+        .members()
+        .iter()
+        .filter_map(|(descriptor, track)| representation(descriptor, track, segment_options, span))
+        .collect();
+    if representations.is_empty() {
+        return None;
+    }
+
+    Some(AdaptationSet {
         id: Some(id.to_string()),
         contentType: Some(group.content_type().to_string()),
         mimeType: Some(group.mime_type().to_string()),
@@ -128,14 +156,10 @@ fn adaptation_set(
         startWithSAP: Some(1),
         Role: roles::roles(group.content_type(), group.role()),
         Accessibility: roles::accessibility(group.content_type(), group.role()),
-        supplemental_property: period_continuity(period),
-        representations: group
-            .members()
-            .iter()
-            .map(|(descriptor, track)| representation(descriptor, track, segment_options, span))
-            .collect(),
+        supplemental_property: period_continuity(id, previous),
+        representations,
         ..Default::default()
-    }
+    })
 }
 
 /// Declares that the AdaptationSet carries on from the one holding the same id in
@@ -143,30 +167,47 @@ fn adaptation_set(
 ///
 /// dyndo only ever cuts a single encode into periods, so every period after the
 /// first continues the one before on an unbroken timeline. Left unsaid, a client
-/// is entitled to tear down its decoder at each period it crosses.
-fn period_continuity(period: usize) -> Vec<SupplementalProperty> {
-    if period == 0 {
-        return Vec::new();
-    }
+/// is entitled to tear down its decoder at each period it crosses. A group the
+/// previous period never carried says nothing, since it begins here rather than
+/// continuing.
+fn period_continuity(id: usize, previous: Option<&Period>) -> Vec<SupplementalProperty> {
+    let id = id.to_string();
 
-    vec![SupplementalProperty {
-        schemeIdUri: PERIOD_CONTINUITY_SCHEME.to_string(),
-        value: Some((period - 1).to_string()),
-        ..Default::default()
-    }]
+    previous
+        .filter(|period| {
+            period
+                .adaptations
+                .iter()
+                .any(|adaptation_set| adaptation_set.id.as_deref() == Some(id.as_str()))
+        })
+        .map(|period| SupplementalProperty {
+            schemeIdUri: PERIOD_CONTINUITY_SCHEME.to_string(),
+            value: period.id.clone(),
+            ..Default::default()
+        })
+        .into_iter()
+        .collect()
 }
 
+/// The Representation for `track` within `span`, or `None` when the track has no
+/// segments there — a timeline has to hold at least one, and there would be
+/// nothing to fetch anyway.
 fn representation(
     descriptor: &TrackDescriptor,
     track: &Track,
     segment_options: &SegmentOptions,
     span: &Range<u32>,
-) -> Representation {
+) -> Option<Representation> {
+    let group = segment_group::group_segments(track, segment_options, span);
+    if group.segments().is_empty() {
+        return None;
+    }
+
     let mut representation = Representation {
         id: Some(descriptor.id.clone()),
         bandwidth: Some(max_bitrate(track, segment_options)),
         codecs: Some(descriptor.codec.clone()),
-        SegmentTemplate: Some(segment_template(track, segment_options, span)),
+        SegmentTemplate: Some(segment_template(track, &group, span)),
         ..Default::default()
     };
 
@@ -184,7 +225,7 @@ fn representation(
         TrackKind::Text(_) => {}
     }
 
-    representation
+    Some(representation)
 }
 
 fn audio_channel_configuration(channels: u16) -> AudioChannelConfiguration {
@@ -195,19 +236,13 @@ fn audio_channel_configuration(channels: u16) -> AudioChannelConfiguration {
     }
 }
 
-fn segment_template(
-    track: &Track,
-    segment_options: &SegmentOptions,
-    span: &Range<u32>,
-) -> SegmentTemplate {
-    let group = segment_group::group_segments(track, segment_options, span);
-
+fn segment_template(track: &Track, group: &SegmentGroup, span: &Range<u32>) -> SegmentTemplate {
     SegmentTemplate {
         timescale: Some(u64::from(track.timescale())),
         presentationTimeOffset: Some(presentation_time_offset(track, span)),
         initialization: Some(INITIALIZATION_TEMPLATE.to_string()),
         media: Some(MEDIA_TEMPLATE.to_string()),
-        SegmentTimeline: Some(segment_timeline(&group)),
+        SegmentTimeline: Some(segment_timeline(group)),
         ..Default::default()
     }
 }
@@ -283,7 +318,7 @@ mod tests {
     }
 
     #[test]
-    fn generate_mpd_creates_one_period() {
+    fn generate_mpd_opens_no_period_for_an_asset_without_tracks() {
         let mpd = build_mpd(
             &asset(),
             &[],
@@ -292,17 +327,31 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(mpd.periods.len(), 1);
+        assert!(mpd.periods.is_empty());
+    }
+
+    fn previous_period(adaptation_set_ids: &[usize]) -> Period {
+        Period {
+            id: Some("1".to_string()),
+            adaptations: adaptation_set_ids
+                .iter()
+                .map(|id| AdaptationSet {
+                    id: Some(id.to_string()),
+                    ..Default::default()
+                })
+                .collect(),
+            ..Default::default()
+        }
     }
 
     #[test]
     fn the_first_period_continues_nothing() {
-        assert!(period_continuity(0).is_empty());
+        assert!(period_continuity(0, None).is_empty());
     }
 
     #[test]
     fn a_later_period_continues_the_one_before_it() {
-        let continuity = period_continuity(2);
+        let continuity = period_continuity(2, Some(&previous_period(&[0, 1, 2])));
 
         assert_eq!(
             (
@@ -311,6 +360,11 @@ mod tests {
             ),
             (PERIOD_CONTINUITY_SCHEME, Some("1"))
         );
+    }
+
+    #[test]
+    fn an_adaptation_set_the_period_before_lacked_continues_nothing() {
+        assert!(period_continuity(2, Some(&previous_period(&[0, 1]))).is_empty());
     }
 
     #[test]
