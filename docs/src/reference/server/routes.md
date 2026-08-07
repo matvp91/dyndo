@@ -143,29 +143,21 @@ An ordering operator on a textual attribute — `language<nl` — is a `400`.
 
 ### Percent-encoding
 
-Three of the characters are not usable raw in a URL, and one of them fails in a
-way worth knowing about:
-
 | Character | Encode as | Why |
 |---|---|---|
-| `<` | `%3C` | Not a legal URI character. An unencoded `<` is rejected by the HTTP layer before dyndo sees the request. |
-| `>` | `%3E` | The same. |
+| `<` `>` | `%3C` `%3E` | Not legal URI characters. Unencoded, the request is rejected by the HTTP layer before dyndo sees it. |
 | `&&` | `%26%26` | `&` separates query parameters, so an unencoded `&&` splits the filter in two. |
+| `\|\|` | `%7C%7C` | Usually survives unencoded, but RFC 3986 excludes `\|` from a query. |
 
-An unencoded `&&` is the dangerous one: `?filter=type!=video&&height%3C=720` would
-arrive as `filter=type!=video`, which is a *valid* filter on its own, and the request
-would otherwise succeed while quietly ignoring the height constraint.
+Any HTTP client that builds a URL properly handles this for you.
 
-What prevents that is a second rule: **a manifest request accepts no query
-parameter other than the filter.** The two junk fragments an unencoded `&&`
-leaves behind are unrecognised parameters, so the request is refused with a
-`400` instead of being served short. The same rule means a cache-busting or
-analytics parameter appended to a manifest URL is also a `400` — append those to
-the path's [options object](#the-options-object) instead, where they belong.
-
-`|` is left alone by the HTTP layer, so `||` usually survives unencoded, but
-`%7C%7C` is the safe spelling. Any HTTP client that builds a URL properly
-handles all of this for you.
+An unencoded `&&` would otherwise be the dangerous case:
+`?filter=type!=video&&height%3C=720` arrives as `filter=type!=video`, a valid
+filter on its own. It is caught because **a manifest request accepts no query
+parameter but the filter**, so the two junk fragments are unrecognised and the
+request is a `400`. The same rule makes a cache-busting or analytics parameter on
+a manifest URL a `400` — put those in the path's
+[options object](#the-options-object).
 
 ### Attributes
 

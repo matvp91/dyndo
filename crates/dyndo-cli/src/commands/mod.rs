@@ -3,6 +3,7 @@ mod hls;
 mod index;
 
 use clap::{Args, Subcommand};
+use dyndo_core::filter::Filter;
 use dyndo_core::segment::SegmentOptions;
 use opendal::Operator;
 
@@ -28,6 +29,15 @@ impl Command {
             Self::Hls(args) => hls::run(op, args).await,
         }
     }
+}
+
+/// Parses a `--filter` expression, naming the flag in the error so it reads as a
+/// usage problem rather than an asset one.
+fn parse_filter(expression: Option<&str>) -> Result<Option<Filter>, String> {
+    expression
+        .map(Filter::parse)
+        .transpose()
+        .map_err(|error| format!("invalid --filter {error}"))
 }
 
 #[derive(Args)]

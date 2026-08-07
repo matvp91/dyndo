@@ -3,7 +3,7 @@ use dyndo_core::asset_descriptor::AssetDescriptor;
 use opendal::Operator;
 use serde::Serialize;
 
-use super::SegmentArgs;
+use super::{SegmentArgs, parse_filter};
 
 #[derive(Args)]
 pub(crate) struct DashArgs {
@@ -18,15 +18,21 @@ pub(crate) struct DashArgs {
     /// Hoist common segment information in the MPD.
     #[arg(long, default_value_t = false)]
     compact: bool,
+    /// Describe only the tracks this expression keeps, for example
+    /// `--filter 'type!=video||height<=720'`.
+    #[arg(long)]
+    filter: Option<String>,
 }
 
 pub(super) async fn run(op: &Operator, args: DashArgs) -> Result<(), Box<dyn std::error::Error>> {
     let mut descriptor = AssetDescriptor::read(op, &args.input).await?;
     args.segment.assign_to(&mut descriptor.segment_options);
+    let filter = parse_filter(args.filter.as_deref())?;
     let dash_options = dyndo_dash::options::DashOptions {
         compact: args.compact,
     };
-    let mpd = dyndo_dash::builder::generate_mpd(op, &descriptor, &dash_options, None).await?;
+    let mpd =
+        dyndo_dash::builder::generate_mpd(op, &descriptor, &dash_options, filter.as_ref()).await?;
     let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
     let mut serializer = quick_xml::se::Serializer::new(&mut xml);
     serializer.indent(' ', 2);

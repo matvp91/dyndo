@@ -18,6 +18,7 @@ dyndo dash --input <INPUT> [OPTIONS]
 | `--segment-text-length <MILLISECONDS>` | Length of each segment of a subtitle track packaged from a `.vtt`. | `0` |
 | `--segment-boundaries <MILLISECONDS,…>` | Splice points a segment may not span. | none |
 | `--compact` | Hoist common segment information in the MPD. | `false` |
+| `--filter <EXPRESSION>` | Describe only the tracks the expression keeps. | none |
 | `-h, --help` | Print help. | |
 
 ## Description
@@ -33,6 +34,18 @@ The CLI and the server share one manifest builder. They produce the same MPD
 model for the same descriptor, segmentation options, and DASH transport
 options. The surrounding HTTP response and XML-writing context are specific to
 each interface.
+
+## Filtering tracks
+
+`--filter` narrows which tracks the manifest describes, in the same language as
+the server's [`filter` parameter](../server/routes.md#filtering-tracks):
+
+```bash
+dyndo dash -i asset.json --filter 'type!=video||height<=720'
+```
+
+Quote the expression so the shell leaves `<`, `|` and `&` alone; nothing needs
+percent-encoding here. A filter matching no track is an error.
 
 ## Manifest structure
 
