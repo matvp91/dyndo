@@ -3,8 +3,7 @@
 
 use dyndo_core::segment::SegmentOptions;
 use dyndo_core::track::Track;
-use dyndo_image::ThumbnailError;
-use dyndo_image::sprite::Sprite;
+use dyndo_image::sprite::{Sprite, SpriteError};
 use opendal::Operator;
 use opendal::services::Memory;
 use relative_path::RelativePath;
@@ -36,7 +35,7 @@ async fn generate_refuses_a_track_that_is_not_video() {
         .await
         .unwrap_err();
 
-    assert!(matches!(error, ThumbnailError::NotVideo(_)), "{error}");
+    assert!(matches!(error, SpriteError::NotVideo(_)), "{error}");
 }
 
 /// The fixture runs for 1370.32s, so nothing is left to show past it.
@@ -49,7 +48,7 @@ async fn generate_refuses_a_time_the_presentation_never_reaches() {
         .await
         .unwrap_err();
 
-    assert!(matches!(error, ThumbnailError::NotFound(_)), "{error}");
+    assert!(matches!(error, SpriteError::NotFound(_)), "{error}");
 }
 
 async fn probe(name: &str) -> (Operator, Track) {

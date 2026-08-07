@@ -1,7 +1,7 @@
 use clap::Args;
 use dyndo_core::asset_descriptor::{AssetDescriptor, TrackDescriptor, TrackKind};
 use dyndo_core::track::Track;
-use dyndo_image::sprite::{self, Sprite};
+use dyndo_image::sprite::Sprite;
 use opendal::Operator;
 
 #[derive(Args)]
@@ -64,16 +64,17 @@ pub(super) async fn run(op: &Operator, args: SpriteArgs) -> Result<(), Box<dyn s
 
 /// The video track a sheet is best cut from.
 ///
-/// Only AVC can be decoded, and among those renditions the narrowest one still at
-/// least as wide as a thumbnail is the cheapest to decode: a wider rendition spends
-/// more time and more bytes on detail the downscale throws away, and a narrower one
-/// would be scaled up. When every rendition is narrower than a thumbnail the widest
-/// is the closest there is.
+/// The narrowest rendition still at least as wide as a thumbnail is the cheapest to
+/// decode: a wider one spends more time and more bytes on detail the downscale throws
+/// away, and a narrower one would be scaled up. When every rendition is narrower than
+/// a thumbnail the widest is the closest there is.
+///
+/// Whether the rendition can be decoded is left to the decoder, which refuses a codec
+/// it does not handle by name.
 fn best_video_track(asset: &AssetDescriptor, cell_width: u32) -> Option<&TrackDescriptor> {
     let renditions: Vec<(&TrackDescriptor, u32)> = asset
         .tracks
         .iter()
-        .filter(|track| sprite::supports(&track.codec))
         .filter_map(|track| match &track.kind {
             TrackKind::Video(video) => Some((track, video.width)),
             _ => None,
@@ -124,24 +125,16 @@ mod tests {
         );
     }
 
+    /// Codec is the decoder's to judge, so a rendition it cannot handle is still the
+    /// one chosen on size and is refused later by name.
     #[test]
-    fn best_video_track_skips_renditions_that_cannot_be_decoded() {
-        let asset = asset(&[
-            ("hevc", "hvc1.1.6.L120.90", 1920),
-            ("avc", "avc1.640028", 1280),
-        ]);
+    fn best_video_track_leaves_the_codec_to_the_decoder() {
+        let asset = asset(&[("av1", "av01.0.05M.08", 1920)]);
 
         assert_eq!(
             best_video_track(&asset, 320).map(|track| track.id.as_str()),
-            Some("avc")
+            Some("av1")
         );
-    }
-
-    #[test]
-    fn best_video_track_finds_nothing_without_a_decodable_video_track() {
-        let asset = asset(&[("av1", "av01.0.05M.08", 1920)]);
-
-        assert!(best_video_track(&asset, 320).is_none());
     }
 
     fn asset(renditions: &[(&str, &str, u32)]) -> AssetDescriptor {

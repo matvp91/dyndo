@@ -1,45 +1,20 @@
 //! Thumbnail sprite sheets, cut from a video track as they are asked for.
 //!
-//! Nothing is stored and nothing is written: a sheet is built from the CMAF the
-//! asset already points at, with two range reads and no temporary files. The first
-//! read is the track's initialization segment, for the AVC parameter sets a frame
-//! needs in order to decode on its own; the second is the one contiguous range
-//! holding every fragment the sheet's cells fall in.
+//! Nothing is stored and nothing is written: a sheet is built from the CMAF the asset
+//! already points at, with two range reads and no temporary files.
 //!
-//! Three modules, one per thing being made: [`Sprite`](sprite::Sprite) decides which
-//! frames a sheet shows and fetches the bytes holding them, `avc_decoder` decodes the
-//! keyframe each of those fragments opens on, and `image` scales the frames into the
-//! sheet and encodes it.
+//! Four modules, one responsibility each:
 //!
-//! AVC only, since that is what openh264 decodes; anything else is refused rather
-//! than guessed at.
+//! - [`sprite`] is the sheet asked for — its parameters, and the reads and work that
+//!   produce it;
+//! - [`fragment`] answers which bytes of a fragment are a frame and what time it is
+//!   shown at, which is a question about the container rather than the codec;
+//! - [`decode`] turns those samples into a picture, and is where a second codec would
+//!   be added;
+//! - [`image`] scales the pictures into the sheet and encodes it.
 
-mod avc_decoder;
-mod image;
+pub mod decode;
+pub mod fragment;
+pub mod image;
 pub mod sprite;
-
-use dyndo_core::track::TrackError;
-
-#[derive(Debug, thiserror::Error)]
-pub enum ThumbnailError {
-    #[error(transparent)]
-    Track(#[from] TrackError),
-    #[error("malformed track container: {0}")]
-    Parse(#[from] mp4_atom::Error),
-    #[error("invalid track container: {0}")]
-    Container(&'static str),
-    #[error("decoding failed: {0}")]
-    Decode(#[from] openh264::Error),
-    #[error("encoding the sheet failed: {0}")]
-    Encode(#[from] ::image::ImageError),
-    #[error("track {0} is not a video track")]
-    NotVideo(String),
-    #[error("cannot cut thumbnails from codec {0}")]
-    UnsupportedCodec(String),
-    #[error("no sprite sheet starts at {0}ms")]
-    NotFound(u64),
-    #[error("fragment does not open on a keyframe")]
-    NoKeyframe,
-    #[error("no picture decoded for a fragment's keyframe")]
-    EmptyFrame,
-}
+mod window;

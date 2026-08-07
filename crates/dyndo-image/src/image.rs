@@ -1,24 +1,31 @@
 //! The image frames are laid out in, and the JPEG it is encoded to.
 //!
-//! An image is a fixed grid whatever it holds, so its size follows from the grid,
-//! the width one thumbnail is scaled to, and the source track's dimensions — which
-//! is what lets a manifest advertise a thumbnail representation without anything
-//! being decoded. [`Image::size`] answers that without building one.
+//! An image is a fixed grid whatever it holds, so its size follows from the grid, the
+//! width one thumbnail is scaled to, and the source track's dimensions — which is what
+//! lets a manifest advertise a thumbnail representation without anything being
+//! decoded, and without an image being built to ask.
 
 use ::image::RgbImage;
 use ::image::codecs::jpeg::JpegEncoder;
 use ::image::imageops::{self, FilterType};
 use bytes::Bytes;
 
-use crate::ThumbnailError;
-use crate::avc_decoder::Frame;
+use crate::decode::Frame;
 
-/// Quality the image is encoded at. A cell is a heavy downscale of its frame, so
-/// the detail a higher setting preserves is not there to preserve.
+/// Quality the image is encoded at. A cell is a heavy downscale of its frame, so the
+/// detail a higher setting preserves is not there to preserve.
 const QUALITY: u8 = 80;
 
-/// A grid of thumbnails being filled in: a black canvas that decoded frames are
-/// scaled into, one cell at a time.
+#[derive(Debug, thiserror::Error)]
+pub enum ImageError {
+    #[error("encoding the sheet failed: {0}")]
+    Encode(#[from] ::image::ImageError),
+    #[error("decoded frame does not fill its buffer")]
+    Frame,
+}
+
+/// A grid of thumbnails being filled in: a black canvas that decoded frames are scaled
+/// into, one cell at a time.
 pub(crate) struct Image {
     canvas: RgbImage,
     grid: u32,
@@ -46,10 +53,13 @@ impl Image {
     }
 
     /// Scales `frame` into the cell at `index`, counted row by row.
-    pub(crate) fn place(&mut self, index: u32, frame: Frame) -> Result<(), ThumbnailError> {
-        let decoded = RgbImage::from_raw(frame.width, frame.height, frame.rgb).ok_or(
-            ThumbnailError::Container("decoded frame does not fill its buffer"),
-        )?;
+    ///
+    /// # Errors
+    ///
+    /// Returns an [`ImageError`] when the frame's bytes do not match its dimensions.
+    pub(crate) fn place(&mut self, index: u32, frame: Frame) -> Result<(), ImageError> {
+        let decoded =
+            RgbImage::from_raw(frame.width, frame.height, frame.rgb).ok_or(ImageError::Frame)?;
         let (cell_width, cell_height) = self.cell;
 
         imageops::overlay(
@@ -63,7 +73,11 @@ impl Image {
     }
 
     /// Encodes the image. Cells no frame was placed in stay the black they began as.
-    pub(crate) fn encode(self) -> Result<Bytes, ThumbnailError> {
+    ///
+    /// # Errors
+    ///
+    /// Returns an [`ImageError`] when the encoder rejects the image.
+    pub(crate) fn encode(self) -> Result<Bytes, ImageError> {
         let mut encoded = Vec::new();
         JpegEncoder::new_with_quality(&mut encoded, QUALITY).encode_image(&self.canvas)?;
 
@@ -112,8 +126,8 @@ mod tests {
         assert_eq!(Image::size(4, 320, SOURCE), (1280, 720));
     }
 
-    /// An image is a fixed grid whatever it holds, so one nothing was placed in
-    /// still encodes at the size the manifest advertised.
+    /// An image is a fixed grid whatever it holds, so one nothing was placed in still
+    /// encodes at the size the manifest advertised.
     #[test]
     fn an_empty_image_encodes_at_the_advertised_size() {
         let encoded = Image::new(5, 320, SOURCE).encode().unwrap();
@@ -138,7 +152,7 @@ mod tests {
             )
             .unwrap_err();
 
-        assert!(matches!(error, ThumbnailError::Container(_)), "{error}");
+        assert!(matches!(error, ImageError::Frame), "{error}");
     }
 
     #[test]
