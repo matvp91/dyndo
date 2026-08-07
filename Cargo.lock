@@ -665,6 +665,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "uuid",
+ "winnow",
 ]
 
 [[package]]
@@ -716,7 +717,6 @@ dependencies = [
  "tokio",
  "tower",
  "tower-http",
- "winnow",
 ]
 
 [[package]]

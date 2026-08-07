@@ -155,8 +155,14 @@ way worth knowing about:
 
 An unencoded `&&` is the dangerous one: `?f=type!=video&&height%3C=720` would
 arrive as `f=type!=video`, which is a *valid* filter on its own, and the request
-would otherwise succeed while quietly ignoring the height constraint. dyndo
-detects it and answers `400` rather than serving something you did not ask for.
+would otherwise succeed while quietly ignoring the height constraint.
+
+What prevents that is a second rule: **a manifest request accepts no query
+parameter other than the filter.** The two junk fragments an unencoded `&&`
+leaves behind are unrecognised parameters, so the request is refused with a
+`400` instead of being served short. The same rule means a cache-busting or
+analytics parameter appended to a manifest URL is also a `400` — append those to
+the path's [options object](#the-options-object) instead, where they belong.
 
 `|` is left alone by the HTTP layer, so `||` usually survives unencoded, but
 `%7C%7C` is the safe spelling. Any HTTP client that builds a URL properly
@@ -325,7 +331,7 @@ shared path prefix.
 | Code | When |
 |---|---|
 | `200 OK` | The manifest or segment was generated and returned; also the `/health` probe. |
-| `400 Bad Request` | The options path segment is malformed Rison, a DASH or HLS manifest request carries an unknown option, a segment length is negative, or the [filter](#filtering-tracks) is malformed — an unknown attribute, an ordering operator on a textual attribute, a non-numeric value for a numeric attribute, an unencoded `&&`, or both `filter` and `f` at once. |
+| `400 Bad Request` | The options path segment is malformed Rison, a DASH or HLS manifest request carries an unknown option or an unrecognised query parameter, a segment length is negative, or the [filter](#filtering-tracks) is malformed — an unknown attribute, an ordering operator on a textual attribute, a non-numeric value for a numeric attribute, or both `filter` and `f` at once. |
 | `404 Not Found` | The path does not contain separate options and resource components; `<track-id>` matches no track; a segment filename is not `<integer>.m4s` or `<integer>.vtt`; `<time>` is not a segment boundary; the descriptor does not exist; or the [filter](#filtering-tracks) matched no track. |
 | `500 Internal Server Error` | The descriptor JSON is malformed; a source file is unreadable or is not valid, supported CMAF; a `.vtt` was asked of a text track whose cues cannot be read back; or manifest serialization failed. |
 

@@ -5,7 +5,7 @@ mod transport;
 
 use axum::{
     Router,
-    extract::{Path, Query, RawQuery, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::Response,
     routing::get,
@@ -45,19 +45,18 @@ async fn manifest(
     State(op): State<Operator>,
     Path((options, resource)): Path<(String, String)>,
     Query(query): Query<FilterQuery>,
-    RawQuery(raw_query): RawQuery,
 ) -> Result<Response, ServerError> {
     let not_found = || ServerError::NotFound(resource.clone());
 
     match resource.rsplit_once('.').ok_or_else(not_found)? {
         ("index", "mpd") => {
             let context = parse_context::<DashOptions>(&options)?;
-            let filter = query.resolve(raw_query.as_deref())?;
+            let filter = query.resolve()?;
             transport::dash_manifest(&op, &context, filter.as_ref()).await
         }
         ("master", "m3u8") => {
             let context = parse_context::<HlsOptions>(&options)?;
-            let filter = query.resolve(raw_query.as_deref())?;
+            let filter = query.resolve()?;
             transport::hls_master(&op, &context, filter.as_ref()).await
         }
         (track_id, "m3u8") => {
@@ -389,7 +388,8 @@ mod tests {
     }
 
     /// An unencoded `&&` splits the query string, leaving `f=type!=video` — which
-    /// parses on its own, so it would otherwise serve a filter nobody asked for.
+    /// parses on its own, so it would otherwise serve a filter nobody asked for. The
+    /// junk halves arrive as unknown parameters, which is what refuses the request.
     #[tokio::test]
     async fn an_unencoded_conjunction_returns_bad_request() {
         let (_dir, app) = app("asset");
@@ -399,6 +399,17 @@ mod tests {
             "/out/(asset:asset)/index.mpd?f=type!=video&&height%3C=720",
         )
         .await;
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    /// A manifest request takes no parameter but the filter, which is what makes the
+    /// unencoded-`&&` case above detectable rather than silently truncating.
+    #[tokio::test]
+    async fn an_unknown_query_parameter_returns_bad_request() {
+        let (_dir, app) = app("asset");
+
+        let response = request(app, "/out/(asset:asset)/index.mpd?sml=6000").await;
 
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }

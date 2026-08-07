@@ -2,6 +2,7 @@ use axum::{
     http::header::CONTENT_TYPE,
     response::{IntoResponse, Response},
 };
+use dyndo_core::filter::Filter;
 use dyndo_core::track::Track;
 use dyndo_dash::options::DashOptions;
 use dyndo_hls::options::HlsOptions;
@@ -9,7 +10,7 @@ use opendal::Operator;
 use serde::Serialize;
 
 use super::context::RequestContext;
-use super::filter::{self, Filter};
+use super::filter;
 use crate::error::ServerError;
 
 const DASH_CONTENT_TYPE: &str = "application/dash+xml";
@@ -22,7 +23,7 @@ pub(super) async fn dash_manifest(
 ) -> Result<Response, ServerError> {
     let asset = context.read_asset(op).await?;
     let tracks = Track::probe_all(op, &asset).await?;
-    let (asset, tracks) = filter::prune(asset, tracks, filter)?;
+    let (asset, tracks) = filter::apply(filter, asset, tracks)?;
     let mpd = dyndo_dash::builder::build_mpd(
         &asset,
         &tracks,
@@ -44,7 +45,7 @@ pub(super) async fn hls_master(
 ) -> Result<Response, ServerError> {
     let asset = context.read_asset(op).await?;
     let tracks = Track::probe_all(op, &asset).await?;
-    let (asset, tracks) = filter::prune(asset, tracks, filter)?;
+    let (asset, tracks) = filter::apply(filter, asset, tracks)?;
     let playlist = dyndo_hls::builder::build_master_playlist(
         &asset,
         &tracks,
