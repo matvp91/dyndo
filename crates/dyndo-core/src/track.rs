@@ -7,7 +7,6 @@ use relative_path::{RelativePath, RelativePathBuf};
 use uuid::Uuid;
 
 use crate::asset_descriptor::{AssetDescriptor, TrackDescriptor, TrackKind};
-use crate::clock_utils::ClockUtils;
 use crate::fragment::Fragment;
 use crate::opendal::add_operator_layers;
 use crate::probe::{Probe, ProbeError};
@@ -131,13 +130,15 @@ impl Track {
 
     /// Returns the total duration of the track's fragments in milliseconds.
     pub fn duration(&self) -> u32 {
-        let raw_duration: u64 = self
+        let raw_duration: u128 = self
             .fragments
             .iter()
-            .map(|fragment| u64::from(fragment.raw_duration()))
+            .map(|fragment| u128::from(fragment.raw_duration()))
             .sum();
-
-        u32::try_from(ClockUtils::millis_floor(raw_duration, self.timescale)).unwrap_or(u32::MAX)
+        // Rounded down: a presentation claiming more than it holds points a player
+        // past the end of the media, while claiming less only leaves a little unread.
+        let duration = raw_duration * 1000 / u128::from(self.timescale);
+        u32::try_from(duration).unwrap_or(u32::MAX)
     }
 
     /// Reads a byte range of the track. Pass the `options` it was probed under, so

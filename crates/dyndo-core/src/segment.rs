@@ -10,7 +10,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::asset_descriptor::TrackKind;
 use crate::boundary_utils::BoundaryUtils;
-use crate::clock_utils::ClockUtils;
 use crate::fragment::Fragment;
 use crate::track::Track;
 
@@ -77,7 +76,7 @@ pub fn segments(track: &Track, options: &SegmentOptions) -> Vec<Segment> {
     )
 }
 
-/// Returns the segments of `track` that fall within `span`.
+/// Returns the segments of `track` that fall within `span_ms`.
 ///
 /// Empty when the track has nothing there — it ended before the span opened, or two
 /// boundaries snapped to the same segment edge — so callers pairing spans with
@@ -87,7 +86,7 @@ pub fn segments(track: &Track, options: &SegmentOptions) -> Vec<Segment> {
 /// snap to their own nearest segment edge, so a span opens before some of them have
 /// anything to give. That segment carries the time it begins at, which is what a
 /// manifest reads the timeline against.
-pub fn span(track: &Track, options: &SegmentOptions, span: &Range<u32>) -> Vec<Segment> {
+pub fn span(track: &Track, options: &SegmentOptions, span_ms: &Range<u32>) -> Vec<Segment> {
     let segments = segments(track, options);
     let mut edges = Vec::with_capacity(segments.len() + 1);
     edges.push(0u64);
@@ -95,8 +94,8 @@ pub fn span(track: &Track, options: &SegmentOptions, span: &Range<u32>) -> Vec<S
         edges.push(edges[edges.len() - 1] + segment.raw_duration());
     }
 
-    let start = BoundaryUtils::snap_cut(&edges, track.timescale(), span.start);
-    let end = BoundaryUtils::snap_cut(&edges, track.timescale(), span.end).max(start);
+    let start = BoundaryUtils::snap_cut(&edges, track.timescale(), span_ms.start);
+    let end = BoundaryUtils::snap_cut(&edges, track.timescale(), span_ms.end).max(start);
 
     segments[start..end].to_vec()
 }
@@ -109,7 +108,10 @@ pub fn max_segment_duration(tracks: &[Track], options: &SegmentOptions) -> u32 {
         .flat_map(|track| {
             let timescale = track.timescale();
             segments(track, options).into_iter().map(move |segment| {
-                let duration = ClockUtils::millis_ceil(segment.raw_duration(), timescale);
+                // Rounded up: this sizes a client's buffer, which has to cover the
+                // whole of the longest segment rather than most of it.
+                let duration =
+                    (u128::from(segment.raw_duration()) * 1000).div_ceil(u128::from(timescale));
                 u32::try_from(duration).unwrap_or(u32::MAX)
             })
         })
@@ -151,16 +153,16 @@ pub fn average_bitrate(track: &Track, options: &SegmentOptions) -> u64 {
     u64::try_from(scaled_bits.div_ceil(raw_duration)).unwrap_or(u64::MAX)
 }
 
-/// Groups `fragments` into segments, each timed from `anchor` — the track's earliest
-/// presentation time, which every segment time in a manifest is counted from.
+/// Groups `fragments` into segments, each timed from `raw_anchor` — the track's
+/// earliest presentation time, which every segment time in a manifest counts from.
 fn group(
     fragments: &[Fragment],
     timescale: u32,
-    anchor: u64,
+    raw_anchor: u64,
     options: &SegmentOptions,
 ) -> Vec<Segment> {
     if options.min_length == 0 {
-        let mut raw_start = anchor;
+        let mut raw_start = raw_anchor;
         return fragments
             .iter()
             .map(|fragment| {
@@ -203,7 +205,7 @@ fn group(
                 byte_size: byte_end - byte_offset,
                 // `cumulative` is already the table of elapsed durations, so the
                 // segment's own start is the entry its first fragment sits at.
-                raw_start: anchor + cumulative[start],
+                raw_start: raw_anchor + cumulative[start],
                 raw_duration,
             });
             start = end;

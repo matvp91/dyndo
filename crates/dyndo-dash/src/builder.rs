@@ -9,7 +9,6 @@ use dash_mpd::{
 };
 use dyndo_core::asset_descriptor::{AssetDescriptor, TrackKind};
 use dyndo_core::boundary_utils::BoundaryUtils;
-use dyndo_core::clock_utils::ClockUtils;
 use dyndo_core::filter::{Filter, FilterMatchedNothing};
 use dyndo_core::segment::{self, Segment, SegmentOptions, max_bitrate, max_segment_duration};
 use dyndo_core::track::{Track, TrackError, max_duration};
@@ -266,9 +265,14 @@ fn segment_template(track: &Track, segments: &[Segment], span: &Range<u32>) -> S
 /// a track cutting after the boundary presents where it always did instead of
 /// being pulled back to the period edge. The difference between the two shows up
 /// as the gap between this and the first time in the timeline.
-fn presentation_time_offset(track: &Track, span: &Range<u32>) -> u64 {
+fn presentation_time_offset(track: &Track, span_ms: &Range<u32>) -> u64 {
+    // The span is milliseconds and the timeline counts the track's timescale units.
+    // Rounded down, so the offset never lands past the segment the period opens on —
+    // a player reading the timeline against it would place every segment early.
+    let offset = u128::from(span_ms.start) * u128::from(track.timescale()) / 1000;
+
     track.earliest_presentation_time()
-        + ClockUtils::raw_floor(u64::from(span.start), track.timescale())
+        + u64::try_from(offset).expect("a period starts within the media timeline")
 }
 
 /// The timeline `segments` describe, with equal durations folded into one entry
