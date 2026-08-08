@@ -29,8 +29,8 @@ impl<'a> AdaptationSetGroup<'a> {
 
         Self {
             key,
-            content_type: track.content_type(),
-            mime_type: track.mime_type(),
+            content_type: track.kind().content_type(),
+            mime_type: track.kind().mime_type(),
             language,
             role,
             members: vec![(descriptor, track)],

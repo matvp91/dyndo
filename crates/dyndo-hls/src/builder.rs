@@ -70,7 +70,7 @@ pub async fn generate_media_playlist(
 ) -> Result<MediaPlaylist<'static>, HlsError> {
     let path = asset.track_path(descriptor);
     let segment_options = &asset.segment_options;
-    let track = Track::probe(op, &path, Some(descriptor.kind.clone()), segment_options).await?;
+    let track = Track::probe(op, &path, Some(descriptor), segment_options).await?;
     build_media_playlist(descriptor, &track, segment_options, hls_options)
 }
 

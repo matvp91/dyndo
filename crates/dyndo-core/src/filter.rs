@@ -35,7 +35,7 @@ use crate::track::{Track, average_bitrate, max_bitrate};
 /// `numeric` decides two things at once: which parser reads the value, and whether
 /// `<`, `<=`, `>` and `>=` are accepted at all.
 const ATTRIBUTES: &[Attribute] = &[
-    Attribute::text("type", |_, track| Some(track.content_type())),
+    Attribute::text("type", |_, track| Some(track.kind().content_type())),
     Attribute::text("id", |descriptor, _| Some(descriptor.id.as_str())),
     Attribute::text("codec", |_, track| Some(track.codec())),
     Attribute::text("frame_rate", |_, track| match track.kind() {
