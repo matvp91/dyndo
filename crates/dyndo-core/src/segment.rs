@@ -9,9 +9,9 @@ use std::ops::Range;
 use serde::{Deserialize, Serialize};
 
 use crate::asset_descriptor::TrackKind;
+use crate::boundary_utils::{snap_cut, snap_cuts};
 use crate::fragment::Fragment;
 use crate::track::Track;
-use crate::utils::{snap_cut, snap_cuts};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SegmentOptions {
@@ -53,10 +53,11 @@ impl Segment {
         self.byte_size
     }
 
-    /// Returns the presentation time the segment begins at, in the track's timescale
-    /// units — the track's earliest presentation time plus every duration before it.
-    pub fn raw_start(&self) -> u64 {
-        self.raw_start
+    /// Returns the presentation time the segment covers, in the track's timescale
+    /// units. It begins at the track's earliest presentation time plus every duration
+    /// before it, so consecutive segments meet without a gap.
+    pub fn raw_range(&self) -> Range<u64> {
+        self.raw_start..self.raw_start + self.raw_duration
     }
 
     /// Returns the segment's duration in the track's timescale units.
@@ -363,8 +364,8 @@ mod tests {
         let segments = group(&fragments, 1000, 0, &options(0, &[]));
 
         assert_eq!(
-            segments.iter().map(Segment::raw_start).collect::<Vec<_>>(),
-            vec![0, 1000, 2500]
+            segments.iter().map(Segment::raw_range).collect::<Vec<_>>(),
+            vec![0..1000, 1000..2500, 2500..3500]
         );
     }
 
@@ -376,8 +377,8 @@ mod tests {
         let segments = group(&fragments, 1000, 0, &options(2_000, &[]));
 
         assert_eq!(
-            segments.iter().map(Segment::raw_start).collect::<Vec<_>>(),
-            vec![0, 2000]
+            segments.iter().map(Segment::raw_range).collect::<Vec<_>>(),
+            vec![0..2000, 2000..4000]
         );
     }
 
@@ -392,10 +393,10 @@ mod tests {
 
         assert_eq!(
             (
-                ungrouped.iter().map(Segment::raw_start).collect::<Vec<_>>(),
-                grouped[0].raw_start()
+                ungrouped.iter().map(Segment::raw_range).collect::<Vec<_>>(),
+                grouped[0].raw_range()
             ),
-            (vec![9_000, 10_000], 9_000)
+            (vec![9_000..10_000, 10_000..11_000], 9_000..11_000)
         );
     }
 
@@ -495,7 +496,7 @@ mod tests {
     }
 
     fn durations(track: &Track, options: &SegmentOptions, duration: u32) -> Vec<Vec<u64>> {
-        crate::utils::divide(&options.boundaries, duration)
+        crate::boundary_utils::divide(&options.boundaries, duration)
             .iter()
             .map(|range| {
                 span(track, options, range)
@@ -542,9 +543,13 @@ mod tests {
 
     /// The time each span's group opens at, taken from its first segment.
     fn starts(track: &Track, options: &SegmentOptions, duration: u32) -> Vec<u64> {
-        crate::utils::divide(&options.boundaries, duration)
+        crate::boundary_utils::divide(&options.boundaries, duration)
             .iter()
-            .filter_map(|range| span(track, options, range).first().map(Segment::raw_start))
+            .filter_map(|range| {
+                span(track, options, range)
+                    .first()
+                    .map(|segment| segment.raw_range().start)
+            })
             .collect()
     }
 

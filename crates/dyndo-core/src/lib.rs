@@ -1,4 +1,5 @@
 pub mod asset_descriptor;
+pub mod boundary_utils;
 pub mod box_reader;
 pub mod filter;
 pub(crate) mod fragment;
@@ -7,4 +8,3 @@ pub mod probe;
 pub mod role;
 pub mod segment;
 pub mod track;
-pub mod utils;

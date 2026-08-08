@@ -60,9 +60,10 @@ impl<'a> AdaptationSetGroup<'a> {
     /// Whether every member cuts its segments at the same times, which is what lets
     /// one timeline stand for all of them.
     ///
-    /// Comparing the times themselves covers where the tracks begin as well as how
-    /// they are cut: two tracks with matching durations but different earliest
-    /// presentation times never line up.
+    /// Comparing the times themselves covers where the tracks begin and how they are
+    /// cut in one go: two tracks with matching durations but different earliest
+    /// presentation times never line up, and neither do two whose last segments differ
+    /// in length.
     pub(super) fn is_segment_aligned(&self, options: &SegmentOptions) -> bool {
         let Some(reference) = self.members.first() else {
             return true;
@@ -72,17 +73,10 @@ impl<'a> AdaptationSetGroup<'a> {
         self.members.iter().skip(1).all(|candidate| {
             segment::segments(candidate, options)
                 .iter()
-                .map(timing)
-                .eq(reference_segments.iter().map(timing))
+                .map(Segment::raw_range)
+                .eq(reference_segments.iter().map(Segment::raw_range))
         })
     }
-}
-
-/// When a segment is shown and how long for, which together are what alignment
-/// means: two tracks line up only if every segment of one begins and ends where the
-/// matching segment of the other does.
-fn timing(segment: &Segment) -> (u64, u64) {
-    (segment.raw_start(), segment.raw_duration())
 }
 
 pub(super) fn group(tracks: &[Track]) -> Vec<AdaptationSetGroup<'_>> {

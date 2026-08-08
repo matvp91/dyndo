@@ -8,10 +8,10 @@ use dash_mpd::{
     SegmentTimeline, SupplementalProperty,
 };
 use dyndo_core::asset_descriptor::{AssetDescriptor, TrackKind};
+use dyndo_core::boundary_utils;
 use dyndo_core::filter::{Filter, FilterMatchedNothing};
 use dyndo_core::segment::{self, Segment, SegmentOptions, max_bitrate, max_segment_duration};
 use dyndo_core::track::{Track, TrackError, max_duration};
-use dyndo_core::utils;
 use opendal::Operator;
 
 use crate::adaptation_set_group::{self, AdaptationSetGroup};
@@ -81,7 +81,7 @@ fn build_mpd(
         &[]
     };
     let mut periods: Vec<Period> = Vec::new();
-    for span in utils::divide(boundaries, max_duration(tracks)) {
+    for span in boundary_utils::divide(boundaries, max_duration(tracks)) {
         let next = period(
             periods.len(),
             &span,
@@ -284,7 +284,8 @@ fn segment_timeline(segments: &[Segment]) -> SegmentTimeline {
     let mut end = None;
 
     for segment in segments {
-        let continues = end == Some(segment.raw_start());
+        let range = segment.raw_range();
+        let continues = end == Some(range.start);
         match entries.last_mut() {
             Some(previous) if previous.d == segment.raw_duration() && continues => {
                 *previous.r.get_or_insert(0) += 1;
@@ -293,12 +294,12 @@ fn segment_timeline(segments: &[Segment]) -> SegmentTimeline {
                 // A player reads an entry with no time of its own as continuing from
                 // the one before it, so only a run that follows nothing states where
                 // it begins: the first, and any that opens after a gap.
-                t: (!continues).then_some(segment.raw_start()),
+                t: (!continues).then_some(range.start),
                 d: segment.raw_duration(),
                 ..Default::default()
             }),
         }
-        end = Some(segment.raw_start() + segment.raw_duration());
+        end = Some(range.end);
     }
 
     SegmentTimeline { segments: entries }

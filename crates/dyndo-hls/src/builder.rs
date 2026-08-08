@@ -123,7 +123,7 @@ fn build_media_playlist(
         .enumerate()
         .map(|(index, segment)| {
             let duration = media_duration(segment.raw_duration(), track.timescale());
-            let start_time = segment.raw_start();
+            let start_time = segment.raw_range().start;
 
             let mut builder = MediaSegment::builder();
             builder
