@@ -1,16 +1,19 @@
-//! AVC, by way of openh264.
+//! Turning a fragment's samples into a picture, by way of openh264.
 //!
 //! Storage and decoders disagree on how a frame's NAL units are delimited: a CMAF
 //! sample prefixes each unit with its length, while a decoder wants them separated by
 //! Annex-B start codes and preceded by the parameter sets that describe them. That
 //! translation is all this adds to the fragment it is handed.
+//!
+//! AVC is the one codec implemented. [`AvcDecode`] is what a second AVC decoder would
+//! have to satisfy: configured once from a track's initialization segment, then asked
+//! for the frame shown at a time.
 
 use mp4_atom::Codec;
 use openh264::decoder::{DecodeOptions, Flush};
 use openh264::formats::YUVSource;
 
-use super::{Decode, DecodeError, Frame};
-use crate::fragment::{self, Fragment};
+use crate::fragment::{self, Fragment, FragmentError};
 
 /// The sample entry this decoder handles.
 pub const SAMPLE_ENTRY: &str = "avc1";
@@ -21,6 +24,36 @@ const START_CODE: [u8; 4] = [0, 0, 0, 1];
 
 /// The NAL unit type of a coded slice of an IDR picture.
 const NAL_IDR: u8 = 5;
+
+#[derive(Debug, thiserror::Error)]
+pub enum DecodeError {
+    #[error(transparent)]
+    Fragment(#[from] FragmentError),
+    #[error("decoding failed: {0}")]
+    Decoder(#[from] openh264::Error),
+    #[error("invalid coded stream: {0}")]
+    Stream(&'static str),
+    #[error("no picture decoded for the frame asked for")]
+    EmptyFrame,
+}
+
+/// One decoded picture, as packed 8-bit RGB.
+pub struct Frame {
+    pub width: u32,
+    pub height: u32,
+    pub rgb: Vec<u8>,
+}
+
+/// What a decoder offers: the frame shown at a time, out of the fragment holding it.
+pub trait AvcDecode {
+    /// Decodes the frame shown at `time`, in the track's timescale — the clock the
+    /// fragment stamps its samples on.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`DecodeError`] when the coded stream cannot be decoded.
+    fn frame_at(&mut self, fragment: &Fragment<'_>, time: u64) -> Result<Frame, DecodeError>;
+}
 
 /// openh264, plus the parameter sets to prefix a keyframe with and the width of the
 /// length field the stored NAL units sit behind.
@@ -67,7 +100,7 @@ impl Decoder {
     }
 }
 
-impl Decode for Decoder {
+impl AvcDecode for Decoder {
     fn frame_at(&mut self, fragment: &Fragment<'_>, time: u64) -> Result<Frame, DecodeError> {
         let target = fragment.shown_at(time);
 

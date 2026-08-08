@@ -108,11 +108,10 @@ fn dash_filter_omits_the_tracks_it_rejects() {
     );
 }
 
-/// A media playlist is written per surviving track, so the filter has to narrow the
-/// descriptor the loop walks — otherwise it writes playlists the multivariant
-/// playlist does not reference.
+/// The filter is the multivariant playlist's alone: a media playlist is still written
+/// per descriptor track, so a filtered-out track keeps a playlist nothing references.
 #[test]
-fn hls_filter_writes_playlists_only_for_the_tracks_it_keeps() {
+fn hls_filter_narrows_the_multivariant_playlist_only() {
     let dir = tempfile::tempdir().unwrap();
     index_video_and_audio(dir.path());
     let descriptor: serde_json::Value =
@@ -142,8 +141,11 @@ fn hls_filter_writes_playlists_only_for_the_tracks_it_keeps() {
     assert!(status.success());
 
     let playlists = dir.path().join("playlists");
+    let master = fs::read_to_string(playlists.join("master.m3u8")).unwrap();
     assert!(playlists.join(format!("{}.m3u8", id("video"))).is_file());
-    assert!(!playlists.join(format!("{}.m3u8", id("audio"))).is_file());
+    assert!(playlists.join(format!("{}.m3u8", id("audio"))).is_file());
+    assert!(master.contains(&format!("{}.m3u8", id("video"))));
+    assert!(!master.contains(&format!("{}.m3u8", id("audio"))));
 }
 
 #[test]
