@@ -9,7 +9,8 @@ use std::ops::Range;
 use serde::{Deserialize, Serialize};
 
 use crate::asset_descriptor::TrackKind;
-use crate::boundary_utils::{snap_cut, snap_cuts};
+use crate::boundary_utils::BoundaryUtils;
+use crate::clock_utils::ClockUtils;
 use crate::fragment::Fragment;
 use crate::track::Track;
 
@@ -94,8 +95,8 @@ pub fn span(track: &Track, options: &SegmentOptions, span: &Range<u32>) -> Vec<S
         edges.push(edges[edges.len() - 1] + segment.raw_duration());
     }
 
-    let start = snap_cut(&edges, track.timescale(), span.start);
-    let end = snap_cut(&edges, track.timescale(), span.end).max(start);
+    let start = BoundaryUtils::snap_cut(&edges, track.timescale(), span.start);
+    let end = BoundaryUtils::snap_cut(&edges, track.timescale(), span.end).max(start);
 
     segments[start..end].to_vec()
 }
@@ -108,8 +109,7 @@ pub fn max_segment_duration(tracks: &[Track], options: &SegmentOptions) -> u32 {
         .flat_map(|track| {
             let timescale = track.timescale();
             segments(track, options).into_iter().map(move |segment| {
-                let duration =
-                    (u128::from(segment.raw_duration()) * 1000).div_ceil(u128::from(timescale));
+                let duration = ClockUtils::millis_ceil(segment.raw_duration(), timescale);
                 u32::try_from(duration).unwrap_or(u32::MAX)
             })
         })
@@ -183,7 +183,7 @@ fn group(
     for fragment in fragments {
         cumulative.push(cumulative[cumulative.len() - 1] + u64::from(fragment.raw_duration()));
     }
-    let cuts = snap_cuts(&cumulative, timescale, &options.boundaries);
+    let cuts = BoundaryUtils::snap_cuts(&cumulative, timescale, &options.boundaries);
 
     let mut segments = Vec::new();
     let mut start = 0;
@@ -496,7 +496,7 @@ mod tests {
     }
 
     fn durations(track: &Track, options: &SegmentOptions, duration: u32) -> Vec<Vec<u64>> {
-        crate::boundary_utils::divide(&options.boundaries, duration)
+        BoundaryUtils::divide(&options.boundaries, duration)
             .iter()
             .map(|range| {
                 span(track, options, range)
@@ -543,7 +543,7 @@ mod tests {
 
     /// The time each span's group opens at, taken from its first segment.
     fn starts(track: &Track, options: &SegmentOptions, duration: u32) -> Vec<u64> {
-        crate::boundary_utils::divide(&options.boundaries, duration)
+        BoundaryUtils::divide(&options.boundaries, duration)
             .iter()
             .filter_map(|range| {
                 span(track, options, range)

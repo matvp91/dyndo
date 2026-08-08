@@ -4,6 +4,7 @@ use std::borrow::Cow;
 use std::time::Duration;
 
 use dyndo_core::asset_descriptor::{AssetDescriptor, TrackDescriptor, TrackKind};
+use dyndo_core::clock_utils::ClockUtils;
 use dyndo_core::filter::{Filter, FilterMatchedNothing};
 use dyndo_core::segment::{self, SegmentOptions, average_bitrate, max_bitrate};
 use dyndo_core::track::{Track, TrackError};
@@ -146,9 +147,7 @@ fn build_media_playlist(
 }
 
 fn media_duration(raw_duration: u64, timescale: u32) -> Duration {
-    let duration =
-        (u128::from(raw_duration) * 1_000 + u128::from(timescale) / 2) / u128::from(timescale);
-    Duration::from_millis(u64::try_from(duration).unwrap_or(u64::MAX))
+    Duration::from_millis(ClockUtils::millis_nearest(raw_duration, timescale))
 }
 
 fn rounded_duration_seconds(raw_duration: u64, timescale: u32) -> u64 {

@@ -8,7 +8,8 @@ use dash_mpd::{
     SegmentTimeline, SupplementalProperty,
 };
 use dyndo_core::asset_descriptor::{AssetDescriptor, TrackKind};
-use dyndo_core::boundary_utils;
+use dyndo_core::boundary_utils::BoundaryUtils;
+use dyndo_core::clock_utils::ClockUtils;
 use dyndo_core::filter::{Filter, FilterMatchedNothing};
 use dyndo_core::segment::{self, Segment, SegmentOptions, max_bitrate, max_segment_duration};
 use dyndo_core::track::{Track, TrackError, max_duration};
@@ -81,7 +82,7 @@ fn build_mpd(
         &[]
     };
     let mut periods: Vec<Period> = Vec::new();
-    for span in boundary_utils::divide(boundaries, max_duration(tracks)) {
+    for span in BoundaryUtils::divide(boundaries, max_duration(tracks)) {
         let next = period(
             periods.len(),
             &span,
@@ -266,10 +267,8 @@ fn segment_template(track: &Track, segments: &[Segment], span: &Range<u32>) -> S
 /// being pulled back to the period edge. The difference between the two shows up
 /// as the gap between this and the first time in the timeline.
 fn presentation_time_offset(track: &Track, span: &Range<u32>) -> u64 {
-    let offset = u128::from(span.start) * u128::from(track.timescale()) / 1000;
-
     track.earliest_presentation_time()
-        + u64::try_from(offset).expect("a period starts within the media timeline")
+        + ClockUtils::raw_floor(u64::from(span.start), track.timescale())
 }
 
 /// The timeline `segments` describe, with equal durations folded into one entry

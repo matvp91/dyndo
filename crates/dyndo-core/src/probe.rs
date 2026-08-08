@@ -31,7 +31,8 @@ pub enum ProbeError {
     SegmentRangeOverflow,
 }
 
-pub(crate) struct Probed {
+/// What reading a source's headers says about the track inside it.
+pub(crate) struct Probe {
     pub codec: String,
     pub kind: TrackKind,
     pub timescale: u32,
@@ -40,17 +41,25 @@ pub(crate) struct Probed {
     pub fragments: Vec<Fragment>,
 }
 
-pub(crate) async fn probe(op: &Operator, path: &RelativePath) -> Result<Probed, ProbeError> {
-    let boxes = box_reader::scan(op, path.as_str()).await?;
+impl Probe {
+    /// Reads the headers of the track at `path`.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`ProbeError`] when the source cannot be read, or describes a track
+    /// dyndo has no name for.
+    pub(crate) async fn run(op: &Operator, path: &RelativePath) -> Result<Self, ProbeError> {
+        let boxes = box_reader::scan(op, path.as_str()).await?;
 
-    Ok(Probed {
-        codec: codec(&boxes)?,
-        kind: kind(&boxes)?,
-        timescale: boxes.sidx.timescale,
-        earliest_presentation_time: boxes.sidx.earliest_presentation_time,
-        initialization_range: 0..boxes.moov_end,
-        fragments: fragments(&boxes)?,
-    })
+        Ok(Self {
+            codec: codec(&boxes)?,
+            kind: kind(&boxes)?,
+            timescale: boxes.sidx.timescale,
+            earliest_presentation_time: boxes.sidx.earliest_presentation_time,
+            initialization_range: 0..boxes.moov_end,
+            fragments: fragments(&boxes)?,
+        })
+    }
 }
 
 fn codec(boxes: &Boxes) -> Result<String, ProbeError> {

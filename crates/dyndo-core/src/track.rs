@@ -7,9 +7,10 @@ use relative_path::{RelativePath, RelativePathBuf};
 use uuid::Uuid;
 
 use crate::asset_descriptor::{AssetDescriptor, TrackDescriptor, TrackKind};
+use crate::clock_utils::ClockUtils;
 use crate::fragment::Fragment;
 use crate::opendal::add_operator_layers;
-use crate::probe::{self, ProbeError};
+use crate::probe::{Probe, ProbeError};
 use crate::segment::SegmentOptions;
 
 #[derive(Debug, thiserror::Error)]
@@ -53,7 +54,7 @@ impl Track {
         options: &SegmentOptions,
     ) -> Result<Self, TrackError> {
         let layered = add_operator_layers(op, options);
-        let probed = probe::probe(&layered, path).await?;
+        let probed = Probe::run(&layered, path).await?;
         let (id, kind) = match descriptor {
             Some(descriptor) => (descriptor.id.clone(), descriptor.kind.clone()),
             None => (generate_id(&probed.kind, path), probed.kind),
@@ -130,13 +131,13 @@ impl Track {
 
     /// Returns the total duration of the track's fragments in milliseconds.
     pub fn duration(&self) -> u32 {
-        let raw_duration: u128 = self
+        let raw_duration: u64 = self
             .fragments
             .iter()
-            .map(|fragment| u128::from(fragment.raw_duration()))
+            .map(|fragment| u64::from(fragment.raw_duration()))
             .sum();
-        let duration = raw_duration * 1000 / u128::from(self.timescale);
-        u32::try_from(duration).unwrap_or(u32::MAX)
+
+        u32::try_from(ClockUtils::millis_floor(raw_duration, self.timescale)).unwrap_or(u32::MAX)
     }
 
     /// Reads a byte range of the track. Pass the `options` it was probed under, so

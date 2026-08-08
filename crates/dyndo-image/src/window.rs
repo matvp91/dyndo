@@ -6,6 +6,7 @@
 
 use std::ops::Range;
 
+use dyndo_core::clock_utils::ClockUtils;
 use dyndo_core::segment::{self, SegmentOptions};
 use dyndo_core::track::Track;
 
@@ -49,8 +50,10 @@ impl Window {
         let anchor = track.earliest_presentation_time();
         let found: Vec<Option<Cell>> = (0..u64::from(cells))
             .map(|cell| {
-                let time =
-                    anchor.saturating_add(raw_time(time + cell * u64::from(step), timescale));
+                let time = anchor.saturating_add(ClockUtils::raw_floor(
+                    time + cell * u64::from(step),
+                    timescale,
+                ));
                 segments
                     .iter()
                     .find(|segment| segment.raw_range().contains(&time))
@@ -80,11 +83,6 @@ impl Window {
                 .collect(),
         })
     }
-}
-
-/// A presentation time in milliseconds, counted in the track's own timescale.
-fn raw_time(at: u64, timescale: u32) -> u64 {
-    u64::try_from(u128::from(at) * u128::from(timescale) / 1000).unwrap_or(u64::MAX)
 }
 
 /// The AVC fixture declares 715 fragments of 1.92s at timescale 90000 — 1370.32s of
