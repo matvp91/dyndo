@@ -10,6 +10,7 @@ workspace = true
 [dependencies]
 bytes = "1"
 dyndo-core = { path = "../dyndo-core" }
+futures-util = "0.3"
 image = { version = "0.25", default-features = false, features = ["jpeg"] }
 mp4-atom = "0.12.1"
 # Builds Cisco's decoder from the bundled source, so the binaries dyndo ships stay

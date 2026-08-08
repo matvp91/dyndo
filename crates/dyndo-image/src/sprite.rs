@@ -18,6 +18,7 @@ use bytes::Bytes;
 use dyndo_core::asset_descriptor::TrackKind;
 use dyndo_core::segment::SegmentOptions;
 use dyndo_core::track::{Track, TrackError};
+use futures_util::future::try_join_all;
 use image::RgbImage;
 use image::codecs::jpeg::JpegEncoder;
 use image::imageops::{self, FilterType};
@@ -96,10 +97,17 @@ impl Sprite {
         // are spread over would be a single request, but it grows with the step while
         // the frames it holds do not: at ten seconds between thumbnails, four bytes in
         // five belong to frames no cell shows.
-        let mut fragments = Vec::with_capacity(window.cells.len());
-        for cell in window.cells.iter().flatten() {
-            fragments.push(track.read_range(op, &options, cell.segment.clone()).await?);
-        }
+        //
+        // The reads go out together: a sprite is as many of them as it has cells, and
+        // waiting for each in turn would pay a round trip per thumbnail.
+        let fragments = try_join_all(
+            window
+                .cells
+                .iter()
+                .flatten()
+                .map(|cell| track.read_range(op, &options, cell.segment.clone())),
+        )
+        .await?;
 
         let canvas = Canvas::new(self.tile_size, (video.width, video.height));
 
