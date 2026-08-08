@@ -45,6 +45,27 @@ async fn generate_mpd_emits_complete_vod_manifest() {
     }
 }
 
+/// The descriptor's declared codec is not trusted: a track re-encoded without being
+/// re-indexed would otherwise be advertised as what it used to be.
+#[tokio::test]
+async fn generate_mpd_advertises_the_probed_codec_over_the_declared_one() {
+    let (op, mut asset) = asset().await;
+    asset.tracks[0].codec = "avc1.stale".to_string();
+
+    let mpd = dyndo_dash::builder::generate_mpd(&op, &asset, &DashOptions::default(), None)
+        .await
+        .unwrap();
+    let mut xml = String::new();
+    let mut serializer = quick_xml::se::Serializer::new(&mut xml);
+    serializer.indent(' ', 2);
+    mpd.serialize(serializer).unwrap();
+
+    assert!(
+        xml.contains("codecs=\"avc1.640028\"") && !xml.contains("avc1.stale"),
+        "unexpected manifest: {xml}"
+    );
+}
+
 #[tokio::test]
 async fn generate_mpd_applies_the_assets_minimum_segment_length() {
     let (op, mut asset) = asset().await;

@@ -136,7 +136,7 @@ fn representation(
     let mut representation = Representation {
         id: Some(descriptor.id.clone()),
         bandwidth: Some(max_bitrate(track, segment_options)),
-        codecs: Some(descriptor.codec.clone()),
+        codecs: Some(track.codec().to_string()),
         SegmentTemplate: Some(segment_template(track, segment_options)),
         ..Default::default()
     };
