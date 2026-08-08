@@ -33,9 +33,12 @@ pub(super) async fn run(op: &Operator, args: DashArgs) -> Result<(), Box<dyn std
 
     let filter = parse_filter(args.filter.as_deref())?;
 
+    // Thumbnails are served, not written: the CLI has nowhere to point a sprite
+    // template at, so it describes none.
     let dash_options = dyndo_dash::options::DashOptions {
         compact: args.compact,
         multi_period: args.multi_period,
+        ..Default::default()
     };
 
     let mpd =
