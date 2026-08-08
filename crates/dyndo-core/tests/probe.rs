@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use dyndo_core::asset_descriptor::TrackKind;
 use dyndo_core::probe::ProbeError;
-use dyndo_core::segment::SegmentOptions;
+use dyndo_core::segment::{self, SegmentOptions};
 use dyndo_core::track::{Track, TrackError};
 use opendal::Operator;
 use opendal::services::Memory;
@@ -50,7 +50,10 @@ async fn probe_exposes_valid_initialization_and_declared_segment_ranges() {
     let (op, track, source) = probe_fixture("video_avc_1080.mp4").await;
     let options = SegmentOptions::default();
     let initialization_range = track.initialization_range();
-    let segment = track.segments(&options).into_iter().next().unwrap();
+    let segment = segment::segments(&track, &options)
+        .into_iter()
+        .next()
+        .unwrap();
 
     let initialization = track.read_initialization(&op, &options).await.unwrap();
     let initialization_range = usize::try_from(initialization_range.start).unwrap()
@@ -106,7 +109,7 @@ async fn probe_packages_a_vtt_document_as_a_wvtt_track() {
     );
 
     // The fixture's cues end at 12.5s, so a 4s grid cuts at 4s, 8s and 12s.
-    let segments = track.segments(&options);
+    let segments = segment::segments(&track, &options);
     assert_eq!(
         segments
             .iter()
@@ -138,8 +141,7 @@ async fn probe_fragments_a_subtitle_at_its_splice_points() {
     let (_, unspliced, _) = probe_fixture("text_sample.vtt").await;
 
     let durations = |track: &Track| {
-        track
-            .segments(&SegmentOptions::default())
+        segment::segments(track, &SegmentOptions::default())
             .iter()
             .map(|segment| segment.raw_duration())
             .collect::<Vec<_>>()

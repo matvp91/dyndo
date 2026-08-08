@@ -1,6 +1,6 @@
 use dyndo_core::asset_descriptor::TrackKind;
 use dyndo_core::role::Role;
-use dyndo_core::segment::SegmentOptions;
+use dyndo_core::segment::{self, Segment, SegmentOptions};
 use dyndo_core::track::Track;
 
 pub(super) type Member<'a> = &'a Track;
@@ -57,21 +57,24 @@ impl<'a> AdaptationSetGroup<'a> {
         &self.members
     }
 
+    /// Whether every member cuts its segments at the same times, which is what lets
+    /// one timeline stand for all of them.
+    ///
+    /// Comparing the times themselves covers where the tracks begin and how they are
+    /// cut in one go: two tracks with matching durations but different earliest
+    /// presentation times never line up, and neither do two whose last segments differ
+    /// in length.
     pub(super) fn is_segment_aligned(&self, options: &SegmentOptions) -> bool {
         let Some(reference) = self.members.first() else {
             return true;
         };
-        let reference_segments = reference.segments(options);
+        let reference_segments = segment::segments(reference, options);
 
         self.members.iter().skip(1).all(|candidate| {
-            candidate.earliest_presentation_time() == reference.earliest_presentation_time()
-                && candidate
-                    .segments(options)
-                    .iter()
-                    .map(|segment| segment.raw_duration())
-                    .eq(reference_segments
-                        .iter()
-                        .map(|segment| segment.raw_duration()))
+            segment::segments(candidate, options)
+                .iter()
+                .map(Segment::raw_range)
+                .eq(reference_segments.iter().map(Segment::raw_range))
         })
     }
 }

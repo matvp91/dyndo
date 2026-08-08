@@ -170,7 +170,8 @@ mod tests {
     use opendal::services::Memory;
 
     use super::*;
-    use crate::track::{Fragment, Track};
+    use crate::fragment::Fragment;
+    use crate::track::Track;
 
     #[test]
     fn track_returns_descriptor_matching_id() {

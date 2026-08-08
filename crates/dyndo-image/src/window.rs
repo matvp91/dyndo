@@ -6,7 +6,7 @@
 
 use std::ops::Range;
 
-use dyndo_core::segment::{Segment, SegmentOptions};
+use dyndo_core::segment::{self, SegmentOptions};
 use dyndo_core::track::Track;
 
 /// One cell's frame: the segment holding it, as a byte range relative to the start of
@@ -44,19 +44,20 @@ impl Window {
         // Default options group nothing, so each of these is one stored fragment. A
         // sprite's step is its own: it must not shift with the segmentation a request
         // asks for delivery in.
-        let segments = track.segments(&SegmentOptions::default());
+        let segments = segment::segments(track, &SegmentOptions::default());
         let timescale = track.timescale();
         let anchor = track.earliest_presentation_time();
         let found: Vec<Option<Cell>> = (0..u64::from(cells))
             .map(|cell| {
-                let offset = raw_time(time + cell * u64::from(step), timescale);
-                segment_at(&segments, offset).map(|segment| Cell {
-                    segment,
-                    // Segment times are cumulative from the track's earliest
-                    // presentation time, while the fragment stamps its samples on the
-                    // media clock a decoder has to be asked in.
-                    time: anchor.saturating_add(offset),
-                })
+                let time =
+                    anchor.saturating_add(raw_time(time + cell * u64::from(step), timescale));
+                segments
+                    .iter()
+                    .find(|segment| segment.raw_range().contains(&time))
+                    .map(|segment| Cell {
+                        segment: segment.byte_range(),
+                        time,
+                    })
             })
             .collect();
         let start = found
@@ -82,28 +83,11 @@ impl Window {
 }
 
 /// A presentation time in milliseconds, counted in the track's own timescale.
-fn raw_time(at: u64, timescale: u32) -> u64 {
-    u64::try_from(u128::from(at) * u128::from(timescale) / 1000).unwrap_or(u64::MAX)
-}
-
-/// The byte range of the segment covering `offset` timescale units into the
-/// presentation, or `None` when the track ends before it.
 ///
-/// Segment presentation times are cumulative rather than stored, and run from the
-/// track's earliest presentation time — which is what a manifest hands a player as the
-/// thumbnail timeline's zero — so an offset needs no anchor added back in to find the
-/// segment holding it.
-fn segment_at(segments: &[Segment], offset: u64) -> Option<Range<u64>> {
-    let mut elapsed = 0u128;
-
-    for segment in segments {
-        elapsed += u128::from(segment.raw_duration());
-        if u128::from(offset) < elapsed {
-            return Some(segment.byte_range());
-        }
-    }
-
-    None
+/// Rounded down, so a cell shows the frame on screen at the time it asks for rather
+/// than the one after it.
+fn raw_time(at_ms: u64, timescale: u32) -> u64 {
+    u64::try_from(u128::from(at_ms) * u128::from(timescale) / 1000).unwrap_or(u64::MAX)
 }
 
 /// The AVC fixture declares 715 fragments of 1.92s at timescale 90000 — 1370.32s of
@@ -186,7 +170,7 @@ mod tests {
     #[tokio::test]
     async fn new_reads_one_range_spanning_the_segments_its_cells_fall_in() {
         let track = probe("video_avc_1080.mp4").await;
-        let segments = track.segments(&SegmentOptions::default());
+        let segments = segment::segments(&track, &SegmentOptions::default());
 
         let window = Window::new(&track, CELLS, STEP, 0).unwrap();
 
@@ -201,7 +185,7 @@ mod tests {
     #[tokio::test]
     async fn new_places_each_cell_relative_to_that_range() {
         let track = probe("video_avc_1080.mp4").await;
-        let segments = track.segments(&SegmentOptions::default());
+        let segments = segment::segments(&track, &SegmentOptions::default());
         let start = segments[0].byte_range().start;
 
         let window = Window::new(&track, CELLS, STEP, 0).unwrap();

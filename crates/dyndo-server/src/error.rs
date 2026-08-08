@@ -16,8 +16,6 @@ pub enum ServerError {
     InvalidFilter(String),
     #[error("resource not found: {0}")]
     NotFound(String),
-    #[error("segment time overflow for track {0}")]
-    SegmentTimeOverflow(String),
     #[error(transparent)]
     AssetDescriptor(#[from] AssetDescriptorError),
     #[error(transparent)]
@@ -47,8 +45,7 @@ impl IntoResponse for ServerError {
             {
                 StatusCode::NOT_FOUND
             }
-            Self::SegmentTimeOverflow(_)
-            | Self::AssetDescriptor(_)
+            Self::AssetDescriptor(_)
             | Self::Track(_)
             | Self::Dash(_)
             | Self::Hls(_)

@@ -8,10 +8,10 @@ use dash_mpd::{
     SegmentTimeline, SupplementalProperty,
 };
 use dyndo_core::asset_descriptor::{AssetDescriptor, TrackKind};
+use dyndo_core::boundary_utils::BoundaryUtils;
 use dyndo_core::filter::{Filter, FilterMatchedNothing};
-use dyndo_core::segment::SegmentOptions;
-use dyndo_core::segment_group::{self, SegmentGroup};
-use dyndo_core::track::{Track, TrackError, max_bitrate, max_duration, max_segment_duration};
+use dyndo_core::segment::{self, Segment, SegmentOptions, max_bitrate, max_segment_duration};
+use dyndo_core::track::{Track, TrackError, max_duration};
 use opendal::Operator;
 
 use crate::adaptation_set_group::{self, AdaptationSetGroup};
@@ -81,7 +81,7 @@ fn build_mpd(
         &[]
     };
     let mut periods: Vec<Period> = Vec::new();
-    for span in segment_group::spans(boundaries, max_duration(tracks)) {
+    for span in BoundaryUtils::divide(boundaries, max_duration(tracks)) {
         let next = period(
             periods.len(),
             &span,
@@ -209,8 +209,8 @@ fn representation(
     segment_options: &SegmentOptions,
     span: &Range<u32>,
 ) -> Option<Representation> {
-    let group = segment_group::group_segments(track, segment_options, span);
-    if group.segments().is_empty() {
+    let segments = segment::span(track, segment_options, span);
+    if segments.is_empty() {
         return None;
     }
 
@@ -218,7 +218,7 @@ fn representation(
         id: Some(track.id().to_string()),
         bandwidth: Some(max_bitrate(track, segment_options)),
         codecs: Some(track.codec().to_string()),
-        SegmentTemplate: Some(segment_template(track, &group, span)),
+        SegmentTemplate: Some(segment_template(track, &segments, span)),
         ..Default::default()
     };
 
@@ -247,13 +247,13 @@ fn audio_channel_configuration(channels: u16) -> AudioChannelConfiguration {
     }
 }
 
-fn segment_template(track: &Track, group: &SegmentGroup, span: &Range<u32>) -> SegmentTemplate {
+fn segment_template(track: &Track, segments: &[Segment], span: &Range<u32>) -> SegmentTemplate {
     SegmentTemplate {
         timescale: Some(u64::from(track.timescale())),
         presentationTimeOffset: Some(presentation_time_offset(track, span)),
         initialization: Some(INITIALIZATION_TEMPLATE.to_string()),
         media: Some(MEDIA_TEMPLATE.to_string()),
-        SegmentTimeline: Some(segment_timeline(group)),
+        SegmentTimeline: Some(segment_timeline(segments)),
         ..Default::default()
     }
 }
@@ -265,33 +265,47 @@ fn segment_template(track: &Track, group: &SegmentGroup, span: &Range<u32>) -> S
 /// a track cutting after the boundary presents where it always did instead of
 /// being pulled back to the period edge. The difference between the two shows up
 /// as the gap between this and the first time in the timeline.
-fn presentation_time_offset(track: &Track, span: &Range<u32>) -> u64 {
-    let offset = u128::from(span.start) * u128::from(track.timescale()) / 1000;
+fn presentation_time_offset(track: &Track, span_ms: &Range<u32>) -> u64 {
+    // The span is milliseconds and the timeline counts the track's timescale units.
+    // Rounded down, so the offset never lands past the segment the period opens on —
+    // a player reading the timeline against it would place every segment early.
+    let offset = u128::from(span_ms.start) * u128::from(track.timescale()) / 1000;
 
     track.earliest_presentation_time()
         + u64::try_from(offset).expect("a period starts within the media timeline")
 }
 
-fn segment_timeline(group: &SegmentGroup) -> SegmentTimeline {
-    let mut segments: Vec<S> = Vec::new();
+/// The timeline `segments` describe, with equal durations folded into one entry
+/// repeated `r` times.
+///
+/// An entry opens with the time its first segment begins at, so a run only continues
+/// while the next segment starts where the previous one ended. Two segments of equal
+/// duration with a gap between them are two runs, since a player reads the entries as
+/// one unbroken stretch.
+fn segment_timeline(segments: &[Segment]) -> SegmentTimeline {
+    let mut entries: Vec<S> = Vec::new();
+    let mut end = None;
 
-    for segment in group.segments() {
-        match segments.last_mut() {
-            Some(previous) if previous.d == segment.raw_duration() => {
+    for segment in segments {
+        let range = segment.raw_range();
+        let continues = end == Some(range.start);
+        match entries.last_mut() {
+            Some(previous) if previous.d == segment.raw_duration() && continues => {
                 *previous.r.get_or_insert(0) += 1;
             }
-            _ => segments.push(S {
+            _ => entries.push(S {
+                // A player reads an entry with no time of its own as continuing from
+                // the one before it, so only a run that follows nothing states where
+                // it begins: the first, and any that opens after a gap.
+                t: (!continues).then_some(range.start),
                 d: segment.raw_duration(),
                 ..Default::default()
             }),
         }
+        end = Some(range.end);
     }
 
-    if let Some(first) = segments.first_mut() {
-        first.t = Some(group.start());
-    }
-
-    SegmentTimeline { segments }
+    SegmentTimeline { segments: entries }
 }
 
 #[cfg(test)]

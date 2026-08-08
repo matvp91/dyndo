@@ -5,8 +5,8 @@ use std::time::Duration;
 
 use dyndo_core::asset_descriptor::{AssetDescriptor, TrackDescriptor, TrackKind};
 use dyndo_core::filter::{Filter, FilterMatchedNothing};
-use dyndo_core::segment::SegmentOptions;
-use dyndo_core::track::{Track, TrackError, average_bitrate, max_bitrate};
+use dyndo_core::segment::{self, SegmentOptions, average_bitrate, max_bitrate};
+use dyndo_core::track::{Track, TrackError};
 use hls_m3u8::tags::{ExtXMap, ExtXMedia, VariantStream};
 use hls_m3u8::types::{Channels, ClosedCaptions, MediaType, PlaylistType, StreamData, UFloat};
 use hls_m3u8::{MasterPlaylist, MediaPlaylist, MediaSegment};
@@ -27,8 +27,6 @@ pub enum HlsError {
     Playlist(#[from] hls_m3u8::Error),
     #[error("invalid video frame rate: {0}")]
     InvalidFrameRate(String),
-    #[error("segment start time overflow for track {0}")]
-    SegmentTimeOverflow(String),
     #[error(transparent)]
     Filter(#[from] FilterMatchedNothing),
 }
@@ -114,8 +112,7 @@ fn build_media_playlist(
 ) -> Result<MediaPlaylist<'static>, HlsError> {
     let plain_vtt = serves_plain_vtt(track.kind(), hls_options);
     let extension = if plain_vtt { "vtt" } else { "m4s" };
-    let mut start_time = track.earliest_presentation_time();
-    let segments = track.segments(segment_options);
+    let segments = segment::segments(track, segment_options);
     let target_duration = segments
         .iter()
         .map(|segment| rounded_duration_seconds(segment.raw_duration(), track.timescale()))
@@ -126,6 +123,7 @@ fn build_media_playlist(
         .enumerate()
         .map(|(index, segment)| {
             let duration = media_duration(segment.raw_duration(), track.timescale());
+            let start_time = segment.raw_range().start;
 
             let mut builder = MediaSegment::builder();
             builder
@@ -135,9 +133,6 @@ fn build_media_playlist(
                 builder.map(ExtXMap::new(format!("{}/init.mp4", track.id())));
             }
 
-            start_time = start_time
-                .checked_add(segment.raw_duration())
-                .ok_or_else(|| HlsError::SegmentTimeOverflow(track.id().to_string()))?;
             Ok(builder.build()?)
         })
         .collect::<Result<Vec<_>, HlsError>>()?;
@@ -150,6 +145,11 @@ fn build_media_playlist(
         .build()?)
 }
 
+/// A segment's duration as `EXTINF` states it.
+///
+/// Rounded to the nearest millisecond rather than either way: a player sums these to
+/// place a segment on its timeline, so a bias in one direction accumulates across a
+/// playlist while a rounding error does not.
 fn media_duration(raw_duration: u64, timescale: u32) -> Duration {
     let duration =
         (u128::from(raw_duration) * 1_000 + u128::from(timescale) / 2) / u128::from(timescale);
