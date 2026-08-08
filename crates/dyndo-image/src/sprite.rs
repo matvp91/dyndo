@@ -30,6 +30,15 @@ use crate::decoder::{Decoder, DecoderError, Frame};
 use crate::fragment::{Fragment, FragmentError};
 use crate::window::{Cell, Window};
 
+/// How many of a sprite's fragments are decoded at once.
+///
+/// Each decoder holds its own reference frames, so this is what one sprite costs in
+/// memory over the fragments it read — and a server cutting several at once pays it
+/// per request. Four is where the return on another decoder falls off: on ten cores
+/// the first four take a sprite from 4.9s to 2.2s, and the next six to 1.3s for half
+/// as much memory again.
+const CONCURRENT_DECODES: usize = 4;
+
 /// Quality a sprite is encoded at. A cell is a heavy downscale of its frame, so the
 /// detail a higher setting preserves is not there to preserve.
 const QUALITY: u8 = 80;
@@ -170,7 +179,9 @@ impl Canvas {
                 (index, cell, bytes)
             })
             .collect();
-        let threads = std::thread::available_parallelism().map_or(1, NonZero::get);
+        let threads = std::thread::available_parallelism()
+            .map_or(1, NonZero::get)
+            .min(CONCURRENT_DECODES);
 
         for round in cells.chunks(threads) {
             let frames = std::thread::scope(|scope| {
