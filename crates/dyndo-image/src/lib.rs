@@ -3,18 +3,16 @@
 //! Nothing is stored and nothing is written: a sprite is built from the CMAF the asset
 //! already points at, with two range reads and no temporary files.
 //!
-//! Four modules, one responsibility each:
+//! Three modules, one responsibility each:
 //!
-//! - [`sprite`] is the sprite asked for — its parameters, and the reads and work that
-//!   produce it;
+//! - [`sprite`] is the sprite asked for — its parameters, the reads and work that
+//!   produce it, and the grid its frames are laid out in;
 //! - [`fragment`] answers which bytes of a fragment are a frame and what time it is
 //!   shown at, which is a question about the container rather than the codec;
-//! - [`avc_decode`] turns those samples into a picture, and is the only module that
-//!   knows a codec;
-//! - [`image`] scales the pictures into the sprite and encodes it.
+//! - [`decoder`] turns those samples into a picture, and is the only module that knows
+//!   a codec.
 
-pub mod avc_decode;
+pub mod decoder;
 pub mod fragment;
-pub mod image;
 pub mod sprite;
 mod window;
