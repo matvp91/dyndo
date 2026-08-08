@@ -21,10 +21,17 @@ pub struct SegmentOptions {
     pub boundaries: Vec<u32>,
 }
 
+/// One served segment: where its bytes are, and when it is shown.
+///
+/// A segment sits at a position on two axes, and holds an extent on both. Its
+/// presentation time is cumulative rather than stored — the track's earliest
+/// presentation time plus every duration before it — so it follows from the
+/// grouping that produced the segment and is settled there, once.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Segment {
     byte_offset: u64,
     byte_size: u64,
+    raw_start: u64,
     raw_duration: u64,
 }
 
@@ -37,6 +44,12 @@ impl Segment {
         self.byte_size
     }
 
+    /// Returns the presentation time the segment covers, in the track's timescale
+    /// units.
+    pub fn raw_time_range(&self) -> Range<u64> {
+        self.raw_start..self.raw_start + self.raw_duration
+    }
+
     /// Returns the segment's duration in the track's timescale units.
     pub fn raw_duration(&self) -> u64 {
         self.raw_duration
@@ -46,22 +59,37 @@ impl Segment {
 impl Track {
     /// Returns the segments produced from the track under `options`.
     pub fn segments(&self, options: &SegmentOptions) -> Vec<Segment> {
-        group_fragments(self.fragments(), self.timescale(), options)
+        group_fragments(
+            self.fragments(),
+            self.timescale(),
+            self.earliest_presentation_time(),
+            options,
+        )
     }
 }
 
+/// Groups `fragments` into segments, each timed from `anchor` — the track's earliest
+/// presentation time, which every segment time in a manifest is counted from.
 fn group_fragments(
     fragments: &[Fragment],
     timescale: u32,
+    anchor: u64,
     options: &SegmentOptions,
 ) -> Vec<Segment> {
     if options.min_length == 0 {
+        let mut raw_start = anchor;
         return fragments
             .iter()
-            .map(|fragment| Segment {
-                byte_offset: fragment.byte_offset,
-                byte_size: fragment.byte_size,
-                raw_duration: u64::from(fragment.raw_duration),
+            .map(|fragment| {
+                let segment = Segment {
+                    byte_offset: fragment.byte_offset,
+                    byte_size: fragment.byte_size,
+                    raw_start,
+                    raw_duration: u64::from(fragment.raw_duration),
+                };
+                raw_start += u64::from(fragment.raw_duration);
+
+                segment
             })
             .collect();
     }
@@ -90,6 +118,9 @@ fn group_fragments(
             segments.push(Segment {
                 byte_offset,
                 byte_size: byte_end - byte_offset,
+                // `cumulative` is already the table of elapsed durations, so the
+                // segment's own start is the entry its first fragment sits at.
+                raw_start: anchor + cumulative[start],
                 raw_duration,
             });
             start = end;
@@ -160,7 +191,7 @@ mod tests {
     #[test]
     fn zero_minimum_maps_each_fragment_to_a_segment() {
         let fragments = fragments(&[1000, 1000]);
-        let segments = group_fragments(&fragments, 1000, &options(0, &[]));
+        let segments = group_fragments(&fragments, 1000, 0, &options(0, &[]));
 
         assert_eq!(
             segments,
@@ -168,11 +199,13 @@ mod tests {
                 Segment {
                     byte_offset: 100,
                     byte_size: 10,
+                    raw_start: 0,
                     raw_duration: 1000,
                 },
                 Segment {
                     byte_offset: 110,
                     byte_size: 10,
+                    raw_start: 1000,
                     raw_duration: 1000,
                 },
             ]
@@ -182,7 +215,7 @@ mod tests {
     #[test]
     fn fragments_are_grouped_until_the_minimum() {
         let fragments = fragments(&[1920, 1920, 1920, 1920]);
-        let segments = group_fragments(&fragments, 1000, &options(3_000, &[]));
+        let segments = group_fragments(&fragments, 1000, 0, &options(3_000, &[]));
 
         assert_eq!(
             segments
@@ -196,7 +229,7 @@ mod tests {
     #[test]
     fn segment_closes_at_a_requested_boundary() {
         let fragments = fragments(&[1920, 1920, 120, 1800, 1920]);
-        let segments = group_fragments(&fragments, 1000, &options(3_000, &[3_960]));
+        let segments = group_fragments(&fragments, 1000, 0, &options(3_000, &[3_960]));
 
         assert_eq!(
             segments
@@ -209,13 +242,13 @@ mod tests {
 
     #[test]
     fn empty_fragments_produce_no_segments() {
-        assert!(group_fragments(&[], 1000, &options(3_000, &[])).is_empty());
+        assert!(group_fragments(&[], 1000, 0, &options(3_000, &[])).is_empty());
     }
 
     #[test]
     fn final_short_segment_is_preserved() {
         let fragments = fragments(&[2000, 2000, 500]);
-        let segments = group_fragments(&fragments, 1000, &options(3_000, &[]));
+        let segments = group_fragments(&fragments, 1000, 0, &options(3_000, &[]));
 
         assert_eq!(
             segments
@@ -229,7 +262,7 @@ mod tests {
     #[test]
     fn boundary_on_fragment_edge_closes_the_segment_at_that_edge() {
         let fragments = fragments(&[1000, 1000, 1000]);
-        let segments = group_fragments(&fragments, 1000, &options(5_000, &[2_000]));
+        let segments = group_fragments(&fragments, 1000, 0, &options(5_000, &[2_000]));
 
         assert_eq!(
             segments
@@ -251,7 +284,7 @@ mod tests {
         // fragment, and the boundary its siblings splice at can land inside that
         // tail rather than on either edge of it.
         let fragments = fragments(&[92_160, 8_192, 83_968, 92_160]);
-        let segments = group_fragments(&fragments, 48_000, &options(3_000, &[2_000]));
+        let segments = group_fragments(&fragments, 48_000, 0, &options(3_000, &[2_000]));
 
         assert_eq!(
             segments
@@ -278,8 +311,63 @@ mod tests {
     #[test]
     fn grouped_segment_spans_combined_byte_range() {
         let fragments = fragments(&[1000, 1000]);
-        let segments = group_fragments(&fragments, 1000, &options(2_000, &[]));
+        let segments = group_fragments(&fragments, 1000, 0, &options(2_000, &[]));
 
         assert_eq!(segments[0].byte_range(), 100..120);
+    }
+
+    /// A segment's time range runs from where its predecessors left off to its own
+    /// end, so consecutive segments meet without a gap.
+    #[test]
+    fn segments_run_from_where_the_previous_one_ended() {
+        let fragments = fragments(&[1000, 1500, 1000]);
+
+        let segments = group_fragments(&fragments, 1000, 0, &options(0, &[]));
+
+        assert_eq!(
+            segments
+                .iter()
+                .map(Segment::raw_time_range)
+                .collect::<Vec<_>>(),
+            vec![0..1000, 1000..2500, 2500..3500]
+        );
+    }
+
+    /// Grouping several fragments into one segment times it from the first of them,
+    /// not from the segment before it ending.
+    #[test]
+    fn a_grouped_segment_runs_from_its_first_fragment() {
+        let fragments = fragments(&[1000, 1000, 1000, 1000]);
+
+        let segments = group_fragments(&fragments, 1000, 0, &options(2_000, &[]));
+
+        assert_eq!(
+            segments
+                .iter()
+                .map(Segment::raw_time_range)
+                .collect::<Vec<_>>(),
+            vec![0..2000, 2000..4000]
+        );
+    }
+
+    /// Segment times are what a manifest hands a player, and those are counted from
+    /// the track's earliest presentation time rather than from zero.
+    #[test]
+    fn segment_times_are_counted_from_the_anchor() {
+        let fragments = fragments(&[1000, 1000]);
+
+        let grouped = group_fragments(&fragments, 1000, 9_000, &options(0, &[]));
+        let combined = group_fragments(&fragments, 1000, 9_000, &options(2_000, &[]));
+
+        assert_eq!(
+            (
+                grouped
+                    .iter()
+                    .map(Segment::raw_time_range)
+                    .collect::<Vec<_>>(),
+                combined[0].raw_time_range()
+            ),
+            (vec![9_000..10_000, 10_000..11_000], 9_000..11_000)
+        );
     }
 }

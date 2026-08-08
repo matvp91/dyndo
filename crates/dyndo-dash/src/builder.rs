@@ -272,23 +272,34 @@ fn presentation_time_offset(track: &Track, span: &Range<u32>) -> u64 {
         + u64::try_from(offset).expect("a period starts within the media timeline")
 }
 
+/// The timeline of `group`, with segments of equal duration folded into one entry
+/// repeated `r` times.
+///
+/// An entry opens with the time its first segment begins at, so a run only continues
+/// while the next segment starts where the previous one ended. Two segments of equal
+/// duration with a gap between them are two runs, since a player reads the entries as
+/// one unbroken stretch.
 fn segment_timeline(group: &SegmentGroup) -> SegmentTimeline {
     let mut segments: Vec<S> = Vec::new();
+    let mut end = None;
 
     for segment in group.segments() {
+        let range = segment.raw_time_range();
+        let continues = end == Some(range.start);
         match segments.last_mut() {
-            Some(previous) if previous.d == segment.raw_duration() => {
+            Some(previous) if previous.d == segment.raw_duration() && continues => {
                 *previous.r.get_or_insert(0) += 1;
             }
             _ => segments.push(S {
+                // A player reads an entry with no time of its own as continuing from
+                // the one before it, so only a run that follows nothing states where
+                // it begins: the first, and any that opens after a gap.
+                t: (!continues).then_some(range.start),
                 d: segment.raw_duration(),
                 ..Default::default()
             }),
         }
-    }
-
-    if let Some(first) = segments.first_mut() {
-        first.t = Some(group.start());
+        end = Some(range.end);
     }
 
     SegmentTimeline { segments }

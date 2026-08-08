@@ -11,25 +11,13 @@ use std::ops::Range;
 use crate::segment::{Segment, SegmentOptions, snap_cut};
 use crate::track::Track;
 
-/// One track's segments within a span, and the media time the first of them
-/// begins at.
-///
-/// That time is the track's own cut, which sits at or after the span's start:
-/// tracks snap to their own nearest segment edge, so a span opens before some of
-/// them have anything to give.
+/// One track's segments within a span.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SegmentGroup {
-    start: u64,
     segments: Vec<Segment>,
 }
 
 impl SegmentGroup {
-    /// Returns the media time the group's first segment begins at, in the
-    /// track's timescale units.
-    pub fn start(&self) -> u64 {
-        self.start
-    }
-
     pub fn segments(&self) -> &[Segment] {
         &self.segments
     }
@@ -64,6 +52,11 @@ pub fn spans(boundaries: &[u32], duration: u32) -> Vec<Range<u32>> {
 /// The group is empty when the track has nothing there — it ended before the
 /// span opened, or two boundaries snapped to the same segment edge — so callers
 /// pairing spans with groups always get one for one.
+///
+/// Its first segment begins at or after the span's start rather than on it:
+/// tracks snap to their own nearest segment edge, so a span opens before some of
+/// them have anything to give. That segment carries the time it begins at, which
+/// is what a manifest reads the group's timeline against.
 pub fn group_segments(track: &Track, options: &SegmentOptions, span: &Range<u32>) -> SegmentGroup {
     let segments = track.segments(options);
     let mut edges = Vec::with_capacity(segments.len() + 1);
@@ -76,7 +69,6 @@ pub fn group_segments(track: &Track, options: &SegmentOptions, span: &Range<u32>
     let end = snap_cut(&edges, track.timescale(), span.end).max(start);
 
     SegmentGroup {
-        start: track.earliest_presentation_time() + edges[start],
         segments: segments[start..end].to_vec(),
     }
 }
@@ -172,30 +164,35 @@ mod tests {
         );
     }
 
+    /// Each span's group opens on the segment the boundary cut at, which is the one
+    /// carrying the time a manifest reads that group's timeline against.
     #[test]
-    fn a_group_starts_at_the_media_time_of_its_first_segment() {
+    fn a_group_opens_on_the_segment_the_span_cut_at() {
         let track = track(4);
         let options = options(0, &[3_000]);
 
-        let starts: Vec<u64> = spans(&options.boundaries, 4_000)
-            .iter()
-            .map(|span| group_segments(&track, &options, span).start())
-            .collect();
-
-        assert_eq!(starts, vec![0, 3_000]);
+        assert_eq!(starts(&track, &options, 4_000), vec![0, 3_000]);
     }
 
     #[test]
-    fn a_group_start_carries_the_earliest_presentation_time() {
+    fn a_group_opens_on_a_segment_timed_from_the_earliest_presentation_time() {
         let track = track(4).fake_earliest_presentation_time(500);
         let options = options(0, &[3_000]);
 
-        let starts: Vec<u64> = spans(&options.boundaries, 4_000)
-            .iter()
-            .map(|span| group_segments(&track, &options, span).start())
-            .collect();
+        assert_eq!(starts(&track, &options, 4_000), vec![500, 3_500]);
+    }
 
-        assert_eq!(starts, vec![500, 3_500]);
+    /// The time each span's group opens at, taken from its first segment.
+    fn starts(track: &Track, options: &SegmentOptions, duration: u32) -> Vec<u64> {
+        spans(&options.boundaries, duration)
+            .iter()
+            .filter_map(|span| {
+                group_segments(track, options, span)
+                    .segments()
+                    .first()
+                    .map(|segment| segment.raw_time_range().start)
+            })
+            .collect()
     }
 
     #[test]

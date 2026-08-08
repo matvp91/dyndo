@@ -58,8 +58,8 @@ pub(super) async fn text(
 
 /// The track `track_id` names and the byte range of the segment starting at `time`.
 ///
-/// Segment start times are cumulative rather than stored, so `time` has to be one a
-/// segment begins at; a time inside one names nothing.
+/// `time` has to be one a segment begins at, since that is what a manifest addresses
+/// them by; a time inside one names nothing.
 async fn locate(
     op: &Operator,
     context: &RequestContext<()>,
@@ -67,20 +67,13 @@ async fn locate(
     time: u64,
 ) -> Result<(Track, SegmentOptions, Range<u64>), ServerError> {
     let (track, segment_options) = read_track(op, context, track_id).await?;
+    let segment = track
+        .segments(&segment_options)
+        .into_iter()
+        .find(|segment| segment.raw_time_range().start == time)
+        .ok_or_else(|| ServerError::NotFound(format!("segment {time} for track {track_id}")))?;
 
-    let mut start_time = track.earliest_presentation_time();
-    for segment in track.segments(&segment_options) {
-        if start_time == time {
-            return Ok((track, segment_options, segment.byte_range()));
-        }
-        start_time = start_time
-            .checked_add(segment.raw_duration())
-            .ok_or_else(|| ServerError::SegmentTimeOverflow(track_id.to_string()))?;
-    }
-
-    Err(ServerError::NotFound(format!(
-        "segment {time} for track {track_id}"
-    )))
+    Ok((track, segment_options, segment.byte_range()))
 }
 
 /// The track `track_id` names, probed under the segment options this request asks

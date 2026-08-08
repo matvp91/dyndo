@@ -27,8 +27,6 @@ pub enum HlsError {
     Playlist(#[from] hls_m3u8::Error),
     #[error("invalid video frame rate: {0}")]
     InvalidFrameRate(String),
-    #[error("segment start time overflow for track {0}")]
-    SegmentTimeOverflow(String),
     #[error(transparent)]
     Filter(#[from] FilterMatchedNothing),
 }
@@ -114,7 +112,6 @@ fn build_media_playlist(
 ) -> Result<MediaPlaylist<'static>, HlsError> {
     let plain_vtt = serves_plain_vtt(track.kind(), hls_options);
     let extension = if plain_vtt { "vtt" } else { "m4s" };
-    let mut start_time = track.earliest_presentation_time();
     let segments = track.segments(segment_options);
     let target_duration = segments
         .iter()
@@ -126,6 +123,7 @@ fn build_media_playlist(
         .enumerate()
         .map(|(index, segment)| {
             let duration = media_duration(segment.raw_duration(), track.timescale());
+            let start_time = segment.raw_time_range().start;
 
             let mut builder = MediaSegment::builder();
             builder
@@ -135,9 +133,6 @@ fn build_media_playlist(
                 builder.map(ExtXMap::new(format!("{}/init.mp4", track.id())));
             }
 
-            start_time = start_time
-                .checked_add(segment.raw_duration())
-                .ok_or_else(|| HlsError::SegmentTimeOverflow(track.id().to_string()))?;
             Ok(builder.build()?)
         })
         .collect::<Result<Vec<_>, HlsError>>()?;
