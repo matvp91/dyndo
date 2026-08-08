@@ -200,6 +200,49 @@ fn hls_requires_input() {
     assert!(!status.success());
 }
 
+/// The tile size, height and step have no defaults to fall back on — the caller
+/// decides the shape of the sprite.
+#[test]
+fn sprite_requires_the_shape_of_the_sprite() {
+    let dir = tempfile::tempdir().unwrap();
+    index_video_and_audio(dir.path());
+
+    let status = dyndo(dir.path())
+        .args(["sprite", "-i", "asset.json"])
+        .status()
+        .unwrap();
+
+    assert!(!status.success());
+}
+
+#[test]
+fn sprite_refuses_an_asset_with_no_video_track_to_cut_from() {
+    let dir = tempfile::tempdir().unwrap();
+    stage(dir.path(), &["audio_aac_nl_2.mp4"]);
+    let status = dyndo(dir.path())
+        .args(["index", "audio_aac_nl_2.mp4", "-o", "asset.json"])
+        .status()
+        .unwrap();
+    assert!(status.success());
+
+    let status = dyndo(dir.path())
+        .args([
+            "sprite",
+            "-i",
+            "asset.json",
+            "--tile-size",
+            "5",
+            "--height",
+            "900",
+            "--step",
+            "10000",
+        ])
+        .status()
+        .unwrap();
+
+    assert!(!status.success());
+}
+
 #[test]
 fn index_rejects_unknown_track_option() {
     let dir = tempfile::tempdir().unwrap();

@@ -15,6 +15,7 @@ path = "src/main.rs"
 dyndo-core = { path = "../dyndo-core" }
 dyndo-dash = { path = "../dyndo-dash" }
 dyndo-hls = { path = "../dyndo-hls" }
+dyndo-image = { path = "../dyndo-image" }
 language-tags = "0.3.2"
 opendal = { version = "0.58", default-features = false, features = ["services-fs"] }
 quick-xml = { version = "0.40", features = ["serialize"] }

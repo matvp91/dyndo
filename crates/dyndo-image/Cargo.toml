@@ -1,0 +1,28 @@
+[package]
+name = "dyndo-image"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+bytes = "1"
+dyndo-core = { path = "../dyndo-core" }
+image = { version = "0.25", default-features = false, features = ["jpeg"] }
+mp4-atom = "0.12.1"
+# Builds Cisco's decoder from the bundled source, so the binaries dyndo ships stay
+# self-contained. The crate is BSD-2, but AVC is patent-pooled and a copyright
+# licence conveys nothing from that pool: Cisco's royalty coverage follows the
+# binaries Cisco distributes itself, which a source build is not. The alternative
+# is the `libloading` feature, which loads Cisco's own build at runtime.
+openh264 = { version = "0.9", features = ["source"] }
+opendal = { version = "0.58.0", default-features = false }
+thiserror = "2"
+tokio = { version = "1", features = ["rt"] }
+
+[dev-dependencies]
+opendal = { version = "0.58.0", default-features = false, features = ["services-memory"] }
+relative-path = "2.0.1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
