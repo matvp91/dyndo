@@ -19,6 +19,7 @@ dyndo dash --input <INPUT> [OPTIONS]
 | `--segment-boundaries <MILLISECONDS,…>` | Splice points a segment may not span. | none |
 | `--compact` | Hoist common segment information in the MPD. | `false` |
 | `--multi-period` | Open a `Period` at each segment boundary. | `false` |
+| `--filter <EXPRESSION>` | Describe only the tracks the expression keeps. | none |
 | `-h, --help` | Print help. | |
 
 ## Description
@@ -31,9 +32,21 @@ wrote stream.mpd
 ```
 
 The CLI and the server share one manifest builder. They produce the same MPD
-model for the same descriptor, segmentation options, and DASH transport
+model for the same descriptor, segmentation options, and DASH manifest
 options. The surrounding HTTP response and XML-writing context are specific to
 each interface.
+
+## Filtering tracks
+
+`--filter` narrows which tracks the manifest describes, in the same language as
+the server's [`filter` parameter](../server/routes.md#filtering-tracks):
+
+```bash
+dyndo dash -i asset.json --filter 'type!=video||height<=720'
+```
+
+Quote the expression so the shell leaves `<`, `|` and `&` alone; nothing needs
+percent-encoding here. A filter matching no track is an error.
 
 ## Manifest structure
 

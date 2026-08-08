@@ -7,7 +7,8 @@ use dash_mpd::{
     AdaptationSet, AudioChannelConfiguration, MPD, Period, Representation, S, SegmentTemplate,
     SegmentTimeline, SupplementalProperty,
 };
-use dyndo_core::asset_descriptor::{AssetDescriptor, TrackDescriptor, TrackKind};
+use dyndo_core::asset_descriptor::{AssetDescriptor, TrackKind};
+use dyndo_core::filter::{Filter, FilterMatchedNothing};
 use dyndo_core::segment::SegmentOptions;
 use dyndo_core::segment_group::{self, SegmentGroup};
 use dyndo_core::track::{Track, TrackError, max_bitrate, max_duration, max_segment_duration};
@@ -32,31 +33,42 @@ pub enum DashError {
     Track(#[from] TrackError),
     #[error("tracks in an adaptation set are not segment-aligned")]
     SegmentAlignment,
+    #[error(transparent)]
+    Filter(#[from] FilterMatchedNothing),
 }
 
 /// Generates a static DASH media presentation description for an asset.
 ///
+/// `filter` narrows which of the asset's tracks the manifest describes; pass `None`
+/// to describe all of them.
+///
 /// # Errors
 ///
-/// Returns a [`DashError`] when a track cannot be probed or tracks grouped into
-/// an AdaptationSet are not segment-aligned.
+/// Returns a [`DashError`] when a track cannot be probed, the filter matches no
+/// track, or tracks grouped into an AdaptationSet are not segment-aligned.
 pub async fn generate_mpd(
     op: &Operator,
     asset: &AssetDescriptor,
     dash_options: &DashOptions,
+    filter: Option<&Filter>,
 ) -> Result<MPD, DashError> {
     let tracks = Track::probe_all(op, asset).await?;
-    build_mpd(asset, &tracks, &asset.segment_options, dash_options)
+    let tracks = match filter {
+        Some(filter) => filter.narrow(tracks, &asset.segment_options)?,
+        None => tracks,
+    };
+
+    build_mpd(&tracks, &asset.segment_options, dash_options)
 }
 
+/// Builds the manifest from tracks already probed and already narrowed.
 fn build_mpd(
-    asset: &AssetDescriptor,
     tracks: &[Track],
     segment_options: &SegmentOptions,
     dash_options: &DashOptions,
 ) -> Result<MPD, DashError> {
     let duration = Duration::from_millis(u64::from(max_duration(tracks)));
-    let groups = adaptation_set_group::group(asset, tracks);
+    let groups = adaptation_set_group::group(tracks);
     if groups
         .iter()
         .any(|group| !group.is_segment_aligned(segment_options))
@@ -141,7 +153,7 @@ fn adaptation_set(
     let representations: Vec<Representation> = group
         .members()
         .iter()
-        .filter_map(|(descriptor, track)| representation(descriptor, track, segment_options, span))
+        .filter_map(|track| representation(track, segment_options, span))
         .collect();
     if representations.is_empty() {
         return None;
@@ -193,7 +205,6 @@ fn period_continuity(id: usize, previous: Option<&Period>) -> Vec<SupplementalPr
 /// segments there — a timeline has to hold at least one, and there would be
 /// nothing to fetch anyway.
 fn representation(
-    descriptor: &TrackDescriptor,
     track: &Track,
     segment_options: &SegmentOptions,
     span: &Range<u32>,
@@ -204,14 +215,14 @@ fn representation(
     }
 
     let mut representation = Representation {
-        id: Some(descriptor.id.clone()),
+        id: Some(track.id().to_string()),
         bandwidth: Some(max_bitrate(track, segment_options)),
-        codecs: Some(descriptor.codec.clone()),
+        codecs: Some(track.codec().to_string()),
         SegmentTemplate: Some(segment_template(track, &group, span)),
         ..Default::default()
     };
 
-    match &descriptor.kind {
+    match track.kind() {
         TrackKind::Video(video) => {
             representation.width = Some(u64::from(video.width));
             representation.height = Some(u64::from(video.height));
@@ -287,45 +298,23 @@ fn segment_timeline(group: &SegmentGroup) -> SegmentTimeline {
 mod tests {
     use super::*;
 
-    fn asset() -> AssetDescriptor {
-        AssetDescriptor::default()
-    }
-
     #[test]
     fn generate_mpd_creates_a_static_manifest() {
-        let mpd = build_mpd(
-            &asset(),
-            &[],
-            &SegmentOptions::default(),
-            &DashOptions::default(),
-        )
-        .unwrap();
+        let mpd = build_mpd(&[], &SegmentOptions::default(), &DashOptions::default()).unwrap();
 
         assert_eq!(mpd.mpdtype.as_deref(), Some("static"));
     }
 
     #[test]
     fn generate_mpd_uses_the_segment_based_profile() {
-        let mpd = build_mpd(
-            &asset(),
-            &[],
-            &SegmentOptions::default(),
-            &DashOptions::default(),
-        )
-        .unwrap();
+        let mpd = build_mpd(&[], &SegmentOptions::default(), &DashOptions::default()).unwrap();
 
         assert_eq!(mpd.profiles.as_deref(), Some(DASH_PROFILE));
     }
 
     #[test]
-    fn generate_mpd_opens_no_period_for_an_asset_without_tracks() {
-        let mpd = build_mpd(
-            &asset(),
-            &[],
-            &SegmentOptions::default(),
-            &DashOptions::default(),
-        )
-        .unwrap();
+    fn build_mpd_opens_no_period_for_an_asset_without_tracks() {
+        let mpd = build_mpd(&[], &SegmentOptions::default(), &DashOptions::default()).unwrap();
 
         assert!(mpd.periods.is_empty());
     }

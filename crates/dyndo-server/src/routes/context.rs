@@ -1,5 +1,5 @@
 //! What a request asks of dyndo: which asset, how to segment it, and whatever the
-//! transport itself takes, all parsed from the rison fragment in the path.
+//! manifest itself takes, all parsed from the rison fragment in the path.
 
 use std::borrow::Cow;
 
@@ -17,7 +17,7 @@ pub(super) struct RequestContext<T> {
     #[serde(flatten)]
     pub(super) segment_options: SegmentOptions,
     #[serde(flatten)]
-    pub(super) transport_options: T,
+    pub(super) manifest_options: T,
 }
 
 impl<T> RequestContext<T> {
@@ -130,7 +130,7 @@ mod tests {
     fn parse_context_accepts_compact_alias() {
         let context = parse_context::<DashOptions>("(asset:asset,c:!t)").unwrap();
 
-        assert!(context.transport_options.compact);
+        assert!(context.manifest_options.compact);
     }
 
     #[test]

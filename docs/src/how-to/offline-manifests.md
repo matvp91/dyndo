@@ -7,7 +7,7 @@ output without starting a server.
 
 The CLI and the server share the same manifest builders, so they produce the
 same manifest model for the same descriptor, segmentation options, and
-transport options. These commands simply do not serve the media alongside it.
+manifest options. These commands simply do not serve the media alongside it.
 Players still need the CMAF segments, which the server provides in production.
 
 ## Render a DASH manifest

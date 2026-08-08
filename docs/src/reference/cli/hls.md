@@ -19,6 +19,7 @@ dyndo hls --input <INPUT> [OPTIONS]
 | `--segment-text-length <MILLISECONDS>` | Length of each segment of a subtitle track packaged from a `.vtt`. | `0` |
 | `--segment-boundaries <MILLISECONDS,…>` | Splice points a segment may not span. | none |
 | `--wvtt` | Point text renditions at packaged `wvtt` segments rather than WebVTT documents. | off |
+| `--filter <EXPRESSION>` | Write playlists only for the tracks the expression keeps. | none |
 | `-h, --help` | Print help. | |
 
 ## Description
@@ -44,6 +45,20 @@ the server's [`master.m3u8` and `<id>.m3u8` routes](../server/routes.md) return
 for the same descriptor and segmentation options — pass `--wvtt` here and `wvtt`
 there to get the same playlists.
 
+## Filtering tracks
+
+`--filter` narrows which tracks are written, in the same language as the server's
+[`filter` parameter](../server/routes.md#filtering-tracks):
+
+```bash
+dyndo hls -i asset.json -o hls --filter 'type!=audio'
+```
+
+It applies to both halves of the output: the multivariant playlist lists only the
+tracks that survive, and no media playlist is written for one that does not.
+Quote the expression so the shell leaves `<`, `|` and `&` alone. A filter
+matching no track is an error.
+
 ## The multivariant playlist
 
 ```text
@@ -61,13 +76,9 @@ and all text tracks share `GROUP-ID="subtitles"`. Group membership does not
 depend on codec, so AAC and E-AC-3 renditions sit in the same audio group.
 
 A rendition's `NAME` is its language, qualified by a human-readable role label
-when a role is set — `nld`, `nld (Main)`, `eng (Audio Description)`. Two
-renditions in the same group may not resolve to the same `NAME`; when they do
-the command aborts:
-
-```text
-duplicate rendition name: eng (Main)
-```
+when a role is set — `nld`, `nld (Main)`, `eng (Audio Description)`. HLS requires
+names within a group to be distinct, and dyndo does not check it: give tracks
+sharing a group distinct languages or roles when indexing them.
 
 Roles also drive `DEFAULT`, `AUTOSELECT`, `FORCED`, and `CHARACTERISTICS` — see
 the [Track roles reference](../roles.md) for the exact rules.

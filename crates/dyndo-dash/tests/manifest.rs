@@ -13,7 +13,7 @@ const FIXTURES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../fixtures");
 async fn generate_mpd_emits_complete_vod_manifest() {
     let (op, asset) = asset().await;
 
-    let mpd = dyndo_dash::builder::generate_mpd(&op, &asset, &DashOptions::default())
+    let mpd = dyndo_dash::builder::generate_mpd(&op, &asset, &DashOptions::default(), None)
         .await
         .unwrap();
     let mut xml = String::new();
@@ -46,12 +46,33 @@ async fn generate_mpd_emits_complete_vod_manifest() {
     }
 }
 
+/// The descriptor's declared codec is not trusted: a track re-encoded without being
+/// re-indexed would otherwise be advertised as what it used to be.
+#[tokio::test]
+async fn generate_mpd_advertises_the_probed_codec_over_the_declared_one() {
+    let (op, mut asset) = asset().await;
+    asset.tracks[0].codec = "avc1.stale".to_string();
+
+    let mpd = dyndo_dash::builder::generate_mpd(&op, &asset, &DashOptions::default(), None)
+        .await
+        .unwrap();
+    let mut xml = String::new();
+    let mut serializer = quick_xml::se::Serializer::new(&mut xml);
+    serializer.indent(' ', 2);
+    mpd.serialize(serializer).unwrap();
+
+    assert!(
+        xml.contains("codecs=\"avc1.640028\"") && !xml.contains("avc1.stale"),
+        "unexpected manifest: {xml}"
+    );
+}
+
 #[tokio::test]
 async fn generate_mpd_applies_the_assets_minimum_segment_length() {
     let (op, mut asset) = asset().await;
     asset.segment_options.min_length = 10_000;
 
-    let mpd = dyndo_dash::builder::generate_mpd(&op, &asset, &DashOptions::default())
+    let mpd = dyndo_dash::builder::generate_mpd(&op, &asset, &DashOptions::default(), None)
         .await
         .unwrap();
     let mut xml = String::new();
@@ -65,7 +86,7 @@ async fn generate_mpd_applies_the_assets_minimum_segment_length() {
 async fn generate_mpd_keeps_templates_on_representations_when_not_compact() {
     let (op, asset) = asset().await;
 
-    let mpd = dyndo_dash::builder::generate_mpd(&op, &asset, &DashOptions::default())
+    let mpd = dyndo_dash::builder::generate_mpd(&op, &asset, &DashOptions::default(), None)
         .await
         .unwrap();
 
@@ -89,6 +110,7 @@ async fn generate_mpd_hoists_templates_when_compact() {
             compact: true,
             ..DashOptions::default()
         },
+        None,
     )
     .await
     .unwrap();
@@ -106,7 +128,7 @@ async fn generate_mpd_hoists_templates_when_compact() {
 async fn generate_mpd_leaves_one_period_until_multi_period_is_asked_for() {
     let (op, asset) = spliced_asset().await;
 
-    let mpd = dyndo_dash::builder::generate_mpd(&op, &asset, &DashOptions::default())
+    let mpd = dyndo_dash::builder::generate_mpd(&op, &asset, &DashOptions::default(), None)
         .await
         .unwrap();
 
@@ -117,7 +139,7 @@ async fn generate_mpd_leaves_one_period_until_multi_period_is_asked_for() {
 async fn generate_mpd_opens_a_period_at_each_boundary() {
     let (op, asset) = spliced_asset().await;
 
-    let mpd = dyndo_dash::builder::generate_mpd(&op, &asset, &multi_period())
+    let mpd = dyndo_dash::builder::generate_mpd(&op, &asset, &multi_period(), None)
         .await
         .unwrap();
 
@@ -149,7 +171,7 @@ async fn generate_mpd_opens_a_period_at_each_boundary() {
 async fn generate_mpd_offsets_a_period_to_the_boundary_not_to_a_tracks_own_cut() {
     let (op, asset) = spliced_asset().await;
 
-    let mpd = dyndo_dash::builder::generate_mpd(&op, &asset, &multi_period())
+    let mpd = dyndo_dash::builder::generate_mpd(&op, &asset, &multi_period(), None)
         .await
         .unwrap();
     let offsets: Vec<(u64, u64)> = mpd.periods[1]
@@ -179,7 +201,7 @@ async fn generate_mpd_offsets_a_period_to_the_boundary_not_to_a_tracks_own_cut()
 async fn generate_mpd_declares_a_period_continuous_with_the_one_before_it() {
     let (op, asset) = spliced_asset().await;
 
-    let mpd = dyndo_dash::builder::generate_mpd(&op, &asset, &multi_period())
+    let mpd = dyndo_dash::builder::generate_mpd(&op, &asset, &multi_period(), None)
         .await
         .unwrap();
 
@@ -204,7 +226,7 @@ async fn generate_mpd_skips_a_period_no_track_can_cut_for() {
     let (op, mut asset) = spliced_asset().await;
     asset.segment_options.boundaries = vec![3_800, 3_840];
 
-    let mpd = dyndo_dash::builder::generate_mpd(&op, &asset, &multi_period())
+    let mpd = dyndo_dash::builder::generate_mpd(&op, &asset, &multi_period(), None)
         .await
         .unwrap();
 
@@ -227,7 +249,7 @@ async fn generate_mpd_skips_a_period_no_track_can_cut_for() {
 async fn generate_mpd_drops_a_track_that_ended_and_keeps_the_other_ids() {
     let (op, asset) = subtitled_spliced_asset().await;
 
-    let mpd = dyndo_dash::builder::generate_mpd(&op, &asset, &multi_period())
+    let mpd = dyndo_dash::builder::generate_mpd(&op, &asset, &multi_period(), None)
         .await
         .unwrap();
 
@@ -245,7 +267,7 @@ async fn generate_mpd_drops_a_track_that_ended_and_keeps_the_other_ids() {
 async fn generate_mpd_keeps_continuity_across_a_dropped_track() {
     let (op, asset) = subtitled_spliced_asset().await;
 
-    let mpd = dyndo_dash::builder::generate_mpd(&op, &asset, &multi_period())
+    let mpd = dyndo_dash::builder::generate_mpd(&op, &asset, &multi_period(), None)
         .await
         .unwrap();
 
@@ -269,10 +291,10 @@ fn adaptation_set_ids(period: &dash_mpd::Period) -> Vec<&str> {
 async fn generate_mpd_hands_every_segment_to_exactly_one_period() {
     let (op, asset) = spliced_asset().await;
 
-    let single = dyndo_dash::builder::generate_mpd(&op, &asset, &DashOptions::default())
+    let single = dyndo_dash::builder::generate_mpd(&op, &asset, &DashOptions::default(), None)
         .await
         .unwrap();
-    let split = dyndo_dash::builder::generate_mpd(&op, &asset, &multi_period())
+    let split = dyndo_dash::builder::generate_mpd(&op, &asset, &multi_period(), None)
         .await
         .unwrap();
 

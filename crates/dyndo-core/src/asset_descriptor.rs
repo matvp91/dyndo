@@ -100,7 +100,7 @@ pub struct TrackDescriptor {
 impl TrackDescriptor {
     fn from_track(track: &Track, path: RelativePathBuf) -> Self {
         Self {
-            id: track.id(),
+            id: track.id().to_string(),
             path,
             codec: track.codec().to_string(),
             kind: track.kind().clone(),
@@ -114,6 +114,26 @@ pub enum TrackKind {
     Video(VideoKind),
     Audio(AudioKind),
     Text(TextKind),
+}
+
+impl TrackKind {
+    /// Returns the DASH media content type represented by a track of this kind.
+    pub fn content_type(&self) -> &'static str {
+        match self {
+            Self::Video(_) => "video",
+            Self::Audio(_) => "audio",
+            Self::Text(_) => "text",
+        }
+    }
+
+    /// Returns the media type of the CMAF representation of a track of this kind.
+    pub fn mime_type(&self) -> &'static str {
+        match self {
+            Self::Video(_) => "video/mp4",
+            Self::Audio(_) => "audio/mp4",
+            Self::Text(_) => "application/mp4",
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -329,5 +349,31 @@ mod tests {
             height: 1080,
             frame_rate: "25/1".to_string(),
         })
+    }
+
+    #[test]
+    fn each_kind_reports_its_content_and_mime_type() {
+        let audio = AudioKind {
+            sample_rate: 48_000,
+            channels: 2,
+            language: "eng".parse().unwrap(),
+            role: None,
+        };
+        let text = TextKind {
+            language: "eng".parse().unwrap(),
+            role: None,
+        };
+
+        for (kind, content_type, mime_type) in [
+            (video_kind(), "video", "video/mp4"),
+            (TrackKind::Audio(audio), "audio", "audio/mp4"),
+            (TrackKind::Text(text), "text", "application/mp4"),
+        ] {
+            assert_eq!(
+                (kind.content_type(), kind.mime_type()),
+                (content_type, mime_type),
+                "for {content_type}"
+            );
+        }
     }
 }
