@@ -14,6 +14,8 @@
 //! into stays black rather than shrinking the grid, so every sprite cut from an asset
 //! comes out the size its manifest advertised.
 
+use std::num::NonZero;
+
 use bytes::Bytes;
 use dyndo_core::asset_descriptor::TrackKind;
 use dyndo_core::segment::SegmentOptions;
@@ -26,7 +28,7 @@ use opendal::Operator;
 
 use crate::decoder::{Decoder, DecoderError, Frame};
 use crate::fragment::{Fragment, FragmentError};
-use crate::window::Window;
+use crate::window::{Cell, Window};
 
 /// Quality a sprite is encoded at. A cell is a heavy downscale of its frame, so the
 /// detail a higher setting preserves is not there to preserve.
@@ -141,28 +143,58 @@ impl Canvas {
     /// Decodes the frame each cell shows, lays them out, and encodes the sprite.
     /// `fragments` holds the bytes of every cell the presentation reaches, in the order
     /// those cells appear.
+    ///
+    /// A fragment opens on a keyframe and is decoded on its own, so the cells are
+    /// decoded a coreful at a time rather than one after another. They are placed as
+    /// each round comes back, which keeps no more frames in memory than there are
+    /// threads decoding them.
+    ///
+    /// A cell the presentation never reaches stays black. DASH-IF expects a trailing
+    /// sprite to be partly filled, and a player placing a cell by time never asks for
+    /// one of them.
     fn compose(
         mut self,
         initialization: &[u8],
         fragments: &[Bytes],
         window: &Window,
     ) -> Result<Bytes, SpriteError> {
-        let mut decoder = Decoder::new(initialization)?;
-        let mut read = fragments.iter();
+        let cells: Vec<(u32, &Cell, &Bytes)> = window
+            .cells
+            .iter()
+            .enumerate()
+            .filter_map(|(index, cell)| cell.as_ref().map(|cell| (index, cell)))
+            .zip(fragments)
+            .map(|((index, cell), bytes)| {
+                let index =
+                    u32::try_from(index).expect("a sprite holds no more cells than its tile size");
+                (index, cell, bytes)
+            })
+            .collect();
+        let threads = std::thread::available_parallelism().map_or(1, NonZero::get);
 
-        for (index, cell) in window.cells.iter().enumerate() {
-            // A cell the presentation never reaches stays black. DASH-IF expects a
-            // trailing sprite to be partly filled, and a player placing a cell by time
-            // never asks for one of them.
-            let Some(cell) = cell else { continue };
-            let bytes = read
-                .next()
-                .expect("every cell the presentation reaches was read");
-            let fragment = Fragment::read(bytes)?;
-            let index =
-                u32::try_from(index).expect("a sprite holds no more cells than its tile size");
+        for round in cells.chunks(threads) {
+            let frames = std::thread::scope(|scope| {
+                let decoding: Vec<_> = round
+                    .iter()
+                    .map(|(index, cell, bytes)| {
+                        scope.spawn(move || -> Result<(u32, Frame), SpriteError> {
+                            let mut decoder = Decoder::new(initialization)?;
+                            let fragment = Fragment::read(bytes)?;
 
-            self.place(index, decoder.frame_at(&fragment, cell.time)?)?;
+                            Ok((*index, decoder.frame_at(&fragment, cell.time)?))
+                        })
+                    })
+                    .collect();
+
+                decoding
+                    .into_iter()
+                    .map(|frame| frame.join().expect("decoding a frame does not panic"))
+                    .collect::<Result<Vec<_>, _>>()
+            })?;
+
+            for (index, frame) in frames {
+                self.place(index, frame)?;
+            }
         }
 
         self.encode()
@@ -279,10 +311,15 @@ mod tests {
     #[test]
     fn compose_refuses_an_initialization_segment_that_is_not_avc() {
         let initialization = fs::read(format!("{FIXTURES}/video_av1_240.mp4")).unwrap();
-        let window = Window { cells: Vec::new() };
+        let window = Window {
+            cells: vec![Some(Cell {
+                segment: 0..0,
+                time: 0,
+            })],
+        };
 
         let error = Canvas::new(TILE_SIZE, SOURCE)
-            .compose(&initialization, &[], &window)
+            .compose(&initialization, &[Bytes::new()], &window)
             .unwrap_err();
 
         assert!(
