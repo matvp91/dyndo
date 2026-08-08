@@ -31,16 +31,18 @@ pub(super) async fn run(op: &Operator, args: HlsArgs) -> Result<(), Box<dyn std:
 
     let filter = parse_filter(args.filter.as_deref())?;
 
-    let hls_options = dyndo_hls::options::HlsOptions { 
-        wvtt: args.wvtt 
-    };
+    let hls_options = dyndo_hls::options::HlsOptions { wvtt: args.wvtt };
 
     let output = RelativePathBuf::from(args.output);
     op.create_dir(&format!("{output}/")).await?;
 
-    let master =
-        dyndo_hls::builder::generate_master_playlist(op, &descriptor, &hls_options, filter.as_ref())
-            .await?;
+    let master = dyndo_hls::builder::generate_master_playlist(
+        op,
+        &descriptor,
+        &hls_options,
+        filter.as_ref(),
+    )
+    .await?;
     let master_path = output.join("master.m3u8");
     op.write(master_path.as_str(), master.to_string()).await?;
     println!("wrote {master_path}");

@@ -1,7 +1,7 @@
 use clap::Args;
 use dyndo_core::asset_descriptor::{AssetDescriptor, TrackDescriptor, TrackKind};
 use dyndo_core::track::Track;
-use dyndo_image::sprite_generator;
+use dyndo_image::sprite::Sprite;
 use opendal::Operator;
 
 #[derive(Args)]
@@ -41,17 +41,15 @@ pub(super) async fn run(op: &Operator, args: SpriteArgs) -> Result<(), Box<dyn s
         &descriptor.segment_options,
     )
     .await?;
-    let sprite = sprite_generator::generate(
-        op,
-        &track,
-        args.tile_size,
-        args.height,
-        args.step,
-        args.time,
-    )
-    .await?;
+    let sprite = Sprite {
+        tile_size: args.tile_size,
+        height: args.height,
+        step: args.step,
+        time: args.time,
+    };
 
-    op.write(&args.output, sprite).await?;
+    op.write(&args.output, sprite.generate(op, &track).await?)
+        .await?;
     println!("wrote {}", args.output);
     Ok(())
 }

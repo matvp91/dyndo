@@ -39,48 +39,55 @@ pub enum SpriteError {
     CellOutsideRange,
 }
 
-/// Cuts the sprite whose first thumbnail shows `time`, in milliseconds from the start
-/// of the presentation.
+/// The sprite asked for: which thumbnails it holds and how large they come out.
 ///
 /// `tile_size` thumbnails go in a row and in a column — a player reads it as the value
 /// of the DASH-IF `thumbnail_tile` essential property, where `5` becomes `5x5`, and
 /// divides the sprite by it to place a cell. `height` is the whole sprite's, in pixels,
 /// so a thumbnail is a `tile_size`th of it and its width follows the source's aspect.
-/// `step` is the milliseconds between one thumbnail and the next.
-///
-/// # Errors
-///
-/// Returns a [`SpriteError`] when the track is not video, when the presentation does
-/// not reach `time`, or when a frame cannot be read, decoded, or encoded.
-pub async fn generate(
-    op: &Operator,
-    track: &Track,
-    tile_size: u32,
-    height: u32,
-    step: u32,
-    time: u64,
-) -> Result<Bytes, SpriteError> {
-    let TrackKind::Video(video) = track.kind() else {
-        return Err(SpriteError::NotVideo(track.id().to_string()));
-    };
-    let window =
-        Window::new(track, tile_size * tile_size, step, time).ok_or(SpriteError::NotFound(time))?;
+/// `step` is the milliseconds between one thumbnail and the next, and `time` is what the
+/// first thumbnail shows, in milliseconds from the start of the presentation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Sprite {
+    pub tile_size: u32,
+    pub height: u32,
+    pub step: u32,
+    pub time: u64,
+}
 
-    // The only read segment options change is a subtitle document's packaging, and a
-    // sprite is only ever cut from a video track — so which options a request asked for
-    // delivery in says nothing about how these bytes are read.
-    let options = SegmentOptions::default();
-    let initialization = track.read_initialization(op, &options).await?;
-    let media = track.read_range(op, &options, window.range.clone()).await?;
+impl Sprite {
+    /// Cuts the sprite from `track`.
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`SpriteError`] when the track is not video, when the presentation does
+    /// not reach [`time`](Self::time), or when a frame cannot be read, decoded, or
+    /// encoded.
+    pub async fn generate(&self, op: &Operator, track: &Track) -> Result<Bytes, SpriteError> {
+        let TrackKind::Video(video) = track.kind() else {
+            return Err(SpriteError::NotVideo(track.id().to_string()));
+        };
+        let window = Window::new(track, self.tile_size * self.tile_size, self.step, self.time)
+            .ok_or(SpriteError::NotFound(self.time))?;
 
-    let codec = track.codec().to_string();
-    let image = Image::new(tile_size, height, (video.width, video.height));
+        // The only read segment options change is a subtitle document's packaging, and a
+        // sprite is only ever cut from a video track — so which options a request asked
+        // for delivery in says nothing about how these bytes are read.
+        let options = SegmentOptions::default();
+        let initialization = track.read_initialization(op, &options).await?;
+        let media = track.read_range(op, &options, window.range.clone()).await?;
 
-    // Decoding a sprite's frames and encoding it is hundreds of milliseconds of CPU,
-    // which on the caller's executor would stall every request sharing its thread.
-    tokio::task::spawn_blocking(move || compose(&codec, &initialization, &media, &window, image))
+        let codec = track.codec().to_string();
+        let image = Image::new(self.tile_size, self.height, (video.width, video.height));
+
+        // Decoding a sprite's frames and encoding it is hundreds of milliseconds of CPU,
+        // which on the caller's executor would stall every request sharing its thread.
+        tokio::task::spawn_blocking(move || {
+            compose(&codec, &initialization, &media, &window, image)
+        })
         .await
         .expect("composing a sprite does not panic")
+    }
 }
 
 /// Decodes the frame each cell shows and lays them out into one image.

@@ -2,7 +2,7 @@
 
 use dyndo_core::segment::SegmentOptions;
 use dyndo_core::track::Track;
-use dyndo_image::sprite_generator::{self, SpriteError};
+use dyndo_image::sprite::{Sprite, SpriteError};
 use opendal::Operator;
 use opendal::services::Memory;
 use relative_path::RelativePath;
@@ -16,9 +16,7 @@ const STEP: u32 = 10_000;
 async fn generate_refuses_a_track_that_is_not_video() {
     let (op, track) = probe("audio_aac_nl_2.mp4").await;
 
-    let error = sprite_generator::generate(&op, &track, TILE_SIZE, HEIGHT, STEP, 0)
-        .await
-        .unwrap_err();
+    let error = sprite(0).generate(&op, &track).await.unwrap_err();
 
     assert!(matches!(error, SpriteError::NotVideo(_)), "{error}");
 }
@@ -28,11 +26,18 @@ async fn generate_refuses_a_track_that_is_not_video() {
 async fn generate_refuses_a_time_the_presentation_never_reaches() {
     let (op, track) = probe("video_avc_1080.mp4").await;
 
-    let error = sprite_generator::generate(&op, &track, TILE_SIZE, HEIGHT, STEP, 1_400_000)
-        .await
-        .unwrap_err();
+    let error = sprite(1_400_000).generate(&op, &track).await.unwrap_err();
 
     assert!(matches!(error, SpriteError::NotFound(_)), "{error}");
+}
+
+fn sprite(time: u64) -> Sprite {
+    Sprite {
+        tile_size: TILE_SIZE,
+        height: HEIGHT,
+        step: STEP,
+        time,
+    }
 }
 
 async fn probe(name: &str) -> (Operator, Track) {
