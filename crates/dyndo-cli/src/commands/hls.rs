@@ -29,13 +29,15 @@ pub(crate) struct HlsArgs {
 pub(super) async fn run(op: &Operator, args: HlsArgs) -> Result<(), Box<dyn std::error::Error>> {
     let mut descriptor = AssetDescriptor::read(op, &args.input).await?;
     args.segment.assign_to(&mut descriptor.segment_options);
-    // Narrowed here rather than handed to the builder, because a media playlist is
-    // written per track below: the descriptor the loop walks has to be the same one
-    // the multivariant playlist describes, or it would emit playlists nothing
-    // references.
+    // A media playlist is written per descriptor track below, so the descriptor has
+    // to drop what the filter dropped — otherwise it writes playlists the
+    // multivariant playlist does not reference.
     if let Some(filter) = parse_filter(args.filter.as_deref())? {
         let tracks = Track::probe_all(op, &descriptor).await?;
-        (descriptor, _) = filter.narrow(&descriptor, tracks)?;
+        let kept = filter.narrow(tracks, &descriptor.segment_options)?;
+        descriptor
+            .tracks
+            .retain(|track| kept.iter().any(|kept| track.id == kept.id()));
     }
     let output = RelativePathBuf::from(args.output);
     op.create_dir(&format!("{output}/")).await?;

@@ -49,10 +49,11 @@ pub async fn generate_master_playlist(
     filter: Option<&Filter>,
 ) -> Result<MasterPlaylist<'static>, HlsError> {
     let tracks = Track::probe_all(op, asset).await?;
-    let Some(filter) = filter else {
-        return build_master_playlist(&tracks, &asset.segment_options, hls_options);
+    let tracks = match filter {
+        Some(filter) => filter.narrow(tracks, &asset.segment_options)?,
+        None => tracks,
     };
-    let (asset, tracks) = filter.narrow(asset, tracks)?;
+
     build_master_playlist(&tracks, &asset.segment_options, hls_options)
 }
 

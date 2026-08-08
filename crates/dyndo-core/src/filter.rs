@@ -13,8 +13,7 @@
 //! and `duration` exist only once a track has been probed, and `codec` is then the
 //! probed value rather than the descriptor's claim.
 //!
-//! [`Filter::narrow`] is the way in, and it is only worth calling when a request
-//! actually carries a filter: an asset nobody narrowed needs no copy of itself.
+//! [`Filter::narrow`] is the way in.
 
 use winnow::ascii::{digit1, multispace0};
 use winnow::combinator::{
@@ -24,7 +23,7 @@ use winnow::error::{StrContext, StrContextValue};
 use winnow::prelude::*;
 use winnow::token::take_while;
 
-use crate::asset_descriptor::{AssetDescriptor, TrackDescriptor, TrackKind};
+use crate::asset_descriptor::TrackKind;
 use crate::role::Role;
 use crate::segment::SegmentOptions;
 use crate::track::{Track, average_bitrate, max_bitrate};
@@ -35,19 +34,19 @@ use crate::track::{Track, average_bitrate, max_bitrate};
 /// `numeric` decides two things at once: which parser reads the value, and whether
 /// `<`, `<=`, `>` and `>=` are accepted at all.
 const ATTRIBUTES: &[Attribute] = &[
-    Attribute::text("type", |_, track| Some(track.kind().content_type())),
-    Attribute::text("id", |descriptor, _| Some(descriptor.id.as_str())),
-    Attribute::text("codec", |_, track| Some(track.codec())),
-    Attribute::text("frame_rate", |_, track| match track.kind() {
+    Attribute::text("type", |track| Some(track.kind().content_type())),
+    Attribute::text("id", |track| Some(track.id())),
+    Attribute::text("codec", |track| Some(track.codec())),
+    Attribute::text("frame_rate", |track| match track.kind() {
         TrackKind::Video(video) => Some(video.frame_rate.as_str()),
         _ => None,
     }),
-    Attribute::text("language", |_, track| match track.kind() {
+    Attribute::text("language", |track| match track.kind() {
         TrackKind::Audio(audio) => Some(audio.language.as_str()),
         TrackKind::Text(text) => Some(text.language.as_str()),
         TrackKind::Video(_) => None,
     }),
-    Attribute::text("role", |_, track| match track.kind() {
+    Attribute::text("role", |track| match track.kind() {
         TrackKind::Audio(audio) => audio.role.map(Role::as_str),
         TrackKind::Text(text) => text.role.map(Role::as_str),
         TrackKind::Video(_) => None,
@@ -105,7 +104,7 @@ impl Filter {
             })
     }
 
-    /// Narrows an asset to the tracks this filter keeps.
+    /// Drops the tracks this filter rejects.
     ///
     /// A narrowing that leaves at least one track is servable: dropping all video
     /// while keeping audio is a legitimate audio-only presentation. One that leaves
@@ -117,28 +116,18 @@ impl Filter {
     /// Returns [`FilterMatchedNothing`] when every track is rejected.
     pub fn narrow(
         &self,
-        asset: &AssetDescriptor,
         tracks: Vec<Track>,
-    ) -> Result<(AssetDescriptor, Vec<Track>), FilterMatchedNothing> {
-        let mut narrowed = asset.clone();
-
-        // Zipped and unzipped rather than filtered apart, because the manifest
-        // builders pair the two lists positionally: they take ids from the descriptor
-        // and media facts from the track, so lists that disagree would quietly emit
-        // one track's id for another track's media.
-        let (descriptors, tracks): (Vec<_>, Vec<_>) = std::mem::take(&mut narrowed.tracks)
+        options: &SegmentOptions,
+    ) -> Result<Vec<Track>, FilterMatchedNothing> {
+        let tracks: Vec<_> = tracks
             .into_iter()
-            .zip(tracks)
-            .filter(|(descriptor, track)| {
-                self.0.matches(descriptor, track, &narrowed.segment_options)
-            })
-            .unzip();
-        if descriptors.is_empty() {
+            .filter(|track| self.0.matches(track, options))
+            .collect();
+        if tracks.is_empty() {
             return Err(FilterMatchedNothing);
         }
-        narrowed.tracks = descriptors;
 
-        Ok((narrowed, tracks))
+        Ok(tracks)
     }
 }
 
@@ -158,16 +147,12 @@ enum Expr {
 }
 
 impl Expr {
-    fn matches(&self, descriptor: &TrackDescriptor, track: &Track, of: &SegmentOptions) -> bool {
+    fn matches(&self, track: &Track, of: &SegmentOptions) -> bool {
         match self {
-            Self::And(left, right) => {
-                left.matches(descriptor, track, of) && right.matches(descriptor, track, of)
-            }
-            Self::Or(left, right) => {
-                left.matches(descriptor, track, of) || right.matches(descriptor, track, of)
-            }
+            Self::And(left, right) => left.matches(track, of) && right.matches(track, of),
+            Self::Or(left, right) => left.matches(track, of) || right.matches(track, of),
             Self::Cmp(attribute, op, wanted) => attribute
-                .of(descriptor, track, of)
+                .of(track, of)
                 .is_some_and(|actual| op.holds(&actual, wanted)),
         }
     }
@@ -194,15 +179,12 @@ impl Eq for Attribute {}
 /// numeric attribute can be ordered.
 #[derive(Debug)]
 enum Extract {
-    Text(for<'a> fn(&'a TrackDescriptor, &'a Track) -> Option<&'a str>),
+    Text(fn(&Track) -> Option<&str>),
     Number(fn(&Track, &SegmentOptions) -> Option<u64>),
 }
 
 impl Attribute {
-    const fn text(
-        name: &'static str,
-        extract: for<'a> fn(&'a TrackDescriptor, &'a Track) -> Option<&'a str>,
-    ) -> Self {
+    const fn text(name: &'static str, extract: fn(&Track) -> Option<&str>) -> Self {
         Self {
             name,
             extract: Extract::Text(extract),
@@ -225,16 +207,9 @@ impl Attribute {
 
     /// The track's own value, or `None` when the track does not carry the attribute
     /// — a video track has no language, an audio track no height.
-    fn of(
-        &self,
-        descriptor: &TrackDescriptor,
-        track: &Track,
-        options: &SegmentOptions,
-    ) -> Option<Value> {
+    fn of(&self, track: &Track, options: &SegmentOptions) -> Option<Value> {
         match self.extract {
-            Extract::Text(extract) => {
-                extract(descriptor, track).map(|text| Value::Text(text.to_string()))
-            }
+            Extract::Text(extract) => extract(track).map(|text| Value::Text(text.to_string())),
             Extract::Number(extract) => extract(track, options).map(Value::Number),
         }
     }
