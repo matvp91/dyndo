@@ -1,8 +1,17 @@
+//! What a request is served: fragments grouped into segments.
+//!
+//! A segment is derived, never stored — the same track cut under different options
+//! yields different segments, so nothing holds them and every answer here is a
+//! function of a track plus the options asked for.
+
 use std::ops::Range;
 
 use serde::{Deserialize, Serialize};
 
-use crate::track::{Fragment, Track};
+use crate::asset_descriptor::TrackKind;
+use crate::fragment::Fragment;
+use crate::track::Track;
+use crate::utils::{snap_cut, snap_cuts};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SegmentOptions {
@@ -44,10 +53,10 @@ impl Segment {
         self.byte_size
     }
 
-    /// Returns the presentation time the segment covers, in the track's timescale
-    /// units.
-    pub fn raw_time_range(&self) -> Range<u64> {
-        self.raw_start..self.raw_start + self.raw_duration
+    /// Returns the presentation time the segment begins at, in the track's timescale
+    /// units — the track's earliest presentation time plus every duration before it.
+    pub fn raw_start(&self) -> u64 {
+        self.raw_start
     }
 
     /// Returns the segment's duration in the track's timescale units.
@@ -56,21 +65,94 @@ impl Segment {
     }
 }
 
-impl Track {
-    /// Returns the segments produced from the track under `options`.
-    pub fn segments(&self, options: &SegmentOptions) -> Vec<Segment> {
-        group_fragments(
-            self.fragments(),
-            self.timescale(),
-            self.earliest_presentation_time(),
-            options,
-        )
+/// Returns the segments `track` is served as under `options`.
+pub fn segments(track: &Track, options: &SegmentOptions) -> Vec<Segment> {
+    group(
+        track.fragments(),
+        track.timescale(),
+        track.earliest_presentation_time(),
+        options,
+    )
+}
+
+/// Returns the segments of `track` that fall within `span`.
+///
+/// Empty when the track has nothing there — it ended before the span opened, or two
+/// boundaries snapped to the same segment edge — so callers pairing spans with
+/// segments always get one list per span.
+///
+/// The first segment begins at or after the span's start rather than on it: tracks
+/// snap to their own nearest segment edge, so a span opens before some of them have
+/// anything to give. That segment carries the time it begins at, which is what a
+/// manifest reads the timeline against.
+pub fn span(track: &Track, options: &SegmentOptions, span: &Range<u32>) -> Vec<Segment> {
+    let segments = segments(track, options);
+    let mut edges = Vec::with_capacity(segments.len() + 1);
+    edges.push(0u64);
+    for segment in &segments {
+        edges.push(edges[edges.len() - 1] + segment.raw_duration());
     }
+
+    let start = snap_cut(&edges, track.timescale(), span.start);
+    let end = snap_cut(&edges, track.timescale(), span.end).max(start);
+
+    segments[start..end].to_vec()
+}
+
+/// Returns the longest audio or video segment duration in milliseconds.
+pub fn max_segment_duration(tracks: &[Track], options: &SegmentOptions) -> u32 {
+    tracks
+        .iter()
+        .filter(|track| matches!(track.kind(), TrackKind::Video(_) | TrackKind::Audio(_)))
+        .flat_map(|track| {
+            let timescale = track.timescale();
+            segments(track, options).into_iter().map(move |segment| {
+                let duration =
+                    (u128::from(segment.raw_duration()) * 1000).div_ceil(u128::from(timescale));
+                u32::try_from(duration).unwrap_or(u32::MAX)
+            })
+        })
+        .max()
+        .unwrap_or(0)
+}
+
+/// Returns the highest average grouped-segment bitrate in bits per second.
+pub fn max_bitrate(track: &Track, options: &SegmentOptions) -> u64 {
+    segments(track, options)
+        .iter()
+        .map(|segment| {
+            let bits = u128::from(segment.byte_size()) * 8;
+            let scaled_bits = bits * u128::from(track.timescale());
+            let bitrate = scaled_bits.div_ceil(u128::from(segment.raw_duration()));
+            u64::try_from(bitrate).unwrap_or(u64::MAX)
+        })
+        .max()
+        .unwrap_or(0)
+}
+
+/// Returns the average bitrate of all grouped segments in bits per second.
+pub fn average_bitrate(track: &Track, options: &SegmentOptions) -> u64 {
+    let (byte_size, raw_duration) = segments(track, options).iter().fold(
+        (0_u128, 0_u128),
+        |(byte_size, raw_duration), segment| {
+            (
+                byte_size + u128::from(segment.byte_size()),
+                raw_duration + u128::from(segment.raw_duration()),
+            )
+        },
+    );
+    if raw_duration == 0 {
+        return 0;
+    }
+
+    let bits = byte_size * 8;
+    let scaled_bits = bits * u128::from(track.timescale());
+    u64::try_from(scaled_bits.div_ceil(raw_duration)).unwrap_or(u64::MAX)
 }
 
 /// Groups `fragments` into segments, each timed from `anchor` — the track's earliest
 /// presentation time, which every segment time in a manifest is counted from.
-fn group_fragments(
+fn group(
     fragments: &[Fragment],
     timescale: u32,
     anchor: u64,
@@ -130,36 +212,10 @@ fn group_fragments(
     segments
 }
 
-/// The edges the boundaries fall on, as indices into `cumulative`. Fragment
-/// edges when grouping into segments, segment edges when grouping those further.
-///
-/// A boundary lands on the first edge at or after it rather than the nearest one,
-/// so a segment never opens on content from before the boundary. The nearest edge
-/// can be the one before, and a track spliced there carries the tail of the
-/// outgoing part as a short fragment the boundary falls inside — snapping back
-/// would open the new segment on that tail and leave the splice uncut.
-fn snap_cuts(cumulative: &[u64], timescale: u32, boundaries: &[u32]) -> Vec<usize> {
-    let mut cuts: Vec<usize> = boundaries
-        .iter()
-        .map(|&boundary| snap_cut(cumulative, timescale, boundary))
-        .collect();
-    cuts.sort_unstable();
-    cuts.dedup();
-    cuts
-}
-
-/// The single edge `boundary` falls on, as an index into `cumulative`.
-pub(crate) fn snap_cut(cumulative: &[u64], timescale: u32, boundary: u32) -> usize {
-    let target = u128::from(boundary) * u128::from(timescale);
-    let index =
-        cumulative.partition_point(|&raw_duration| u128::from(raw_duration) * 1000 < target);
-
-    index.min(cumulative.len() - 1)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::asset_descriptor::{TextKind, VideoKind};
 
     #[test]
     fn default_options_group_nothing_and_cut_text_only_at_splice_points() {
@@ -191,7 +247,7 @@ mod tests {
     #[test]
     fn zero_minimum_maps_each_fragment_to_a_segment() {
         let fragments = fragments(&[1000, 1000]);
-        let segments = group_fragments(&fragments, 1000, 0, &options(0, &[]));
+        let segments = group(&fragments, 1000, 0, &options(0, &[]));
 
         assert_eq!(
             segments,
@@ -215,7 +271,7 @@ mod tests {
     #[test]
     fn fragments_are_grouped_until_the_minimum() {
         let fragments = fragments(&[1920, 1920, 1920, 1920]);
-        let segments = group_fragments(&fragments, 1000, 0, &options(3_000, &[]));
+        let segments = group(&fragments, 1000, 0, &options(3_000, &[]));
 
         assert_eq!(
             segments
@@ -229,7 +285,7 @@ mod tests {
     #[test]
     fn segment_closes_at_a_requested_boundary() {
         let fragments = fragments(&[1920, 1920, 120, 1800, 1920]);
-        let segments = group_fragments(&fragments, 1000, 0, &options(3_000, &[3_960]));
+        let segments = group(&fragments, 1000, 0, &options(3_000, &[3_960]));
 
         assert_eq!(
             segments
@@ -242,13 +298,13 @@ mod tests {
 
     #[test]
     fn empty_fragments_produce_no_segments() {
-        assert!(group_fragments(&[], 1000, 0, &options(3_000, &[])).is_empty());
+        assert!(group(&[], 1000, 0, &options(3_000, &[])).is_empty());
     }
 
     #[test]
     fn final_short_segment_is_preserved() {
         let fragments = fragments(&[2000, 2000, 500]);
-        let segments = group_fragments(&fragments, 1000, 0, &options(3_000, &[]));
+        let segments = group(&fragments, 1000, 0, &options(3_000, &[]));
 
         assert_eq!(
             segments
@@ -262,7 +318,7 @@ mod tests {
     #[test]
     fn boundary_on_fragment_edge_closes_the_segment_at_that_edge() {
         let fragments = fragments(&[1000, 1000, 1000]);
-        let segments = group_fragments(&fragments, 1000, 0, &options(5_000, &[2_000]));
+        let segments = group(&fragments, 1000, 0, &options(5_000, &[2_000]));
 
         assert_eq!(
             segments
@@ -274,17 +330,12 @@ mod tests {
     }
 
     #[test]
-    fn boundary_inside_a_fragment_snaps_to_the_following_edge() {
-        assert_eq!(snap_cuts(&[0, 1000, 2000], 1000, &[1200]), vec![2]);
-    }
-
-    #[test]
     fn boundary_inside_a_splice_fragment_cuts_where_the_splice_does() {
         // A spliced track carries the tail of the outgoing part as a short
         // fragment, and the boundary its siblings splice at can land inside that
         // tail rather than on either edge of it.
         let fragments = fragments(&[92_160, 8_192, 83_968, 92_160]);
-        let segments = group_fragments(&fragments, 48_000, 0, &options(3_000, &[2_000]));
+        let segments = group(&fragments, 48_000, 0, &options(3_000, &[2_000]));
 
         assert_eq!(
             segments
@@ -296,57 +347,37 @@ mod tests {
     }
 
     #[test]
-    fn out_of_range_boundaries_snap_to_track_edges() {
-        assert_eq!(snap_cuts(&[0, 1000, 2000], 1000, &[0, 9000]), vec![0, 2]);
-    }
-
-    #[test]
-    fn unordered_duplicate_boundaries_produce_unique_sorted_cuts() {
-        assert_eq!(
-            snap_cuts(&[0, 1000, 2000, 3000], 1000, &[2000, 1000, 1000]),
-            vec![1, 2]
-        );
-    }
-
-    #[test]
     fn grouped_segment_spans_combined_byte_range() {
         let fragments = fragments(&[1000, 1000]);
-        let segments = group_fragments(&fragments, 1000, 0, &options(2_000, &[]));
+        let segments = group(&fragments, 1000, 0, &options(2_000, &[]));
 
         assert_eq!(segments[0].byte_range(), 100..120);
     }
 
-    /// A segment's time range runs from where its predecessors left off to its own
-    /// end, so consecutive segments meet without a gap.
+    /// A segment starts where its predecessors left off, so consecutive segments meet
+    /// without a gap whatever their durations.
     #[test]
-    fn segments_run_from_where_the_previous_one_ended() {
+    fn a_segment_starts_where_the_previous_one_ended() {
         let fragments = fragments(&[1000, 1500, 1000]);
 
-        let segments = group_fragments(&fragments, 1000, 0, &options(0, &[]));
+        let segments = group(&fragments, 1000, 0, &options(0, &[]));
 
         assert_eq!(
-            segments
-                .iter()
-                .map(Segment::raw_time_range)
-                .collect::<Vec<_>>(),
-            vec![0..1000, 1000..2500, 2500..3500]
+            segments.iter().map(Segment::raw_start).collect::<Vec<_>>(),
+            vec![0, 1000, 2500]
         );
     }
 
-    /// Grouping several fragments into one segment times it from the first of them,
-    /// not from the segment before it ending.
+    /// Grouping several fragments into one segment times it from the first of them.
     #[test]
-    fn a_grouped_segment_runs_from_its_first_fragment() {
+    fn a_grouped_segment_starts_at_its_first_fragment() {
         let fragments = fragments(&[1000, 1000, 1000, 1000]);
 
-        let segments = group_fragments(&fragments, 1000, 0, &options(2_000, &[]));
+        let segments = group(&fragments, 1000, 0, &options(2_000, &[]));
 
         assert_eq!(
-            segments
-                .iter()
-                .map(Segment::raw_time_range)
-                .collect::<Vec<_>>(),
-            vec![0..2000, 2000..4000]
+            segments.iter().map(Segment::raw_start).collect::<Vec<_>>(),
+            vec![0, 2000]
         );
     }
 
@@ -356,18 +387,211 @@ mod tests {
     fn segment_times_are_counted_from_the_anchor() {
         let fragments = fragments(&[1000, 1000]);
 
-        let grouped = group_fragments(&fragments, 1000, 9_000, &options(0, &[]));
-        let combined = group_fragments(&fragments, 1000, 9_000, &options(2_000, &[]));
+        let ungrouped = group(&fragments, 1000, 9_000, &options(0, &[]));
+        let grouped = group(&fragments, 1000, 9_000, &options(2_000, &[]));
 
         assert_eq!(
             (
-                grouped
-                    .iter()
-                    .map(Segment::raw_time_range)
-                    .collect::<Vec<_>>(),
-                combined[0].raw_time_range()
+                ungrouped.iter().map(Segment::raw_start).collect::<Vec<_>>(),
+                grouped[0].raw_start()
             ),
-            (vec![9_000..10_000, 10_000..11_000], 9_000..11_000)
+            (vec![9_000, 10_000], 9_000)
+        );
+    }
+
+    #[test]
+    fn max_segment_duration_excludes_text_and_rounds_up() {
+        let tracks = vec![
+            Track::fake(video_kind(), 3, vec![Fragment::new(0, 10, 1).unwrap()]),
+            track(text_kind(), 10_000),
+        ];
+
+        assert_eq!(
+            max_segment_duration(&tracks, &SegmentOptions::default()),
+            334
+        );
+    }
+
+    #[test]
+    fn max_bitrate_returns_highest_segment_rate() {
+        let track = Track::fake(
+            video_kind(),
+            1_000,
+            vec![
+                Fragment::new(0, 1_000, 1_000).unwrap(),
+                Fragment::new(1_000, 2_000, 1_000).unwrap(),
+            ],
+        );
+
+        assert_eq!(max_bitrate(&track, &SegmentOptions::default()), 16_000);
+    }
+
+    #[test]
+    fn average_bitrate_uses_all_segment_bytes_and_duration() {
+        let track = Track::fake(
+            video_kind(),
+            1_000,
+            vec![
+                Fragment::new(0, 1_000, 1_000).unwrap(),
+                Fragment::new(1_000, 2_000, 1_000).unwrap(),
+            ],
+        );
+
+        assert_eq!(average_bitrate(&track, &SegmentOptions::default()), 12_000);
+    }
+
+    #[test]
+    fn bitrates_are_zero_without_segments() {
+        let track = Track::fake(video_kind(), 1_000, Vec::new());
+
+        assert_eq!(
+            (
+                max_bitrate(&track, &SegmentOptions::default()),
+                average_bitrate(&track, &SegmentOptions::default())
+            ),
+            (0, 0)
+        );
+    }
+
+    /// A track of one fragment, so its single segment is the whole of it.
+    fn track(kind: TrackKind, raw_duration: u32) -> Track {
+        Track::fake(
+            kind,
+            1_000,
+            vec![Fragment::new(0, 10, raw_duration).unwrap()],
+        )
+    }
+
+    fn video_kind() -> TrackKind {
+        TrackKind::Video(VideoKind {
+            width: 1920,
+            height: 1080,
+            frame_rate: "25/1".to_string(),
+        })
+    }
+
+    fn text_kind() -> TrackKind {
+        TrackKind::Text(TextKind {
+            language: "eng".parse().unwrap(),
+            role: None,
+        })
+    }
+
+    /// A track of `count` one-second segments, at a timescale where raw units
+    /// are milliseconds so boundaries read directly as segment counts.
+    fn span_track(count: u32) -> Track {
+        let fragments = (0..count)
+            .map(|index| Fragment::new(u64::from(index) * 10, 10, 1_000).unwrap())
+            .collect();
+        Track::fake(span_kind(), 1_000, fragments)
+    }
+
+    fn span_kind() -> TrackKind {
+        TrackKind::Video(VideoKind {
+            width: 256,
+            height: 144,
+            frame_rate: "25/1".to_string(),
+        })
+    }
+
+    fn durations(track: &Track, options: &SegmentOptions, duration: u32) -> Vec<Vec<u64>> {
+        crate::utils::divide(&options.boundaries, duration)
+            .iter()
+            .map(|range| {
+                span(track, options, range)
+                    .iter()
+                    .map(Segment::raw_duration)
+                    .collect()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_track_without_boundaries_gives_every_segment_to_one_group() {
+        assert_eq!(
+            durations(&span_track(4), &options(0, &[]), 4_000),
+            vec![vec![1_000; 4]]
+        );
+    }
+
+    #[test]
+    fn a_boundary_splits_the_segments_in_two() {
+        assert_eq!(
+            durations(&span_track(4), &options(0, &[3_000]), 4_000),
+            vec![vec![1_000, 1_000, 1_000], vec![1_000]]
+        );
+    }
+
+    /// Each span's group opens on the segment the boundary cut at, which is the one
+    /// carrying the time a manifest reads that group's timeline against.
+    #[test]
+    fn a_group_opens_on_the_segment_the_span_cut_at() {
+        let track = span_track(4);
+        let options = options(0, &[3_000]);
+
+        assert_eq!(starts(&track, &options, 4_000), vec![0, 3_000]);
+    }
+
+    #[test]
+    fn a_group_opens_on_a_segment_timed_from_the_earliest_presentation_time() {
+        let track = span_track(4).fake_earliest_presentation_time(500);
+        let options = options(0, &[3_000]);
+
+        assert_eq!(starts(&track, &options, 4_000), vec![500, 3_500]);
+    }
+
+    /// The time each span's group opens at, taken from its first segment.
+    fn starts(track: &Track, options: &SegmentOptions, duration: u32) -> Vec<u64> {
+        crate::utils::divide(&options.boundaries, duration)
+            .iter()
+            .filter_map(|range| span(track, options, range).first().map(Segment::raw_start))
+            .collect()
+    }
+
+    #[test]
+    fn a_boundary_inside_a_segment_splits_at_the_following_edge() {
+        assert_eq!(
+            durations(&span_track(3), &options(0, &[1_200]), 3_000),
+            vec![vec![1_000, 1_000], vec![1_000]]
+        );
+    }
+
+    /// The split follows the edges grouping produced, not the fragment edges
+    /// underneath them, so a group never opens mid-segment.
+    #[test]
+    fn a_split_lands_on_a_grouped_segment_edge() {
+        assert_eq!(
+            durations(&span_track(4), &options(2_000, &[3_000]), 4_000),
+            vec![vec![2_000, 1_000], vec![1_000]]
+        );
+    }
+
+    /// Two boundaries inside the same segment want two spans but can only cut
+    /// once, so the span between them is handed an empty group rather than the
+    /// segments of its neighbour.
+    #[test]
+    fn boundaries_snapping_to_one_edge_leave_a_span_empty() {
+        assert_eq!(
+            durations(&span_track(4), &options(0, &[1_100, 1_200]), 4_000),
+            vec![vec![1_000, 1_000], vec![], vec![1_000, 1_000]]
+        );
+    }
+
+    #[test]
+    fn a_track_ending_before_a_span_gives_it_nothing() {
+        assert_eq!(
+            durations(&span_track(2), &options(0, &[3_000]), 10_000),
+            vec![vec![1_000, 1_000], vec![]]
+        );
+    }
+
+    #[test]
+    fn a_track_without_segments_gives_every_span_an_empty_group() {
+        let track = Track::fake(span_kind(), 1_000, Vec::new());
+
+        assert_eq!(
+            durations(&track, &options(0, &[3_000]), 10_000),
+            vec![Vec::<u64>::new(), Vec::new()]
         );
     }
 }

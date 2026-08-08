@@ -26,7 +26,8 @@ use winnow::token::take_while;
 use crate::asset_descriptor::TrackKind;
 use crate::role::Role;
 use crate::segment::SegmentOptions;
-use crate::track::{Track, average_bitrate, max_bitrate};
+use crate::segment::{average_bitrate, max_bitrate};
+use crate::track::Track;
 
 /// Every attribute a filter can name, each row carrying how it is spelled, whether
 /// it orders, and where its value comes from. Adding an attribute is one row.

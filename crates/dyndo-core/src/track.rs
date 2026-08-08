@@ -7,6 +7,7 @@ use relative_path::{RelativePath, RelativePathBuf};
 use uuid::Uuid;
 
 use crate::asset_descriptor::{AssetDescriptor, TrackDescriptor, TrackKind};
+use crate::fragment::Fragment;
 use crate::opendal::add_operator_layers;
 use crate::probe::{self, ProbeError};
 use crate::segment::SegmentOptions;
@@ -17,33 +18,6 @@ pub enum TrackError {
     Probe(#[from] ProbeError),
     #[error(transparent)]
     Storage(#[from] opendal::Error),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct Fragment {
-    pub(crate) byte_offset: u64,
-    pub(crate) byte_size: u64,
-    pub(crate) raw_duration: u32,
-}
-
-impl Fragment {
-    pub(crate) fn new(byte_offset: u64, byte_size: u64, raw_duration: u32) -> Option<Self> {
-        byte_offset.checked_add(byte_size)?;
-        Some(Self {
-            byte_offset,
-            byte_size,
-            raw_duration,
-        })
-    }
-
-    pub(crate) fn byte_range(&self) -> Range<u64> {
-        self.byte_offset..self.byte_offset + self.byte_size
-    }
-
-    /// Returns the fragment's duration in the track's timescale units.
-    pub(crate) fn raw_duration(&self) -> u32 {
-        self.raw_duration
-    }
 }
 
 pub struct Track {
@@ -211,58 +185,6 @@ pub fn max_duration(tracks: &[Track]) -> u32 {
     })
 }
 
-/// Returns the longest audio or video segment duration in milliseconds.
-pub fn max_segment_duration(tracks: &[Track], options: &SegmentOptions) -> u32 {
-    tracks
-        .iter()
-        .filter(|track| matches!(track.kind(), TrackKind::Video(_) | TrackKind::Audio(_)))
-        .flat_map(|track| {
-            let timescale = track.timescale();
-            track.segments(options).into_iter().map(move |segment| {
-                let duration =
-                    (u128::from(segment.raw_duration()) * 1000).div_ceil(u128::from(timescale));
-                u32::try_from(duration).unwrap_or(u32::MAX)
-            })
-        })
-        .max()
-        .unwrap_or(0)
-}
-
-/// Returns the highest average grouped-segment bitrate in bits per second.
-pub fn max_bitrate(track: &Track, options: &SegmentOptions) -> u64 {
-    track
-        .segments(options)
-        .iter()
-        .map(|segment| {
-            let bits = u128::from(segment.byte_size()) * 8;
-            let scaled_bits = bits * u128::from(track.timescale());
-            let bitrate = scaled_bits.div_ceil(u128::from(segment.raw_duration()));
-            u64::try_from(bitrate).unwrap_or(u64::MAX)
-        })
-        .max()
-        .unwrap_or(0)
-}
-
-/// Returns the average bitrate of all grouped segments in bits per second.
-pub fn average_bitrate(track: &Track, options: &SegmentOptions) -> u64 {
-    let (byte_size, raw_duration) = track.segments(options).iter().fold(
-        (0_u128, 0_u128),
-        |(byte_size, raw_duration), segment| {
-            (
-                byte_size + u128::from(segment.byte_size()),
-                raw_duration + u128::from(segment.raw_duration()),
-            )
-        },
-    );
-    if raw_duration == 0 {
-        return 0;
-    }
-
-    let bits = byte_size * 8;
-    let scaled_bits = bits * u128::from(track.timescale());
-    u64::try_from(scaled_bits.div_ceil(raw_duration)).unwrap_or(u64::MAX)
-}
-
 fn max_matching_duration(tracks: &[Track], include: impl Fn(&TrackKind) -> bool) -> Option<u32> {
     tracks
         .iter()
@@ -296,18 +218,6 @@ impl Track {
 mod tests {
     use super::*;
     use crate::asset_descriptor::{AudioKind, TextKind, VideoKind};
-
-    #[test]
-    fn fragment_new_returns_none_when_byte_range_overflows() {
-        assert_eq!(Fragment::new(u64::MAX, 1, 1), None);
-    }
-
-    #[test]
-    fn fragment_byte_range_is_half_open() {
-        let fragment = Fragment::new(10, 5, 1).unwrap();
-
-        assert_eq!(fragment.byte_range(), 10..15);
-    }
 
     #[test]
     fn duration_converts_timescale_units() {
@@ -350,60 +260,6 @@ mod tests {
         let tracks = vec![track(text_kind(), 20_000)];
 
         assert_eq!(max_duration(&tracks), 0);
-    }
-
-    #[test]
-    fn max_segment_duration_excludes_text_and_rounds_up() {
-        let tracks = vec![
-            Track::fake(video_kind(), 3, vec![Fragment::new(0, 10, 1).unwrap()]),
-            track(text_kind(), 10_000),
-        ];
-
-        assert_eq!(
-            max_segment_duration(&tracks, &SegmentOptions::default()),
-            334
-        );
-    }
-
-    #[test]
-    fn max_bitrate_returns_highest_segment_rate() {
-        let track = Track::fake(
-            video_kind(),
-            1_000,
-            vec![
-                Fragment::new(0, 1_000, 1_000).unwrap(),
-                Fragment::new(1_000, 2_000, 1_000).unwrap(),
-            ],
-        );
-
-        assert_eq!(max_bitrate(&track, &SegmentOptions::default()), 16_000);
-    }
-
-    #[test]
-    fn average_bitrate_uses_all_segment_bytes_and_duration() {
-        let track = Track::fake(
-            video_kind(),
-            1_000,
-            vec![
-                Fragment::new(0, 1_000, 1_000).unwrap(),
-                Fragment::new(1_000, 2_000, 1_000).unwrap(),
-            ],
-        );
-
-        assert_eq!(average_bitrate(&track, &SegmentOptions::default()), 12_000);
-    }
-
-    #[test]
-    fn bitrates_are_zero_without_segments() {
-        let track = Track::fake(video_kind(), 1_000, Vec::new());
-
-        assert_eq!(
-            (
-                max_bitrate(&track, &SegmentOptions::default()),
-                average_bitrate(&track, &SegmentOptions::default())
-            ),
-            (0, 0)
-        );
     }
 
     fn track(kind: TrackKind, raw_duration: u32) -> Track {

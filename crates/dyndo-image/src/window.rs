@@ -6,7 +6,7 @@
 
 use std::ops::Range;
 
-use dyndo_core::segment::SegmentOptions;
+use dyndo_core::segment::{self, SegmentOptions};
 use dyndo_core::track::Track;
 
 /// One cell's frame: the segment holding it, as a byte range relative to the start of
@@ -44,7 +44,7 @@ impl Window {
         // Default options group nothing, so each of these is one stored fragment. A
         // sprite's step is its own: it must not shift with the segmentation a request
         // asks for delivery in.
-        let segments = track.segments(&SegmentOptions::default());
+        let segments = segment::segments(track, &SegmentOptions::default());
         let timescale = track.timescale();
         let anchor = track.earliest_presentation_time();
         let found: Vec<Option<Cell>> = (0..u64::from(cells))
@@ -53,7 +53,10 @@ impl Window {
                     anchor.saturating_add(raw_time(time + cell * u64::from(step), timescale));
                 segments
                     .iter()
-                    .find(|segment| segment.raw_time_range().contains(&time))
+                    .find(|segment| {
+                        time >= segment.raw_start()
+                            && time < segment.raw_start() + segment.raw_duration()
+                    })
                     .map(|segment| Cell {
                         segment: segment.byte_range(),
                         time,
@@ -167,7 +170,7 @@ mod tests {
     #[tokio::test]
     async fn new_reads_one_range_spanning_the_segments_its_cells_fall_in() {
         let track = probe("video_avc_1080.mp4").await;
-        let segments = track.segments(&SegmentOptions::default());
+        let segments = segment::segments(&track, &SegmentOptions::default());
 
         let window = Window::new(&track, CELLS, STEP, 0).unwrap();
 
@@ -182,7 +185,7 @@ mod tests {
     #[tokio::test]
     async fn new_places_each_cell_relative_to_that_range() {
         let track = probe("video_avc_1080.mp4").await;
-        let segments = track.segments(&SegmentOptions::default());
+        let segments = segment::segments(&track, &SegmentOptions::default());
         let start = segments[0].byte_range().start;
 
         let window = Window::new(&track, CELLS, STEP, 0).unwrap();

@@ -5,8 +5,8 @@ use std::time::Duration;
 
 use dyndo_core::asset_descriptor::{AssetDescriptor, TrackDescriptor, TrackKind};
 use dyndo_core::filter::{Filter, FilterMatchedNothing};
-use dyndo_core::segment::SegmentOptions;
-use dyndo_core::track::{Track, TrackError, average_bitrate, max_bitrate};
+use dyndo_core::segment::{self, SegmentOptions, average_bitrate, max_bitrate};
+use dyndo_core::track::{Track, TrackError};
 use hls_m3u8::tags::{ExtXMap, ExtXMedia, VariantStream};
 use hls_m3u8::types::{Channels, ClosedCaptions, MediaType, PlaylistType, StreamData, UFloat};
 use hls_m3u8::{MasterPlaylist, MediaPlaylist, MediaSegment};
@@ -112,7 +112,7 @@ fn build_media_playlist(
 ) -> Result<MediaPlaylist<'static>, HlsError> {
     let plain_vtt = serves_plain_vtt(track.kind(), hls_options);
     let extension = if plain_vtt { "vtt" } else { "m4s" };
-    let segments = track.segments(segment_options);
+    let segments = segment::segments(track, segment_options);
     let target_duration = segments
         .iter()
         .map(|segment| rounded_duration_seconds(segment.raw_duration(), track.timescale()))
@@ -123,7 +123,7 @@ fn build_media_playlist(
         .enumerate()
         .map(|(index, segment)| {
             let duration = media_duration(segment.raw_duration(), track.timescale());
-            let start_time = segment.raw_time_range().start;
+            let start_time = segment.raw_start();
 
             let mut builder = MediaSegment::builder();
             builder

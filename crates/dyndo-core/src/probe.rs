@@ -7,7 +7,7 @@ use relative_path::RelativePath;
 
 use crate::asset_descriptor::{AudioKind, TextKind, TrackKind, VideoKind, undetermined_language};
 use crate::box_reader::{self, BoxReaderError, Boxes};
-use crate::track::Fragment;
+use crate::fragment::Fragment;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ProbeError {

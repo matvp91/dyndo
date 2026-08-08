@@ -4,7 +4,7 @@ use axum::{
     http::header::CONTENT_TYPE,
     response::{IntoResponse, Response},
 };
-use dyndo_core::segment::SegmentOptions;
+use dyndo_core::segment::{self, SegmentOptions};
 use dyndo_core::track::Track;
 use dyndo_text::{fragmenter, vtt, wvtt};
 use opendal::Operator;
@@ -67,10 +67,9 @@ async fn locate(
     time: u64,
 ) -> Result<(Track, SegmentOptions, Range<u64>), ServerError> {
     let (track, segment_options) = read_track(op, context, track_id).await?;
-    let segment = track
-        .segments(&segment_options)
+    let segment = segment::segments(&track, &segment_options)
         .into_iter()
-        .find(|segment| segment.raw_time_range().start == time)
+        .find(|segment| segment.raw_start() == time)
         .ok_or_else(|| ServerError::NotFound(format!("segment {time} for track {track_id}")))?;
 
     Ok((track, segment_options, segment.byte_range()))

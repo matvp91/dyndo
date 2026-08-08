@@ -1,6 +1,6 @@
 use dyndo_core::asset_descriptor::TrackKind;
 use dyndo_core::role::Role;
-use dyndo_core::segment::{Segment, SegmentOptions};
+use dyndo_core::segment::{self, Segment, SegmentOptions};
 use dyndo_core::track::Track;
 
 pub(super) type Member<'a> = &'a Track;
@@ -67,16 +67,22 @@ impl<'a> AdaptationSetGroup<'a> {
         let Some(reference) = self.members.first() else {
             return true;
         };
-        let reference_segments = reference.segments(options);
+        let reference_segments = segment::segments(reference, options);
 
         self.members.iter().skip(1).all(|candidate| {
-            candidate
-                .segments(options)
+            segment::segments(candidate, options)
                 .iter()
-                .map(Segment::raw_time_range)
-                .eq(reference_segments.iter().map(Segment::raw_time_range))
+                .map(timing)
+                .eq(reference_segments.iter().map(timing))
         })
     }
+}
+
+/// When a segment is shown and how long for, which together are what alignment
+/// means: two tracks line up only if every segment of one begins and ends where the
+/// matching segment of the other does.
+fn timing(segment: &Segment) -> (u64, u64) {
+    (segment.raw_start(), segment.raw_duration())
 }
 
 pub(super) fn group(tracks: &[Track]) -> Vec<AdaptationSetGroup<'_>> {

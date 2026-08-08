@@ -9,9 +9,9 @@ use dash_mpd::{
 };
 use dyndo_core::asset_descriptor::{AssetDescriptor, TrackKind};
 use dyndo_core::filter::{Filter, FilterMatchedNothing};
-use dyndo_core::segment::SegmentOptions;
-use dyndo_core::segment_group::{self, SegmentGroup};
-use dyndo_core::track::{Track, TrackError, max_bitrate, max_duration, max_segment_duration};
+use dyndo_core::segment::{self, Segment, SegmentOptions, max_bitrate, max_segment_duration};
+use dyndo_core::track::{Track, TrackError, max_duration};
+use dyndo_core::utils;
 use opendal::Operator;
 
 use crate::adaptation_set_group::{self, AdaptationSetGroup};
@@ -81,7 +81,7 @@ fn build_mpd(
         &[]
     };
     let mut periods: Vec<Period> = Vec::new();
-    for span in segment_group::spans(boundaries, max_duration(tracks)) {
+    for span in utils::divide(boundaries, max_duration(tracks)) {
         let next = period(
             periods.len(),
             &span,
@@ -209,8 +209,8 @@ fn representation(
     segment_options: &SegmentOptions,
     span: &Range<u32>,
 ) -> Option<Representation> {
-    let group = segment_group::group_segments(track, segment_options, span);
-    if group.segments().is_empty() {
+    let segments = segment::span(track, segment_options, span);
+    if segments.is_empty() {
         return None;
     }
 
@@ -218,7 +218,7 @@ fn representation(
         id: Some(track.id().to_string()),
         bandwidth: Some(max_bitrate(track, segment_options)),
         codecs: Some(track.codec().to_string()),
-        SegmentTemplate: Some(segment_template(track, &group, span)),
+        SegmentTemplate: Some(segment_template(track, &segments, span)),
         ..Default::default()
     };
 
@@ -247,13 +247,13 @@ fn audio_channel_configuration(channels: u16) -> AudioChannelConfiguration {
     }
 }
 
-fn segment_template(track: &Track, group: &SegmentGroup, span: &Range<u32>) -> SegmentTemplate {
+fn segment_template(track: &Track, segments: &[Segment], span: &Range<u32>) -> SegmentTemplate {
     SegmentTemplate {
         timescale: Some(u64::from(track.timescale())),
         presentationTimeOffset: Some(presentation_time_offset(track, span)),
         initialization: Some(INITIALIZATION_TEMPLATE.to_string()),
         media: Some(MEDIA_TEMPLATE.to_string()),
-        SegmentTimeline: Some(segment_timeline(group)),
+        SegmentTimeline: Some(segment_timeline(segments)),
         ..Default::default()
     }
 }
@@ -272,37 +272,36 @@ fn presentation_time_offset(track: &Track, span: &Range<u32>) -> u64 {
         + u64::try_from(offset).expect("a period starts within the media timeline")
 }
 
-/// The timeline of `group`, with segments of equal duration folded into one entry
+/// The timeline `segments` describe, with equal durations folded into one entry
 /// repeated `r` times.
 ///
 /// An entry opens with the time its first segment begins at, so a run only continues
 /// while the next segment starts where the previous one ended. Two segments of equal
 /// duration with a gap between them are two runs, since a player reads the entries as
 /// one unbroken stretch.
-fn segment_timeline(group: &SegmentGroup) -> SegmentTimeline {
-    let mut segments: Vec<S> = Vec::new();
+fn segment_timeline(segments: &[Segment]) -> SegmentTimeline {
+    let mut entries: Vec<S> = Vec::new();
     let mut end = None;
 
-    for segment in group.segments() {
-        let range = segment.raw_time_range();
-        let continues = end == Some(range.start);
-        match segments.last_mut() {
+    for segment in segments {
+        let continues = end == Some(segment.raw_start());
+        match entries.last_mut() {
             Some(previous) if previous.d == segment.raw_duration() && continues => {
                 *previous.r.get_or_insert(0) += 1;
             }
-            _ => segments.push(S {
+            _ => entries.push(S {
                 // A player reads an entry with no time of its own as continuing from
                 // the one before it, so only a run that follows nothing states where
                 // it begins: the first, and any that opens after a gap.
-                t: (!continues).then_some(range.start),
+                t: (!continues).then_some(segment.raw_start()),
                 d: segment.raw_duration(),
                 ..Default::default()
             }),
         }
-        end = Some(range.end);
+        end = Some(segment.raw_start() + segment.raw_duration());
     }
 
-    SegmentTimeline { segments }
+    SegmentTimeline { segments: entries }
 }
 
 #[cfg(test)]
