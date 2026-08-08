@@ -6,6 +6,7 @@ use dyndo_core::asset_descriptor::AssetDescriptorError;
 use dyndo_core::track::TrackError;
 use dyndo_dash::builder::DashError;
 use dyndo_hls::builder::HlsError;
+use dyndo_image::sprite::SpriteError;
 use dyndo_text::wvtt::UnpackError;
 
 #[derive(Debug, thiserror::Error)]
@@ -26,6 +27,8 @@ pub enum ServerError {
     Hls(#[from] HlsError),
     #[error(transparent)]
     Unpack(#[from] UnpackError),
+    #[error(transparent)]
+    Sprite(#[from] SpriteError),
     #[error("manifest serialization failed: {0}")]
     Serialization(String),
 }
@@ -40,6 +43,13 @@ impl IntoResponse for ServerError {
             Self::Dash(DashError::Filter(_)) | Self::Hls(HlsError::Filter(_)) => {
                 StatusCode::NOT_FOUND
             }
+            // A sprite the presentation never reaches, or one asked of a track no
+            // frames can be cut from, is addressed at nothing rather than broken.
+            Self::Sprite(
+                SpriteError::NotFound(_)
+                | SpriteError::NotVideo(_)
+                | SpriteError::UnsupportedCodec(_),
+            ) => StatusCode::NOT_FOUND,
             Self::AssetDescriptor(AssetDescriptorError::Storage(error))
                 if error.kind() == opendal::ErrorKind::NotFound =>
             {
@@ -50,6 +60,7 @@ impl IntoResponse for ServerError {
             | Self::Dash(_)
             | Self::Hls(_)
             | Self::Unpack(_)
+            | Self::Sprite(_)
             | Self::Serialization(_) => StatusCode::INTERNAL_SERVER_ERROR,
         };
         (status, self.to_string()).into_response()

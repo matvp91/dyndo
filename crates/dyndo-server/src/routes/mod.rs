@@ -2,6 +2,7 @@ mod context;
 mod manifest;
 mod manifest_query;
 mod segment;
+mod sprite;
 
 use axum::{
     Router,
@@ -80,6 +81,12 @@ async fn track_file(
         ("init", "mp4") => segment::initialization(&op, &context, &track_id).await,
         (time, "m4s") => segment::media(&op, &context, &track_id, segment_time(time, &file)?).await,
         (time, "vtt") => segment::text(&op, &context, &track_id, segment_time(time, &file)?).await,
+        // A sprite is cut to the thumbnail options the manifest describing it was
+        // asked for, which the same path fragment carries.
+        (time, "jpg") => {
+            let context = parse_context::<DashOptions>(&options)?;
+            sprite::image(&op, &context, &track_id, segment_time(time, &file)?).await
+        }
         _ => Err(not_found()),
     }
 }
@@ -411,6 +418,26 @@ mod tests {
 
             assert_eq!(response.status(), StatusCode::OK, "for {uri}");
         }
+    }
+
+    /// A sprite of no cells is asked for by a request that named no tile size, which
+    /// addresses nothing rather than an empty image.
+    #[tokio::test]
+    async fn a_sprite_route_without_a_tile_size_returns_not_found() {
+        let (_dir, app) = app("asset");
+
+        let response = request(app, "/out/(asset:asset)/video-main/0.jpg").await;
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn a_sprite_route_refuses_a_track_it_cannot_cut_frames_from() {
+        let (_dir, app) = app("asset");
+
+        let response = request(app, "/out/(asset:asset,tts:5)/audio-nld/0.jpg").await;
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
     }
 
     /// The extension names the resource, so anything else is addressed at nothing

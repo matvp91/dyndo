@@ -727,6 +727,7 @@ dependencies = [
  "dyndo-core",
  "dyndo-dash",
  "dyndo-hls",
+ "dyndo-image",
  "dyndo-text",
  "figment",
  "opendal",

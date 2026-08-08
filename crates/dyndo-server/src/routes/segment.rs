@@ -78,9 +78,9 @@ async fn locate(
 /// The track `track_id` names, probed under the segment options this request asks
 /// for. Those options are returned alongside it, since reading any of its bytes
 /// has to package the track the same way the probe did.
-async fn read_track(
+pub(super) async fn read_track<T>(
     op: &Operator,
-    context: &RequestContext<()>,
+    context: &RequestContext<T>,
     track_id: &str,
 ) -> Result<(Track, SegmentOptions), ServerError> {
     let asset = context.read_asset(op).await?;
