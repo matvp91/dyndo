@@ -202,8 +202,8 @@ fn hls_requires_input() {
     assert!(!status.success());
 }
 
-/// The tile size, height and step have no defaults to fall back on — the caller
-/// decides the shape of the sprite.
+/// The tile size and step have no defaults to fall back on — the caller decides the
+/// shape of the sprite.
 #[test]
 fn sprite_requires_the_shape_of_the_sprite() {
     let dir = tempfile::tempdir().unwrap();
@@ -234,8 +234,6 @@ fn sprite_refuses_an_asset_with_no_video_track_to_cut_from() {
             "asset.json",
             "--tile-size",
             "5",
-            "--height",
-            "900",
             "--step",
             "10000",
         ])

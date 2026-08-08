@@ -53,18 +53,19 @@ pub enum SpriteError {
     Encode(#[from] image::ImageError),
 }
 
-/// The sprite asked for: which frames it shows and how large they come out.
+/// The sprite asked for: which frames it shows, and how they are laid out.
 ///
 /// `tile_size` thumbnails go in a row and in a column — a player reads it as the value
 /// of the DASH-IF `thumbnail_tile` essential property, where `5` becomes `5x5`, and
-/// divides the sprite by it to place a cell. `height` is the whole sprite's, in pixels,
-/// so a thumbnail is a `tile_size`th of it and its width follows the source's aspect.
-/// `step` is the milliseconds between one thumbnail and the next, and `time` is what the
-/// first thumbnail shows, in milliseconds from the start of the presentation.
+/// divides the sprite by it to place a cell. `step` is the milliseconds between one
+/// thumbnail and the next, and `time` is what the first thumbnail shows, in
+/// milliseconds from the start of the presentation.
+///
+/// A sprite comes out the size of the track it is cut from, so nothing here states its
+/// pixels: a manifest describing one reads the dimensions off that track.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Sprite {
     pub tile_size: u32,
-    pub height: u32,
     pub step: u32,
     pub time: u64,
 }
@@ -95,7 +96,7 @@ impl Sprite {
         let initialization = track.read_initialization(op, &options).await?;
         let media = track.read_range(op, &options, window.range.clone()).await?;
 
-        let canvas = Canvas::new(self.tile_size, self.height, (video.width, video.height));
+        let canvas = Canvas::new(self.tile_size, (video.width, video.height));
 
         // Decoding a sprite's frames and encoding it is hundreds of milliseconds of CPU,
         // which on the caller's executor would stall every request sharing its thread.
@@ -114,15 +115,13 @@ struct Canvas {
 }
 
 impl Canvas {
-    /// An empty canvas of `tile_size`×`tile_size` thumbnails of a `source` video track,
-    /// `height` pixels tall give or take what whole cells allow.
-    fn new(tile_size: u32, height: u32, source: (u32, u32)) -> Self {
-        let (cell_width, cell_height) = cell_size(tile_size, height, source);
-
+    /// An empty canvas the size of the `source` video track, divided into
+    /// `tile_size`×`tile_size` cells.
+    fn new(tile_size: u32, source: (u32, u32)) -> Self {
         Self {
-            image: RgbImage::new(cell_width * tile_size, cell_height * tile_size),
+            image: RgbImage::new(source.0, source.1),
             tile_size,
-            cell: (cell_width, cell_height),
+            cell: cell_size(tile_size, source),
         }
     }
 
@@ -178,18 +177,14 @@ impl Canvas {
     }
 }
 
-/// The pixel size of one thumbnail: a `tile_size`th of a sprite `height` pixels tall,
-/// with its width following the source's aspect.
+/// The pixel size of one thumbnail: the source video track's, divided by the tile each
+/// way.
 ///
-/// Both are rounded down to an even number: JPEG samples chroma in 2×2 blocks, and an
-/// odd size would split a block across the seam between two thumbnails and bleed colour
-/// from one into the other.
-fn cell_size(tile_size: u32, height: u32, (source_width, source_height): (u32, u32)) -> (u32, u32) {
-    let cell_height = (height / tile_size) & !1;
-    let scaled = u64::from(cell_height) * u64::from(source_width) / u64::from(source_height);
-    let cell_width = u32::try_from(scaled).unwrap_or(u32::MAX) & !1;
-
-    (cell_width.max(2), cell_height.max(2))
+/// A tile size the source does not divide evenly leaves the remainder black along the
+/// right and bottom edges, rather than shrinking the sprite below the size a manifest
+/// read off that track and advertised.
+fn cell_size(tile_size: u32, (source_width, source_height): (u32, u32)) -> (u32, u32) {
+    (source_width / tile_size, source_height / tile_size)
 }
 
 #[cfg(test)]
@@ -203,45 +198,38 @@ mod tests {
 
     const FIXTURES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../fixtures");
     const TILE_SIZE: u32 = 5;
-    const HEIGHT: u32 = 900;
     const SOURCE: (u32, u32) = (1920, 1080);
 
     #[test]
-    fn cell_size_splits_the_height_across_the_rows_and_follows_the_source_aspect() {
-        assert_eq!(cell_size(TILE_SIZE, HEIGHT, SOURCE), (320, 180));
+    fn cell_size_divides_the_source_into_a_cell_per_tile() {
+        assert_eq!(cell_size(TILE_SIZE, SOURCE), (384, 216));
+    }
+
+    /// A tile the source does not divide evenly loses the remainder from every cell,
+    /// which the sprite keeps as an unfilled edge.
+    #[test]
+    fn cell_size_drops_what_the_tile_does_not_divide() {
+        assert_eq!(cell_size(7, SOURCE), (274, 154));
     }
 
     #[test]
-    fn cell_size_rounds_an_odd_size_down() {
-        assert_eq!(cell_size(TILE_SIZE, 905, (643, 362)), (318, 180));
-    }
-
-    #[test]
-    fn a_sprite_is_the_grid_of_cells_the_height_divides_into() {
-        assert_eq!(
-            Canvas::new(TILE_SIZE, HEIGHT, SOURCE).image.dimensions(),
-            (1600, 900)
-        );
-    }
-
-    #[test]
-    fn a_sprite_follows_the_tile_size_it_is_given() {
-        assert_eq!(Canvas::new(4, 720, SOURCE).image.dimensions(), (1280, 720));
+    fn a_sprite_is_the_size_of_the_track_it_is_cut_from() {
+        assert_eq!(Canvas::new(TILE_SIZE, SOURCE).image.dimensions(), SOURCE);
     }
 
     /// A sprite is a fixed grid of cells whatever it holds, so one nothing was placed in
     /// still encodes at the size the manifest advertised.
     #[test]
     fn an_empty_sprite_encodes_at_the_advertised_size() {
-        let encoded = Canvas::new(TILE_SIZE, HEIGHT, SOURCE).encode().unwrap();
+        let encoded = Canvas::new(TILE_SIZE, SOURCE).encode().unwrap();
 
         let decoded = image::load_from_memory_with_format(&encoded, ImageFormat::Jpeg).unwrap();
-        assert_eq!((decoded.width(), decoded.height()), (1600, 900));
+        assert_eq!((decoded.width(), decoded.height()), SOURCE);
     }
 
     #[test]
     fn place_refuses_a_frame_that_does_not_fill_its_buffer() {
-        let error = Canvas::new(TILE_SIZE, HEIGHT, SOURCE)
+        let error = Canvas::new(TILE_SIZE, SOURCE)
             .place(
                 0,
                 Frame {
@@ -257,8 +245,8 @@ mod tests {
 
     #[test]
     fn place_puts_a_cell_in_the_row_and_column_its_index_names() {
-        let (cell_width, cell_height) = cell_size(TILE_SIZE, HEIGHT, SOURCE);
-        let mut canvas = Canvas::new(TILE_SIZE, HEIGHT, SOURCE);
+        let (cell_width, cell_height) = cell_size(TILE_SIZE, SOURCE);
+        let mut canvas = Canvas::new(TILE_SIZE, SOURCE);
 
         canvas.place(6, white_frame()).unwrap();
 
@@ -282,7 +270,7 @@ mod tests {
             })],
         };
 
-        let error = Canvas::new(TILE_SIZE, HEIGHT, SOURCE)
+        let error = Canvas::new(TILE_SIZE, SOURCE)
             .compose(&initialization, &[], &window)
             .unwrap_err();
 
@@ -299,7 +287,7 @@ mod tests {
             cells: Vec::new(),
         };
 
-        let error = Canvas::new(TILE_SIZE, HEIGHT, SOURCE)
+        let error = Canvas::new(TILE_SIZE, SOURCE)
             .compose(&initialization, &[], &window)
             .unwrap_err();
 

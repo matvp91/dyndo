@@ -9,7 +9,6 @@ use relative_path::RelativePath;
 
 const FIXTURES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../fixtures");
 const TILE_SIZE: u32 = 5;
-const HEIGHT: u32 = 900;
 const STEP: u32 = 10_000;
 
 #[tokio::test]
@@ -34,7 +33,6 @@ async fn generate_refuses_a_time_the_presentation_never_reaches() {
 fn sprite(time: u64) -> Sprite {
     Sprite {
         tile_size: TILE_SIZE,
-        height: HEIGHT,
         step: STEP,
         time,
     }
