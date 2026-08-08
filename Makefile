@@ -17,7 +17,7 @@ build-debug:
 
 ## run: run the dyndo-server
 run:
-	$(CARGO) run -p dyndo-server
+	$(CARGO) run -p dyndo-server --release
 
 ## test: run the whole workspace test suite
 test:
