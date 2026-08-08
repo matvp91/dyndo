@@ -1,26 +1,25 @@
 //! Which frames a sprite shows, and where their bytes are.
 //!
 //! A sprite's cells step on from the time asked for. Turning those times into bytes is
-//! all this does: the one contiguous range that has to be read, and where inside it
-//! each cell's frame is stored.
+//! all this does: which fragment holds each cell's frame, and where that fragment sits
+//! in the track.
 
 use std::ops::Range;
 
 use dyndo_core::segment::{self, SegmentOptions};
 use dyndo_core::track::Track;
 
-/// One cell's frame: the segment holding it, as a byte range relative to the start of
-/// the window's own range, and the time it is shown at in the track's timescale.
+/// One cell's frame: the byte range of the fragment holding it, and the time it is
+/// shown at in the track's timescale.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Cell {
     pub(crate) segment: Range<u64>,
     pub(crate) time: u64,
 }
 
-/// The one range a sprite is read from, and the cells it holds.
+/// The cells a sprite holds, each naming the bytes it is cut from.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Window {
-    pub(crate) range: Range<u64>,
     pub(crate) cells: Vec<Option<Cell>>,
 }
 
@@ -28,11 +27,14 @@ impl Window {
     /// The window `cells` frames are cut from, the first shown at `time` and each one
     /// after it `step` later, both in milliseconds from the start of the presentation.
     ///
-    /// Segments run in presentation order, so a sprite's cells are always covered by a
-    /// single range. A cell is `None` once the presentation ends before the time it
-    /// would show, which is how the trailing sprite of an asset comes out partly
-    /// filled; two cells name the same segment when the step is shorter than one, and
-    /// each still shows its own frame out of it.
+    /// A cell reads only the fragment its own frame is in, so what a sprite costs
+    /// follows the cells it holds rather than the span they are spread over — a step
+    /// twice as long moves the frames apart without reading any more of the track.
+    ///
+    /// A cell is `None` once the presentation ends before the time it would show, which
+    /// is how the trailing sprite of an asset comes out partly filled; two cells name
+    /// the same fragment when the step is shorter than one, and each still shows its
+    /// own frame out of it.
     ///
     /// Returns `None` when the sprite is addressed at nothing: a step or a count of
     /// zero asks for no thumbnails at all, and the presentation has to reach `time`.
@@ -47,7 +49,7 @@ impl Window {
         let segments = segment::segments(track, &SegmentOptions::default());
         let timescale = track.timescale();
         let anchor = track.earliest_presentation_time();
-        let found: Vec<Option<Cell>> = (0..u64::from(cells))
+        let cells: Vec<Option<Cell>> = (0..u64::from(cells))
             .map(|cell| {
                 let time =
                     anchor.saturating_add(raw_time(time + cell * u64::from(step), timescale));
@@ -60,25 +62,9 @@ impl Window {
                     })
             })
             .collect();
-        let start = found
-            .iter()
-            .flatten()
-            .map(|cell| cell.segment.start)
-            .min()?;
-        let end = found.iter().flatten().map(|cell| cell.segment.end).max()?;
+        cells.iter().flatten().next()?;
 
-        Some(Self {
-            range: start..end,
-            cells: found
-                .into_iter()
-                .map(|cell| {
-                    cell.map(|cell| Cell {
-                        segment: cell.segment.start - start..cell.segment.end - start,
-                        time: cell.time,
-                    })
-                })
-                .collect(),
-        })
+        Some(Self { cells })
     }
 }
 
@@ -167,26 +153,12 @@ mod tests {
         );
     }
 
+    /// At a step of five segments, the cells walk the segment list five at a time, each
+    /// naming the fragment it is cut from and nothing between them.
     #[tokio::test]
-    async fn new_reads_one_range_spanning_the_segments_its_cells_fall_in() {
+    async fn new_names_the_fragment_each_cell_is_cut_from() {
         let track = probe("video_avc_1080.mp4").await;
         let segments = segment::segments(&track, &SegmentOptions::default());
-
-        let window = Window::new(&track, CELLS, STEP, 0).unwrap();
-
-        assert_eq!(
-            window.range,
-            segments[0].byte_range().start..segments[125].byte_range().end
-        );
-    }
-
-    /// At a step of five segments, the cells walk the segment list five at a time —
-    /// placed relative to the start of the one range that holds them.
-    #[tokio::test]
-    async fn new_places_each_cell_relative_to_that_range() {
-        let track = probe("video_avc_1080.mp4").await;
-        let segments = segment::segments(&track, &SegmentOptions::default());
-        let start = segments[0].byte_range().start;
 
         let window = Window::new(&track, CELLS, STEP, 0).unwrap();
 
@@ -198,11 +170,28 @@ mod tests {
                 .map(|cell| cell.segment.clone())
                 .take(2)
                 .collect::<Vec<_>>(),
-            vec![
-                0..segments[0].byte_range().end - start,
-                segments[5].byte_range().start - start..segments[5].byte_range().end - start
-            ]
+            vec![segments[0].byte_range(), segments[5].byte_range()]
         );
+    }
+
+    /// What a sprite reads follows the cells it holds, not the span they cover: a step
+    /// twice as long moves the frames apart without reading any more of the track.
+    #[tokio::test]
+    async fn a_longer_step_reads_no_more_than_a_shorter_one() {
+        let track = probe("video_avc_1080.mp4").await;
+        let read = |window: Window| -> u64 {
+            window
+                .cells
+                .iter()
+                .flatten()
+                .map(|cell| cell.segment.end - cell.segment.start)
+                .sum()
+        };
+
+        let short = Window::new(&track, CELLS, STEP, 0).unwrap();
+        let long = Window::new(&track, CELLS, STEP * 3, 0).unwrap();
+
+        assert!(read(long) < read(short) * 2);
     }
 
     /// Below a segment's duration the step asks for frames between one keyframe and

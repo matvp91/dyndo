@@ -45,8 +45,6 @@ pub enum SpriteError {
     UnsupportedCodec(String),
     #[error("the presentation does not reach {0}ms")]
     NotFound(u64),
-    #[error("a cell falls outside the range read")]
-    CellOutsideRange,
     #[error("decoded frame does not fill its buffer")]
     Frame,
     #[error("encoding the sprite failed: {0}")]
@@ -94,13 +92,20 @@ impl Sprite {
         // for delivery in says nothing about how these bytes are read.
         let options = SegmentOptions::default();
         let initialization = track.read_initialization(op, &options).await?;
-        let media = track.read_range(op, &options, window.range.clone()).await?;
+        // A cell reads the one fragment its frame is in. Reading the whole span they
+        // are spread over would be a single request, but it grows with the step while
+        // the frames it holds do not: at ten seconds between thumbnails, four bytes in
+        // five belong to frames no cell shows.
+        let mut fragments = Vec::with_capacity(window.cells.len());
+        for cell in window.cells.iter().flatten() {
+            fragments.push(track.read_range(op, &options, cell.segment.clone()).await?);
+        }
 
         let canvas = Canvas::new(self.tile_size, (video.width, video.height));
 
         // Decoding a sprite's frames and encoding it is hundreds of milliseconds of CPU,
         // which on the caller's executor would stall every request sharing its thread.
-        tokio::task::spawn_blocking(move || canvas.compose(&initialization, &media, &window))
+        tokio::task::spawn_blocking(move || canvas.compose(&initialization, &fragments, &window))
             .await
             .expect("composing a sprite does not panic")
     }
@@ -126,22 +131,25 @@ impl Canvas {
     }
 
     /// Decodes the frame each cell shows, lays them out, and encodes the sprite.
+    /// `fragments` holds the bytes of every cell the presentation reaches, in the order
+    /// those cells appear.
     fn compose(
         mut self,
         initialization: &[u8],
-        media: &[u8],
+        fragments: &[Bytes],
         window: &Window,
     ) -> Result<Bytes, SpriteError> {
         let mut decoder = Decoder::new(initialization)?;
+        let mut read = fragments.iter();
 
         for (index, cell) in window.cells.iter().enumerate() {
             // A cell the presentation never reaches stays black. DASH-IF expects a
             // trailing sprite to be partly filled, and a player placing a cell by time
             // never asks for one of them.
             let Some(cell) = cell else { continue };
-            let bytes = media
-                .get(cell.segment.start as usize..cell.segment.end as usize)
-                .ok_or(SpriteError::CellOutsideRange)?;
+            let bytes = read
+                .next()
+                .expect("every cell the presentation reaches was read");
             let fragment = Fragment::read(bytes)?;
             let index =
                 u32::try_from(index).expect("a sprite holds no more cells than its tile size");
@@ -194,7 +202,6 @@ mod tests {
     use image::ImageFormat;
 
     use super::*;
-    use crate::window::Cell;
 
     const FIXTURES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../fixtures");
     const TILE_SIZE: u32 = 5;
@@ -259,33 +266,12 @@ mod tests {
         );
     }
 
-    #[test]
-    fn compose_refuses_a_cell_pointing_outside_the_bytes_read() {
-        let initialization = fs::read(format!("{FIXTURES}/video_avc_1080.mp4")).unwrap();
-        let window = Window {
-            range: 0..10,
-            cells: vec![Some(Cell {
-                segment: 0..10,
-                time: 0,
-            })],
-        };
-
-        let error = Canvas::new(TILE_SIZE, SOURCE)
-            .compose(&initialization, &[], &window)
-            .unwrap_err();
-
-        assert!(matches!(error, SpriteError::CellOutsideRange), "{error}");
-    }
-
     /// The codec a track declares is checked before anything is read, but the
     /// initialization segment has the last word on what the decoder is handed.
     #[test]
     fn compose_refuses_an_initialization_segment_that_is_not_avc() {
         let initialization = fs::read(format!("{FIXTURES}/video_av1_240.mp4")).unwrap();
-        let window = Window {
-            range: 0..0,
-            cells: Vec::new(),
-        };
+        let window = Window { cells: Vec::new() };
 
         let error = Canvas::new(TILE_SIZE, SOURCE)
             .compose(&initialization, &[], &window)
