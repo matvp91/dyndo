@@ -1,9 +1,8 @@
 //! The image frames are laid out in, and the JPEG it is encoded to.
 //!
-//! An image is a fixed grid whatever it holds, so its size follows from the grid, the
-//! width one thumbnail is scaled to, and the source track's dimensions — which is what
-//! lets a manifest advertise a thumbnail representation without anything being
-//! decoded, and without an image being built to ask.
+//! An image is a fixed tile of cells whatever it holds: a cell no frame was decoded
+//! into stays black rather than shrinking the image, so every sprite cut from an asset
+//! comes out the size its manifest advertised.
 
 use ::image::RgbImage;
 use ::image::codecs::jpeg::JpegEncoder;
@@ -18,38 +17,31 @@ const QUALITY: u8 = 80;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ImageError {
-    #[error("encoding the sheet failed: {0}")]
+    #[error("encoding the sprite failed: {0}")]
     Encode(#[from] ::image::ImageError),
     #[error("decoded frame does not fill its buffer")]
     Frame,
 }
 
-/// A grid of thumbnails being filled in: a black canvas that decoded frames are scaled
+/// A tile of thumbnails being filled in: a black canvas that decoded frames are scaled
 /// into, one cell at a time.
 pub(crate) struct Image {
     canvas: RgbImage,
-    grid: u32,
+    tile_size: u32,
     cell: (u32, u32),
 }
 
 impl Image {
-    /// An empty image holding `grid`×`grid` thumbnails of a `width`×`height` video
-    /// track, each thumbnail scaled to `cell_width`.
-    pub(crate) fn new(grid: u32, cell_width: u32, source: (u32, u32)) -> Self {
-        let (image_width, image_height) = Self::size(grid, cell_width, source);
+    /// An empty image of `tile_size`×`tile_size` thumbnails of a `source` video track,
+    /// `height` pixels tall give or take what whole cells allow.
+    pub(crate) fn new(tile_size: u32, height: u32, source: (u32, u32)) -> Self {
+        let (cell_width, cell_height) = cell_size(tile_size, height, source);
 
         Self {
-            canvas: RgbImage::new(image_width, image_height),
-            grid,
-            cell: cell_size(cell_width, source),
+            canvas: RgbImage::new(cell_width * tile_size, cell_height * tile_size),
+            tile_size,
+            cell: (cell_width, cell_height),
         }
-    }
-
-    /// The pixel size such an image has, without building one.
-    pub(crate) fn size(grid: u32, cell_width: u32, source: (u32, u32)) -> (u32, u32) {
-        let (width, height) = cell_size(cell_width, source);
-
-        (width * grid, height * grid)
     }
 
     /// Scales `frame` into the cell at `index`, counted row by row.
@@ -65,8 +57,8 @@ impl Image {
         imageops::overlay(
             &mut self.canvas,
             &imageops::resize(&decoded, cell_width, cell_height, FilterType::Triangle),
-            i64::from(index % self.grid * cell_width),
-            i64::from(index / self.grid * cell_height),
+            i64::from(index % self.tile_size * cell_width),
+            i64::from(index / self.tile_size * cell_height),
         );
 
         Ok(())
@@ -85,17 +77,18 @@ impl Image {
     }
 }
 
-/// The pixel size of one thumbnail of a `width`×`height` source scaled to
-/// `cell_width`.
+/// The pixel size of one thumbnail: a `tile_size`th of a sprite `height` pixels tall,
+/// with its width following the source's aspect.
 ///
-/// The height is rounded down to an even number: JPEG samples chroma in 2×2 blocks,
-/// and an odd height would split a block across the seam between two rows of
-/// thumbnails and bleed colour from one into the other.
-fn cell_size(cell_width: u32, (width, height): (u32, u32)) -> (u32, u32) {
-    let scaled = u64::from(cell_width) * u64::from(height) / u64::from(width);
-    let cell_height = u32::try_from(scaled).unwrap_or(u32::MAX) & !1;
+/// Both are rounded down to an even number: JPEG samples chroma in 2×2 blocks, and an
+/// odd size would split a block across the seam between two thumbnails and bleed colour
+/// from one into the other.
+fn cell_size(tile_size: u32, height: u32, (source_width, source_height): (u32, u32)) -> (u32, u32) {
+    let cell_height = (height / tile_size) & !1;
+    let scaled = u64::from(cell_height) * u64::from(source_width) / u64::from(source_height);
+    let cell_width = u32::try_from(scaled).unwrap_or(u32::MAX) & !1;
 
-    (cell_width, cell_height.max(2))
+    (cell_width.max(2), cell_height.max(2))
 }
 
 #[cfg(test)]
@@ -107,41 +100,38 @@ mod tests {
     const SOURCE: (u32, u32) = (1920, 1080);
 
     #[test]
-    fn cell_size_follows_the_source_aspect() {
-        assert_eq!(cell_size(320, SOURCE), (320, 180));
+    fn cell_size_splits_the_height_across_the_rows_and_follows_the_source_aspect() {
+        assert_eq!(cell_size(5, 900, SOURCE), (320, 180));
     }
 
     #[test]
-    fn cell_size_rounds_an_odd_height_down() {
-        assert_eq!(cell_size(320, (640, 362)), (320, 180));
+    fn cell_size_rounds_an_odd_size_down() {
+        assert_eq!(cell_size(5, 905, (643, 362)), (318, 180));
     }
 
     #[test]
-    fn size_is_the_grid_of_cells() {
-        assert_eq!(Image::size(5, 320, SOURCE), (1600, 900));
+    fn an_image_is_the_tile_of_cells_the_height_divides_into() {
+        assert_eq!(Image::new(5, 900, SOURCE).canvas.dimensions(), (1600, 900));
     }
 
     #[test]
-    fn size_follows_the_grid_it_is_given() {
-        assert_eq!(Image::size(4, 320, SOURCE), (1280, 720));
+    fn an_image_follows_the_tile_size_it_is_given() {
+        assert_eq!(Image::new(4, 720, SOURCE).canvas.dimensions(), (1280, 720));
     }
 
-    /// An image is a fixed grid whatever it holds, so one nothing was placed in still
-    /// encodes at the size the manifest advertised.
+    /// An image is a fixed tile of cells whatever it holds, so one nothing was placed in
+    /// still encodes at the size the manifest advertised.
     #[test]
     fn an_empty_image_encodes_at_the_advertised_size() {
-        let encoded = Image::new(5, 320, SOURCE).encode().unwrap();
+        let encoded = Image::new(5, 900, SOURCE).encode().unwrap();
 
         let decoded = ::image::load_from_memory_with_format(&encoded, ImageFormat::Jpeg).unwrap();
-        assert_eq!(
-            (decoded.width(), decoded.height()),
-            Image::size(5, 320, SOURCE)
-        );
+        assert_eq!((decoded.width(), decoded.height()), (1600, 900));
     }
 
     #[test]
     fn place_refuses_a_frame_that_does_not_fill_its_buffer() {
-        let error = Image::new(5, 320, SOURCE)
+        let error = Image::new(5, 900, SOURCE)
             .place(
                 0,
                 Frame {
@@ -157,8 +147,8 @@ mod tests {
 
     #[test]
     fn place_puts_a_cell_in_the_row_and_column_its_index_names() {
-        let (cell_width, cell_height) = cell_size(320, SOURCE);
-        let mut image = Image::new(5, 320, SOURCE);
+        let (cell_width, cell_height) = cell_size(5, 900, SOURCE);
+        let mut image = Image::new(5, 900, SOURCE);
 
         image.place(6, white_frame()).unwrap();
 

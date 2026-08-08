@@ -1,8 +1,8 @@
-//! Which frames a sheet shows, and where their bytes are.
+//! Which frames a sprite shows, and where their bytes are.
 //!
-//! A sheet's cells step from the time asked for by its cadence. Turning those times
-//! into bytes is all this does: the one contiguous range that has to be read, and
-//! where inside it each cell's frame is stored.
+//! A sprite's cells step on from the time asked for. Turning those times into bytes is
+//! all this does: the one contiguous range that has to be read, and where inside it
+//! each cell's frame is stored.
 
 use std::ops::Range;
 
@@ -17,7 +17,7 @@ pub(crate) struct Cell {
     pub(crate) time: u64,
 }
 
-/// The one range a sheet is read from, and the cells it holds.
+/// The one range a sprite is read from, and the cells it holds.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Window {
     pub(crate) range: Range<u64>,
@@ -26,31 +26,30 @@ pub(crate) struct Window {
 
 impl Window {
     /// The window `cells` frames are cut from, the first shown at `time` and each one
-    /// after it `cadence` later, both in milliseconds from the start of the
-    /// presentation.
+    /// after it `step` later, both in milliseconds from the start of the presentation.
     ///
-    /// Segments run in presentation order, so a sheet's cells are always covered by a
+    /// Segments run in presentation order, so a sprite's cells are always covered by a
     /// single range. A cell is `None` once the presentation ends before the time it
-    /// would show, which is how the trailing sheet of an asset comes out partly
-    /// filled; two cells name the same segment when the cadence is shorter than one,
-    /// and each still shows its own frame out of it.
+    /// would show, which is how the trailing sprite of an asset comes out partly
+    /// filled; two cells name the same segment when the step is shorter than one, and
+    /// each still shows its own frame out of it.
     ///
-    /// Returns `None` when the sheet is addressed at nothing: a cadence or a count of
+    /// Returns `None` when the sprite is addressed at nothing: a step or a count of
     /// zero asks for no thumbnails at all, and the presentation has to reach `time`.
-    pub(crate) fn new(track: &Track, cells: u32, cadence: u32, time: u64) -> Option<Self> {
-        if cells == 0 || cadence == 0 {
+    pub(crate) fn new(track: &Track, cells: u32, step: u32, time: u64) -> Option<Self> {
+        if cells == 0 || step == 0 {
             return None;
         }
 
         // Default options group nothing, so each of these is one stored fragment. A
-        // sheet's cadence is its own: it must not shift with the segmentation a
-        // request asks for delivery in.
+        // sprite's step is its own: it must not shift with the segmentation a request
+        // asks for delivery in.
         let segments = track.segments(&SegmentOptions::default());
         let timescale = track.timescale();
         let anchor = track.earliest_presentation_time();
         let found: Vec<Option<Cell>> = (0..u64::from(cells))
             .map(|cell| {
-                let offset = raw_time(time + cell * u64::from(cadence), timescale);
+                let offset = raw_time(time + cell * u64::from(step), timescale);
                 segment_at(&segments, offset).map(|segment| Cell {
                     segment,
                     // Segment times are cumulative from the track's earliest
@@ -108,8 +107,8 @@ fn segment_at(segments: &[Segment], offset: u64) -> Option<Range<u64>> {
 }
 
 /// The AVC fixture declares 715 fragments of 1.92s at timescale 90000 — 1370.32s of
-/// presentation, and with no grouping one segment each — so a 10s cadence puts a
-/// thumbnail on every fifth segment and, across 25 cells, a sheet on every 250s.
+/// presentation, and with no grouping one segment each — so a 10s step puts a
+/// thumbnail on every fifth segment and, across 25 cells, a sprite on every 250s.
 #[cfg(test)]
 mod tests {
     use opendal::Operator;
@@ -120,28 +119,27 @@ mod tests {
 
     const FIXTURES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../fixtures");
     const CELLS: u32 = 25;
-    const CADENCE: u32 = 10_000;
+    const STEP: u32 = 10_000;
 
     #[tokio::test]
-    async fn new_rejects_a_cadence_or_a_count_asking_for_no_thumbnails() {
+    async fn new_rejects_a_step_or_a_count_asking_for_no_thumbnails() {
         let track = probe("video_avc_1080.mp4").await;
 
         assert!(
-            Window::new(&track, CELLS, 0, 0).is_none()
-                && Window::new(&track, 0, CADENCE, 0).is_none()
+            Window::new(&track, CELLS, 0, 0).is_none() && Window::new(&track, 0, STEP, 0).is_none()
         );
     }
 
     #[tokio::test]
-    async fn new_rejects_a_sheet_the_presentation_never_reaches() {
+    async fn new_rejects_a_sprite_the_presentation_never_reaches() {
         let track = probe("video_avc_1080.mp4").await;
 
-        assert!(Window::new(&track, CELLS, CADENCE, 1_400_000).is_none());
+        assert!(Window::new(&track, CELLS, STEP, 1_400_000).is_none());
     }
 
-    /// A sheet is cut at the time asked for rather than at one the grid happens to
-    /// land on, and its cells step from there by the cadence: 10s at a 2s cadence
-    /// across four cells shows 10s, 12s, 14s and 16s.
+    /// A sprite is cut at the time asked for rather than at one the tile happens to
+    /// land on, and its cells step on from there: 10s at a 2s step across four cells
+    /// shows 10s, 12s, 14s and 16s.
     #[tokio::test]
     async fn new_shows_the_times_asked_for() {
         let track = probe("video_avc_1080.mp4").await;
@@ -160,10 +158,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn new_fills_every_cell_of_a_sheet_inside_the_presentation() {
+    async fn new_fills_every_cell_of_a_sprite_inside_the_presentation() {
         let track = probe("video_avc_1080.mp4").await;
 
-        let window = Window::new(&track, CELLS, CADENCE, 0).unwrap();
+        let window = Window::new(&track, CELLS, STEP, 0).unwrap();
 
         assert_eq!(
             (window.cells.len(), window.cells.iter().all(Option::is_some)),
@@ -171,13 +169,13 @@ mod tests {
         );
     }
 
-    /// The fixture ends 120.32s into its sixth sheet, which is where a cadence stops
+    /// The fixture ends 120.32s into its sixth sprite, which is where the step stops
     /// finding frames to show.
     #[tokio::test]
     async fn new_leaves_cells_past_the_end_of_the_presentation_empty() {
         let track = probe("video_avc_1080.mp4").await;
 
-        let window = Window::new(&track, CELLS, CADENCE, 1_250_000).unwrap();
+        let window = Window::new(&track, CELLS, STEP, 1_250_000).unwrap();
 
         assert_eq!(
             window.cells.iter().filter(|cell| cell.is_some()).count(),
@@ -190,7 +188,7 @@ mod tests {
         let track = probe("video_avc_1080.mp4").await;
         let segments = track.segments(&SegmentOptions::default());
 
-        let window = Window::new(&track, CELLS, CADENCE, 0).unwrap();
+        let window = Window::new(&track, CELLS, STEP, 0).unwrap();
 
         assert_eq!(
             window.range,
@@ -198,15 +196,15 @@ mod tests {
         );
     }
 
-    /// At a cadence of five segments, the cells step through the segment list five at a
-    /// time — placed relative to the start of the one range that holds them.
+    /// At a step of five segments, the cells walk the segment list five at a time —
+    /// placed relative to the start of the one range that holds them.
     #[tokio::test]
     async fn new_places_each_cell_relative_to_that_range() {
         let track = probe("video_avc_1080.mp4").await;
         let segments = track.segments(&SegmentOptions::default());
         let start = segments[0].byte_range().start;
 
-        let window = Window::new(&track, CELLS, CADENCE, 0).unwrap();
+        let window = Window::new(&track, CELLS, STEP, 0).unwrap();
 
         assert_eq!(
             window
@@ -223,11 +221,11 @@ mod tests {
         );
     }
 
-    /// Below a segment's duration the cadence asks for frames between one keyframe and
+    /// Below a segment's duration the step asks for frames between one keyframe and
     /// the next, so consecutive cells read the same segment — and are decoded to
     /// different times inside it.
     #[tokio::test]
-    async fn new_repeats_a_segment_for_a_cadence_shorter_than_it() {
+    async fn new_repeats_a_segment_for_a_step_shorter_than_it() {
         let track = probe("video_avc_1080.mp4").await;
 
         let window = Window::new(&track, CELLS, 1_000, 0).unwrap();

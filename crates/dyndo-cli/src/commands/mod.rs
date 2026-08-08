@@ -19,8 +19,8 @@ pub(crate) enum Command {
     Dash(dash::DashArgs),
     /// Generate HLS playlists from an asset.json.
     Hls(hls::HlsArgs),
-    /// Cut one thumbnail sprite sheet from an asset.json, decoding it out of the
-    /// video rendition best suited to the thumbnail size asked for.
+    /// Cut one thumbnail sprite from an asset.json, decoding it out of the video
+    /// track best suited to the thumbnail size asked for.
     Sprite(sprite::SpriteArgs),
 }
 
