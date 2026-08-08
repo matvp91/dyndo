@@ -20,7 +20,7 @@ pub(super) async fn initialization(
     let (track, segment_options) = read_track(op, context, track_id).await?;
     let bytes = track.read_initialization(op, &segment_options).await?;
 
-    Ok(([(CONTENT_TYPE, track.mime_type())], bytes).into_response())
+    Ok(([(CONTENT_TYPE, track.kind().mime_type())], bytes).into_response())
 }
 
 /// Serves the segment starting at `time` as the packaged CMAF bytes it is stored as.
@@ -33,7 +33,7 @@ pub(super) async fn media(
     let (track, segment_options, range) = locate(op, context, track_id, time).await?;
     let bytes = track.read_range(op, &segment_options, range).await?;
 
-    Ok(([(CONTENT_TYPE, track.mime_type())], bytes).into_response())
+    Ok(([(CONTENT_TYPE, track.kind().mime_type())], bytes).into_response())
 }
 
 /// Serves one segment of a text track as a WebVTT document, read back out of the
@@ -97,7 +97,7 @@ async fn read_track(
         .ok_or_else(|| ServerError::NotFound(format!("track {track_id}")))?;
     let path = asset.track_path(descriptor);
     let segment_options = asset.segment_options.clone();
-    let track = Track::probe(op, &path, Some(descriptor.kind.clone()), &segment_options).await?;
+    let track = Track::probe(op, &path, Some(descriptor), &segment_options).await?;
 
     Ok((track, segment_options))
 }

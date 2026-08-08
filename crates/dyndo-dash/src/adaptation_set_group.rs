@@ -1,9 +1,9 @@
-use dyndo_core::asset_descriptor::{AssetDescriptor, TrackDescriptor, TrackKind};
+use dyndo_core::asset_descriptor::TrackKind;
 use dyndo_core::role::Role;
 use dyndo_core::segment::SegmentOptions;
 use dyndo_core::track::Track;
 
-pub(super) type Member<'a> = (&'a TrackDescriptor, &'a Track);
+pub(super) type Member<'a> = &'a Track;
 
 pub(super) struct AdaptationSetGroup<'a> {
     key: String,
@@ -15,13 +15,13 @@ pub(super) struct AdaptationSetGroup<'a> {
 }
 
 impl<'a> AdaptationSetGroup<'a> {
-    fn new(key: String, descriptor: &'a TrackDescriptor, track: &'a Track) -> Self {
-        let language = match &descriptor.kind {
+    fn new(key: String, track: &'a Track) -> Self {
+        let language = match track.kind() {
             TrackKind::Video(_) => None,
             TrackKind::Audio(audio) => Some(audio.language.to_string()),
             TrackKind::Text(text) => Some(text.language.to_string()),
         };
-        let role = match &descriptor.kind {
+        let role = match track.kind() {
             TrackKind::Video(_) => None,
             TrackKind::Audio(audio) => audio.role,
             TrackKind::Text(text) => text.role,
@@ -29,11 +29,11 @@ impl<'a> AdaptationSetGroup<'a> {
 
         Self {
             key,
-            content_type: track.content_type(),
-            mime_type: track.mime_type(),
+            content_type: track.kind().content_type(),
+            mime_type: track.kind().mime_type(),
             language,
             role,
-            members: vec![(descriptor, track)],
+            members: vec![track],
         }
     }
 
@@ -58,12 +58,12 @@ impl<'a> AdaptationSetGroup<'a> {
     }
 
     pub(super) fn is_segment_aligned(&self, options: &SegmentOptions) -> bool {
-        let Some((_, reference)) = self.members.first() else {
+        let Some(reference) = self.members.first() else {
             return true;
         };
         let reference_segments = reference.segments(options);
 
-        self.members.iter().skip(1).all(|(_, candidate)| {
+        self.members.iter().skip(1).all(|candidate| {
             candidate.earliest_presentation_time() == reference.earliest_presentation_time()
                 && candidate
                     .segments(options)
@@ -76,18 +76,15 @@ impl<'a> AdaptationSetGroup<'a> {
     }
 }
 
-pub(super) fn group<'a>(
-    asset: &'a AssetDescriptor,
-    tracks: &'a [Track],
-) -> Vec<AdaptationSetGroup<'a>> {
-    let mut groups: Vec<AdaptationSetGroup<'a>> = Vec::new();
+pub(super) fn group(tracks: &[Track]) -> Vec<AdaptationSetGroup<'_>> {
+    let mut groups: Vec<AdaptationSetGroup<'_>> = Vec::new();
 
-    for (descriptor, track) in asset.tracks.iter().zip(tracks) {
+    for track in tracks {
         let key = adaptation_set_key(track);
         if let Some(group) = groups.iter_mut().find(|group| group.key == key) {
-            group.members.push((descriptor, track));
+            group.members.push(track);
         } else {
-            groups.push(AdaptationSetGroup::new(key, descriptor, track));
+            groups.push(AdaptationSetGroup::new(key, track));
         }
     }
 

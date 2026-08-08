@@ -1,3 +1,5 @@
+use std::process::ExitCode;
+
 use clap::Parser;
 use opendal::Operator;
 use opendal::services::Fs;
@@ -20,8 +22,20 @@ fn operator() -> Result<Operator, Box<dyn std::error::Error>> {
     Ok(Operator::new(Fs::default().root(&root))?)
 }
 
+/// Reports what went wrong rather than how it is spelled in Rust: returning the
+/// error from `main` would print its `Debug`, which quotes a message or, for a unit
+/// error like a filter matching nothing, drops it entirely.
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> ExitCode {
+    if let Err(error) = run().await {
+        eprintln!("dyndo: {error}");
+        return ExitCode::FAILURE;
+    }
+
+    ExitCode::SUCCESS
+}
+
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
     let op = operator()?;
     cli.command.run(&op).await

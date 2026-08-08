@@ -1,9 +1,10 @@
 use clap::Args;
 use dyndo_core::asset_descriptor::AssetDescriptor;
+use dyndo_core::track::Track;
 use opendal::Operator;
 use relative_path::RelativePathBuf;
 
-use super::SegmentArgs;
+use super::{SegmentArgs, parse_filter};
 
 #[derive(Args)]
 pub(crate) struct HlsArgs {
@@ -19,17 +20,31 @@ pub(crate) struct HlsArgs {
     /// documents.
     #[arg(long, default_value_t = false)]
     wvtt: bool,
+    /// Write playlists only for the tracks this expression keeps, for example
+    /// `--filter 'type!=video||height<=720'`.
+    #[arg(long)]
+    filter: Option<String>,
 }
 
 pub(super) async fn run(op: &Operator, args: HlsArgs) -> Result<(), Box<dyn std::error::Error>> {
     let mut descriptor = AssetDescriptor::read(op, &args.input).await?;
     args.segment.assign_to(&mut descriptor.segment_options);
+    // A media playlist is written per descriptor track below, so the descriptor has
+    // to drop what the filter dropped — otherwise it writes playlists the
+    // multivariant playlist does not reference.
+    if let Some(filter) = parse_filter(args.filter.as_deref())? {
+        let tracks = Track::probe_all(op, &descriptor).await?;
+        let kept = filter.narrow(tracks, &descriptor.segment_options)?;
+        descriptor
+            .tracks
+            .retain(|track| kept.iter().any(|kept| track.id == kept.id()));
+    }
     let output = RelativePathBuf::from(args.output);
     op.create_dir(&format!("{output}/")).await?;
 
     let hls_options = dyndo_hls::options::HlsOptions { wvtt: args.wvtt };
     let master =
-        dyndo_hls::builder::generate_master_playlist(op, &descriptor, &hls_options).await?;
+        dyndo_hls::builder::generate_master_playlist(op, &descriptor, &hls_options, None).await?;
     let master_path = output.join("master.m3u8");
     op.write(master_path.as_str(), master.to_string()).await?;
     println!("wrote {master_path}");

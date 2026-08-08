@@ -7,7 +7,7 @@ output without starting a server.
 
 The CLI and the server share the same manifest builders, so they produce the
 same manifest model for the same descriptor, segmentation options, and
-transport options. These commands simply do not serve the media alongside it.
+manifest options. These commands simply do not serve the media alongside it.
 Players still need the CMAF segments, which the server provides in production.
 
 ## Render a DASH manifest
@@ -115,8 +115,8 @@ fragments until the requested duration is reached, while respecting the
 descriptor's [`segment_options.boundaries`](../reference/asset-json.md#segmentation).
 Every segment flag overrides the matching option in that block, and
 `--segment-boundaries` and `--segment-text-length` are accepted alongside it.
-Each command also takes one transport-specific flag: `--compact` for DASH, and
-`--wvtt` for HLS.
+DASH also takes `--compact` and `--multi-period`, the latter opening a `Period`
+at each boundary; HLS takes `--wvtt`.
 
 ## Next steps
 

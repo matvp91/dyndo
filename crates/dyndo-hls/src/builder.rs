@@ -1,10 +1,10 @@
 //! HLS playlist construction from dyndo assets.
 
 use std::borrow::Cow;
-use std::collections::HashSet;
 use std::time::Duration;
 
 use dyndo_core::asset_descriptor::{AssetDescriptor, TrackDescriptor, TrackKind};
+use dyndo_core::filter::{Filter, FilterMatchedNothing};
 use dyndo_core::segment::SegmentOptions;
 use dyndo_core::track::{Track, TrackError, average_bitrate, max_bitrate};
 use hls_m3u8::tags::{ExtXMap, ExtXMedia, VariantStream};
@@ -27,26 +27,34 @@ pub enum HlsError {
     Playlist(#[from] hls_m3u8::Error),
     #[error("invalid video frame rate: {0}")]
     InvalidFrameRate(String),
-    #[error("duplicate rendition name: {0}")]
-    DuplicateRenditionName(String),
     #[error("segment start time overflow for track {0}")]
     SegmentTimeOverflow(String),
+    #[error(transparent)]
+    Filter(#[from] FilterMatchedNothing),
 }
 
 /// Generates an HLS multivariant playlist containing the asset's video tracks.
 ///
+/// `filter` narrows which of the asset's tracks the playlist describes; pass `None`
+/// to describe all of them.
+///
 /// # Errors
 ///
-/// Returns an error when a track cannot be probed or the resulting playlist is
-/// rejected by `hls_m3u8`.
+/// Returns an error when a track cannot be probed, the filter matches no track, or
+/// the resulting playlist is rejected by `hls_m3u8`.
 pub async fn generate_master_playlist(
     op: &Operator,
     asset: &AssetDescriptor,
     hls_options: &HlsOptions,
+    filter: Option<&Filter>,
 ) -> Result<MasterPlaylist<'static>, HlsError> {
-    ensure_unique_rendition_names(asset)?;
     let tracks = Track::probe_all(op, asset).await?;
-    build_master_playlist(asset, &tracks, &asset.segment_options, hls_options)
+    let tracks = match filter {
+        Some(filter) => filter.narrow(tracks, &asset.segment_options)?,
+        None => tracks,
+    };
+
+    build_master_playlist(&tracks, &asset.segment_options, hls_options)
 }
 
 /// Generates the static HLS media playlist for one asset track.
@@ -63,8 +71,8 @@ pub async fn generate_media_playlist(
 ) -> Result<MediaPlaylist<'static>, HlsError> {
     let path = asset.track_path(descriptor);
     let segment_options = &asset.segment_options;
-    let track = Track::probe(op, &path, Some(descriptor.kind.clone()), segment_options).await?;
-    build_media_playlist(descriptor, &track, segment_options, hls_options)
+    let track = Track::probe(op, &path, Some(descriptor), segment_options).await?;
+    build_media_playlist(&track, segment_options, hls_options)
 }
 
 /// Serializes a media playlist with `EXTINF` durations rounded to three decimals.
@@ -100,7 +108,6 @@ fn serves_plain_vtt(kind: &TrackKind, options: &HlsOptions) -> bool {
 }
 
 fn build_media_playlist(
-    descriptor: &TrackDescriptor,
     track: &Track,
     segment_options: &SegmentOptions,
     hls_options: &HlsOptions,
@@ -123,14 +130,14 @@ fn build_media_playlist(
             let mut builder = MediaSegment::builder();
             builder
                 .duration(duration)
-                .uri(format!("{}/{start_time}.{extension}", descriptor.id));
+                .uri(format!("{}/{start_time}.{extension}", track.id()));
             if index == 0 && !plain_vtt {
-                builder.map(ExtXMap::new(format!("{}/init.mp4", descriptor.id)));
+                builder.map(ExtXMap::new(format!("{}/init.mp4", track.id())));
             }
 
             start_time = start_time
                 .checked_add(segment.raw_duration())
-                .ok_or_else(|| HlsError::SegmentTimeOverflow(descriptor.id.clone()))?;
+                .ok_or_else(|| HlsError::SegmentTimeOverflow(track.id().to_string()))?;
             Ok(builder.build()?)
         })
         .collect::<Result<Vec<_>, HlsError>>()?;
@@ -155,24 +162,8 @@ fn rounded_duration_seconds(raw_duration: u64, timescale: u32) -> u64 {
     u64::try_from((raw_duration + timescale / 2) / timescale).unwrap_or(u64::MAX)
 }
 
-fn ensure_unique_rendition_names(asset: &AssetDescriptor) -> Result<(), HlsError> {
-    let mut names = HashSet::new();
-    for descriptor in &asset.tracks {
-        let (group_id, language, role) = match &descriptor.kind {
-            TrackKind::Video(_) => continue,
-            TrackKind::Audio(audio) => (AUDIO_GROUP_ID, &audio.language, audio.role),
-            TrackKind::Text(text) => (SUBTITLES_GROUP_ID, &text.language, text.role),
-        };
-        let name = roles::name(language, role);
-        if !names.insert((group_id, name.clone())) {
-            return Err(HlsError::DuplicateRenditionName(name));
-        }
-    }
-    Ok(())
-}
-
+/// Builds the playlist from tracks already probed and already narrowed.
 fn build_master_playlist(
-    asset: &AssetDescriptor,
     tracks: &[Track],
     segment_options: &SegmentOptions,
     hls_options: &HlsOptions,
@@ -207,11 +198,9 @@ fn build_master_playlist(
             |kind| matches!(kind, TrackKind::Text(_)),
         ));
 
-    let variants = asset
-        .tracks
+    let variants = tracks
         .iter()
-        .zip(tracks)
-        .filter_map(|(descriptor, track)| {
+        .filter_map(|track| {
             let TrackKind::Video(video) = track.kind() else {
                 return None;
             };
@@ -238,7 +227,7 @@ fn build_master_playlist(
                     .build()
                     .map_err(HlsError::from)
                     .map(|stream_data| VariantStream::ExtXStreamInf {
-                        uri: Cow::Owned(format!("{}.m3u8", descriptor.id)),
+                        uri: Cow::Owned(format!("{}.m3u8", track.id())),
                         frame_rate: Some(frame_rate),
                         audio: has_audio.then_some(Cow::Borrowed(AUDIO_GROUP_ID)),
                         subtitles: has_subtitles.then_some(Cow::Borrowed(SUBTITLES_GROUP_ID)),
@@ -250,7 +239,7 @@ fn build_master_playlist(
         .collect::<Result<Vec<_>, _>>()?;
 
     Ok(MasterPlaylist::builder()
-        .media(media_entries(asset)?)
+        .media(media_entries(tracks)?)
         .variant_streams(variants)
         .has_independent_segments(true)
         .build()?)
@@ -284,36 +273,34 @@ fn unique_codecs<'a>(codecs: impl IntoIterator<Item = &'a str>) -> Vec<String> {
     })
 }
 
-fn media_entries(asset: &AssetDescriptor) -> Result<Vec<ExtXMedia<'static>>, hls_m3u8::Error> {
-    let default_audio_id = asset
-        .tracks
+fn media_entries(tracks: &[Track]) -> Result<Vec<ExtXMedia<'static>>, hls_m3u8::Error> {
+    let default_audio_id = tracks
         .iter()
-        .find(|descriptor| {
+        .find(|track| {
             matches!(
-                descriptor.kind,
-                TrackKind::Audio(ref audio) if audio.role == Some(dyndo_core::role::Role::Main)
+                track.kind(),
+                TrackKind::Audio(audio) if audio.role == Some(dyndo_core::role::Role::Main)
             )
         })
         .or_else(|| {
-            asset.tracks.iter().find(|descriptor| {
-                matches!(descriptor.kind, TrackKind::Audio(ref audio) if audio.role.is_none())
-            })
+            tracks.iter().find(
+                |track| matches!(track.kind(), TrackKind::Audio(audio) if audio.role.is_none()),
+            )
         })
-        .map(|descriptor| descriptor.id.as_str());
+        .map(Track::id);
 
-    asset
-        .tracks
+    tracks
         .iter()
-        .filter_map(|descriptor| media_entry(asset, descriptor, default_audio_id))
+        .filter_map(|track| media_entry(tracks, track, default_audio_id))
         .collect::<Result<Vec<_>, _>>()
 }
 
 fn media_entry(
-    asset: &AssetDescriptor,
-    descriptor: &TrackDescriptor,
+    tracks: &[Track],
+    track: &Track,
     default_audio_id: Option<&str>,
 ) -> Option<Result<ExtXMedia<'static>, hls_m3u8::Error>> {
-    let (media_type, group_id, language, role, channels) = match &descriptor.kind {
+    let (media_type, group_id, language, role, channels) = match track.kind() {
         TrackKind::Video(_) => return None,
         TrackKind::Audio(audio) => (
             MediaType::Audio,
@@ -330,13 +317,13 @@ fn media_entry(
             None,
         ),
     };
-    let is_default = default_audio_id == Some(descriptor.id.as_str());
-    let is_autoselect = is_default || selection_tuple_is_unique(asset, descriptor);
+    let is_default = default_audio_id == Some(track.id());
+    let is_autoselect = is_default || selection_tuple_is_unique(tracks, track);
 
     let mut builder = ExtXMedia::builder();
     builder
         .media_type(media_type)
-        .uri(format!("{}.m3u8", descriptor.id))
+        .uri(format!("{}.m3u8", track.id()))
         .group_id(group_id)
         .language(language.to_string())
         .name(roles::name(language, role))
@@ -353,13 +340,12 @@ fn media_entry(
     Some(builder.build())
 }
 
-fn selection_tuple_is_unique(asset: &AssetDescriptor, descriptor: &TrackDescriptor) -> bool {
-    let Some((is_audio, language, role)) = selection_tuple(descriptor) else {
+fn selection_tuple_is_unique(tracks: &[Track], track: &Track) -> bool {
+    let Some((is_audio, language, role)) = selection_tuple(track) else {
         return false;
     };
 
-    asset
-        .tracks
+    tracks
         .iter()
         .filter_map(selection_tuple)
         .filter(|candidate| {
@@ -372,10 +358,8 @@ fn selection_tuple_is_unique(asset: &AssetDescriptor, descriptor: &TrackDescript
         == 1
 }
 
-fn selection_tuple(
-    descriptor: &TrackDescriptor,
-) -> Option<(bool, &LanguageTag, Option<dyndo_core::role::Role>)> {
-    match &descriptor.kind {
+fn selection_tuple(track: &Track) -> Option<(bool, &LanguageTag, Option<dyndo_core::role::Role>)> {
+    match track.kind() {
         TrackKind::Video(_) => None,
         TrackKind::Audio(audio) => Some((true, &audio.language, audio.role)),
         TrackKind::Text(text) => Some((false, &text.language, text.role)),
@@ -538,39 +522,5 @@ mod tests {
     #[test]
     fn rounded_duration_seconds_rounds_half_up() {
         assert_eq!(rounded_duration_seconds(6_500, 1_000), 7);
-    }
-
-    #[test]
-    fn ensure_unique_rendition_names_rejects_duplicates_within_a_group() {
-        let asset: AssetDescriptor = serde_json::from_value(serde_json::json!({
-            "tracks": [
-                {
-                    "id": "audio-1",
-                    "path": "audio-1.mp4",
-                    "codec": "mp4a.40.2",
-                    "type": "audio",
-                    "sample_rate": 48000,
-                    "channels": 2,
-                    "language": "en",
-                    "role": "main"
-                },
-                {
-                    "id": "audio-2",
-                    "path": "audio-2.mp4",
-                    "codec": "mp4a.40.2",
-                    "type": "audio",
-                    "sample_rate": 48000,
-                    "channels": 2,
-                    "language": "en",
-                    "role": "main"
-                }
-            ]
-        }))
-        .unwrap();
-
-        assert!(matches!(
-            ensure_unique_rendition_names(&asset),
-            Err(HlsError::DuplicateRenditionName(_))
-        ));
     }
 }

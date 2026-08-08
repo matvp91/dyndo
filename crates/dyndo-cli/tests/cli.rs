@@ -91,6 +91,98 @@ fn hls_writes_master_and_track_playlists() {
 }
 
 #[test]
+fn dash_filter_omits_the_tracks_it_rejects() {
+    let dir = tempfile::tempdir().unwrap();
+    index_video_and_audio(dir.path());
+
+    let status = dyndo(dir.path())
+        .args(["dash", "-i", "asset.json", "--filter", "type!=audio"])
+        .status()
+        .unwrap();
+    assert!(status.success());
+
+    let xml = fs::read_to_string(dir.path().join("stream.mpd")).unwrap();
+    assert!(
+        xml.contains("contentType=\"video\"") && !xml.contains("contentType=\"audio\""),
+        "unexpected manifest: {xml}"
+    );
+}
+
+/// A media playlist is written per surviving track, so the filter has to narrow the
+/// descriptor the loop walks — otherwise it writes playlists the multivariant
+/// playlist does not reference.
+#[test]
+fn hls_filter_writes_playlists_only_for_the_tracks_it_keeps() {
+    let dir = tempfile::tempdir().unwrap();
+    index_video_and_audio(dir.path());
+    let descriptor: serde_json::Value =
+        serde_json::from_slice(&fs::read(dir.path().join("asset.json")).unwrap()).unwrap();
+    let id = |kind: &str| {
+        descriptor["tracks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|track| track["type"] == kind)
+            .map(|track| track["id"].as_str().unwrap().to_string())
+            .unwrap()
+    };
+
+    let status = dyndo(dir.path())
+        .args([
+            "hls",
+            "-i",
+            "asset.json",
+            "-o",
+            "playlists",
+            "--filter",
+            "type!=audio",
+        ])
+        .status()
+        .unwrap();
+    assert!(status.success());
+
+    let playlists = dir.path().join("playlists");
+    assert!(playlists.join(format!("{}.m3u8", id("video"))).is_file());
+    assert!(!playlists.join(format!("{}.m3u8", id("audio"))).is_file());
+}
+
+#[test]
+fn a_malformed_filter_is_rejected() {
+    let dir = tempfile::tempdir().unwrap();
+    index_video_and_audio(dir.path());
+
+    let output = dyndo(dir.path())
+        .args(["dash", "-i", "asset.json", "--filter", "heigth<=720"])
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("invalid --filter"),
+        "unexpected stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn a_filter_matching_nothing_is_rejected() {
+    let dir = tempfile::tempdir().unwrap();
+    index_video_and_audio(dir.path());
+
+    let output = dyndo(dir.path())
+        .args(["dash", "-i", "asset.json", "--filter", "type==text"])
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("no track matches the filter"),
+        "unexpected stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
 fn dash_requires_input() {
     let dir = tempfile::tempdir().unwrap();
 

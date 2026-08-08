@@ -61,7 +61,7 @@ pub async fn generate(
     time: u64,
 ) -> Result<Bytes, SpriteError> {
     let TrackKind::Video(video) = track.kind() else {
-        return Err(SpriteError::NotVideo(track.id()));
+        return Err(SpriteError::NotVideo(track.id().to_string()));
     };
     let window =
         Window::new(track, tile_size * tile_size, step, time).ok_or(SpriteError::NotFound(time))?;

@@ -12,7 +12,7 @@ async fn generate_master_playlist_emits_video_variant_and_audio_rendition() {
     let (op, asset) = asset().await;
 
     let playlist =
-        dyndo_hls::builder::generate_master_playlist(&op, &asset, &HlsOptions::default())
+        dyndo_hls::builder::generate_master_playlist(&op, &asset, &HlsOptions::default(), None)
             .await
             .unwrap()
             .to_string();
@@ -42,7 +42,7 @@ async fn generate_master_playlist_leaves_wvtt_out_of_codecs_for_a_webvtt_renditi
     let (op, asset) = subtitled_asset().await;
 
     let playlist =
-        dyndo_hls::builder::generate_master_playlist(&op, &asset, &HlsOptions::default())
+        dyndo_hls::builder::generate_master_playlist(&op, &asset, &HlsOptions::default(), None)
             .await
             .unwrap()
             .to_string();
@@ -58,7 +58,7 @@ async fn generate_master_playlist_advertises_wvtt_when_the_packaged_track_is_ask
     let (op, asset) = subtitled_asset().await;
     let options = HlsOptions { wvtt: true };
 
-    let playlist = dyndo_hls::builder::generate_master_playlist(&op, &asset, &options)
+    let playlist = dyndo_hls::builder::generate_master_playlist(&op, &asset, &options, None)
         .await
         .unwrap()
         .to_string();

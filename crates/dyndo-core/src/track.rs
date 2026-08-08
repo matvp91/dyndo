@@ -6,7 +6,7 @@ use opendal::Operator;
 use relative_path::{RelativePath, RelativePathBuf};
 use uuid::Uuid;
 
-use crate::asset_descriptor::{AssetDescriptor, TrackKind};
+use crate::asset_descriptor::{AssetDescriptor, TrackDescriptor, TrackKind};
 use crate::opendal::add_operator_layers;
 use crate::probe::{self, ProbeError};
 use crate::segment::SegmentOptions;
@@ -47,7 +47,7 @@ impl Fragment {
 }
 
 pub struct Track {
-    id: Uuid,
+    id: String,
     path: RelativePathBuf,
     codec: String,
     kind: TrackKind,
@@ -64,19 +64,26 @@ impl Track {
     /// at the splice points and text segment length in `options`, so its fragments
     /// group into segments alongside the asset's other tracks.
     ///
+    /// `descriptor` is what the asset already declares about the track: its id, and
+    /// the kind whose metadata a probe cannot read off the file. Pass `None` for a
+    /// track no descriptor covers yet — it takes a [`generate_id`] id, which is what
+    /// indexing seeds a new descriptor with.
+    ///
     /// # Errors
     ///
     /// [`TrackError`] if the track cannot be read, packaged, or indexed.
     pub async fn probe(
         op: &Operator,
         path: &RelativePath,
-        kind: Option<TrackKind>,
+        descriptor: Option<&TrackDescriptor>,
         options: &SegmentOptions,
     ) -> Result<Self, TrackError> {
         let layered = add_operator_layers(op, options);
         let probed = probe::probe(&layered, path).await?;
-        let kind = kind.unwrap_or(probed.kind);
-        let id = Uuid::new_v5(&Uuid::NAMESPACE_URL, path.as_str().as_bytes());
+        let (id, kind) = match descriptor {
+            Some(descriptor) => (descriptor.id.clone(), descriptor.kind.clone()),
+            None => (generate_id(&probed.kind, path), probed.kind),
+        };
 
         Ok(Self {
             id,
@@ -105,15 +112,16 @@ impl Track {
     ) -> Result<Vec<Self>, TrackError> {
         let reads = asset.tracks.iter().map(|descriptor| {
             let path = asset.track_path(descriptor);
-            let kind = descriptor.kind.clone();
-            async move { Self::probe(op, &path, Some(kind), &asset.segment_options).await }
+            async move { Self::probe(op, &path, Some(descriptor), &asset.segment_options).await }
         });
 
         try_join_all(reads).await
     }
 
-    pub fn id(&self) -> String {
-        format!("{}_{}", self.content_type(), self.id)
+    /// The id this track is addressed by: the one its descriptor declares, or a
+    /// generated one when no descriptor covers it yet.
+    pub fn id(&self) -> &str {
+        &self.id
     }
 
     pub fn path(&self) -> &RelativePath {
@@ -122,24 +130,6 @@ impl Track {
 
     pub fn kind(&self) -> &TrackKind {
         &self.kind
-    }
-
-    /// Returns the DASH media content type represented by the track.
-    pub fn content_type(&self) -> &'static str {
-        match self.kind {
-            TrackKind::Video(_) => "video",
-            TrackKind::Audio(_) => "audio",
-            TrackKind::Text(_) => "text",
-        }
-    }
-
-    /// Returns the media type of the track's CMAF representation.
-    pub fn mime_type(&self) -> &'static str {
-        match self.kind {
-            TrackKind::Video(_) => "video/mp4",
-            TrackKind::Audio(_) => "audio/mp4",
-            TrackKind::Text(_) => "application/mp4",
-        }
     }
 
     pub fn codec(&self) -> &str {
@@ -201,6 +191,15 @@ impl Track {
         self.read_range(op, options, self.initialization_range())
             .await
     }
+}
+
+/// The id a track takes when no descriptor names one yet, which indexing then
+/// records. Derived from the source path, so re-indexing the same file lands on the
+/// same id and the manifests keep addressing it by the same URL.
+pub fn generate_id(kind: &TrackKind, path: &RelativePath) -> String {
+    let hash = Uuid::new_v5(&Uuid::NAMESPACE_URL, path.as_str().as_bytes());
+
+    format!("{}_{hash}", kind.content_type())
 }
 
 /// Returns the longest video duration in milliseconds, or the longest audio
@@ -273,16 +272,23 @@ fn max_matching_duration(tracks: &[Track], include: impl Fn(&TrackKind) -> bool)
 }
 
 #[cfg(test)]
-pub(crate) fn test_track(kind: TrackKind, timescale: u32, fragments: Vec<Fragment>) -> Track {
-    Track {
-        id: Uuid::nil(),
-        path: RelativePathBuf::from("track.mp4"),
-        codec: "test".to_string(),
-        kind,
-        timescale,
-        earliest_presentation_time: 0,
-        initialization_range: 0..0,
-        fragments,
+impl Track {
+    pub(crate) fn fake(kind: TrackKind, timescale: u32, fragments: Vec<Fragment>) -> Self {
+        Self {
+            id: "fake".to_string(),
+            path: RelativePathBuf::from("track.mp4"),
+            codec: "fake".to_string(),
+            kind,
+            timescale,
+            earliest_presentation_time: 0,
+            initialization_range: 0..0,
+            fragments,
+        }
+    }
+
+    pub(crate) fn fake_earliest_presentation_time(mut self, time: u64) -> Self {
+        self.earliest_presentation_time = time;
+        self
     }
 }
 
@@ -305,7 +311,7 @@ mod tests {
 
     #[test]
     fn duration_converts_timescale_units() {
-        let track = test_track(
+        let track = Track::fake(
             video_kind(),
             90_000,
             vec![Fragment::new(0, 10, 295_200).unwrap()],
@@ -316,43 +322,13 @@ mod tests {
 
     #[test]
     fn duration_truncates_fractional_milliseconds() {
-        let track = test_track(
+        let track = Track::fake(
             video_kind(),
             3_000,
             vec![Fragment::new(0, 10, 3_001).unwrap()],
         );
 
         assert_eq!(track.duration(), 1_000);
-    }
-
-    #[test]
-    fn video_has_video_content_and_mime_types() {
-        let track = test_track(video_kind(), 1_000, Vec::new());
-
-        assert_eq!(
-            (track.content_type(), track.mime_type()),
-            ("video", "video/mp4")
-        );
-    }
-
-    #[test]
-    fn audio_has_audio_content_and_mime_types() {
-        let track = test_track(audio_kind(), 1_000, Vec::new());
-
-        assert_eq!(
-            (track.content_type(), track.mime_type()),
-            ("audio", "audio/mp4")
-        );
-    }
-
-    #[test]
-    fn text_has_text_content_and_application_mime_types() {
-        let track = test_track(text_kind(), 1_000, Vec::new());
-
-        assert_eq!(
-            (track.content_type(), track.mime_type()),
-            ("text", "application/mp4")
-        );
     }
 
     #[test]
@@ -379,7 +355,7 @@ mod tests {
     #[test]
     fn max_segment_duration_excludes_text_and_rounds_up() {
         let tracks = vec![
-            test_track(video_kind(), 3, vec![Fragment::new(0, 10, 1).unwrap()]),
+            Track::fake(video_kind(), 3, vec![Fragment::new(0, 10, 1).unwrap()]),
             track(text_kind(), 10_000),
         ];
 
@@ -391,7 +367,7 @@ mod tests {
 
     #[test]
     fn max_bitrate_returns_highest_segment_rate() {
-        let track = test_track(
+        let track = Track::fake(
             video_kind(),
             1_000,
             vec![
@@ -405,7 +381,7 @@ mod tests {
 
     #[test]
     fn average_bitrate_uses_all_segment_bytes_and_duration() {
-        let track = test_track(
+        let track = Track::fake(
             video_kind(),
             1_000,
             vec![
@@ -419,7 +395,7 @@ mod tests {
 
     #[test]
     fn bitrates_are_zero_without_segments() {
-        let track = test_track(video_kind(), 1_000, Vec::new());
+        let track = Track::fake(video_kind(), 1_000, Vec::new());
 
         assert_eq!(
             (
@@ -431,7 +407,7 @@ mod tests {
     }
 
     fn track(kind: TrackKind, raw_duration: u32) -> Track {
-        test_track(
+        Track::fake(
             kind,
             1_000,
             vec![Fragment::new(0, 10, raw_duration).unwrap()],

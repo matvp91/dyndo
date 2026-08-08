@@ -37,7 +37,7 @@ pub(super) async fn run(op: &Operator, args: SpriteArgs) -> Result<(), Box<dyn s
     let track = Track::probe(
         op,
         &path,
-        Some(track_descriptor.kind.clone()),
+        Some(track_descriptor),
         &descriptor.segment_options,
     )
     .await?;
