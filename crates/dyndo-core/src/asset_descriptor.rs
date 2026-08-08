@@ -150,7 +150,7 @@ mod tests {
     use opendal::services::Memory;
 
     use super::*;
-    use crate::track::{Fragment, test_track};
+    use crate::track::{Fragment, Track};
 
     #[test]
     fn track_returns_descriptor_matching_id() {
@@ -196,7 +196,7 @@ mod tests {
             path: RelativePathBuf::from("assets/movie/asset.json"),
             ..AssetDescriptor::default()
         };
-        let track = test_track(
+        let track = Track::fake(
             video_kind(),
             1_000,
             vec![Fragment::new(0, 10, 1_000).unwrap()],

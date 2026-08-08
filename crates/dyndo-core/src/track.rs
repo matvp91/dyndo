@@ -273,16 +273,23 @@ fn max_matching_duration(tracks: &[Track], include: impl Fn(&TrackKind) -> bool)
 }
 
 #[cfg(test)]
-pub(crate) fn test_track(kind: TrackKind, timescale: u32, fragments: Vec<Fragment>) -> Track {
-    Track {
-        id: Uuid::nil(),
-        path: RelativePathBuf::from("track.mp4"),
-        codec: "test".to_string(),
-        kind,
-        timescale,
-        earliest_presentation_time: 0,
-        initialization_range: 0..0,
-        fragments,
+impl Track {
+    pub(crate) fn fake(kind: TrackKind, timescale: u32, fragments: Vec<Fragment>) -> Self {
+        Self {
+            id: Uuid::nil(),
+            path: RelativePathBuf::from("track.mp4"),
+            codec: "fake".to_string(),
+            kind,
+            timescale,
+            earliest_presentation_time: 0,
+            initialization_range: 0..0,
+            fragments,
+        }
+    }
+
+    pub(crate) fn fake_earliest_presentation_time(mut self, time: u64) -> Self {
+        self.earliest_presentation_time = time;
+        self
     }
 }
 
@@ -305,7 +312,7 @@ mod tests {
 
     #[test]
     fn duration_converts_timescale_units() {
-        let track = test_track(
+        let track = Track::fake(
             video_kind(),
             90_000,
             vec![Fragment::new(0, 10, 295_200).unwrap()],
@@ -316,7 +323,7 @@ mod tests {
 
     #[test]
     fn duration_truncates_fractional_milliseconds() {
-        let track = test_track(
+        let track = Track::fake(
             video_kind(),
             3_000,
             vec![Fragment::new(0, 10, 3_001).unwrap()],
@@ -327,7 +334,7 @@ mod tests {
 
     #[test]
     fn video_has_video_content_and_mime_types() {
-        let track = test_track(video_kind(), 1_000, Vec::new());
+        let track = Track::fake(video_kind(), 1_000, Vec::new());
 
         assert_eq!(
             (track.content_type(), track.mime_type()),
@@ -337,7 +344,7 @@ mod tests {
 
     #[test]
     fn audio_has_audio_content_and_mime_types() {
-        let track = test_track(audio_kind(), 1_000, Vec::new());
+        let track = Track::fake(audio_kind(), 1_000, Vec::new());
 
         assert_eq!(
             (track.content_type(), track.mime_type()),
@@ -347,7 +354,7 @@ mod tests {
 
     #[test]
     fn text_has_text_content_and_application_mime_types() {
-        let track = test_track(text_kind(), 1_000, Vec::new());
+        let track = Track::fake(text_kind(), 1_000, Vec::new());
 
         assert_eq!(
             (track.content_type(), track.mime_type()),
@@ -379,7 +386,7 @@ mod tests {
     #[test]
     fn max_segment_duration_excludes_text_and_rounds_up() {
         let tracks = vec![
-            test_track(video_kind(), 3, vec![Fragment::new(0, 10, 1).unwrap()]),
+            Track::fake(video_kind(), 3, vec![Fragment::new(0, 10, 1).unwrap()]),
             track(text_kind(), 10_000),
         ];
 
@@ -391,7 +398,7 @@ mod tests {
 
     #[test]
     fn max_bitrate_returns_highest_segment_rate() {
-        let track = test_track(
+        let track = Track::fake(
             video_kind(),
             1_000,
             vec![
@@ -405,7 +412,7 @@ mod tests {
 
     #[test]
     fn average_bitrate_uses_all_segment_bytes_and_duration() {
-        let track = test_track(
+        let track = Track::fake(
             video_kind(),
             1_000,
             vec![
@@ -419,7 +426,7 @@ mod tests {
 
     #[test]
     fn bitrates_are_zero_without_segments() {
-        let track = test_track(video_kind(), 1_000, Vec::new());
+        let track = Track::fake(video_kind(), 1_000, Vec::new());
 
         assert_eq!(
             (
@@ -431,7 +438,7 @@ mod tests {
     }
 
     fn track(kind: TrackKind, raw_duration: u32) -> Track {
-        test_track(
+        Track::fake(
             kind,
             1_000,
             vec![Fragment::new(0, 10, raw_duration).unwrap()],
