@@ -10,7 +10,7 @@ use dyndo_text::wvtt::UnpackError;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ServerError {
-    #[error("invalid transport options: {0}")]
+    #[error("invalid options: {0}")]
     InvalidOptions(String),
     #[error("invalid filter: {0}")]
     InvalidFilter(String),
@@ -87,7 +87,7 @@ mod tests {
     }
 
     /// A filter that matches nothing is an addressing error, like an unknown track,
-    /// even though it reaches the server wrapped in a transport's error.
+    /// even though it reaches the server wrapped in a builder's error.
     #[test]
     fn a_filter_matching_nothing_maps_to_not_found() {
         for error in [

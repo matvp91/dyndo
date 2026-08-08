@@ -17,11 +17,11 @@ use crate::error::ServerError;
 /// instead, and axum answers `400`.
 #[derive(Debug, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(super) struct FilterQuery {
+pub(super) struct ManifestQuery {
     filter: Option<String>,
 }
 
-impl FilterQuery {
+impl ManifestQuery {
     pub(super) fn resolve(&self) -> Result<Option<Filter>, ServerError> {
         self.filter
             .as_deref()
@@ -35,8 +35,8 @@ impl FilterQuery {
 mod tests {
     use super::*;
 
-    fn query(filter: &str) -> FilterQuery {
-        FilterQuery {
+    fn query(filter: &str) -> ManifestQuery {
+        ManifestQuery {
             filter: Some(filter.to_string()),
         }
     }
@@ -48,7 +48,7 @@ mod tests {
 
     #[test]
     fn resolve_without_a_filter_yields_none() {
-        assert!(FilterQuery::default().resolve().unwrap().is_none());
+        assert!(ManifestQuery::default().resolve().unwrap().is_none());
     }
 
     #[test]

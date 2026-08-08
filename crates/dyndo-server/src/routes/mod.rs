@@ -1,7 +1,7 @@
 mod context;
-mod filter;
+mod manifest;
+mod manifest_query;
 mod segment;
-mod transport;
 
 use axum::{
     Router,
@@ -17,7 +17,7 @@ use tower_http::cors::{Any, CorsLayer};
 
 use crate::error::ServerError;
 use crate::routes::context::parse_context;
-use crate::routes::filter::FilterQuery;
+use crate::routes::manifest_query::ManifestQuery;
 
 pub(crate) fn build_router(op: Operator) -> Router {
     let cors = CorsLayer::new().allow_origin(Any).allow_methods(Any);
@@ -44,7 +44,7 @@ async fn health() -> StatusCode {
 async fn manifest(
     State(op): State<Operator>,
     Path((options, resource)): Path<(String, String)>,
-    Query(query): Query<FilterQuery>,
+    Query(query): Query<ManifestQuery>,
 ) -> Result<Response, ServerError> {
     let not_found = || ServerError::NotFound(resource.clone());
 
@@ -52,16 +52,16 @@ async fn manifest(
         ("index", "mpd") => {
             let context = parse_context::<DashOptions>(&options)?;
             let filter = query.resolve()?;
-            transport::dash_manifest(&op, &context, filter.as_ref()).await
+            manifest::dash(&op, &context, filter.as_ref()).await
         }
         ("master", "m3u8") => {
             let context = parse_context::<HlsOptions>(&options)?;
             let filter = query.resolve()?;
-            transport::hls_master(&op, &context, filter.as_ref()).await
+            manifest::hls_master(&op, &context, filter.as_ref()).await
         }
         (track_id, "m3u8") => {
             let context = parse_context::<HlsOptions>(&options)?;
-            transport::hls_media(&op, &context, track_id).await
+            manifest::hls_media(&op, &context, track_id).await
         }
         _ => Err(not_found()),
     }

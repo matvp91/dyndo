@@ -14,14 +14,14 @@ use crate::error::ServerError;
 const DASH_CONTENT_TYPE: &str = "application/dash+xml";
 const HLS_CONTENT_TYPE: &str = "application/vnd.apple.mpegurl";
 
-pub(super) async fn dash_manifest(
+pub(super) async fn dash(
     op: &Operator,
     context: &RequestContext<DashOptions>,
     filter: Option<&Filter>,
 ) -> Result<Response, ServerError> {
     let asset = context.read_asset(op).await?;
     let mpd =
-        dyndo_dash::builder::generate_mpd(op, &asset, &context.transport_options, filter).await?;
+        dyndo_dash::builder::generate_mpd(op, &asset, &context.manifest_options, filter).await?;
     let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
     let mut serializer = quick_xml::se::Serializer::new(&mut xml);
     serializer.indent(' ', 2);
@@ -36,13 +36,9 @@ pub(super) async fn hls_master(
     filter: Option<&Filter>,
 ) -> Result<Response, ServerError> {
     let asset = context.read_asset(op).await?;
-    let playlist = dyndo_hls::builder::generate_master_playlist(
-        op,
-        &asset,
-        &context.transport_options,
-        filter,
-    )
-    .await?;
+    let playlist =
+        dyndo_hls::builder::generate_master_playlist(op, &asset, &context.manifest_options, filter)
+            .await?;
     Ok(([(CONTENT_TYPE, HLS_CONTENT_TYPE)], playlist.to_string()).into_response())
 }
 
@@ -59,7 +55,7 @@ pub(super) async fn hls_media(
         op,
         &asset,
         descriptor,
-        &context.transport_options,
+        &context.manifest_options,
     )
     .await?;
     Ok((

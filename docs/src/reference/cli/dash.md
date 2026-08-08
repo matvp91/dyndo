@@ -32,7 +32,7 @@ wrote stream.mpd
 ```
 
 The CLI and the server share one manifest builder. They produce the same MPD
-model for the same descriptor, segmentation options, and DASH transport
+model for the same descriptor, segmentation options, and DASH manifest
 options. The surrounding HTTP response and XML-writing context are specific to
 each interface.
 

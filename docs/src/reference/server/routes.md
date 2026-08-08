@@ -69,9 +69,9 @@ or an empty boundary list — names nothing and leaves the asset's value standin
 since a request cannot express the difference between an absent value and a zero
 one.
 
-### Transport options
+### Manifest options
 
-DASH resources accept two transport-specific options:
+DASH resources accept two manifest-specific options:
 
 | Full key | Shorthand | Type | Default | Description |
 |---|---|---|---|---|
@@ -290,7 +290,7 @@ on the presentation's clock.
 
 Which one a player asks for is the manifest's business: DASH always references
 `.m4s`, while HLS references `.vtt` unless the request passes
-[`wvtt`](#transport-options). `<track-id>/init.mp4` stays available for the track
+[`wvtt`](#manifest-options). `<track-id>/init.mp4` stays available for the track
 either way, and is simply not referenced by a WebVTT rendition — a WebVTT segment
 needs no initialization.
 
