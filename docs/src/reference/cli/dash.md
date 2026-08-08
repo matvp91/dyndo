@@ -18,6 +18,7 @@ dyndo dash --input <INPUT> [OPTIONS]
 | `--segment-text-length <MILLISECONDS>` | Length of each segment of a subtitle track packaged from a `.vtt`. | `0` |
 | `--segment-boundaries <MILLISECONDS,…>` | Splice points a segment may not span. | none |
 | `--compact` | Hoist common segment information in the MPD. | `false` |
+| `--multi-period` | Open a `Period` at each segment boundary. | `false` |
 | `--filter <EXPRESSION>` | Describe only the tracks the expression keeps. | none |
 | `-h, --help` | Print help. | |
 
@@ -50,14 +51,14 @@ percent-encoding here. A filter matching no track is an error.
 ## Manifest structure
 
 The manifest is `type="static"` (video on demand) with profile
-`urn:mpeg:dash:profile:isoff-live:2011`, and contains exactly one `Period`
-(`id="0"`, starting at `PT0S`).
+`urn:mpeg:dash:profile:isoff-live:2011`, and contains one `Period` (`id="0"`,
+starting at `PT0S`) unless [`--multi-period`](#periods) asks for more.
 
 | Attribute | Value |
 |---|---|
 | `mediaPresentationDuration` | The longest **video** track's duration; if the asset has no video, the longest **audio** track's. Text tracks never determine it. |
 | `minBufferTime` | The longest single segment duration across the audio and video tracks. |
-| `Period@duration` | Same as `mediaPresentationDuration`. |
+| `Period@duration` | The span the period covers; the whole presentation when there is only one. |
 
 Each `AdaptationSet` carries `segmentAlignment="true"`, `startWithSAP="1"`, its
 `contentType` (`video`, `audio`, or `text`) and the matching `mimeType`
@@ -119,6 +120,24 @@ A fully hoisted template looks like this:
 durations collapsed into a repeat count `r`; only the first `S` carries a `t`.
 Segment URLs resolve to `<id>/init.mp4` and `<id>/<time>.m4s`, matching the
 [server's segment routes](../server/routes.md).
+
+## Periods
+
+`--multi-period` opens a `Period` at each
+[`segment_options.boundaries`](../asset-json.md#segmentation) entry instead of
+describing the asset as one. Boundaries at or beyond the presentation are
+ignored, since a period of no length holds nothing.
+
+A period is anchored on the boundary itself, never on the cut a track snapped
+to. Tracks land on their own nearest segment edge, so `presentationTimeOffset`
+is the boundary in the track's timescale while the first `S@t` is where that
+track actually cuts — the difference is a gap the client jumps, not a shift in
+when the track presents. Anchoring on a track instead would re-time it against
+its siblings for the rest of the presentation.
+
+Every period after the first declares `urn:mpeg:dash:period-continuity:2015`
+against the one before it, since dyndo only ever cuts a single encode. Without
+it a client may tear down its decoder at each period it crosses.
 
 ## Roles
 

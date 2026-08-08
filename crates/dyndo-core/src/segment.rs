@@ -99,7 +99,8 @@ fn group_fragments(
     segments
 }
 
-/// The fragment edges the boundaries fall on, as counts of fragments.
+/// The edges the boundaries fall on, as indices into `cumulative`. Fragment
+/// edges when grouping into segments, segment edges when grouping those further.
 ///
 /// A boundary lands on the first edge at or after it rather than the nearest one,
 /// so a segment never opens on content from before the boundary. The nearest edge
@@ -109,16 +110,20 @@ fn group_fragments(
 fn snap_cuts(cumulative: &[u64], timescale: u32, boundaries: &[u32]) -> Vec<usize> {
     let mut cuts: Vec<usize> = boundaries
         .iter()
-        .map(|&boundary| {
-            let target = u128::from(boundary) * u128::from(timescale);
-            let index = cumulative
-                .partition_point(|&raw_duration| u128::from(raw_duration) * 1000 < target);
-            index.min(cumulative.len() - 1)
-        })
+        .map(|&boundary| snap_cut(cumulative, timescale, boundary))
         .collect();
     cuts.sort_unstable();
     cuts.dedup();
     cuts
+}
+
+/// The single edge `boundary` falls on, as an index into `cumulative`.
+pub(crate) fn snap_cut(cumulative: &[u64], timescale: u32, boundary: u32) -> usize {
+    let target = u128::from(boundary) * u128::from(timescale);
+    let index =
+        cumulative.partition_point(|&raw_duration| u128::from(raw_duration) * 1000 < target);
+
+    index.min(cumulative.len() - 1)
 }
 
 #[cfg(test)]

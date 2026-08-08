@@ -18,6 +18,9 @@ pub(crate) struct DashArgs {
     /// Hoist common segment information in the MPD.
     #[arg(long, default_value_t = false)]
     compact: bool,
+    /// Split the manifest into a Period at each segment boundary.
+    #[arg(long = "multi-period", default_value_t = false)]
+    multi_period: bool,
     /// Describe only the tracks this expression keeps, for example
     /// `--filter 'type!=video||height<=720'`.
     #[arg(long)]
@@ -30,6 +33,7 @@ pub(super) async fn run(op: &Operator, args: DashArgs) -> Result<(), Box<dyn std
     let filter = parse_filter(args.filter.as_deref())?;
     let dash_options = dyndo_dash::options::DashOptions {
         compact: args.compact,
+        multi_period: args.multi_period,
     };
     let mpd =
         dyndo_dash::builder::generate_mpd(op, &descriptor, &dash_options, filter.as_ref()).await?;
