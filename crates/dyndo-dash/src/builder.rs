@@ -18,6 +18,7 @@ use crate::adaptation_set_group::{self, AdaptationSetGroup};
 use crate::compact;
 use crate::options::DashOptions;
 use crate::roles;
+use crate::thumbnail::Thumbnail;
 
 const DASH_PROFILE: &str = "urn:mpeg:dash:profile:isoff-live:2011";
 const DASH_XMLNS: &str = "urn:mpeg:dash:schema:mpd:2011";
@@ -75,6 +76,7 @@ fn build_mpd(
     {
         return Err(DashError::SegmentAlignment);
     }
+    let thumbnail = Thumbnail::new(dash_options);
     let boundaries: &[u32] = if dash_options.multi_period {
         &segment_options.boundaries
     } else {
@@ -88,6 +90,8 @@ fn build_mpd(
             periods.last(),
             &groups,
             segment_options,
+            tracks,
+            thumbnail.as_ref(),
         );
         periods.extend(next);
     }
@@ -122,14 +126,25 @@ fn period(
     previous: Option<&Period>,
     groups: &[AdaptationSetGroup<'_>],
     segment_options: &SegmentOptions,
+    tracks: &[Track],
+    thumbnail: Option<&Thumbnail>,
 ) -> Option<Period> {
-    let adaptations: Vec<AdaptationSet> = groups
+    let mut adaptations: Vec<AdaptationSet> = groups
         .iter()
         .enumerate()
         .filter_map(|(id, group)| adaptation_set(id, group, segment_options, previous, span))
         .collect();
     if adaptations.is_empty() {
         return None;
+    }
+    // Thumbnails describe a track dyndo never stored, so they take the id after every
+    // group rather than one among them, and every period carries their own.
+    if let Some(thumbnail) = thumbnail {
+        let id = groups.len();
+        if let Some(mut set) = thumbnail.adaptation_set(id, tracks, span) {
+            set.supplemental_property = period_continuity(id, previous);
+            adaptations.push(set);
+        }
     }
 
     Some(Period {
@@ -209,7 +224,11 @@ fn representation(
     segment_options: &SegmentOptions,
     span: &Range<u32>,
 ) -> Option<Representation> {
-    let segments = segment::span(track, segment_options, span);
+    let segments = segment::span(
+        &segment::segments(track, segment_options),
+        track.timescale(),
+        span,
+    );
     if segments.is_empty() {
         return None;
     }
@@ -282,7 +301,7 @@ fn presentation_time_offset(track: &Track, span_ms: &Range<u32>) -> u64 {
 /// while the next segment starts where the previous one ended. Two segments of equal
 /// duration with a gap between them are two runs, since a player reads the entries as
 /// one unbroken stretch.
-fn segment_timeline(segments: &[Segment]) -> SegmentTimeline {
+pub(crate) fn segment_timeline(segments: &[Segment]) -> SegmentTimeline {
     let mut entries: Vec<S> = Vec::new();
     let mut end = None;
 

@@ -45,6 +45,17 @@ pub struct Segment {
 }
 
 impl Segment {
+    /// A resource cut when it is asked for rather than stored has no bytes to point
+    /// at, and passes zero for both.
+    pub fn new(byte_offset: u64, byte_size: u64, raw_start: u64, raw_duration: u64) -> Self {
+        Self {
+            byte_offset,
+            byte_size,
+            raw_start,
+            raw_duration,
+        }
+    }
+
     pub fn byte_range(&self) -> Range<u64> {
         self.byte_offset..self.byte_offset + self.byte_size
     }
@@ -76,26 +87,25 @@ pub fn segments(track: &Track, options: &SegmentOptions) -> Vec<Segment> {
     )
 }
 
-/// Returns the segments of `track` that fall within `span_ms`.
+/// Returns the segments that fall within `span_ms`, timed in `timescale` units.
 ///
-/// Empty when the track has nothing there — it ended before the span opened, or two
-/// boundaries snapped to the same segment edge — so callers pairing spans with
-/// segments always get one list per span.
+/// Empty when there is nothing there — the segments ran out before the span opened, or
+/// two boundaries snapped to the same edge — so callers pairing spans with segments
+/// always get one list per span.
 ///
-/// The first segment begins at or after the span's start rather than on it: tracks
-/// snap to their own nearest segment edge, so a span opens before some of them have
-/// anything to give. That segment carries the time it begins at, which is what a
-/// manifest reads the timeline against.
-pub fn span(track: &Track, options: &SegmentOptions, span_ms: &Range<u32>) -> Vec<Segment> {
-    let segments = segments(track, options);
+/// The first segment begins at or after the span's start rather than on it: segments
+/// snap to their own nearest edge, so a span opens before some tracks have anything to
+/// give. That segment carries the time it begins at, which is what a manifest reads the
+/// timeline against.
+pub fn span(segments: &[Segment], timescale: u32, span_ms: &Range<u32>) -> Vec<Segment> {
     let mut edges = Vec::with_capacity(segments.len() + 1);
     edges.push(0u64);
-    for segment in &segments {
+    for segment in segments {
         edges.push(edges[edges.len() - 1] + segment.raw_duration());
     }
 
-    let start = BoundaryUtils::snap_cut(&edges, track.timescale(), span_ms.start);
-    let end = BoundaryUtils::snap_cut(&edges, track.timescale(), span_ms.end).max(start);
+    let start = BoundaryUtils::snap_cut(&edges, timescale, span_ms.start);
+    let end = BoundaryUtils::snap_cut(&edges, timescale, span_ms.end).max(start);
 
     segments[start..end].to_vec()
 }
@@ -166,12 +176,12 @@ fn group(
         return fragments
             .iter()
             .map(|fragment| {
-                let segment = Segment {
-                    byte_offset: fragment.byte_offset,
-                    byte_size: fragment.byte_size,
+                let segment = Segment::new(
+                    fragment.byte_offset,
+                    fragment.byte_size,
                     raw_start,
-                    raw_duration: u64::from(fragment.raw_duration),
-                };
+                    u64::from(fragment.raw_duration),
+                );
                 raw_start += u64::from(fragment.raw_duration);
 
                 segment
@@ -200,14 +210,14 @@ fn group(
         if long_enough || at_cut || end == fragments.len() {
             let byte_offset = fragments[start].byte_offset;
             let byte_end = fragments[end - 1].byte_range().end;
-            segments.push(Segment {
+            segments.push(Segment::new(
                 byte_offset,
-                byte_size: byte_end - byte_offset,
+                byte_end - byte_offset,
                 // `cumulative` is already the table of elapsed durations, so the
                 // segment's own start is the entry its first fragment sits at.
-                raw_start: raw_anchor + cumulative[start],
+                raw_anchor + cumulative[start],
                 raw_duration,
-            });
+            ));
             start = end;
         }
     }
@@ -255,18 +265,8 @@ mod tests {
         assert_eq!(
             segments,
             vec![
-                Segment {
-                    byte_offset: 100,
-                    byte_size: 10,
-                    raw_start: 0,
-                    raw_duration: 1000,
-                },
-                Segment {
-                    byte_offset: 110,
-                    byte_size: 10,
-                    raw_start: 1000,
-                    raw_duration: 1000,
-                },
+                Segment::new(100, 10, 0, 1000),
+                Segment::new(110, 10, 1000, 1000),
             ]
         );
     }
@@ -501,7 +501,7 @@ mod tests {
         BoundaryUtils::divide(&options.boundaries, duration)
             .iter()
             .map(|range| {
-                span(track, options, range)
+                span(&segments(track, options), track.timescale(), range)
                     .iter()
                     .map(Segment::raw_duration)
                     .collect()
@@ -548,7 +548,7 @@ mod tests {
         BoundaryUtils::divide(&options.boundaries, duration)
             .iter()
             .filter_map(|range| {
-                span(track, options, range)
+                span(&segments(track, options), track.timescale(), range)
                     .first()
                     .map(|segment| segment.raw_range().start)
             })

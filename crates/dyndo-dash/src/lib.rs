@@ -5,3 +5,4 @@ pub mod builder;
 pub mod compact;
 pub mod options;
 mod roles;
+mod thumbnail;

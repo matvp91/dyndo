@@ -432,3 +432,81 @@ async fn stage(op: &Operator, name: &str) {
     let bytes = std::fs::read(PathBuf::from(FIXTURES).join(name)).unwrap();
     op.write(name, bytes).await.unwrap();
 }
+
+/// The fixture runs for 1370.32s, which six sprites of 250s cover.
+#[tokio::test]
+async fn thumbnails_are_described_as_a_tiled_image_track() {
+    let (op, asset) = asset().await;
+
+    let xml = serialize(
+        dyndo_dash::builder::generate_mpd(&op, &asset, &thumbnails(5), None)
+            .await
+            .unwrap(),
+    );
+
+    for expected in [
+        "contentType=\"image\"",
+        "mimeType=\"image/jpeg\"",
+        "id=\"thumbnails\"",
+        "width=\"1920\"",
+        "height=\"1080\"",
+        "schemeIdUri=\"http://dashif.org/guidelines/thumbnail_tile\" value=\"5x5\"",
+        "media=\"video-main/$Time$.jpg\"",
+        "timescale=\"1000\"",
+        "<S t=\"0\" d=\"250000\" r=\"5\"/>",
+    ] {
+        assert!(xml.contains(expected), "missing {expected} in: {xml}");
+    }
+}
+
+#[tokio::test]
+async fn no_tile_size_describes_no_thumbnail_track() {
+    let (op, asset) = asset().await;
+
+    let xml = serialize(
+        dyndo_dash::builder::generate_mpd(&op, &asset, &DashOptions::default(), None)
+            .await
+            .unwrap(),
+    );
+
+    assert!(!xml.contains("image/jpeg"), "unexpected manifest: {xml}");
+}
+
+/// A client scrubbing inside any period has thumbnails there, so each one describes
+/// the sprites it overlaps rather than only those beginning inside it.
+#[tokio::test]
+async fn every_period_describes_its_own_thumbnails() {
+    let (op, asset) = spliced_asset().await;
+    let options = DashOptions {
+        multi_period: true,
+        ..thumbnails(5)
+    };
+
+    let mpd = dyndo_dash::builder::generate_mpd(&op, &asset, &options, None)
+        .await
+        .unwrap();
+
+    assert!(mpd.periods.len() > 1);
+    assert!(mpd.periods.iter().all(|period| {
+        period
+            .adaptations
+            .iter()
+            .any(|adaptation_set| adaptation_set.contentType.as_deref() == Some("image"))
+    }));
+}
+
+fn thumbnails(tile_size: u32) -> DashOptions {
+    DashOptions {
+        thumbnail_tile_size: tile_size,
+        ..DashOptions::default()
+    }
+}
+
+fn serialize(mpd: dash_mpd::MPD) -> String {
+    let mut xml = String::new();
+    let mut serializer = quick_xml::se::Serializer::new(&mut xml);
+    serializer.indent(' ', 2);
+    mpd.serialize(serializer).unwrap();
+
+    xml
+}
