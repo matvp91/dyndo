@@ -9,11 +9,11 @@
 //!   produce it;
 //! - [`fragment`] answers which bytes of a fragment are a frame and what time it is
 //!   shown at, which is a question about the container rather than the codec;
-//! - [`decode`] turns those samples into a picture, and is where a second codec would
-//!   be added;
+//! - [`avc_decode`] turns those samples into a picture, and is the only module that
+//!   knows a codec;
 //! - [`image`] scales the pictures into the sprite and encodes it.
 
-pub mod decode;
+pub mod avc_decode;
 pub mod fragment;
 pub mod image;
 pub mod sprite;

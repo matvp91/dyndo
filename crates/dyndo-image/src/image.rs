@@ -9,7 +9,7 @@ use ::image::codecs::jpeg::JpegEncoder;
 use ::image::imageops::{self, FilterType};
 use bytes::Bytes;
 
-use crate::decode::Frame;
+use crate::avc_decode::Frame;
 
 /// Quality the image is encoded at. A cell is a heavy downscale of its frame, so the
 /// detail a higher setting preserves is not there to preserve.

@@ -16,7 +16,7 @@ use dyndo_core::segment::SegmentOptions;
 use dyndo_core::track::{Track, TrackError};
 use opendal::Operator;
 
-use crate::decode::{self, DecodeError};
+use crate::avc_decode::{AvcDecode, AvcDecodeError};
 use crate::fragment::{Fragment, FragmentError};
 use crate::image::{Image, ImageError};
 use crate::window::Window;
@@ -28,11 +28,13 @@ pub enum SpriteError {
     #[error(transparent)]
     Fragment(#[from] FragmentError),
     #[error(transparent)]
-    Decode(#[from] DecodeError),
+    Decode(#[from] AvcDecodeError),
     #[error(transparent)]
     Image(#[from] ImageError),
     #[error("track {0} is not a video track")]
     NotVideo(String),
+    #[error("cannot decode codec {0}")]
+    UnsupportedCodec(String),
     #[error("the presentation does not reach {0}ms")]
     NotFound(u64),
     #[error("a cell falls outside the range read")]
@@ -60,13 +62,17 @@ impl Sprite {
     ///
     /// # Errors
     ///
-    /// Returns a [`SpriteError`] when the track is not video, when the presentation does
-    /// not reach [`time`](Self::time), or when a frame cannot be read, decoded, or
-    /// encoded.
+    /// Returns a [`SpriteError`] when the track is not video, when it is coded any way
+    /// but AVC — the one codec [`AvcDecode`] reads — when the presentation does not
+    /// reach [`time`](Self::time), or when a frame cannot be read, decoded, or encoded.
     pub async fn generate(&self, op: &Operator, track: &Track) -> Result<Bytes, SpriteError> {
         let TrackKind::Video(video) = track.kind() else {
             return Err(SpriteError::NotVideo(track.id().to_string()));
         };
+        if !track.codec().starts_with("avc1") {
+            return Err(SpriteError::UnsupportedCodec(track.codec().to_string()));
+        }
+
         let window = Window::new(track, self.tile_size * self.tile_size, self.step, self.time)
             .ok_or(SpriteError::NotFound(self.time))?;
 
@@ -77,28 +83,24 @@ impl Sprite {
         let initialization = track.read_initialization(op, &options).await?;
         let media = track.read_range(op, &options, window.range.clone()).await?;
 
-        let codec = track.codec().to_string();
         let image = Image::new(self.tile_size, self.height, (video.width, video.height));
 
         // Decoding a sprite's frames and encoding it is hundreds of milliseconds of CPU,
         // which on the caller's executor would stall every request sharing its thread.
-        tokio::task::spawn_blocking(move || {
-            compose(&codec, &initialization, &media, &window, image)
-        })
-        .await
-        .expect("composing a sprite does not panic")
+        tokio::task::spawn_blocking(move || compose(&initialization, &media, &window, image))
+            .await
+            .expect("composing a sprite does not panic")
     }
 }
 
 /// Decodes the frame each cell shows and lays them out into one image.
 fn compose(
-    codec: &str,
     initialization: &[u8],
     media: &[u8],
     window: &Window,
     mut image: Image,
 ) -> Result<Bytes, SpriteError> {
-    let mut decoder = decode::decoder(codec, initialization)?;
+    let mut decoder = AvcDecode::new(initialization)?;
 
     for (index, cell) in window.cells.iter().enumerate() {
         // A cell the presentation never reaches stays black. DASH-IF expects a trailing
@@ -141,24 +143,26 @@ mod tests {
         };
         let image = Image::new(TILE_SIZE, HEIGHT, SOURCE);
 
-        let error = compose("avc1.640028", &initialization, &[], &window, image).unwrap_err();
+        let error = compose(&initialization, &[], &window, image).unwrap_err();
 
         assert!(matches!(error, SpriteError::CellOutsideRange), "{error}");
     }
 
+    /// The codec a track declares is checked before anything is read, but the
+    /// initialization segment has the last word on what the decoder is handed.
     #[test]
-    fn compose_refuses_a_codec_no_decoder_handles() {
-        let initialization = fs::read(format!("{FIXTURES}/video_avc_1080.mp4")).unwrap();
+    fn compose_refuses_an_initialization_segment_that_is_not_avc() {
+        let initialization = fs::read(format!("{FIXTURES}/video_av1_240.mp4")).unwrap();
         let window = Window {
             range: 0..0,
             cells: Vec::new(),
         };
         let image = Image::new(TILE_SIZE, HEIGHT, SOURCE);
 
-        let error = compose("hvc1.1.6.L120.90", &initialization, &[], &window, image).unwrap_err();
+        let error = compose(&initialization, &[], &window, image).unwrap_err();
 
         assert!(
-            matches!(error, SpriteError::Decode(DecodeError::UnsupportedCodec(_))),
+            matches!(error, SpriteError::Decode(AvcDecodeError::Stream(_))),
             "{error}"
         );
     }

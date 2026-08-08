@@ -5,18 +5,14 @@
 //! Annex-B start codes and preceded by the parameter sets that describe them. That
 //! translation is all this adds to the fragment it is handed.
 //!
-//! AVC is the one codec implemented. [`AvcDecode`] is what a second AVC decoder would
-//! have to satisfy: configured once from a track's initialization segment, then asked
-//! for the frame shown at a time.
+//! AVC is the one codec implemented: an [`AvcDecode`] is configured once from a track's
+//! initialization segment, then asked for the frame shown at a time.
 
 use mp4_atom::Codec;
 use openh264::decoder::{DecodeOptions, Flush};
 use openh264::formats::YUVSource;
 
 use crate::fragment::{self, Fragment, FragmentError};
-
-/// The sample entry this decoder handles.
-pub const SAMPLE_ENTRY: &str = "avc1";
 
 /// Separates NAL units in a decoder's input, where a length prefix separates them in
 /// storage.
@@ -26,7 +22,7 @@ const START_CODE: [u8; 4] = [0, 0, 0, 1];
 const NAL_IDR: u8 = 5;
 
 #[derive(Debug, thiserror::Error)]
-pub enum DecodeError {
+pub enum AvcDecodeError {
     #[error(transparent)]
     Fragment(#[from] FragmentError),
     #[error("decoding failed: {0}")]
@@ -44,41 +40,30 @@ pub struct Frame {
     pub rgb: Vec<u8>,
 }
 
-/// What a decoder offers: the frame shown at a time, out of the fragment holding it.
-pub trait AvcDecode {
-    /// Decodes the frame shown at `time`, in the track's timescale — the clock the
-    /// fragment stamps its samples on.
-    ///
-    /// # Errors
-    ///
-    /// Returns a [`DecodeError`] when the coded stream cannot be decoded.
-    fn frame_at(&mut self, fragment: &Fragment<'_>, time: u64) -> Result<Frame, DecodeError>;
-}
-
 /// openh264, plus the parameter sets to prefix a keyframe with and the width of the
 /// length field the stored NAL units sit behind.
-pub struct Decoder {
+pub struct AvcDecode {
     inner: openh264::decoder::Decoder,
     parameters: Vec<u8>,
     length_size: usize,
 }
 
-impl Decoder {
+impl AvcDecode {
     /// Configures a decoder from a track's initialization segment.
     ///
     /// # Errors
     ///
-    /// Returns a [`DecodeError`] when the segment is malformed or describes a track
+    /// Returns an [`AvcDecodeError`] when the segment is malformed or describes a track
     /// that is not AVC.
-    pub fn new(initialization: &[u8]) -> Result<Self, DecodeError> {
+    pub fn new(initialization: &[u8]) -> Result<Self, AvcDecodeError> {
         let moov = fragment::read_moov(initialization)?;
         let sample_entry = moov
             .trak
             .first()
             .and_then(|track| track.mdia.minf.stbl.stsd.codecs.first())
-            .ok_or(DecodeError::Stream("stsd has no sample entry"))?;
+            .ok_or(AvcDecodeError::Stream("stsd has no sample entry"))?;
         let Codec::Avc1(entry) = sample_entry else {
-            return Err(DecodeError::Stream("sample entry is not avc1"));
+            return Err(AvcDecodeError::Stream("sample entry is not avc1"));
         };
 
         let mut parameters = Vec::new();
@@ -98,10 +83,18 @@ impl Decoder {
             length_size: usize::from(entry.avcc.length_size),
         })
     }
-}
 
-impl AvcDecode for Decoder {
-    fn frame_at(&mut self, fragment: &Fragment<'_>, time: u64) -> Result<Frame, DecodeError> {
+    /// Decodes the frame shown at `time`, in the track's timescale — the clock the
+    /// fragment stamps its samples on.
+    ///
+    /// # Errors
+    ///
+    /// Returns an [`AvcDecodeError`] when the coded stream cannot be decoded.
+    pub fn frame_at(
+        &mut self,
+        fragment: &Fragment<'_>,
+        time: u64,
+    ) -> Result<Frame, AvcDecodeError> {
         let target = fragment.shown_at(time);
 
         for (index, sample) in fragment.upto(target).enumerate() {
@@ -114,7 +107,9 @@ impl AvcDecode for Decoder {
             // Only a keyframe decodes without the frames before it, and probing
             // rejects a source whose fragments open on anything else.
             if index == 0 && !idr {
-                return Err(DecodeError::Stream("fragment does not open on a keyframe"));
+                return Err(AvcDecodeError::Stream(
+                    "fragment does not open on a keyframe",
+                ));
             }
 
             // openh264 hands back the picture for the sample just fed, and flushing
@@ -130,7 +125,7 @@ impl AvcDecode for Decoder {
                 .inner
                 .decode_with_options(&packet, DecodeOptions::new().flush_after_decode(flush))?;
             if index == target {
-                let picture = picture.ok_or(DecodeError::EmptyFrame)?;
+                let picture = picture.ok_or(AvcDecodeError::EmptyFrame)?;
                 let (width, height) = picture.dimensions();
                 let mut rgb = vec![0u8; width * height * 3];
                 picture.write_rgb8(&mut rgb);
@@ -143,7 +138,7 @@ impl AvcDecode for Decoder {
             }
         }
 
-        Err(DecodeError::EmptyFrame)
+        Err(AvcDecodeError::EmptyFrame)
     }
 }
 
@@ -153,7 +148,7 @@ fn append_annex_b(
     packet: &mut Vec<u8>,
     sample: &[u8],
     length_size: usize,
-) -> Result<bool, DecodeError> {
+) -> Result<bool, AvcDecodeError> {
     let mut offset = 0;
     let mut idr = false;
 
@@ -164,12 +159,12 @@ fn append_annex_b(
         offset += length_size;
         let unit = sample
             .get(offset..offset + length)
-            .ok_or(DecodeError::Stream("nal unit runs past the sample"))?;
+            .ok_or(AvcDecodeError::Stream("nal unit runs past the sample"))?;
         offset += length;
 
         match unit.first().map(|byte| byte & 0x1f) {
             Some(kind) => idr |= kind == NAL_IDR,
-            None => return Err(DecodeError::Stream("empty nal unit")),
+            None => return Err(AvcDecodeError::Stream("empty nal unit")),
         }
         packet.extend_from_slice(&START_CODE);
         packet.extend_from_slice(unit);
@@ -211,11 +206,11 @@ mod tests {
 
     #[test]
     fn new_refuses_a_track_that_is_not_avc() {
-        let Err(error) = Decoder::new(&fixture("video_av1_240.mp4")) else {
+        let Err(error) = AvcDecode::new(&fixture("video_av1_240.mp4")) else {
             panic!("a track that is not avc unexpectedly configured a decoder");
         };
 
-        assert!(matches!(error, DecodeError::Stream(_)), "{error}");
+        assert!(matches!(error, AvcDecodeError::Stream(_)), "{error}");
     }
 
     #[test]
@@ -249,11 +244,11 @@ mod tests {
 
         let error = append_annex_b(&mut packet, &sample, 4).unwrap_err();
 
-        assert!(matches!(error, DecodeError::Stream(_)), "{error}");
+        assert!(matches!(error, AvcDecodeError::Stream(_)), "{error}");
     }
 
-    fn decoder() -> Decoder {
-        Decoder::new(&fixture("video_avc_1080.mp4")).unwrap()
+    fn decoder() -> AvcDecode {
+        AvcDecode::new(&fixture("video_avc_1080.mp4")).unwrap()
     }
 
     fn fixture(name: &str) -> Vec<u8> {
