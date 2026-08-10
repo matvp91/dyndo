@@ -129,15 +129,17 @@ describing the asset as one. Boundaries at or beyond the presentation are
 ignored, since a period of no length holds nothing.
 
 A period is anchored on the boundary itself, never on the cut a track snapped
-to. Tracks land on their own nearest segment edge, so `presentationTimeOffset`
-is the boundary in the track's timescale while the first `S@t` is where that
-track actually cuts — the difference is a gap the client jumps, not a shift in
-when the track presents. Anchoring on a track instead would re-time it against
-its siblings for the rest of the presentation.
+to. `presentationTimeOffset` moves by the boundary in each track's timescale,
+while `$Time$` values remain unchanged. A segment that crosses the boundary is
+referenced from both adjacent periods, allowing clients to present the part in
+each period without re-timing the track against its siblings.
 
-Every period after the first declares `urn:mpeg:dash:period-continuity:2015`
-against the one before it, since dyndo only ever cuts a single encode. Without
-it a client may tear down its decoder at each period it crosses.
+Each AdaptationSet after the first period refers to its predecessor. If the
+boundary is an exact segment boundary, it declares
+`urn:mpeg:dash:period-continuity:2015`; otherwise it declares
+`urn:mpeg:dash:period-connectivity:2015`. A segment that straddles a boundary
+appears in both periods, so a client can present only the portion belonging to
+each period without a gap or a duplicated sample.
 
 ## Roles
 

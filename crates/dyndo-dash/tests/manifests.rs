@@ -132,6 +132,46 @@ fn generated_multi_period_mpd_matches_the_golden_fixture() {
 }
 
 #[test]
+fn generated_multi_period_mpd_slides_templates_by_the_millisecond_boundary() {
+    let xml = generate(
+        &[video_track("video-main", 16, 16, 100)],
+        &SegmentOptions {
+            boundaries: vec![750],
+            ..SegmentOptions::default()
+        },
+        &DashOptions {
+            multi_period: true,
+            ..DashOptions::default()
+        },
+    );
+
+    assert!(xml.contains(
+        "<Period id=\"1\" start=\"PT0.75S\" duration=\"PT1.25S\"><AdaptationSet id=\"0\" contentType=\"video\" segmentAlignment=\"true\" mimeType=\"video/mp4\" startWithSAP=\"1\"><SupplementalProperty schemeIdUri=\"urn:mpeg:dash:period-connectivity:2015\" value=\"0\"/><Representation id=\"video-main\" bandwidth=\"800\" width=\"16\" height=\"16\" frameRate=\"4/1\" codecs=\"avc1.42001e\"><SegmentTemplate media=\"$RepresentationID$/$Time$.m4s\" initialization=\"$RepresentationID$/init.mp4\" timescale=\"1000\" presentationTimeOffset=\"750\"><SegmentTimeline><S t=\"0\" d=\"1000\" r=\"1\"/></SegmentTimeline>"
+    ));
+}
+
+#[test]
+fn generated_multi_period_mpd_references_a_boundary_crossing_thumbnail_sprite_twice() {
+    let xml = generate(
+        &[video_track("video-main", 16, 16, 100)],
+        &SegmentOptions {
+            boundaries: vec![1_000],
+            ..SegmentOptions::default()
+        },
+        &DashOptions {
+            multi_period: true,
+            thumbnail_tile_size: 2,
+            thumbnail_step: 1_000,
+            ..DashOptions::default()
+        },
+    );
+
+    assert!(xml.contains(
+        "contentType=\"image\" mimeType=\"image/jpeg\"><SupplementalProperty schemeIdUri=\"urn:mpeg:dash:period-connectivity:2015\" value=\"0\"/><Representation id=\"thumbnails\" bandwidth=\"64\" width=\"16\" height=\"16\"><EssentialProperty schemeIdUri=\"http://dashif.org/guidelines/thumbnail_tile\" value=\"2x2\"/><SegmentTemplate media=\"video-main/$Time$.jpg\" timescale=\"1000\" presentationTimeOffset=\"1000\"><SegmentTimeline><S t=\"0\" d=\"4000\"/></SegmentTimeline>"
+    ));
+}
+
+#[test]
 fn generated_grouped_rendition_mpd_matches_the_golden_fixture() {
     let tracks = vec![
         video_track("video-low", 16, 16, 100),

@@ -1,9 +1,8 @@
-use std::ops::Range;
 use std::time::Duration;
 
 use dash_mpd::{
     AdaptationSet, AudioChannelConfiguration, MPD, Period, Representation, S, SegmentTemplate,
-    SegmentTimeline, SupplementalProperty,
+    SegmentTimeline,
 };
 use dyndo_core::segment_options::SegmentOptions;
 use dyndo_core::served_segment::ServedSegment;
@@ -22,7 +21,6 @@ const AUDIO_CHANNEL_CONFIGURATION_SCHEME: &str =
     "urn:mpeg:dash:23003:3:audio_channel_configuration:2011";
 const INITIALIZATION_TEMPLATE: &str = "$RepresentationID$/init.mp4";
 const MEDIA_TEMPLATE: &str = "$RepresentationID$/$Time$.m4s";
-const PERIOD_CONTINUITY_SCHEME: &str = "urn:mpeg:dash:period-continuity:2015";
 
 pub(crate) fn build_mpd(
     tracks: &[Track],
@@ -30,18 +28,27 @@ pub(crate) fn build_mpd(
     dash_options: &DashOptions,
 ) -> Result<MPD, DashError> {
     let presentation_duration = presentation_duration(tracks);
-    let period_spans = period_spans(
-        if dash_options.multi_period {
-            &segment_options.boundaries
-        } else {
-            &[]
-        },
-        presentation_duration,
-    );
     let groups = AdaptationGroup::group(tracks);
     ensure_segment_alignment(&groups, segment_options)?;
     let thumbnail = Thumbnail::new(dash_options)?;
-    let periods = build_periods(&period_spans, &groups, segment_options, tracks, thumbnail)?;
+    let mut adaptations: Vec<AdaptationSet> = groups
+        .iter()
+        .enumerate()
+        .filter_map(|(id, group)| build_adaptation_set(id, group, segment_options))
+        .collect();
+    if let Some(thumbnail) = thumbnail {
+        let id = groups.len();
+        if let Some(adaptation_set) = thumbnail.adaptation_set(id, tracks, presentation_duration)? {
+            adaptations.push(adaptation_set);
+        }
+    }
+    let periods = (!adaptations.is_empty()).then_some(Period {
+        id: Some("0".to_string()),
+        start: Some(Duration::ZERO),
+        duration: Some(Duration::from_millis(u64::from(presentation_duration))),
+        adaptations,
+        ..Default::default()
+    });
 
     Ok(MPD {
         xmlns: Some(DASH_XMLNS.to_string()),
@@ -52,7 +59,7 @@ pub(crate) fn build_mpd(
             segment_options,
         )))),
         mediaPresentationDuration: Some(Duration::from_millis(u64::from(presentation_duration))),
-        periods,
+        periods: periods.into_iter().collect(),
         ..Default::default()
     })
 }
@@ -71,75 +78,15 @@ fn ensure_segment_alignment(
     }
 }
 
-fn build_periods(
-    spans: &[Range<u32>],
-    groups: &[AdaptationGroup<'_>],
-    segment_options: &SegmentOptions,
-    tracks: &[Track],
-    thumbnail: Option<Thumbnail>,
-) -> Result<Vec<Period>, DashError> {
-    let mut periods = Vec::new();
-    for span in spans {
-        let next = build_period(
-            periods.len(),
-            span,
-            periods.last(),
-            groups,
-            segment_options,
-            tracks,
-            thumbnail,
-        )?;
-        periods.extend(next);
-    }
-
-    Ok(periods)
-}
-
-fn build_period(
-    index: usize,
-    span: &Range<u32>,
-    previous: Option<&Period>,
-    groups: &[AdaptationGroup<'_>],
-    segment_options: &SegmentOptions,
-    tracks: &[Track],
-    thumbnail: Option<Thumbnail>,
-) -> Result<Option<Period>, DashError> {
-    let mut adaptations: Vec<AdaptationSet> = groups
-        .iter()
-        .enumerate()
-        .filter_map(|(id, group)| build_adaptation_set(id, group, segment_options, previous, span))
-        .collect();
-    if let Some(thumbnail) = thumbnail {
-        let id = groups.len();
-        if let Some(mut adaptation_set) = thumbnail.adaptation_set(id, tracks, span)? {
-            adaptation_set.supplemental_property = build_period_continuity(id, previous);
-            adaptations.push(adaptation_set);
-        }
-    }
-    if adaptations.is_empty() {
-        return Ok(None);
-    }
-
-    Ok(Some(Period {
-        id: Some(index.to_string()),
-        start: Some(Duration::from_millis(u64::from(span.start))),
-        duration: Some(Duration::from_millis(u64::from(span.end - span.start))),
-        adaptations,
-        ..Default::default()
-    }))
-}
-
 fn build_adaptation_set(
     id: usize,
     group: &AdaptationGroup<'_>,
     segment_options: &SegmentOptions,
-    previous: Option<&Period>,
-    span: &Range<u32>,
 ) -> Option<AdaptationSet> {
     let representations: Vec<Representation> = group
         .members()
         .iter()
-        .filter_map(|track| build_representation(track, segment_options, span))
+        .filter_map(|track| build_representation(track, segment_options))
         .collect();
     if representations.is_empty() {
         return None;
@@ -154,55 +101,22 @@ fn build_adaptation_set(
         startWithSAP: Some(1),
         Role: roles::roles(group.content_type(), group.role()),
         Accessibility: roles::accessibility(group.content_type(), group.role()),
-        supplemental_property: build_period_continuity(id, previous),
         representations,
         ..Default::default()
     })
 }
 
-// Continuity lets clients keep their decoder across Periods.
-fn build_period_continuity(id: usize, previous: Option<&Period>) -> Vec<SupplementalProperty> {
-    let id = id.to_string();
-
-    previous
-        .filter(|period| {
-            period
-                .adaptations
-                .iter()
-                .any(|adaptation_set| adaptation_set.id.as_deref() == Some(id.as_str()))
-        })
-        .map(|period| SupplementalProperty {
-            schemeIdUri: PERIOD_CONTINUITY_SCHEME.to_string(),
-            value: period.id.clone(),
-            ..Default::default()
-        })
-        .into_iter()
-        .collect()
-}
-
-fn build_representation(
-    track: &Track,
-    segment_options: &SegmentOptions,
-    span: &Range<u32>,
-) -> Option<Representation> {
-    let all_segments = served_segments(track, segment_options);
-    let bandwidth = ServedSegment::maximum_bitrate(&all_segments);
-    let segments: Vec<_> = all_segments
-        .into_iter()
-        .filter(|segment| {
-            u64::from(span.start) <= segment.start_time()
-                && segment.start_time() < u64::from(span.end)
-        })
-        .collect();
+fn build_representation(track: &Track, segment_options: &SegmentOptions) -> Option<Representation> {
+    let segments = served_segments(track, segment_options);
     if segments.is_empty() {
         return None;
     }
 
     let mut representation = Representation {
         id: Some(track.id().to_string()),
-        bandwidth: Some(bandwidth),
+        bandwidth: Some(ServedSegment::maximum_bitrate(&segments)),
         codecs: Some(track.codec().rfc6381()),
-        SegmentTemplate: Some(build_segment_template(track, &segments, span)),
+        SegmentTemplate: Some(build_segment_template(track, &segments)),
         ..Default::default()
     };
 
@@ -231,29 +145,15 @@ fn build_audio_channel_configuration(channels: u16) -> AudioChannelConfiguration
     }
 }
 
-fn build_segment_template(
-    track: &Track,
-    segments: &[ServedSegment<'_>],
-    span: &Range<u32>,
-) -> SegmentTemplate {
+fn build_segment_template(track: &Track, segments: &[ServedSegment<'_>]) -> SegmentTemplate {
     SegmentTemplate {
         timescale: Some(u64::from(track.timescale())),
-        presentationTimeOffset: Some(presentation_time_offset(track, span)),
+        presentationTimeOffset: track.unscaled_earliest_presentation_time(),
         initialization: Some(INITIALIZATION_TEMPLATE.to_string()),
         media: Some(MEDIA_TEMPLATE.to_string()),
         SegmentTimeline: Some(build_segment_timeline(segments)),
         ..Default::default()
     }
-}
-
-fn presentation_time_offset(track: &Track, span_ms: &Range<u32>) -> u64 {
-    // Round down so the offset cannot place the period's segments early.
-    let offset = u128::from(span_ms.start) * u128::from(track.timescale()) / 1000;
-
-    track
-        .unscaled_earliest_presentation_time()
-        .unwrap_or(0)
-        .saturating_add(u64::try_from(offset).unwrap_or(u64::MAX))
 }
 
 fn build_segment_timeline(segments: &[ServedSegment<'_>]) -> SegmentTimeline {
@@ -313,22 +213,4 @@ fn max_segment_duration(tracks: &[Track], options: &SegmentOptions) -> u32 {
         })
         .max()
         .unwrap_or(0)
-}
-
-fn period_spans(boundaries: &[u32], duration: u32) -> Vec<Range<u32>> {
-    let mut edges: Vec<_> = boundaries
-        .iter()
-        .copied()
-        .filter(|boundary| 0 < *boundary && *boundary < duration)
-        .collect();
-    edges.sort_unstable();
-    edges.dedup();
-
-    let mut spans = Vec::with_capacity(edges.len() + 1);
-    let mut start = 0;
-    for end in edges.into_iter().chain([duration]) {
-        spans.push(start..end);
-        start = end;
-    }
-    spans
 }

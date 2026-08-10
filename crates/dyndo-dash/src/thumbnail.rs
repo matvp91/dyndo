@@ -1,5 +1,3 @@
-use std::ops::Range;
-
 use bytes::Bytes;
 use dash_mpd::{
     AdaptationSet, EssentialProperty, Representation, S, SegmentTemplate, SegmentTimeline,
@@ -80,7 +78,7 @@ impl Thumbnail {
         self,
         id: usize,
         tracks: &[Track],
-        span: &Range<u32>,
+        presentation_duration: u32,
     ) -> Result<Option<AdaptationSet>, ThumbnailError> {
         let Some((source, video)) = tracks.iter().find_map(|track| match track.kind() {
             TrackKind::Video(video) => Some((track, video)),
@@ -89,8 +87,9 @@ impl Thumbnail {
             return Ok(None);
         };
         let (width, height) = self.canvas_dimensions(video)?;
-        let first_time = self.sprite_start_time(u64::from(span.start))?;
-        let last_time = self.sprite_start_time(u64::from(span.end).saturating_sub(1))?;
+        let first_time = 0;
+        let last_time =
+            self.sprite_start_time(u64::from(presentation_duration).saturating_sub(1))?;
         let repeats = (last_time - first_time) / self.duration;
         let repeats = i64::try_from(repeats).map_err(|_| ThumbnailError::DurationOverflow)?;
 
@@ -111,7 +110,7 @@ impl Thumbnail {
                 SegmentTemplate: Some(SegmentTemplate {
                     media: Some(format!("{}/$Time$.jpg", source.id())),
                     timescale: Some(TIMESCALE),
-                    presentationTimeOffset: Some(u64::from(span.start)),
+                    presentationTimeOffset: Some(0),
                     SegmentTimeline: Some(SegmentTimeline {
                         segments: vec![S {
                             t: Some(first_time),
