@@ -28,9 +28,9 @@ struct ManifestQuery {
 }
 
 async fn load_asset(op: &Operator, options: &Options) -> Result<AssetDescriptor, ServerError> {
-    let mut asset = AssetDescriptor::read(op, &format!("{}.json", options.asset))
+    let mut asset = AssetDescriptor::read(op, &format!("{}.json", options.asset()))
         .await
-        .map_err(|error| asset_error(&options.asset, error))?;
+        .map_err(|error| asset_error(options.asset(), error))?;
     options.apply_to(&mut asset);
 
     Ok(asset)

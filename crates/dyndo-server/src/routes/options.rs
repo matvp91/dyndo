@@ -9,7 +9,7 @@ use crate::error::ServerError;
 #[serde(deny_unknown_fields)]
 pub(super) struct Options {
     #[serde(alias = "a")]
-    pub(super) asset: String,
+    asset: String,
     #[serde(default, alias = "sml", alias = "segment_min_length")]
     min_length: u32,
     #[serde(default, alias = "stl", alias = "segment_text_length")]
@@ -21,9 +21,9 @@ pub(super) struct Options {
     #[serde(default, alias = "mp")]
     multi_period: bool,
     #[serde(default, alias = "tts")]
-    pub(super) thumbnail_tile_size: u32,
+    thumbnail_tile_size: u32,
     #[serde(default, alias = "ts")]
-    pub(super) thumbnail_step: u32,
+    thumbnail_step: u32,
     #[serde(default)]
     wvtt: bool,
 }
@@ -51,6 +51,14 @@ impl Options {
         if !self.boundaries.is_empty() {
             options.boundaries.clone_from(&self.boundaries);
         }
+    }
+
+    pub(super) fn asset(&self) -> &str {
+        &self.asset
+    }
+
+    pub(super) fn thumbnail_settings(&self) -> (u32, u32) {
+        (self.thumbnail_tile_size, self.thumbnail_step)
     }
 
     pub(super) fn dash_options(&self) -> dyndo_dash::options::DashOptions {

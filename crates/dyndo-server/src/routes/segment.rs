@@ -70,7 +70,8 @@ pub(super) async fn thumbnail(
     time: u64,
 ) -> Result<Response, ServerError> {
     let track = TrackResolver::new(op, asset).probe(track_id).await?;
-    let thumbnail = Thumbnail::new(options.thumbnail_tile_size, options.thumbnail_step);
+    let (tile_size, step) = options.thumbnail_settings();
+    let thumbnail = Thumbnail::new(tile_size, step);
     let Some(bytes) = thumbnail.generate(op, &track, time).await? else {
         return Err(ServerError::NotFound("thumbnail".to_string()));
     };
