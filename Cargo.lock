@@ -660,7 +660,6 @@ name = "dyndo-core"
 version = "0.4.0"
 dependencies = [
  "bytes",
- "dyndo-text",
  "futures-util",
  "language-tags",
  "mp4-atom",
