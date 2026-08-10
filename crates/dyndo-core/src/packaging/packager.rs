@@ -1,7 +1,7 @@
 use mp4_atom::{Encode, Sidx};
 
 use super::format::Format;
-use super::{MediaSegment, PackageError, initialization, media_segment};
+use super::{MediaSegment, PackageError, initialization};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Packager<F> {
@@ -60,7 +60,11 @@ impl<F: Format> Packager<F> {
         let mut serialized_segments = Vec::with_capacity(segments.len());
         let mut references = Vec::with_capacity(segments.len());
         for (index, segment) in segments.iter().enumerate() {
-            let bytes = media_segment::write(&self.format, self.track_id, index, segment)?;
+            let sequence_number = index
+                .checked_add(1)
+                .and_then(|index| u32::try_from(index).ok())
+                .ok_or(PackageError::TooManyMediaSegments)?;
+            let bytes = segment.serialize(&self.format, self.track_id, sequence_number)?;
             let size =
                 u32::try_from(bytes.len()).map_err(|_| PackageError::MediaSegmentTooLarge)?;
             references.push(initialization::reference(size, segment)?);

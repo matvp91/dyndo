@@ -1,7 +1,7 @@
 use mp4_atom::{Any, DecodeMaybe, Moof};
 
 use super::format::Format;
-use super::{UnpackageError, UnpackagedMedia, media_segment};
+use super::{MediaSegment, UnpackageError, UnpackagedMedia};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Unpackager<F> {
@@ -40,7 +40,7 @@ impl<F: Format> Unpackager<F> {
                 }
                 Any::Mdat(mdat) => {
                     let header = header.take().ok_or(UnpackageError::UnpairedMediaSegment)?;
-                    segments.push(media_segment::read(&self.format, &header, &mdat.data)?);
+                    segments.push(MediaSegment::parse(&self.format, &header, &mdat.data)?);
                 }
                 _ => {}
             }

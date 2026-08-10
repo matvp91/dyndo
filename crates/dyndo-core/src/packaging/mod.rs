@@ -6,55 +6,7 @@ mod unpackager;
 
 pub mod wvtt;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct MediaSegment<S> {
-    base_decode_time: u64,
-    samples: Vec<Sample<S>>,
-}
-
-impl<S> MediaSegment<S> {
-    pub fn new(base_decode_time: u64, samples: Vec<Sample<S>>) -> Self {
-        Self {
-            base_decode_time,
-            samples,
-        }
-    }
-
-    pub fn base_decode_time(&self) -> u64 {
-        self.base_decode_time
-    }
-
-    pub fn duration(&self) -> u64 {
-        self.samples
-            .iter()
-            .map(|sample| u64::from(sample.duration))
-            .sum()
-    }
-
-    pub fn samples(&self) -> &[Sample<S>] {
-        &self.samples
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Sample<S> {
-    duration: u32,
-    payload: S,
-}
-
-impl<S> Sample<S> {
-    pub fn new(duration: u32, payload: S) -> Self {
-        Self { duration, payload }
-    }
-
-    pub fn duration(&self) -> u32 {
-        self.duration
-    }
-
-    pub fn payload(&self) -> &S {
-        &self.payload
-    }
-}
+pub use media_segment::{MediaSegment, Sample};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnpackagedMedia<P> {
