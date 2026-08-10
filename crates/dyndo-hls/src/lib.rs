@@ -8,7 +8,6 @@ mod roles;
 use dyndo_core::segment_options::SegmentOptions;
 use dyndo_core::track::Track;
 use hls_m3u8::{MasterPlaylist, MediaPlaylist};
-
 use options::HlsOptions;
 
 #[derive(Debug, thiserror::Error)]

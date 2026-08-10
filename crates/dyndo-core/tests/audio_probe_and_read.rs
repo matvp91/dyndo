@@ -1,10 +1,11 @@
+use std::ops::Range;
+
 use dyndo_core::reader::Reader;
 use dyndo_core::segment_options::SegmentOptions;
 use dyndo_core::track::Track;
 use dyndo_core::track_kind::TrackKind;
 use opendal::{Operator, services::Memory};
 use relative_path::RelativePath;
-use std::ops::Range;
 
 const AUDIO_FIXTURE: &[u8] = include_bytes!("fixtures/one-second-silence-aac.mp4");
 

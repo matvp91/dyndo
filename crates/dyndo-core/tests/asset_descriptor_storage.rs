@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use dyndo_core::asset_descriptor::AssetDescriptor;
 use dyndo_core::codec::{CodecConfig, WvttCodec};
 use dyndo_core::segment::InitSegment;
@@ -5,7 +7,6 @@ use dyndo_core::track::Track;
 use dyndo_core::track_kind::{TextKind, TrackKind};
 use opendal::{Operator, services::Memory};
 use relative_path::{RelativePath, RelativePathBuf};
-use std::sync::Arc;
 
 fn memory_operator() -> Operator {
     Operator::new(Memory::default()).unwrap()

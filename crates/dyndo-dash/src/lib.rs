@@ -9,7 +9,6 @@ mod roles;
 use dash_mpd::MPD;
 use dyndo_core::segment_options::SegmentOptions;
 use dyndo_core::track::Track;
-
 use options::DashOptions;
 
 #[derive(Debug, thiserror::Error)]

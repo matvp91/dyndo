@@ -157,10 +157,9 @@ fn snapped_cuts(segments: &[Segment], boundaries: impl IntoIterator<Item = u32>)
 mod tests {
     use std::sync::Arc;
 
+    use super::{Segment, ServedSegment};
     use crate::codec::{CodecConfig, WvttCodec};
     use crate::segment::InitSegment;
-
-    use super::{Segment, ServedSegment};
 
     fn segments(specifications: &[(u64, u64, u64, u64)]) -> Vec<Segment> {
         let init = Arc::new(InitSegment::new(CodecConfig::Wvtt(WvttCodec), 1_000, 0, 0));

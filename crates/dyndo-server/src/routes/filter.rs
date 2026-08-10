@@ -1,5 +1,9 @@
 use std::borrow::Cow;
 
+use dyndo_core::segment_options::SegmentOptions;
+use dyndo_core::served_segment::ServedSegment;
+use dyndo_core::track::Track;
+use dyndo_core::track_kind::TrackKind;
 use winnow::ascii::{digit1, multispace0};
 use winnow::combinator::{
     Infix, alt, cut_err, delimited, dispatch, expression, fail, preceded, terminated,
@@ -7,11 +11,6 @@ use winnow::combinator::{
 use winnow::error::{StrContext, StrContextValue};
 use winnow::prelude::*;
 use winnow::token::take_while;
-
-use dyndo_core::segment_options::SegmentOptions;
-use dyndo_core::served_segment::ServedSegment;
-use dyndo_core::track::Track;
-use dyndo_core::track_kind::TrackKind;
 
 #[derive(Debug, thiserror::Error)]
 #[error("at offset {offset}: {message}")]

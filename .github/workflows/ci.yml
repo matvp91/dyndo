@@ -33,19 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - name: Install FFmpeg development libraries
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            ffmpeg \
-            libavcodec-dev \
-            libavdevice-dev \
-            libavfilter-dev \
-            libavformat-dev \
-            libavutil-dev \
-            libswresample-dev \
-            libswscale-dev \
-            pkg-config
+      - uses: ./.github/actions/setup-ffmpeg
       # Installs the exact toolchain pinned in rust-toolchain.toml
       # (components rustfmt+clippy come from that file too).
       - name: Install pinned toolchain
@@ -58,19 +46,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - name: Install FFmpeg development libraries
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            ffmpeg \
-            libavcodec-dev \
-            libavdevice-dev \
-            libavfilter-dev \
-            libavformat-dev \
-            libavutil-dev \
-            libswresample-dev \
-            libswscale-dev \
-            pkg-config
+      - uses: ./.github/actions/setup-ffmpeg
       - name: Install pinned toolchain
         run: rustup toolchain install && rustup show active-toolchain
       - uses: Swatinem/rust-cache@v2
@@ -94,19 +70,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - name: Install FFmpeg development libraries
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            ffmpeg \
-            libavcodec-dev \
-            libavdevice-dev \
-            libavfilter-dev \
-            libavformat-dev \
-            libavutil-dev \
-            libswresample-dev \
-            libswscale-dev \
-            pkg-config
+      - uses: ./.github/actions/setup-ffmpeg
       - name: Install pinned toolchain
         run: rustup toolchain install && rustup show active-toolchain
       - uses: Swatinem/rust-cache@v2
@@ -117,19 +81,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - name: Install FFmpeg development libraries
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            ffmpeg \
-            libavcodec-dev \
-            libavdevice-dev \
-            libavfilter-dev \
-            libavformat-dev \
-            libavutil-dev \
-            libswresample-dev \
-            libswscale-dev \
-            pkg-config
+      - uses: ./.github/actions/setup-ffmpeg
       - name: Install pinned toolchain
         run: rustup toolchain install && rustup show active-toolchain
       - uses: Swatinem/rust-cache@v2

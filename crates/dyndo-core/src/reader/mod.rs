@@ -3,10 +3,9 @@ use std::ops::Range;
 use bytes::Bytes;
 use opendal::Operator;
 
+use self::vtt_layer::VttLayer;
 use super::segment_options::SegmentOptions;
 use super::track::Track;
-
-use self::vtt_layer::VttLayer;
 
 mod vtt_layer;
 

@@ -1,10 +1,6 @@
 use std::ops::Range;
 use std::time::Duration;
 
-use crate::DashError;
-use crate::adaptation_group::AdaptationGroup;
-use crate::options::DashOptions;
-use crate::roles;
 use dash_mpd::{
     AdaptationSet, AudioChannelConfiguration, MPD, Period, Representation, S, SegmentTemplate,
     SegmentTimeline, SupplementalProperty,
@@ -13,6 +9,11 @@ use dyndo_core::segment_options::SegmentOptions;
 use dyndo_core::served_segment::ServedSegment;
 use dyndo_core::track::Track;
 use dyndo_core::track_kind::TrackKind;
+
+use crate::DashError;
+use crate::adaptation_group::AdaptationGroup;
+use crate::options::DashOptions;
+use crate::roles;
 
 const DASH_PROFILE: &str = "urn:mpeg:dash:profile:isoff-live:2011";
 const DASH_XMLNS: &str = "urn:mpeg:dash:schema:mpd:2011";

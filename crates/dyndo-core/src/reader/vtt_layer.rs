@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use super::super::text::Subtitle;
 use ::opendal::raw::oio::{Read, ReadStream, StreamRead};
 use ::opendal::raw::{
     Layer, OpCopier, OpCopy, OpCreateDir, OpList, OpPresign, OpRead, OpRename, OpStat, OpWrite,
@@ -9,6 +8,8 @@ use ::opendal::raw::{
 use ::opendal::{
     Buffer, BytesRange, Capability, EntryMode, Error, ErrorKind, Metadata, OperationContext, Result,
 };
+
+use super::super::text::Subtitle;
 
 #[derive(Debug, Clone)]
 pub(super) struct VttLayer {

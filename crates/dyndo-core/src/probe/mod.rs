@@ -3,16 +3,15 @@ use futures_util::future::try_join_all;
 use relative_path::RelativePath;
 use uuid::Uuid;
 
+use self::box_reader::BoxReaderError;
+use self::metadata::{build_codec, build_kind};
+use self::segment_index::{build_init_segment, build_segments};
 use super::asset_descriptor::AssetDescriptor;
 use super::reader::Reader;
 use super::segment_options::SegmentOptions;
 use super::track::Track;
 use super::track_descriptor::TrackDescriptor;
 use super::track_kind::TrackKind;
-
-use self::box_reader::BoxReaderError;
-use self::metadata::{build_codec, build_kind};
-use self::segment_index::{build_init_segment, build_segments};
 
 mod box_reader;
 mod metadata;
