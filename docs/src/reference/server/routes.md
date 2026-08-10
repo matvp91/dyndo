@@ -69,31 +69,34 @@ or an empty boundary list — names nothing and leaves the asset's value standin
 since a request cannot express the difference between an absent value and a zero
 one.
 
-### Manifest options
+### Output options
 
-DASH resources accept two manifest-specific options:
+Four options affect DASH output:
 
 | Full key | Shorthand | Type | Default | Description |
 |---|---|---|---|---|
 | `compact` | `c` | boolean | `false` | Hoist segment-template data shared by DASH representations to their adaptation set. |
 | `multi_period` | `mp` | boolean | `false` | Open a `Period` at each [segment boundary](#segmentation-options) rather than describing the asset as one. |
+| `thumbnail_tile_size` | `tts` | integer | `0` | Number of thumbnails per sprite row and column. `0` disables thumbnail output. |
+| `thumbnail_step` | `ts` | integer | `0` | Milliseconds between adjacent thumbnails. `0` disables thumbnail output. |
 
-HLS resources accept one:
+One option affects HLS output:
 
 | Full key | Shorthand | Type | Default | Description |
 |---|---|---|---|---|
 | `wvtt` | — | boolean | `false` | Point text renditions at packaged `wvtt` segments rather than WebVTT documents. |
 
 The supported shorthand map is therefore `asset` → `a`, `min_length` → `sml`,
-`text_length` → `stl`, `boundaries` → `sb`, `compact` → `c`, and `wvtt` → `w`.
-The forms are equivalent:
+`text_length` → `stl`, `boundaries` → `sb`, `compact` → `c`, `multi_period` →
+`mp`, `thumbnail_tile_size` → `tts`, and `thumbnail_step` → `ts`. `wvtt` has no
+shorthand. The forms are equivalent:
 
 ```text
 /out/(asset:demo,min_length:6000,compact:!t)/index.mpd
 /out/(a:demo,sml:6000,c:!t)/index.mpd
 ```
 
-Unknown keys are rejected for DASH and HLS manifest requests.
+Unknown keys are rejected on every output route.
 
 ## Filtering tracks
 
@@ -110,11 +113,7 @@ a version without subtitles — instead of one descriptor per variation.
 /out/(asset:demo)/master.m3u8?filter=type==audio
 ```
 
-Every other route ignores the query string — a media playlist describes
-one track, so there is nothing for a filter to narrow, and the relative URIs
-inside a manifest carry no query string anyway. A filter therefore shapes
-manifests and never gates addressing: a track a filter dropped stays fetchable
-by its own URL.
+The `filter` parameter is accepted on all routes handled as manifests, including a per-track HLS media playlist, but it only affects `index.mpd` and `master.m3u8`. Track-file routes do not parse a query. A filter therefore shapes top-level manifests and never gates addressing: a track a filter dropped stays fetchable by its own URL.
 
 The syntax follows [Unified Streaming's URL
 filters](https://docs.unified-streaming.com/documentation/vod/player-urls.html),
@@ -249,6 +248,7 @@ configured storage backend.
 | `<track-id>/init.mp4` | A track's CMAF initialization segment. | `video/mp4`, `audio/mp4`, or `application/mp4` |
 | `<track-id>/<time>.m4s` | The media segment starting at presentation `<time>`. | `video/mp4`, `audio/mp4`, or `application/mp4` |
 | `<track-id>/<time>.vtt` | The same segment of a text track, as a WebVTT document. | `text/vtt` |
+| `<track-id>/<time>.jpg` | A JPEG thumbnail sprite advertised by the DASH manifest. | `image/jpeg` |
 
 `<track-id>` is a track's `id` exactly as recorded in the descriptor (for
 example `video_6b745be5-2791-5d95-8ce5-8f8bde29e2fe`). Because manifests emit
@@ -264,6 +264,16 @@ A full set of requests for one asset:
 /out/(asset:demo)/video_6b745be5-2791-5d95-8ce5-8f8bde29e2fe/0.m4s
 ```
 
+### Thumbnail sprites
+
+Set both `thumbnail_tile_size` and `thumbnail_step` on a DASH request to add an image adaptation set. A tile size of `4` creates a 4-by-4 sprite, and a step of `1000` samples one frame per second:
+
+```text
+/out/(asset:demo,tts:4,ts:1000)/index.mpd
+```
+
+The MPD addresses each sprite as `<video-track-id>/<time>.jpg`. Use the same options prefix when requesting that URL. If either setting is zero, the MPD has no thumbnail adaptation set and `.jpg` requests return `404`.
+
 ## Segments are protocol-independent
 
 There is no `dash` or `hls` component anywhere in a segment path. Both manifests
@@ -271,7 +281,8 @@ reference the same `<track-id>/init.mp4` and `<track-id>/<time>.m4s` URLs, and a
 request for one returns the same CMAF bytes regardless of which manifest sent
 the player there. Only `index.mpd` and the `.m3u8` resources are
 protocol-specific. See
-[One source, two protocols](../../explanation/two-protocols.md) for why.
+[Dynamic packaging without media copies](../../explanation/dynamic-packaging.md)
+for why.
 
 ## Two spellings of one text segment
 
@@ -290,13 +301,11 @@ on the presentation's clock.
 
 Which one a player asks for is the manifest's business: DASH always references
 `.m4s`, while HLS references `.vtt` unless the request passes
-[`wvtt`](#manifest-options). `<track-id>/init.mp4` stays available for the track
+[`wvtt`](#output-options). `<track-id>/init.mp4` stays available for the track
 either way, and is simply not referenced by a WebVTT rendition — a WebVTT segment
 needs no initialization.
 
-A text track that arrived as a CMAF `wvtt` file another packager wrote has no
-document to serve; `.vtt` on such a track answers `500`, and `wvtt` is the way to
-serve it.
+A `.vtt` response is reconstructed from the packaged initialization and media segment, whether the original source was raw WebVTT or CMAF `wvtt`.
 
 ## Segment addressing
 
@@ -323,9 +332,9 @@ shared path prefix.
 | Code | When |
 |---|---|
 | `200 OK` | The manifest or segment was generated and returned; also the `/health` probe. |
-| `400 Bad Request` | The options path segment is malformed Rison, a DASH or HLS manifest request carries an unknown option or an unrecognised query parameter, a segment length is negative, or the [filter](#filtering-tracks) is malformed — an unknown attribute, an ordering operator on a textual attribute, a non-numeric value for a numeric attribute. |
-| `404 Not Found` | The path does not contain separate options and resource components; `<track-id>` matches no track; a segment filename is not `<integer>.m4s` or `<integer>.vtt`; `<time>` is not a segment boundary; the descriptor does not exist; or the [filter](#filtering-tracks) matched no track. |
-| `500 Internal Server Error` | The descriptor JSON is malformed; a source file is unreadable or is not valid, supported CMAF; a `.vtt` was asked of a text track whose cues cannot be read back; or manifest serialization failed. |
+| `400 Bad Request` | The options path segment is malformed Rison or contains an unknown option, a manifest route carries an unrecognised query parameter, or the [filter](#filtering-tracks) is malformed — an unknown attribute, an ordering operator on a textual attribute, or a non-numeric value for a numeric attribute. |
+| `404 Not Found` | The path does not contain separate options and resource components; `<track-id>` matches no track; a segment filename has an unsupported extension or a non-integer time; `<time>` is not a segment boundary; a thumbnail is disabled or unavailable; the descriptor does not exist; or the [filter](#filtering-tracks) matched no track. |
+| `500 Internal Server Error` | The descriptor JSON is malformed; a source file is unreadable or is not valid, supported CMAF; packaged subtitle cues cannot be parsed; thumbnail generation fails; or manifest serialization fails. |
 
 The split between `404` and `500` reflects ownership: a **missing** object is
 treated as a client addressing error, while a **malformed** descriptor or

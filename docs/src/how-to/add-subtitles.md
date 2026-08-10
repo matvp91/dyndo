@@ -75,12 +75,10 @@ A WebVTT file declares no language of its own, so set it here — without
 as `wvtt` because that is what the track is packaged as; HLS unpacks it back into
 a document on the way out.
 
-By default the whole subtitle becomes one segment, cut only at the asset's splice
-points. Ask for a grid instead with `--segment-text-length` (or `text_length` in
-the descriptor) when you want the text timeline to resemble the media's:
+By default the whole subtitle becomes one segment, cut only at the asset's splice points. Set `text_length` in the descriptor or the server request when you want a regular grid:
 
 ```bash
-dyndo dash -i asset.json -o stream.mpd --segment-text-length 4000
+curl "http://localhost:8080/out/(asset:asset,text_length:4000)/index.mpd"
 ```
 
 ## Choose how HLS delivers subtitles
@@ -93,22 +91,17 @@ segment, no `EXT-X-MAP`, cue timestamps absolute:
 text_5b9fbdae-2717-5f58-80ed-4f067605a5e6/0.vtt
 ```
 
-To point it at the packaged `wvtt` segments instead, pass `wvtt` in the request's
-options, or `--wvtt` when generating playlists offline:
+To point it at packaged `wvtt` segments instead, pass `wvtt` in the request options:
 
 ```bash
 curl "http://localhost:8080/out/(asset:asset,wvtt:!t)/master.m3u8"
-dyndo hls -i asset.json -o hls --wvtt
 ```
 
 Both forms describe the same segments — the same cut points, the same durations —
 so this changes only how each one is delivered, and never how the asset is cut.
 DASH is unaffected either way.
 
-Reach for `wvtt` when a client specifically wants the packaged track, or when a
-text track came from a CMAF `wvtt` file another packager wrote: such a track has
-no document behind it, so its `.vtt` segments cannot be served and a request for
-one fails.
+Reach for `wvtt` when a client specifically wants the packaged track. Otherwise dyndo can unpack the cues from either a raw WebVTT source or a CMAF `wvtt` source into the `.vtt` form used by the default HLS output.
 
 ## Set the language
 

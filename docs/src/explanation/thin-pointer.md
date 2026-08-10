@@ -52,7 +52,8 @@ This yields three properties:
   never drift apart.
 - **Protocol at the edge.** Because segments are never protocol-specific (they
   are just CMAF), adding HLS alongside DASH costs a manifest generator, not a
-  second copy of the media. See [One source, two protocols](./two-protocols.md).
+  second copy of the media. See
+  [Dynamic packaging without media copies](./dynamic-packaging.md).
 
 ## What you trade for it
 
@@ -81,5 +82,5 @@ segment map.
 
 - [Reading a source: headers and the segment index](./segment-index.md) — how
   the descriptor stays this thin.
-- [One source, two protocols](./two-protocols.md) — how one set of segments
-  serves both DASH and HLS.
+- [Dynamic packaging without media copies](./dynamic-packaging.md) — how media,
+  metadata, and request-time presentation choices stay independent.

@@ -1,8 +1,7 @@
 # Index your CMAF sources
 
 This guide shows how to build an `asset.json` descriptor from a set of media
-files with `dyndo index`. You do this once per asset; the descriptor is what the
-server (or the offline manifest commands) reads afterwards.
+files with `dyndo index`. You do this once per asset; the CLI and server read the descriptor afterwards.
 
 ## Before you start
 
@@ -162,5 +161,4 @@ see the [asset.json descriptor reference](../reference/asset-json.md).
 - Control how players present each track:
   [Label tracks with roles](./label-roles.md).
 - Serve the descriptor: [Run and configure the server](./run-the-server.md).
-- Render a manifest without the server:
-  [Generate manifests without the server](./offline-manifests.md).
+- Extract a frame from the indexed video: [Extract a video frame](./extract-image.md).

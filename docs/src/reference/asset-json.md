@@ -1,12 +1,6 @@
 # asset.json descriptor
 
-The `asset.json` descriptor is the shared contract between dyndo's indexing,
-offline-generation, and serving commands. [`dyndo index`](./cli/index.md)
-writes and updates it; [`dyndo dash`](./cli/dash.md),
-[`dyndo hls`](./cli/hls.md), and the server read it. It is deliberately small:
-it records **per-track metadata and a source path, and nothing else** — no
-segment list, no byte offsets, no timescale. Those are re-derived from each
-source at read time.
+The `asset.json` descriptor is the shared contract between dyndo's CLI and server. [`dyndo index`](./cli/index.md) writes and updates it; [`dyndo image`](./cli/image.md) and the server read it. It is deliberately small: it records **per-track metadata and a source path, and nothing else** — no segment list, no byte offsets, no timescale. Those are re-derived from each source at read time.
 
 The file is pretty-printed JSON and safe to read, diff, and hand-edit.
 
@@ -32,10 +26,7 @@ order you pass them.
 
 ## Segmentation
 
-The optional `segment_options` block records how the asset asks to be segmented.
-It is what the asset *asks for*, not a decision: a `dyndo dash`/`dyndo hls` flag
-or a server request option overrides any option it names, and the descriptor is
-never written back. A block equal to the defaults is omitted from the file.
+The optional `segment_options` block records how the asset asks to be segmented. It is what the asset *asks for*, not a decision: a server request option overrides any option it names, and the descriptor is never written back. A block equal to the defaults is omitted from the file.
 
 | Field | Type | Default | Description |
 |---|---|---|---|

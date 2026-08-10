@@ -1,8 +1,6 @@
 # dyndo CLI
 
-`dyndo` is the command-line front-end for indexing media sources into
-`asset.json` descriptors and rendering manifests offline. It is the binary
-produced by the `dyndo-cli` crate.
+`dyndo` is the command-line tool for building asset descriptors and extracting video frames. It is the binary produced by the `dyndo-cli` crate.
 
 ```text
 dyndo <COMMAND>
@@ -11,47 +9,36 @@ dyndo <COMMAND>
 | Command | Purpose |
 |---|---|
 | [`index`](./cli/index.md) | Build or update an `asset.json` descriptor from CMAF and WebVTT sources. |
-| [`dash`](./cli/dash.md) | Render a DASH MPD from an `asset.json`. |
-| [`hls`](./cli/hls.md) | Render HLS playlists from an `asset.json` into a directory. |
+| [`image`](./cli/image.md) | Extract a full-resolution JPEG frame from an asset's first video track. |
 
 ## Global options
 
 | Option | Description |
 |---|---|
-| `-h, --help` | Print help (available on the top-level command and every subcommand). |
+| `-h, --help` | Print help. Available on the top-level command and every subcommand. |
 | `-V, --version` | Print the version. |
 
 ## Storage root
 
-All file paths are read and written through an [OpenDAL](https://opendal.apache.org/)
-filesystem operator rooted at a single directory. By default that root is the
-current working directory; override it with the `OPENDAL_FS_ROOT` environment
-variable:
+All paths are read and written through an [OpenDAL](https://opendal.apache.org/) filesystem operator rooted at one directory. By default that root is the current working directory; override it with `OPENDAL_FS_ROOT`:
 
 | Variable | Description | Default |
 |---|---|---|
-| `OPENDAL_FS_ROOT` | Root directory for all reads and writes. | `.` (current directory) |
+| `OPENDAL_FS_ROOT` | Root directory for all CLI reads and writes. | `.` |
 
-Within that root, a track's source path is always resolved **relative to the
-descriptor** that references it, not relative to your shell's working directory.
-See [Understand how paths resolve](../how-to/index-sources.md#understand-how-paths-resolve).
+Within that root, a track's source path is resolved relative to the descriptor that references it. See [Understand how paths resolve](../how-to/index-sources.md#understand-how-paths-resolve).
 
 ## Exit behavior
 
-Every command runs to completion or aborts.
-
 | Status | When |
 |---|---|
-| `0` | Success. |
-| `1` | A runtime error: a missing file, malformed descriptor JSON, an input that isn't valid CMAF, an unsupported codec or file extension, or tracks that cannot be grouped into an aligned adaptation set. The error is printed to stderr, prefixed `Error:`. |
-| `2` | A command-line usage error: an unknown flag, no inputs, a malformed track descriptor, or an unrecognised role value. Usage is printed to stderr. |
+| `0` | The command completed successfully. |
+| `1` | A runtime error occurred, such as a missing file, malformed descriptor, invalid source, unavailable frame, decode failure, or write failure. The message is written to stderr with the `dyndo:` prefix. |
+| `2` | Clap rejected the command line, such as an unknown command or option, a missing required argument, or an invalid track descriptor. Usage is written to stderr. |
 
-There is no partial success: `index` does not skip a bad input and continue, and
-a failed `dash` writes nothing. `hls` writes each playlist as it is produced, so
-a failure part-way through leaves the files written so far in place.
+Commands do not silently skip invalid inputs. `index` writes its descriptor only after all named inputs have been processed; `image` writes its JPEG only after the requested frame has been decoded.
 
 ## Commands
 
 - [`index`](./cli/index.md)
-- [`dash`](./cli/dash.md)
-- [`hls`](./cli/hls.md)
+- [`image`](./cli/image.md)

@@ -6,7 +6,7 @@ The `dyndo` command-line tool indexes media tracks into asset descriptors for
 
 Full documentation lives in the book: the
 **[dyndo CLI reference](https://matvp91.github.io/dyndo/reference/cli.html)**
-covers the `index` command, its options and defaults, and the
+covers the `index` and `image` commands, their options and defaults, and the
 [how-to guides](https://matvp91.github.io/dyndo/how-to/index-sources.html) walk
 through the tasks they serve.
 

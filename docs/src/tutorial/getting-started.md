@@ -5,9 +5,7 @@ served by dyndo. Along the way you'll install the CLI, create a pair of CMAF
 sources, index them into an `asset.json`, and start the server as a container.
 
 You don't need to know anything about CMAF, DASH, or HLS to follow along — we'll
-create everything from scratch. By the end you'll have a running server
-answering DASH and HLS requests, and you'll understand the two-step
-**index-then-serve** workflow that everything else in dyndo builds on.
+create everything from scratch. By the end you'll have a running server, see how it reads the original media without copying it, and change presentation metadata without repackaging a source.
 
 Set aside about 15 minutes.
 
@@ -209,6 +207,22 @@ You'll see the ffmpeg test pattern play and hear the tone. dyndo is serving the
 manifest and every segment live, reading ranges out of `assets/video.mp4` and
 `assets/audio.mp4` as the player requests them.
 
+## Step 6: Change metadata without changing media
+
+Leave the server running for one more request. Update the existing audio track's language and mark it as the main rendition:
+
+```bash
+dyndo index audio.mp4,language=nld,role=main -o assets/asset.json
+```
+
+The known source path keeps its existing track entry and applies the explicit metadata overrides. Request the HLS manifest again:
+
+```bash
+curl "http://localhost:8080/out/(asset:asset)/master.m3u8"
+```
+
+Its audio rendition now carries `LANGUAGE="nld"` and is marked as the default. The server picked up the descriptor change on the next request. It did not rewrite `audio.mp4`, and the track ID and segment URLs stayed the same.
+
 When you're done, stop the server with `Ctrl-C`.
 
 ## What you did
@@ -218,10 +232,10 @@ In a few minutes you:
 1. installed the `dyndo` CLI;
 2. produced two CMAF sources;
 3. **indexed** them into a tiny `asset.json` descriptor; and
-4. **served** that descriptor as a live DASH and HLS stream with Docker.
+4. **served** their original byte ranges with dynamically generated manifests; and
+5. **changed** player-facing metadata without rewriting media or changing its URLs.
 
-That index-then-serve split is the core of dyndo: index once, serve many
-protocols, and never duplicate your media.
+That separation is the core of dyndo: media remains stable and stored once, while its presentation can evolve independently.
 
 ## Where to next
 
@@ -234,5 +248,5 @@ protocols, and never duplicate your media.
 - Serve your media from object storage instead of local disk:
   [Serve media from S3](../how-to/serve-from-s3.md).
 - Understand what just happened under the hood:
-  [The thin-pointer approach](../explanation/thin-pointer.md).
+  [Dynamic packaging without media copies](../explanation/dynamic-packaging.md).
 - Look up every command and option: [dyndo CLI reference](../reference/cli.md).

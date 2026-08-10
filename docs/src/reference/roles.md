@@ -40,9 +40,7 @@ accepted and silently discarded.
 
 Roles are emitted as descriptors on the track's `AdaptationSet`. Both
 descriptor kinds use the **same** scheme, `urn:mpeg:dash:role:2011`, and both
-carry the role name as a string `value`. Tracks are grouped into adaptation sets
-partly by role, so a set's members always agree on it — see
-[adaptation set grouping](./cli/dash.md#adaptation-set-grouping).
+carry the role name as a string `value`. Tracks are grouped into adaptation sets partly by role, so a set's members always agree on it.
 
 ### Audio
 
@@ -149,5 +147,4 @@ sitting alongside a Dutch forced-subtitle track is still auto-selectable
 
 - [Label tracks with roles](../how-to/label-roles.md) — how to set them.
 - [asset.json descriptor](./asset-json.md) — the `role` field in context.
-- [`dyndo dash`](./cli/dash.md) and [`dyndo hls`](./cli/hls.md) — the manifests
-  roles appear in.
+- [Server routes](./server/routes.md) — the DASH and HLS outputs in which roles appear.

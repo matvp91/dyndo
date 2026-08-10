@@ -2,8 +2,7 @@
 
 `dyndo-server` is the dynamic packaging HTTP server, produced by the
 `dyndo-server` crate and built on [Axum](https://github.com/tokio-rs/axum). It
-serves DASH and HLS manifests and CMAF segments generated on the fly from
-`asset.json` descriptors.
+serves DASH and HLS manifests and CMAF segments generated on the fly from `asset.json` descriptors. The source media remains unchanged; presentation metadata and request options determine what each generated manifest exposes.
 
 ## Running
 
@@ -39,9 +38,7 @@ GET /out/(asset:demo)/master.m3u8    # HLS multivariant playlist
 ```
 
 The bracketed part is a Rison object naming the descriptor and, optionally,
-overriding how it is segmented for that request. Manifests are generated per
-request by parsing each source's CMAF header; media segments are returned as
-byte-range reads from the original files. Nothing is written back to storage.
+overriding segmentation or output settings for that request. Manifests are generated per request by parsing each source's CMAF header; media segments are returned as byte-range reads from the original files. Thumbnail sprites and subtitle representations are generated only when requested. Nothing is written back to storage.
 
 There is no explicit listing route: an asset is served if a descriptor exists at
 the path a request names.
