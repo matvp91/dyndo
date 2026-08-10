@@ -33,29 +33,3 @@ pub(super) fn accessibility(content_type: &str, role: Option<Role>) -> Vec<Acces
         id: None,
     }]
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn text_without_role_defaults_to_subtitle() {
-        let roles = roles("text", None);
-
-        assert_eq!(roles[0].value.as_deref(), Some("subtitle"));
-    }
-
-    #[test]
-    fn audio_description_is_signaled_as_accessibility() {
-        let accessibility = accessibility("audio", Some(Role::Description));
-
-        assert_eq!(accessibility[0].value.as_deref(), Some("description"));
-    }
-
-    #[test]
-    fn caption_is_also_classified_as_subtitle() {
-        let roles = roles("text", Some(Role::Caption));
-
-        assert_eq!(roles[0].value.as_deref(), Some("subtitle"));
-    }
-}

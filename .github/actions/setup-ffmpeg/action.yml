@@ -1,0 +1,64 @@
+name: Setup FFmpeg
+description: Build and expose the FFmpeg development libraries used by rsmpeg
+
+inputs:
+  version:
+    description: FFmpeg release to install
+    required: false
+    default: 8.0.3
+
+runs:
+  using: composite
+  steps:
+    - name: Cache FFmpeg
+      id: cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ runner.temp }}/ffmpeg-install-${{ inputs.version }}
+        key: ffmpeg-${{ inputs.version }}-${{ runner.os }}-${{ runner.arch }}
+
+    - name: Install FFmpeg build dependencies
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends build-essential nasm pkg-config xz-utils
+
+    - name: Build FFmpeg
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        FFMPEG_VERSION: ${{ inputs.version }}
+        FFMPEG_PREFIX: ${{ runner.temp }}/ffmpeg-install-${{ inputs.version }}
+      run: |
+        curl --fail --location --retry 3 \
+          "https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.xz" \
+          --output "${RUNNER_TEMP}/ffmpeg.tar.xz"
+        tar --extract --file "${RUNNER_TEMP}/ffmpeg.tar.xz" --directory "${RUNNER_TEMP}"
+        cd "${RUNNER_TEMP}/ffmpeg-${FFMPEG_VERSION}"
+        ./configure \
+          --prefix="${FFMPEG_PREFIX}" \
+          --disable-static \
+          --enable-shared \
+          --disable-doc \
+          --disable-debug \
+          --disable-autodetect
+        make --jobs "$(nproc)"
+        make install
+
+    - name: Expose FFmpeg
+      shell: bash
+      env:
+        FFMPEG_PREFIX: ${{ runner.temp }}/ffmpeg-install-${{ inputs.version }}
+      run: |
+        echo "PKG_CONFIG_PATH=${FFMPEG_PREFIX}/lib/pkgconfig" >> "${GITHUB_ENV}"
+        echo "LD_LIBRARY_PATH=${FFMPEG_PREFIX}/lib" >> "${GITHUB_ENV}"
+        echo "${FFMPEG_PREFIX}/bin" >> "${GITHUB_PATH}"
+
+    - name: Verify FFmpeg version
+      shell: bash
+      env:
+        FFMPEG_PREFIX: ${{ runner.temp }}/ffmpeg-install-${{ inputs.version }}
+      run: |
+        test "$(PKG_CONFIG_PATH="${FFMPEG_PREFIX}/lib/pkgconfig" pkg-config --modversion libavutil | cut -d. -f1)" = 60
+        PKG_CONFIG_PATH="${FFMPEG_PREFIX}/lib/pkgconfig" pkg-config --modversion libavutil

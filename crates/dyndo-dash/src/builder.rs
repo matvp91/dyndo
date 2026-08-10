@@ -1,5 +1,3 @@
-//! DASH manifest construction from dyndo assets.
-
 use std::ops::Range;
 use std::time::Duration;
 
@@ -7,15 +5,13 @@ use dash_mpd::{
     AdaptationSet, AudioChannelConfiguration, MPD, Period, Representation, S, SegmentTemplate,
     SegmentTimeline, SupplementalProperty,
 };
-use dyndo_core::asset_descriptor::{AssetDescriptor, TrackKind};
-use dyndo_core::boundary_utils::BoundaryUtils;
-use dyndo_core::filter::{Filter, FilterMatchedNothing};
-use dyndo_core::segment::{self, Segment, SegmentOptions, max_bitrate, max_segment_duration};
-use dyndo_core::track::{Track, TrackError, max_duration};
-use opendal::Operator;
+use dyndo_core::segment_options::SegmentOptions;
+use dyndo_core::served_segment::ServedSegment;
+use dyndo_core::track::Track;
+use dyndo_core::track_kind::TrackKind;
 
-use crate::adaptation_set_group::{self, AdaptationSetGroup};
-use crate::compact;
+use crate::DashError;
+use crate::adaptation_group::AdaptationGroup;
 use crate::options::DashOptions;
 use crate::roles;
 
@@ -27,72 +23,25 @@ const INITIALIZATION_TEMPLATE: &str = "$RepresentationID$/init.mp4";
 const MEDIA_TEMPLATE: &str = "$RepresentationID$/$Time$.m4s";
 const PERIOD_CONTINUITY_SCHEME: &str = "urn:mpeg:dash:period-continuity:2015";
 
-#[derive(Debug, thiserror::Error)]
-pub enum DashError {
-    #[error(transparent)]
-    Track(#[from] TrackError),
-    #[error("tracks in an adaptation set are not segment-aligned")]
-    SegmentAlignment,
-    #[error(transparent)]
-    Filter(#[from] FilterMatchedNothing),
-}
-
-/// Generates a static DASH media presentation description for an asset.
-///
-/// `filter` narrows which of the asset's tracks the manifest describes; pass `None`
-/// to describe all of them.
-///
-/// # Errors
-///
-/// Returns a [`DashError`] when a track cannot be probed, the filter matches no
-/// track, or tracks grouped into an AdaptationSet are not segment-aligned.
-pub async fn generate_mpd(
-    op: &Operator,
-    asset: &AssetDescriptor,
-    dash_options: &DashOptions,
-    filter: Option<&Filter>,
-) -> Result<MPD, DashError> {
-    let tracks = Track::probe_all(op, asset).await?;
-    let tracks = match filter {
-        Some(filter) => filter.narrow(tracks, &asset.segment_options)?,
-        None => tracks,
-    };
-
-    build_mpd(&tracks, &asset.segment_options, dash_options)
-}
-
-/// Builds the manifest from tracks already probed and already narrowed.
-fn build_mpd(
+pub(crate) fn build_mpd(
     tracks: &[Track],
     segment_options: &SegmentOptions,
     dash_options: &DashOptions,
 ) -> Result<MPD, DashError> {
-    let duration = Duration::from_millis(u64::from(max_duration(tracks)));
-    let groups = adaptation_set_group::group(tracks);
-    if groups
-        .iter()
-        .any(|group| !group.is_segment_aligned(segment_options))
-    {
-        return Err(DashError::SegmentAlignment);
-    }
-    let boundaries: &[u32] = if dash_options.multi_period {
-        &segment_options.boundaries
-    } else {
-        &[]
-    };
-    let mut periods: Vec<Period> = Vec::new();
-    for span in BoundaryUtils::divide(boundaries, max_duration(tracks)) {
-        let next = period(
-            periods.len(),
-            &span,
-            periods.last(),
-            &groups,
-            segment_options,
-        );
-        periods.extend(next);
-    }
+    let presentation_duration = presentation_duration(tracks);
+    let period_spans = period_spans(
+        if dash_options.multi_period {
+            &segment_options.boundaries
+        } else {
+            &[]
+        },
+        presentation_duration,
+    );
+    let groups = AdaptationGroup::group(tracks);
+    ensure_segment_alignment(&groups, segment_options)?;
+    let periods = build_periods(&period_spans, &groups, segment_options);
 
-    let mut mpd = MPD {
+    Ok(MPD {
         xmlns: Some(DASH_XMLNS.to_string()),
         mpdtype: Some("static".to_string()),
         profiles: Some(DASH_PROFILE.to_string()),
@@ -100,33 +49,51 @@ fn build_mpd(
             tracks,
             segment_options,
         )))),
-        mediaPresentationDuration: Some(duration),
+        mediaPresentationDuration: Some(Duration::from_millis(u64::from(presentation_duration))),
         periods,
         ..Default::default()
-    };
-    if dash_options.compact {
-        compact::compact(&mut mpd);
-    }
-    Ok(mpd)
+    })
 }
 
-/// The period a span covers, holding whatever each track has to give it, or
-/// `None` when no track has anything.
-///
-/// A group's id is its index among all of them and never its position among those
-/// that survive: it is the key a client matches a rendition on across periods, so
-/// renumbering it would pair unrelated tracks.
-fn period(
+fn ensure_segment_alignment(
+    groups: &[AdaptationGroup<'_>],
+    segment_options: &SegmentOptions,
+) -> Result<(), DashError> {
+    if groups
+        .iter()
+        .all(|group| group.is_segment_aligned(segment_options))
+    {
+        Ok(())
+    } else {
+        Err(DashError::SegmentAlignment)
+    }
+}
+
+fn build_periods(
+    spans: &[Range<u32>],
+    groups: &[AdaptationGroup<'_>],
+    segment_options: &SegmentOptions,
+) -> Vec<Period> {
+    let mut periods = Vec::new();
+    for span in spans {
+        let next = build_period(periods.len(), span, periods.last(), groups, segment_options);
+        periods.extend(next);
+    }
+
+    periods
+}
+
+fn build_period(
     index: usize,
     span: &Range<u32>,
     previous: Option<&Period>,
-    groups: &[AdaptationSetGroup<'_>],
+    groups: &[AdaptationGroup<'_>],
     segment_options: &SegmentOptions,
 ) -> Option<Period> {
     let adaptations: Vec<AdaptationSet> = groups
         .iter()
         .enumerate()
-        .filter_map(|(id, group)| adaptation_set(id, group, segment_options, previous, span))
+        .filter_map(|(id, group)| build_adaptation_set(id, group, segment_options, previous, span))
         .collect();
     if adaptations.is_empty() {
         return None;
@@ -141,11 +108,9 @@ fn period(
     })
 }
 
-/// The AdaptationSet for `group` within `span`, or `None` when none of its
-/// renditions reach that far.
-fn adaptation_set(
+fn build_adaptation_set(
     id: usize,
-    group: &AdaptationSetGroup<'_>,
+    group: &AdaptationGroup<'_>,
     segment_options: &SegmentOptions,
     previous: Option<&Period>,
     span: &Range<u32>,
@@ -153,7 +118,7 @@ fn adaptation_set(
     let representations: Vec<Representation> = group
         .members()
         .iter()
-        .filter_map(|track| representation(track, segment_options, span))
+        .filter_map(|track| build_representation(track, segment_options, span))
         .collect();
     if representations.is_empty() {
         return None;
@@ -168,21 +133,14 @@ fn adaptation_set(
         startWithSAP: Some(1),
         Role: roles::roles(group.content_type(), group.role()),
         Accessibility: roles::accessibility(group.content_type(), group.role()),
-        supplemental_property: period_continuity(id, previous),
+        supplemental_property: build_period_continuity(id, previous),
         representations,
         ..Default::default()
     })
 }
 
-/// Declares that the AdaptationSet carries on from the one holding the same id in
-/// the period before it.
-///
-/// dyndo only ever cuts a single encode into periods, so every period after the
-/// first continues the one before on an unbroken timeline. Left unsaid, a client
-/// is entitled to tear down its decoder at each period it crosses. A group the
-/// previous period never carried says nothing, since it begins here rather than
-/// continuing.
-fn period_continuity(id: usize, previous: Option<&Period>) -> Vec<SupplementalProperty> {
+// Continuity lets clients keep their decoder across Periods.
+fn build_period_continuity(id: usize, previous: Option<&Period>) -> Vec<SupplementalProperty> {
     let id = id.to_string();
 
     previous
@@ -201,24 +159,29 @@ fn period_continuity(id: usize, previous: Option<&Period>) -> Vec<SupplementalPr
         .collect()
 }
 
-/// The Representation for `track` within `span`, or `None` when the track has no
-/// segments there — a timeline has to hold at least one, and there would be
-/// nothing to fetch anyway.
-fn representation(
+fn build_representation(
     track: &Track,
     segment_options: &SegmentOptions,
     span: &Range<u32>,
 ) -> Option<Representation> {
-    let segments = segment::span(track, segment_options, span);
+    let all_segments = served_segments(track, segment_options);
+    let bandwidth = ServedSegment::maximum_bitrate(&all_segments);
+    let segments: Vec<_> = all_segments
+        .into_iter()
+        .filter(|segment| {
+            u64::from(span.start) <= segment.start_time()
+                && segment.start_time() < u64::from(span.end)
+        })
+        .collect();
     if segments.is_empty() {
         return None;
     }
 
     let mut representation = Representation {
         id: Some(track.id().to_string()),
-        bandwidth: Some(max_bitrate(track, segment_options)),
-        codecs: Some(track.codec().to_string()),
-        SegmentTemplate: Some(segment_template(track, &segments, span)),
+        bandwidth: Some(bandwidth),
+        codecs: Some(track.codec().rfc6381()),
+        SegmentTemplate: Some(build_segment_template(track, &segments, span)),
         ..Default::default()
     };
 
@@ -231,7 +194,7 @@ fn representation(
         TrackKind::Audio(audio) => {
             representation.audioSamplingRate = Some(audio.sample_rate.to_string());
             representation.AudioChannelConfiguration =
-                vec![audio_channel_configuration(audio.channels)];
+                vec![build_audio_channel_configuration(audio.channels)];
         }
         TrackKind::Text(_) => {}
     }
@@ -239,7 +202,7 @@ fn representation(
     Some(representation)
 }
 
-fn audio_channel_configuration(channels: u16) -> AudioChannelConfiguration {
+fn build_audio_channel_configuration(channels: u16) -> AudioChannelConfiguration {
     AudioChannelConfiguration {
         schemeIdUri: AUDIO_CHANNEL_CONFIGURATION_SCHEME.to_string(),
         value: Some(channels.to_string()),
@@ -247,143 +210,104 @@ fn audio_channel_configuration(channels: u16) -> AudioChannelConfiguration {
     }
 }
 
-fn segment_template(track: &Track, segments: &[Segment], span: &Range<u32>) -> SegmentTemplate {
+fn build_segment_template(
+    track: &Track,
+    segments: &[ServedSegment<'_>],
+    span: &Range<u32>,
+) -> SegmentTemplate {
     SegmentTemplate {
         timescale: Some(u64::from(track.timescale())),
         presentationTimeOffset: Some(presentation_time_offset(track, span)),
         initialization: Some(INITIALIZATION_TEMPLATE.to_string()),
         media: Some(MEDIA_TEMPLATE.to_string()),
-        SegmentTimeline: Some(segment_timeline(segments)),
+        SegmentTimeline: Some(build_segment_timeline(segments)),
         ..Default::default()
     }
 }
 
-/// The media time the period begins at, which is what the times in its timeline
-/// are read against.
-///
-/// This is the period's own start rather than the track's first segment, so that
-/// a track cutting after the boundary presents where it always did instead of
-/// being pulled back to the period edge. The difference between the two shows up
-/// as the gap between this and the first time in the timeline.
 fn presentation_time_offset(track: &Track, span_ms: &Range<u32>) -> u64 {
-    // The span is milliseconds and the timeline counts the track's timescale units.
-    // Rounded down, so the offset never lands past the segment the period opens on —
-    // a player reading the timeline against it would place every segment early.
+    // Round down so the offset cannot place the period's segments early.
     let offset = u128::from(span_ms.start) * u128::from(track.timescale()) / 1000;
 
-    track.earliest_presentation_time()
-        + u64::try_from(offset).expect("a period starts within the media timeline")
+    track
+        .unscaled_earliest_presentation_time()
+        .unwrap_or(0)
+        .saturating_add(u64::try_from(offset).unwrap_or(u64::MAX))
 }
 
-/// The timeline `segments` describe, with equal durations folded into one entry
-/// repeated `r` times.
-///
-/// An entry opens with the time its first segment begins at, so a run only continues
-/// while the next segment starts where the previous one ended. Two segments of equal
-/// duration with a gap between them are two runs, since a player reads the entries as
-/// one unbroken stretch.
-fn segment_timeline(segments: &[Segment]) -> SegmentTimeline {
+fn build_segment_timeline(segments: &[ServedSegment<'_>]) -> SegmentTimeline {
     let mut entries: Vec<S> = Vec::new();
     let mut end = None;
 
     for segment in segments {
-        let range = segment.raw_range();
-        let continues = end == Some(range.start);
+        let start = segment.unscaled_start_time();
+        let segment_end = segment.unscaled_end_time();
+        let duration = segment.unscaled_duration();
+        let continues = end == Some(start);
         match entries.last_mut() {
-            Some(previous) if previous.d == segment.raw_duration() && continues => {
+            Some(previous) if previous.d == duration && continues => {
                 *previous.r.get_or_insert(0) += 1;
             }
             _ => entries.push(S {
-                // A player reads an entry with no time of its own as continuing from
-                // the one before it, so only a run that follows nothing states where
-                // it begins: the first, and any that opens after a gap.
-                t: (!continues).then_some(range.start),
-                d: segment.raw_duration(),
+                // A missing `t` continues the preceding run, so a run after a gap states it.
+                t: (!continues).then_some(start),
+                d: duration,
                 ..Default::default()
             }),
         }
-        end = Some(range.end);
+        end = Some(segment_end);
     }
 
     SegmentTimeline { segments: entries }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+fn served_segments<'a>(track: &'a Track, options: &SegmentOptions) -> Vec<ServedSegment<'a>> {
+    ServedSegment::group(track.segments(), options.min_length, &options.boundaries)
+}
 
-    #[test]
-    fn generate_mpd_creates_a_static_manifest() {
-        let mpd = build_mpd(&[], &SegmentOptions::default(), &DashOptions::default()).unwrap();
+fn presentation_duration(tracks: &[Track]) -> u32 {
+    maximum_duration(tracks, |kind| matches!(kind, TrackKind::Video(_))).unwrap_or_else(|| {
+        maximum_duration(tracks, |kind| matches!(kind, TrackKind::Audio(_))).unwrap_or(0)
+    })
+}
 
-        assert_eq!(mpd.mpdtype.as_deref(), Some("static"));
+fn maximum_duration(tracks: &[Track], include: impl Fn(&TrackKind) -> bool) -> Option<u32> {
+    tracks
+        .iter()
+        .filter(|track| include(track.kind()))
+        .map(Track::duration)
+        .max()
+}
+
+fn max_segment_duration(tracks: &[Track], options: &SegmentOptions) -> u32 {
+    tracks
+        .iter()
+        .filter(|track| matches!(track.kind(), TrackKind::Video(_) | TrackKind::Audio(_)))
+        .flat_map(|track| {
+            served_segments(track, options).into_iter().map(|segment| {
+                let duration = u128::from(segment.unscaled_duration()) * 1_000;
+                let duration = duration.div_ceil(u128::from(track.timescale()));
+                u32::try_from(duration).unwrap_or(u32::MAX)
+            })
+        })
+        .max()
+        .unwrap_or(0)
+}
+
+fn period_spans(boundaries: &[u32], duration: u32) -> Vec<Range<u32>> {
+    let mut edges: Vec<_> = boundaries
+        .iter()
+        .copied()
+        .filter(|boundary| 0 < *boundary && *boundary < duration)
+        .collect();
+    edges.sort_unstable();
+    edges.dedup();
+
+    let mut spans = Vec::with_capacity(edges.len() + 1);
+    let mut start = 0;
+    for end in edges.into_iter().chain([duration]) {
+        spans.push(start..end);
+        start = end;
     }
-
-    #[test]
-    fn generate_mpd_uses_the_segment_based_profile() {
-        let mpd = build_mpd(&[], &SegmentOptions::default(), &DashOptions::default()).unwrap();
-
-        assert_eq!(mpd.profiles.as_deref(), Some(DASH_PROFILE));
-    }
-
-    #[test]
-    fn build_mpd_opens_no_period_for_an_asset_without_tracks() {
-        let mpd = build_mpd(&[], &SegmentOptions::default(), &DashOptions::default()).unwrap();
-
-        assert!(mpd.periods.is_empty());
-    }
-
-    fn previous_period(adaptation_set_ids: &[usize]) -> Period {
-        Period {
-            id: Some("1".to_string()),
-            adaptations: adaptation_set_ids
-                .iter()
-                .map(|id| AdaptationSet {
-                    id: Some(id.to_string()),
-                    ..Default::default()
-                })
-                .collect(),
-            ..Default::default()
-        }
-    }
-
-    #[test]
-    fn the_first_period_continues_nothing() {
-        assert!(period_continuity(0, None).is_empty());
-    }
-
-    #[test]
-    fn a_later_period_continues_the_one_before_it() {
-        let continuity = period_continuity(2, Some(&previous_period(&[0, 1, 2])));
-
-        assert_eq!(
-            (
-                continuity[0].schemeIdUri.as_str(),
-                continuity[0].value.as_deref()
-            ),
-            (PERIOD_CONTINUITY_SCHEME, Some("1"))
-        );
-    }
-
-    #[test]
-    fn an_adaptation_set_the_period_before_lacked_continues_nothing() {
-        assert!(period_continuity(2, Some(&previous_period(&[0, 1]))).is_empty());
-    }
-
-    #[test]
-    fn audio_channel_configuration_uses_the_mpeg_scheme() {
-        let configuration = audio_channel_configuration(2);
-
-        assert_eq!(
-            configuration.schemeIdUri,
-            AUDIO_CHANNEL_CONFIGURATION_SCHEME
-        );
-    }
-
-    #[test]
-    fn audio_channel_configuration_uses_the_channel_count() {
-        let configuration = audio_channel_configuration(2);
-
-        assert_eq!(configuration.value.as_deref(), Some("2"));
-    }
+    spans
 }

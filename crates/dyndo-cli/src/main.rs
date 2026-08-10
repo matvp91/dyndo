@@ -1,12 +1,10 @@
 use std::process::ExitCode;
 
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use opendal::Operator;
 use opendal::services::Fs;
 
 mod commands;
-
-use commands::Command;
 
 /// dyndo — dynamic media packaging for adaptive streaming.
 #[derive(Parser)]
@@ -16,15 +14,29 @@ struct Cli {
     command: Command,
 }
 
-/// Build the filesystem operator, rooted at `OPENDAL_FS_ROOT` (default `.`).
+#[derive(Subcommand)]
+enum Command {
+    /// Build or update an asset descriptor from one or more media tracks.
+    Index(commands::index::IndexArgs),
+    /// Extract a video frame as a JPEG image.
+    Image(commands::image::ImageArgs),
+}
+
+impl Command {
+    async fn run(self, op: &Operator) -> Result<(), Box<dyn std::error::Error>> {
+        match self {
+            Self::Index(args) => commands::index::run(op, args).await,
+            Self::Image(args) => commands::image::run(op, args).await,
+        }
+    }
+}
+
 fn operator() -> Result<Operator, Box<dyn std::error::Error>> {
     let root = std::env::var("OPENDAL_FS_ROOT").unwrap_or_else(|_| ".".to_string());
     Ok(Operator::new(Fs::default().root(&root))?)
 }
 
-/// Reports what went wrong rather than how it is spelled in Rust: returning the
-/// error from `main` would print its `Debug`, which quotes a message or, for a unit
-/// error like a filter matching nothing, drops it entirely.
+// Print Display because Rust's default main error handling prints Debug.
 #[tokio::main]
 async fn main() -> ExitCode {
     if let Err(error) = run().await {
