@@ -780,6 +780,7 @@ dependencies = [
  "opendal",
  "quick-xml 0.40.1",
  "rison",
+ "rsmpeg",
  "serde",
  "thiserror 2.0.18",
  "tokio",

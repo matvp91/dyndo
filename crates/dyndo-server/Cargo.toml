@@ -26,5 +26,6 @@ figment = { version = "0.10", features = ["yaml", "env"] }
 serde = { version = "1", features = ["derive"] }
 rison = "0.1"
 quick-xml = { version = "0.40", features = ["serialize"] }
+rsmpeg = "0.18"
 thiserror = "2"
 winnow = "1"
