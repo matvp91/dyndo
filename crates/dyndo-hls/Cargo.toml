@@ -15,8 +15,3 @@ language-tags = "0.3.2"
 opendal = { version = "0.58", default-features = false }
 serde = { version = "1", features = ["derive"] }
 thiserror = "2"
-
-[dev-dependencies]
-opendal = { version = "0.58", default-features = false, features = ["services-memory"] }
-serde_json = "1"
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
