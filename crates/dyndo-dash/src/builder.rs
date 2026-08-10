@@ -3,15 +3,14 @@
 use std::ops::Range;
 use std::time::Duration;
 
-use crate::adaptation_set_group::{self, AdaptationSetGroup};
+use crate::DashError;
+use crate::adaptation_group::AdaptationGroup;
 use crate::options::DashOptions;
 use crate::roles;
 use dash_mpd::{
     AdaptationSet, AudioChannelConfiguration, MPD, Period, Representation, S, SegmentTemplate,
     SegmentTimeline, SupplementalProperty,
 };
-use dyndo_core::filter::FilterMatchedNothing;
-use dyndo_core::probe::ProbeError;
 use dyndo_core::segment_options::SegmentOptions;
 use dyndo_core::served_segment::ServedSegment;
 use dyndo_core::track::Track;
@@ -25,16 +24,6 @@ const INITIALIZATION_TEMPLATE: &str = "$RepresentationID$/init.mp4";
 const MEDIA_TEMPLATE: &str = "$RepresentationID$/$Time$.m4s";
 const PERIOD_CONTINUITY_SCHEME: &str = "urn:mpeg:dash:period-continuity:2015";
 
-#[derive(Debug, thiserror::Error)]
-pub enum DashError {
-    #[error(transparent)]
-    Probe(#[from] ProbeError),
-    #[error("tracks in an adaptation set are not segment-aligned")]
-    SegmentAlignment,
-    #[error(transparent)]
-    Filter(#[from] FilterMatchedNothing),
-}
-
 /// Builds the manifest from tracks already probed and already narrowed.
 pub(crate) fn build_mpd(
     tracks: &[Track],
@@ -42,32 +31,19 @@ pub(crate) fn build_mpd(
     dash_options: &DashOptions,
 ) -> Result<MPD, DashError> {
     let presentation_duration = presentation_duration(tracks);
-    let duration = Duration::from_millis(u64::from(presentation_duration));
-    let groups = adaptation_set_group::group(tracks);
-    if groups
-        .iter()
-        .any(|group| !group.is_segment_aligned(segment_options))
-    {
-        return Err(DashError::SegmentAlignment);
-    }
-    let boundaries: &[u32] = if dash_options.multi_period {
-        &segment_options.boundaries
-    } else {
-        &[]
-    };
-    let mut periods: Vec<Period> = Vec::new();
-    for span in period_spans(boundaries, presentation_duration) {
-        let next = build_period(
-            periods.len(),
-            &span,
-            periods.last(),
-            &groups,
-            segment_options,
-        );
-        periods.extend(next);
-    }
+    let period_spans = period_spans(
+        if dash_options.multi_period {
+            &segment_options.boundaries
+        } else {
+            &[]
+        },
+        presentation_duration,
+    );
+    let groups = AdaptationGroup::group(tracks);
+    ensure_segment_alignment(&groups, segment_options)?;
+    let periods = build_periods(&period_spans, &groups, segment_options);
 
-    let mpd = MPD {
+    Ok(MPD {
         xmlns: Some(DASH_XMLNS.to_string()),
         mpdtype: Some("static".to_string()),
         profiles: Some(DASH_PROFILE.to_string()),
@@ -75,11 +51,38 @@ pub(crate) fn build_mpd(
             tracks,
             segment_options,
         )))),
-        mediaPresentationDuration: Some(duration),
+        mediaPresentationDuration: Some(Duration::from_millis(u64::from(presentation_duration))),
         periods,
         ..Default::default()
-    };
-    Ok(mpd)
+    })
+}
+
+fn ensure_segment_alignment(
+    groups: &[AdaptationGroup<'_>],
+    segment_options: &SegmentOptions,
+) -> Result<(), DashError> {
+    if groups
+        .iter()
+        .all(|group| group.is_segment_aligned(segment_options))
+    {
+        Ok(())
+    } else {
+        Err(DashError::SegmentAlignment)
+    }
+}
+
+fn build_periods(
+    spans: &[Range<u32>],
+    groups: &[AdaptationGroup<'_>],
+    segment_options: &SegmentOptions,
+) -> Vec<Period> {
+    let mut periods = Vec::new();
+    for span in spans {
+        let next = build_period(periods.len(), span, periods.last(), groups, segment_options);
+        periods.extend(next);
+    }
+
+    periods
 }
 
 /// The period a span covers, holding whatever each track has to give it, or
@@ -92,7 +95,7 @@ fn build_period(
     index: usize,
     span: &Range<u32>,
     previous: Option<&Period>,
-    groups: &[AdaptationSetGroup<'_>],
+    groups: &[AdaptationGroup<'_>],
     segment_options: &SegmentOptions,
 ) -> Option<Period> {
     let adaptations: Vec<AdaptationSet> = groups
@@ -117,7 +120,7 @@ fn build_period(
 /// renditions reach that far.
 fn build_adaptation_set(
     id: usize,
-    group: &AdaptationSetGroup<'_>,
+    group: &AdaptationGroup<'_>,
     segment_options: &SegmentOptions,
     previous: Option<&Period>,
     span: &Range<u32>,
@@ -185,7 +188,10 @@ fn build_representation(
     let bandwidth = ServedSegment::maximum_bitrate(&all_segments);
     let segments: Vec<_> = all_segments
         .into_iter()
-        .filter(|segment| span_contains(span, segment.start_time()))
+        .filter(|segment| {
+            u64::from(span.start) <= segment.start_time()
+                && segment.start_time() < u64::from(span.end)
+        })
         .collect();
     if segments.is_empty() {
         return None;
@@ -295,10 +301,6 @@ fn build_segment_timeline(segments: &[ServedSegment<'_>]) -> SegmentTimeline {
 
 fn served_segments<'a>(track: &'a Track, options: &SegmentOptions) -> Vec<ServedSegment<'a>> {
     ServedSegment::group(track.segments(), options.min_length, &options.boundaries)
-}
-
-fn span_contains(span: &Range<u32>, time: u64) -> bool {
-    u64::from(span.start) <= time && time < u64::from(span.end)
 }
 
 fn presentation_duration(tracks: &[Track]) -> u32 {

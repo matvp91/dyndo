@@ -1,6 +1,6 @@
 //! Static DASH manifest generation for dyndo assets.
 
-mod adaptation_set_group;
+mod adaptation_group;
 mod builder;
 mod compact;
 pub mod options;
@@ -8,12 +8,21 @@ mod roles;
 
 use dash_mpd::MPD;
 use dyndo_core::asset_descriptor::AssetDescriptor;
-use dyndo_core::filter::Filter;
-use dyndo_core::probe::probe_tracks;
+use dyndo_core::filter::{Filter, FilterMatchedNothing};
+use dyndo_core::probe::{ProbeError, probe_tracks};
 use opendal::Operator;
 
-pub use builder::DashError;
 use options::DashOptions;
+
+#[derive(Debug, thiserror::Error)]
+pub enum DashError {
+    #[error(transparent)]
+    Probe(#[from] ProbeError),
+    #[error("tracks in an adaptation set are not segment-aligned")]
+    SegmentAlignment,
+    #[error(transparent)]
+    Filter(#[from] FilterMatchedNothing),
+}
 
 /// Generates a static DASH media presentation description for an asset.
 ///

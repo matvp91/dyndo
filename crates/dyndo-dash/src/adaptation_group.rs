@@ -4,18 +4,16 @@ use dyndo_core::served_segment::ServedSegment;
 use dyndo_core::track::Track;
 use dyndo_core::track_kind::TrackKind;
 
-pub(super) type Member<'a> = &'a Track;
-
-pub(super) struct AdaptationSetGroup<'a> {
+pub(super) struct AdaptationGroup<'a> {
     key: String,
     content_type: &'static str,
     mime_type: &'static str,
     language: Option<String>,
     role: Option<Role>,
-    members: Vec<Member<'a>>,
+    members: Vec<&'a Track>,
 }
 
-impl<'a> AdaptationSetGroup<'a> {
+impl<'a> AdaptationGroup<'a> {
     fn new(key: String, track: &'a Track) -> Self {
         let language = match track.kind() {
             TrackKind::Video(_) => None,
@@ -38,6 +36,21 @@ impl<'a> AdaptationSetGroup<'a> {
         }
     }
 
+    pub(super) fn group(tracks: &'a [Track]) -> Vec<Self> {
+        let mut groups: Vec<Self> = Vec::new();
+
+        for track in tracks {
+            let key = adaptation_set_key(track);
+            if let Some(group) = groups.iter_mut().find(|group| group.key == key) {
+                group.members.push(track);
+            } else {
+                groups.push(Self::new(key, track));
+            }
+        }
+
+        groups
+    }
+
     pub(super) fn content_type(&self) -> &'static str {
         self.content_type
     }
@@ -54,7 +67,7 @@ impl<'a> AdaptationSetGroup<'a> {
         self.role
     }
 
-    pub(super) fn members(&self) -> &[Member<'a>] {
+    pub(super) fn members(&self) -> &[&'a Track] {
         &self.members
     }
 
@@ -86,21 +99,6 @@ fn served_segments<'a>(track: &'a Track, options: &SegmentOptions) -> Vec<Served
 
 fn segment_times(segment: &ServedSegment<'_>) -> (u64, u64) {
     (segment.unscaled_start_time(), segment.unscaled_end_time())
-}
-
-pub(super) fn group(tracks: &[Track]) -> Vec<AdaptationSetGroup<'_>> {
-    let mut groups: Vec<AdaptationSetGroup<'_>> = Vec::new();
-
-    for track in tracks {
-        let key = adaptation_set_key(track);
-        if let Some(group) = groups.iter_mut().find(|group| group.key == key) {
-            group.members.push(track);
-        } else {
-            groups.push(AdaptationSetGroup::new(key, track));
-        }
-    }
-
-    groups
 }
 
 fn adaptation_set_key(track: &Track) -> String {
