@@ -4,6 +4,7 @@ use dyndo_core::segment_options::SegmentOptions;
 use dyndo_core::served_segment::ServedSegment;
 use dyndo_core::track::Track;
 use dyndo_core::track_kind::TrackKind;
+use serde::{Deserialize, Deserializer, de};
 use winnow::ascii::{digit1, multispace0};
 use winnow::combinator::{
     Infix, alt, cut_err, delimited, dispatch, expression, fail, preceded, terminated,
@@ -22,6 +23,13 @@ pub(super) struct FilterParseError {
 #[derive(Debug, PartialEq, Eq)]
 pub(super) struct Filter {
     expression: Expression,
+}
+
+impl<'de> Deserialize<'de> for Filter {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let input = String::deserialize(deserializer)?;
+        Self::parse(&input).map_err(de::Error::custom)
+    }
 }
 
 impl Filter {

@@ -51,11 +51,9 @@ groups multiple fragments — with the default of `0`, every fragment is already
 served segment. Subtitle tracks are different: dyndo cuts them at the splice
 points as it packages them, whatever `min_length` says.
 
-Each option accepts three spellings, so a descriptor can use whichever reads
-best and matches the server's request options: `min_length`, `sml`, or
-`segment_min_length`; `text_length`, `stl`, or `segment_text_length`;
-`boundaries`, `sb`, or `segment_boundaries`. The `a` and `c` shorthands belong
-only to the server's Rison request options and are not descriptor fields.
+Descriptors use only the field names shown above. Server request options accept
+additional shorthand and legacy spellings; see the
+[server routes reference](server/routes.md#segmentation-options).
 
 ## Track object
 

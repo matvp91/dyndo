@@ -751,7 +751,6 @@ dependencies = [
  "mp4-atom",
  "opendal",
  "quick-xml 0.40.1",
- "serde",
  "thiserror 2.0.18",
 ]
 
@@ -764,7 +763,6 @@ dependencies = [
  "isolang",
  "language-tags",
  "mp4-atom",
- "serde",
  "thiserror 2.0.18",
 ]
 

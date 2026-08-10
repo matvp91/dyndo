@@ -23,8 +23,6 @@ const CONCURRENT_FRAME_GRABS: usize = 4;
 pub enum ThumbnailError {
     #[error("thumbnails are disabled")]
     Disabled,
-    #[error("thumbnail step must be greater than zero")]
-    InvalidStep,
     #[error("thumbnail sprite duration overflows")]
     DurationOverflow,
     #[error("thumbnail tile size {tile_size} leaves no pixels in a {width}x{height} video")]
@@ -54,11 +52,8 @@ pub(crate) struct Thumbnail {
 
 impl Thumbnail {
     pub(crate) fn new(options: &DashOptions) -> Result<Option<Self>, ThumbnailError> {
-        if options.thumbnail_tile_size == 0 {
+        if options.thumbnail_tile_size == 0 || options.thumbnail_step == 0 {
             return Ok(None);
-        }
-        if options.thumbnail_step == 0 {
-            return Err(ThumbnailError::InvalidStep);
         }
 
         let tile_size = u64::from(options.thumbnail_tile_size);
@@ -215,4 +210,30 @@ pub(crate) async fn generate_jpeg(
     let thumbnail = Thumbnail::new(options)?.ok_or(ThumbnailError::Disabled)?;
 
     thumbnail.jpeg(op, track, time).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Thumbnail;
+    use crate::options::DashOptions;
+
+    #[test]
+    fn new_returns_none_when_tile_size_is_zero() {
+        let options = DashOptions {
+            thumbnail_step: 1_000,
+            ..DashOptions::default()
+        };
+
+        assert!(Thumbnail::new(&options).unwrap().is_none());
+    }
+
+    #[test]
+    fn new_returns_none_when_step_is_zero() {
+        let options = DashOptions {
+            thumbnail_tile_size: 2,
+            ..DashOptions::default()
+        };
+
+        assert!(Thumbnail::new(&options).unwrap().is_none());
+    }
 }

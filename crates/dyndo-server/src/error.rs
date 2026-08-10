@@ -3,21 +3,16 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use dyndo_core::asset_descriptor::AssetDescriptorError;
-use dyndo_core::image::FrameGrabError;
 use dyndo_core::probe::ProbeError;
 use dyndo_core::reader::TrackReadError;
 use dyndo_core::text::wvtt::WvttParseError;
-use dyndo_dash::{DashError, ThumbnailError};
+use dyndo_dash::DashError;
 use dyndo_hls::HlsError;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ServerError {
-    #[error("invalid options: {0}")]
-    InvalidOptions(String),
-    #[error("invalid filter: {0}")]
-    InvalidFilter(String),
-    #[error("no track matches the filter")]
-    FilterMatchedNothing,
+    #[error("{0}")]
+    BadRequest(String),
     #[error("resource not found: {0}")]
     NotFound(String),
     #[error(transparent)]
@@ -38,32 +33,16 @@ pub enum ServerError {
 
 impl IntoResponse for ServerError {
     fn into_response(self) -> Response {
-        let status = match &self {
-            Self::InvalidOptions(_)
-            | Self::InvalidFilter(_)
-            | Self::Dash(DashError::Thumbnail(
-                ThumbnailError::InvalidStep
-                | ThumbnailError::DurationOverflow
-                | ThumbnailError::TileSizeTooLarge { .. },
-            )) => StatusCode::BAD_REQUEST,
-            Self::NotFound(_)
-            | Self::FilterMatchedNothing
-            | Self::Dash(DashError::Thumbnail(
-                ThumbnailError::Disabled
-                | ThumbnailError::InvalidTime
-                | ThumbnailError::NotFound(_)
-                | ThumbnailError::NotVideo
-                | ThumbnailError::FrameGrab(
-                    FrameGrabError::NotVideo | FrameGrabError::TimeOutsideTrack(_),
-                ),
-            )) => StatusCode::NOT_FOUND,
-            // A filter that narrowed an asset down to nothing is an addressing error,
-            // like an unknown track id, rather than a fault in the asset.
-            Self::AssetDescriptor(AssetDescriptorError::Storage(error))
-                if error.kind() == opendal::ErrorKind::NotFound =>
-            {
-                StatusCode::NOT_FOUND
-            }
+        let status = self.status();
+        (status, self.to_string()).into_response()
+    }
+}
+
+impl ServerError {
+    fn status(&self) -> StatusCode {
+        match self {
+            Self::BadRequest(_) => StatusCode::BAD_REQUEST,
+            Self::NotFound(_) => StatusCode::NOT_FOUND,
             Self::AssetDescriptor(_)
             | Self::Probe(_)
             | Self::TrackRead(_)
@@ -71,7 +50,6 @@ impl IntoResponse for ServerError {
             | Self::Hls(_)
             | Self::WvttParse(_)
             | Self::Serialization(_) => StatusCode::INTERNAL_SERVER_ERROR,
-        };
-        (status, self.to_string()).into_response()
+        }
     }
 }
