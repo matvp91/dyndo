@@ -1,39 +1,27 @@
 use mp4_atom::{
-    Codec, Dinf, Dref, FourCC, Ftyp, Hdlr, Mdhd, Mdia, Minf, Moov, Mvex, Mvhd, Nmhd, PlainText,
-    SegmentReference, Stbl, Stco, Stsd, Tkhd, Trak, Trex, Url, VttC, Wvtt,
+    Dinf, Dref, Hdlr, Mdhd, Mdia, Minf, Moov, Mvex, Mvhd, Nmhd, SegmentReference, Stbl, Stco, Stsd,
+    Tkhd, Trak, Trex, Url,
 };
 
-use super::super::TimedFragment;
-use super::{TRACK_ID, WvttSample};
+use super::format::Format;
+use super::{MediaSegment, PackageError};
 
-pub(super) fn ftyp() -> Ftyp {
-    Ftyp {
-        major_brand: FourCC::new(b"iso6"),
-        minor_version: 0,
-        compatible_brands: vec![
-            FourCC::new(b"iso6"),
-            FourCC::new(b"cmfc"),
-            FourCC::new(b"cmft"),
-        ],
-    }
-}
-
-pub(super) fn reference(
+pub(super) fn reference<P>(
     size: u32,
-    fragment: &TimedFragment<WvttSample>,
-) -> Result<SegmentReference, super::PackageError> {
+    segment: &MediaSegment<P>,
+) -> Result<SegmentReference, PackageError> {
     Ok(SegmentReference {
         reference_type: false,
         reference_size: size,
-        subsegment_duration: u32::try_from(fragment.duration())
-            .map_err(|_| super::PackageError::DurationOverflow)?,
+        subsegment_duration: u32::try_from(segment.duration())
+            .map_err(|_| PackageError::DurationOverflow)?,
         starts_with_sap: true,
         sap_type: 1,
         sap_delta_time: 0,
     })
 }
 
-pub(super) fn moov(timescale: u32, duration: u64) -> Moov {
+pub(super) fn movie<F: Format>(format: &F, track_id: u32, timescale: u32, duration: u64) -> Moov {
     Moov {
         mvhd: Mvhd {
             creation_time: 0,
@@ -43,19 +31,19 @@ pub(super) fn moov(timescale: u32, duration: u64) -> Moov {
             rate: 1.into(),
             volume: 1.into(),
             matrix: Default::default(),
-            next_track_id: TRACK_ID + 1,
+            next_track_id: track_id.saturating_add(1),
         },
         mvex: Some(Mvex {
             mehd: None,
             trex: vec![Trex {
-                track_id: TRACK_ID,
+                track_id,
                 default_sample_description_index: 1,
                 ..Trex::default()
             }],
         }),
         trak: vec![Trak {
             tkhd: Tkhd {
-                track_id: TRACK_ID,
+                track_id,
                 duration,
                 enabled: true,
                 in_movie: true,
@@ -69,7 +57,7 @@ pub(super) fn moov(timescale: u32, duration: u64) -> Moov {
                     ..Mdhd::default()
                 },
                 hdlr: Hdlr {
-                    handler: FourCC::new(b"text"),
+                    handler: format.handler(),
                     name: "dyndo".to_string(),
                 },
                 minf: Minf {
@@ -83,16 +71,7 @@ pub(super) fn moov(timescale: u32, duration: u64) -> Moov {
                     },
                     stbl: Stbl {
                         stsd: Stsd {
-                            codecs: vec![Codec::Wvtt(Wvtt {
-                                plaintext: PlainText {
-                                    data_reference_index: 1,
-                                },
-                                config: VttC {
-                                    config: "WEBVTT\n".to_string(),
-                                },
-                                label: None,
-                                btrt: None,
-                            })],
+                            codecs: vec![format.sample_entry()],
                         },
                         stco: Some(Stco::default()),
                         ..Stbl::default()

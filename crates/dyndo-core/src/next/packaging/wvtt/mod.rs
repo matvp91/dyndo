@@ -1,12 +1,14 @@
 mod atom;
-mod fragment;
-mod track;
 
-use mp4_atom::{Any, DecodeMaybe, Encode, Moof, Sidx};
+use mp4_atom::{
+    Any, Atom, BufMut, Codec, DecodeMaybe, Encode, FourCC, Ftyp, PlainText, Styp, VttC, Wvtt,
+};
 
-use super::TimedTrack;
-
-const TRACK_ID: u32 = 1;
+use self::atom::{Payl, Vttc, Vtte};
+use super::format::Format;
+use super::packager::Packager;
+use super::unpackager::Unpackager;
+use super::{MediaSegment, PackageError, UnpackageError, UnpackagedMedia};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WvttSample {
@@ -23,99 +25,134 @@ impl WvttSample {
     }
 }
 
-#[derive(Debug, thiserror::Error)]
-pub enum PackageError {
-    #[error("track covers no time")]
-    Empty,
-    #[error("a sample is too large")]
-    SampleTooLarge,
-    #[error("a fragment is too large")]
-    FragmentTooLarge,
-    #[error("a fragment duration overflows")]
-    DurationOverflow,
-    #[error("track contains too many fragments")]
-    TooManyFragments,
-    #[error(transparent)]
-    Atom(#[from] mp4_atom::Error),
-}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct WvttFormat;
 
-#[derive(Debug, thiserror::Error)]
-pub enum UnpackageError {
-    #[error("fragment carries no base decode time")]
-    MissingBaseTime,
-    #[error("fragment carries no sample durations")]
-    MissingSampleTiming,
-    #[error("sample data overruns the fragment")]
-    SampleOutOfRange,
-    #[error("a fragment header and its sample data do not pair up")]
-    UnpairedFragment,
-    #[error(transparent)]
-    Atom(#[from] mp4_atom::Error),
-}
+impl Format for WvttFormat {
+    type Payload = WvttSample;
 
-pub fn package(track: &TimedTrack<WvttSample>) -> Result<Vec<u8>, PackageError> {
-    let duration = track
-        .fragments()
-        .last()
-        .map(|fragment| fragment.start_time().saturating_add(fragment.duration()))
-        .unwrap_or(0);
-    if duration == 0 {
-        return Err(PackageError::Empty);
-    }
-
-    let mut encoded = Vec::with_capacity(track.fragments().len());
-    let mut references = Vec::with_capacity(track.fragments().len());
-    for (index, timed_fragment) in track.fragments().iter().enumerate() {
-        let bytes = fragment::encode(index, timed_fragment)?;
-        let size = u32::try_from(bytes.len()).map_err(|_| PackageError::FragmentTooLarge)?;
-        references.push(track::reference(size, timed_fragment)?);
-        encoded.push(bytes);
-    }
-
-    let mut bytes = Vec::new();
-    track::ftyp().encode(&mut bytes)?;
-    track::moov(track.timescale(), duration).encode(&mut bytes)?;
-    Sidx {
-        reference_id: TRACK_ID,
-        timescale: track.timescale(),
-        earliest_presentation_time: track
-            .fragments()
-            .first()
-            .map_or(0, |fragment| fragment.start_time()),
-        first_offset: 0,
-        references,
-    }
-    .encode(&mut bytes)?;
-    for timed_fragment in encoded {
-        bytes.extend_from_slice(&timed_fragment);
-    }
-
-    Ok(bytes)
-}
-
-pub fn unpackage(segment: &[u8], timescale: u32) -> Result<TimedTrack<WvttSample>, UnpackageError> {
-    let mut fragments = Vec::new();
-    let mut header: Option<Moof> = None;
-    let mut buf = segment;
-
-    while let Some(atom) = Any::decode_maybe(&mut buf)? {
-        match atom {
-            Any::Moof(moof) => {
-                if header.replace(moof).is_some() {
-                    return Err(UnpackageError::UnpairedFragment);
-                }
-            }
-            Any::Mdat(mdat) => {
-                let header = header.take().ok_or(UnpackageError::UnpairedFragment)?;
-                fragments.push(fragment::decode(&header, &mdat.data)?);
-            }
-            _ => {}
+    fn file_type(&self) -> Ftyp {
+        Ftyp {
+            major_brand: FourCC::new(b"iso6"),
+            minor_version: 0,
+            compatible_brands: vec![
+                FourCC::new(b"iso6"),
+                FourCC::new(b"cmfc"),
+                FourCC::new(b"cmft"),
+            ],
         }
     }
 
-    if header.is_some() {
-        return Err(UnpackageError::UnpairedFragment);
+    fn segment_type(&self) -> Styp {
+        Styp {
+            major_brand: FourCC::new(b"msdh"),
+            minor_version: 0,
+            compatible_brands: vec![
+                FourCC::new(b"msdh"),
+                FourCC::new(b"msix"),
+                FourCC::new(b"cmfs"),
+            ],
+        }
     }
 
-    Ok(TimedTrack::new(timescale, fragments))
+    fn handler(&self) -> FourCC {
+        FourCC::new(b"text")
+    }
+
+    fn sample_entry(&self) -> Codec {
+        Codec::Wvtt(Wvtt {
+            plaintext: PlainText {
+                data_reference_index: 1,
+            },
+            config: VttC {
+                config: "WEBVTT\n".to_string(),
+            },
+            label: None,
+            btrt: None,
+        })
+    }
+
+    fn write_sample<B: BufMut>(&self, sample: &WvttSample, output: &mut B) -> mp4_atom::Result<()> {
+        if sample.cues().is_empty() {
+            return Vtte.encode(output);
+        }
+
+        for cue in sample.cues() {
+            Vttc {
+                payl: Payl { text: cue.clone() },
+            }
+            .encode(output)?;
+        }
+
+        Ok(())
+    }
+
+    fn read_sample(&self, bytes: &[u8]) -> mp4_atom::Result<WvttSample> {
+        let mut cues = Vec::new();
+        let mut buf = bytes;
+
+        while let Some(atom) = Any::decode_maybe(&mut buf)? {
+            let Any::Unknown(kind, body) = atom else {
+                continue;
+            };
+            if kind == Vttc::KIND {
+                cues.push(Vttc::decode_body(&mut body.as_slice())?.payl.text);
+            }
+        }
+
+        Ok(WvttSample::new(cues))
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WvttPackager {
+    inner: Packager<WvttFormat>,
+}
+
+impl WvttPackager {
+    pub fn new(timescale: u32) -> Self {
+        Self {
+            inner: Packager::new(WvttFormat, timescale),
+        }
+    }
+
+    pub fn with_track_id(mut self, track_id: u32) -> Self {
+        self.inner = self.inner.with_track_id(track_id);
+        self
+    }
+
+    pub fn track_id(&self) -> u32 {
+        self.inner.track_id()
+    }
+
+    pub fn timescale(&self) -> u32 {
+        self.inner.timescale()
+    }
+
+    pub fn package(&self, segments: &[MediaSegment<WvttSample>]) -> Result<Vec<u8>, PackageError> {
+        self.inner.package(segments)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WvttUnpackager {
+    inner: Unpackager<WvttFormat>,
+}
+
+impl WvttUnpackager {
+    pub fn new() -> Self {
+        Self {
+            inner: Unpackager::new(WvttFormat),
+        }
+    }
+
+    pub fn unpackage(&self, bytes: &[u8]) -> Result<UnpackagedMedia<WvttSample>, UnpackageError> {
+        self.inner.unpackage(bytes)
+    }
+}
+
+impl Default for WvttUnpackager {
+    fn default() -> Self {
+        Self::new()
+    }
 }

@@ -1,21 +1,19 @@
-use mp4_atom::{
-    Any, Atom, BufMut, DecodeMaybe, Encode, FourCC, Mdat, Mfhd, Moof, Styp, Tfdt, Tfhd, Traf, Trun,
-    TrunEntry,
-};
+use mp4_atom::{Encode, Mdat, Mfhd, Moof, Tfdt, Tfhd, Traf, Trun, TrunEntry};
 
-use super::super::{TimedFragment, TimedSample};
-use super::atom::{Payl, Vttc, Vtte};
-use super::{PackageError, TRACK_ID, UnpackageError, WvttSample};
+use super::format::Format;
+use super::{MediaSegment, PackageError, Sample, UnpackageError};
 
-pub(super) fn encode(
+pub(super) fn write<F: Format>(
+    format: &F,
+    track_id: u32,
     index: usize,
-    fragment: &TimedFragment<WvttSample>,
+    segment: &MediaSegment<F::Payload>,
 ) -> Result<Vec<u8>, PackageError> {
     let mut data = Vec::new();
-    let mut entries = Vec::with_capacity(fragment.samples().len());
-    for sample in fragment.samples() {
+    let mut entries = Vec::with_capacity(segment.samples().len());
+    for sample in segment.samples() {
         let offset = data.len();
-        write_sample(sample.value(), &mut data)?;
+        format.write_sample(sample.payload(), &mut data)?;
         entries.push(TrunEntry {
             duration: Some(sample.duration()),
             size: Some(
@@ -28,17 +26,17 @@ pub(super) fn encode(
     let sequence_number = index
         .checked_add(1)
         .and_then(|index| u32::try_from(index).ok())
-        .ok_or(PackageError::TooManyFragments)?;
+        .ok_or(PackageError::TooManyMediaSegments)?;
     let mut moof = Moof {
         mfhd: Mfhd { sequence_number },
         traf: vec![Traf {
             tfhd: Tfhd {
-                track_id: TRACK_ID,
+                track_id,
                 default_base_is_moof: true,
                 ..Tfhd::default()
             },
             tfdt: Some(Tfdt {
-                base_media_decode_time: fragment.start_time(),
+                base_media_decode_time: segment.base_decode_time(),
             }),
             trun: vec![Trun {
                 data_offset: Some(0),
@@ -49,7 +47,7 @@ pub(super) fn encode(
     };
 
     let mut bytes = Vec::new();
-    styp().encode(&mut bytes)?;
+    format.segment_type().encode(&mut bytes)?;
     let moof_start = bytes.len();
     moof.encode(&mut bytes)?;
     let data_offset = bytes
@@ -57,7 +55,7 @@ pub(super) fn encode(
         .checked_sub(moof_start)
         .and_then(|size| size.checked_add(8))
         .and_then(|size| i32::try_from(size).ok())
-        .ok_or(PackageError::FragmentTooLarge)?;
+        .ok_or(PackageError::MediaSegmentTooLarge)?;
     moof.traf[0].trun[0].data_offset = Some(data_offset);
     bytes.truncate(moof_start);
     moof.encode(&mut bytes)?;
@@ -66,16 +64,17 @@ pub(super) fn encode(
     Ok(bytes)
 }
 
-pub(super) fn decode(
+pub(super) fn read<F: Format>(
+    format: &F,
     header: &Moof,
     data: &[u8],
-) -> Result<TimedFragment<WvttSample>, UnpackageError> {
-    let mut start_time = None;
+) -> Result<MediaSegment<F::Payload>, UnpackageError> {
+    let mut base_decode_time = None;
     let mut samples = Vec::new();
 
     for traf in &header.traf {
         let tfdt = traf.tfdt.as_ref().ok_or(UnpackageError::MissingBaseTime)?;
-        start_time.get_or_insert(tfdt.base_media_decode_time);
+        base_decode_time.get_or_insert(tfdt.base_media_decode_time);
         let mut offset = 0usize;
 
         for entry in traf.trun.iter().flat_map(|trun| &trun.entries) {
@@ -87,53 +86,10 @@ pub(super) fn decode(
             let bytes = data
                 .get(offset..end)
                 .ok_or(UnpackageError::SampleOutOfRange)?;
-            samples.push(TimedSample::new(duration, read_sample(bytes)?));
+            samples.push(Sample::new(duration, format.read_sample(bytes)?));
             offset = end;
         }
     }
 
-    Ok(TimedFragment::new(start_time.unwrap_or(0), samples))
-}
-
-fn write_sample<B: BufMut>(sample: &WvttSample, buf: &mut B) -> mp4_atom::Result<()> {
-    if sample.cues().is_empty() {
-        return Vtte.encode(buf);
-    }
-
-    for cue in sample.cues() {
-        Vttc {
-            payl: Payl { text: cue.clone() },
-        }
-        .encode(buf)?;
-    }
-
-    Ok(())
-}
-
-fn read_sample(bytes: &[u8]) -> Result<WvttSample, UnpackageError> {
-    let mut cues = Vec::new();
-    let mut buf = bytes;
-
-    while let Some(atom) = Any::decode_maybe(&mut buf)? {
-        let Any::Unknown(kind, body) = atom else {
-            continue;
-        };
-        if kind == Vttc::KIND {
-            cues.push(Vttc::decode_body(&mut body.as_slice())?.payl.text);
-        }
-    }
-
-    Ok(WvttSample::new(cues))
-}
-
-fn styp() -> Styp {
-    Styp {
-        major_brand: FourCC::new(b"msdh"),
-        minor_version: 0,
-        compatible_brands: vec![
-            FourCC::new(b"msdh"),
-            FourCC::new(b"msix"),
-            FourCC::new(b"cmfs"),
-        ],
-    }
+    Ok(MediaSegment::new(base_decode_time.unwrap_or(0), samples))
 }
