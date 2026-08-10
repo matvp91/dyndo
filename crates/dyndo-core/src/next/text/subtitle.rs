@@ -9,3 +9,9 @@ pub struct Cue {
 pub struct Subtitle {
     pub cues: Vec<Cue>,
 }
+
+impl Subtitle {
+    pub fn duration(&self) -> u32 {
+        self.cues.iter().map(|cue| cue.end).max().unwrap_or(0)
+    }
+}

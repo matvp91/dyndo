@@ -5,7 +5,7 @@ pub mod probe;
 pub mod role;
 pub mod segment;
 pub mod segment_options;
-pub mod segmentation;
+pub mod segmenter;
 pub mod text;
 pub mod time;
 pub mod track;

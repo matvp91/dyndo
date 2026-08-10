@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use super::super::super::packaging::wvtt::{WvttPackager, WvttSample};
 use super::super::super::packaging::{MediaSegment, Sample};
-use super::super::super::segmentation::{DurationPolicy, SegmentationPolicy, Segmenter};
 use super::super::super::text::Subtitle;
 use ::opendal::raw::oio::{Read, ReadStream, StreamRead};
 use ::opendal::raw::{
@@ -17,16 +16,15 @@ const TIMESCALE: u32 = 1_000;
 
 #[derive(Debug, Clone)]
 pub(super) struct VttLayer {
-    segmenter: Segmenter,
+    boundaries: Arc<[u32]>,
+    segment_duration: u32,
 }
 
 impl VttLayer {
     pub(super) fn new(boundaries: &[u32], text_length: u32) -> Self {
         Self {
-            segmenter: Segmenter::new(SegmentationPolicy::new(
-                boundaries,
-                DurationPolicy::Exact(text_length),
-            )),
+            boundaries: boundaries.into(),
+            segment_duration: text_length,
         }
     }
 
@@ -42,21 +40,19 @@ impl VttLayer {
             .await?;
         let document = String::from_utf8(stream.read_all().await?.to_vec()).map_err(unpackable)?;
         let subtitle = Subtitle::from_vtt_text(&document).map_err(unpackable)?;
-        let duration = subtitle.cues.iter().map(|cue| cue.end).max().unwrap_or(0);
-        let segments = self
-            .segmenter
-            .exact(duration)
+        let segments = subtitle
+            .segments(self.segment_duration, &self.boundaries)
             .into_iter()
-            .map(|range| {
-                let samples = subtitle
-                    .samples(range.clone())
+            .map(|segment| {
+                let samples = segment
+                    .samples()
                     .into_iter()
                     .map(|sample| {
                         let cues = sample.cues().iter().map(|cue| cue.text.clone()).collect();
                         Sample::new(sample.duration(), WvttSample::new(cues))
                     })
                     .collect();
-                MediaSegment::new(u64::from(range.start), samples)
+                MediaSegment::new(u64::from(segment.start()), samples)
             })
             .collect::<Vec<_>>();
         let packaged = WvttPackager::new(TIMESCALE)
