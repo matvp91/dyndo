@@ -4,6 +4,7 @@ use relative_path::RelativePath;
 use uuid::Uuid;
 
 use super::asset_descriptor::AssetDescriptor;
+use super::reader::operator;
 use super::segment_options::SegmentOptions;
 use super::track::Track;
 use super::track_descriptor::TrackDescriptor;
@@ -11,12 +12,10 @@ use super::track_kind::TrackKind;
 
 use self::box_reader::BoxReaderError;
 use self::metadata::{build_codec, build_kind};
-use self::opendal::add_operator_layers;
 use self::segment_index::{build_init_segment, build_segments};
 
 mod box_reader;
 mod metadata;
-mod opendal;
 mod segment_index;
 
 #[derive(Debug, thiserror::Error)]
@@ -48,7 +47,7 @@ impl Track {
         descriptor: Option<&TrackDescriptor>,
         options: &SegmentOptions,
     ) -> Result<Self, ProbeError> {
-        let op = add_operator_layers(op, options);
+        let op = operator(op, options);
         let boxes = box_reader::scan(&op, path.as_str()).await?;
         let init_segment = build_init_segment(&boxes, build_codec(&boxes)?);
         let probed_kind = build_kind(&boxes)?;

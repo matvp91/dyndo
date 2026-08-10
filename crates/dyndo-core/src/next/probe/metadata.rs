@@ -1,7 +1,9 @@
 use language_tags::LanguageTag;
 use mp4_atom::{Codec as Mp4Codec, FourCC};
 
-use super::super::codec::{AacCodec, Av1Codec, AvcCodec, CodecConfig, HevcCodec};
+use super::super::codec::{
+    AacCodec, Ac3Codec, Av1Codec, AvcCodec, CodecConfig, Eac3Codec, HevcCodec, WvttCodec,
+};
 use super::super::track_kind::{AudioKind, TextKind, TrackKind, VideoKind, undetermined_language};
 use super::ProbeError;
 use super::box_reader::Boxes;
@@ -14,6 +16,9 @@ pub(super) fn build_codec(boxes: &Boxes) -> Result<CodecConfig, ProbeError> {
         Mp4Codec::Hvc1(entry) => Ok(CodecConfig::Hevc(HevcCodec::new(entry))),
         Mp4Codec::Hev1(entry) => Ok(CodecConfig::Hevc(HevcCodec::new(entry))),
         Mp4Codec::Mp4a(entry) => Ok(CodecConfig::Aac(AacCodec::new(entry))),
+        Mp4Codec::Ac3(_) => Ok(CodecConfig::Ac3(Ac3Codec)),
+        Mp4Codec::Eac3(_) => Ok(CodecConfig::Eac3(Eac3Codec)),
+        Mp4Codec::Wvtt(_) => Ok(CodecConfig::Wvtt(WvttCodec)),
         codec => Err(ProbeError::UnsupportedCodec(codec_name(codec))),
     }
 }
