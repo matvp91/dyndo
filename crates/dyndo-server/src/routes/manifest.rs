@@ -20,8 +20,7 @@ pub(super) async fn dash(
     filter: Option<&Filter>,
 ) -> Result<Response, ServerError> {
     let asset = context.read_asset(op).await?;
-    let mpd =
-        dyndo_dash::builder::generate_mpd(op, &asset, &context.manifest_options, filter).await?;
+    let mpd = dyndo_dash::generate_mpd(op, &asset, &context.manifest_options, filter).await?;
     let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
     let mut serializer = quick_xml::se::Serializer::new(&mut xml);
     serializer.indent(' ', 2);
@@ -37,8 +36,7 @@ pub(super) async fn hls_master(
 ) -> Result<Response, ServerError> {
     let asset = context.read_asset(op).await?;
     let playlist =
-        dyndo_hls::builder::generate_master_playlist(op, &asset, &context.manifest_options, filter)
-            .await?;
+        dyndo_hls::generate_master_playlist(op, &asset, &context.manifest_options, filter).await?;
     Ok(([(CONTENT_TYPE, HLS_CONTENT_TYPE)], playlist.to_string()).into_response())
 }
 
@@ -49,18 +47,10 @@ pub(super) async fn hls_media(
 ) -> Result<Response, ServerError> {
     let asset = context.read_asset(op).await?;
     let descriptor = asset
-        .track(track_id)
+        .find_track_by_id(track_id)
         .ok_or_else(|| ServerError::NotFound(format!("track {track_id}")))?;
-    let playlist = dyndo_hls::builder::generate_media_playlist(
-        op,
-        &asset,
-        descriptor,
-        &context.manifest_options,
-    )
-    .await?;
-    Ok((
-        [(CONTENT_TYPE, HLS_CONTENT_TYPE)],
-        dyndo_hls::builder::serialize_media_playlist(&playlist),
-    )
-        .into_response())
+    let playlist =
+        dyndo_hls::generate_media_playlist(op, &asset, descriptor, &context.manifest_options)
+            .await?;
+    Ok(([(CONTENT_TYPE, HLS_CONTENT_TYPE)], playlist.to_string()).into_response())
 }

@@ -4,7 +4,7 @@
 use std::borrow::Cow;
 
 use dyndo_core::asset_descriptor::AssetDescriptor;
-use dyndo_core::segment::SegmentOptions;
+use dyndo_core::segment_options::SegmentOptions;
 use opendal::Operator;
 use serde::{Deserialize, de::DeserializeOwned};
 

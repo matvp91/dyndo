@@ -15,7 +15,6 @@ path = "src/main.rs"
 dyndo-core = { path = "../dyndo-core" }
 dyndo-dash = { path = "../dyndo-dash" }
 dyndo-hls = { path = "../dyndo-hls" }
-dyndo-text = { path = "../dyndo-text" }
 # `http-transport-reqwest` supplies the HTTP client for network-backed services;
 # without it the s3 backend fails at runtime with "default HTTP transport is not
 # installed" (fs never touches HTTP, so only s3 needs it).

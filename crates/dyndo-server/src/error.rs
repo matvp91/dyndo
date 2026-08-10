@@ -3,10 +3,11 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use dyndo_core::asset_descriptor::AssetDescriptorError;
-use dyndo_core::track::TrackError;
-use dyndo_dash::builder::DashError;
-use dyndo_hls::builder::HlsError;
-use dyndo_text::wvtt::UnpackError;
+use dyndo_core::packaging::UnpackageError;
+use dyndo_core::probe::ProbeError;
+use dyndo_core::reader::TrackReadError;
+use dyndo_dash::DashError;
+use dyndo_hls::HlsError;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ServerError {
@@ -19,13 +20,17 @@ pub enum ServerError {
     #[error(transparent)]
     AssetDescriptor(#[from] AssetDescriptorError),
     #[error(transparent)]
-    Track(#[from] TrackError),
+    Probe(#[from] ProbeError),
+    #[error(transparent)]
+    TrackRead(#[from] TrackReadError),
     #[error(transparent)]
     Dash(#[from] DashError),
     #[error(transparent)]
     Hls(#[from] HlsError),
     #[error(transparent)]
-    Unpack(#[from] UnpackError),
+    Unpackage(#[from] UnpackageError),
+    #[error("subtitle timestamp {0}ms overflows")]
+    SubtitleTimeOverflow(u64),
     #[error("manifest serialization failed: {0}")]
     Serialization(String),
 }
@@ -46,10 +51,12 @@ impl IntoResponse for ServerError {
                 StatusCode::NOT_FOUND
             }
             Self::AssetDescriptor(_)
-            | Self::Track(_)
+            | Self::Probe(_)
+            | Self::TrackRead(_)
             | Self::Dash(_)
             | Self::Hls(_)
-            | Self::Unpack(_)
+            | Self::Unpackage(_)
+            | Self::SubtitleTimeOverflow(_)
             | Self::Serialization(_) => StatusCode::INTERNAL_SERVER_ERROR,
         };
         (status, self.to_string()).into_response()
