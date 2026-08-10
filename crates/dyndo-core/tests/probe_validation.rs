@@ -194,3 +194,24 @@ async fn probe_rejects_a_video_without_sample_duration() {
 
     assert_eq!(error.to_string(), "video track has no sample duration");
 }
+
+#[tokio::test]
+async fn probe_rejects_a_truncated_container_without_panicking() {
+    let operator = memory_operator();
+    operator
+        .write("video.mp4", &VIDEO_FIXTURE[..VIDEO_FIXTURE.len() / 2])
+        .await
+        .unwrap();
+
+    let error = Track::probe(
+        &operator,
+        RelativePath::new("video.mp4"),
+        None,
+        &SegmentOptions::default(),
+    )
+    .await
+    .err()
+    .unwrap();
+
+    assert!(!error.to_string().is_empty());
+}
