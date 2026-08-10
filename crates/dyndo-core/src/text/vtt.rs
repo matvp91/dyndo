@@ -137,3 +137,88 @@ fn parse_timestamp(timestamp: &str) -> Result<u32, VttParseError> {
         .and_then(|hours| hours.checked_add(minutes * 60_000 + seconds * 1_000 + millis))
         .ok_or_else(malformed)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{Cue, Subtitle, VttParseError};
+
+    #[test]
+    fn from_vtt_text_sorts_cues_and_preserves_multiline_text() {
+        let subtitle = Subtitle::from_vtt_text(
+            "WEBVTT\n\nsecond\n00:00:02.000 --> 00:00:03.000 align:start\nTwo\n\n00:00:00.500 --> 00:00:01.000\nOne\nline two\n",
+        )
+        .unwrap();
+
+        assert_eq!(
+            subtitle.cues,
+            vec![
+                Cue {
+                    start: 500,
+                    end: 1_000,
+                    text: "One\nline two".into()
+                },
+                Cue {
+                    start: 2_000,
+                    end: 3_000,
+                    text: "Two".into()
+                }
+            ]
+        );
+    }
+
+    #[test]
+    fn from_vtt_text_ignores_non_cue_blocks() {
+        let subtitle = Subtitle::from_vtt_text(
+            "WEBVTT\n\nNOTE ignored\nmetadata\n\nSTYLE\n::cue { color: lime; }\n\n00:00:00.000 --> 00:00:01.000\nKept\n",
+        )
+        .unwrap();
+
+        assert_eq!(
+            subtitle.cues,
+            vec![Cue {
+                start: 0,
+                end: 1_000,
+                text: "Kept".into()
+            }]
+        );
+    }
+
+    #[test]
+    fn from_vtt_text_rejects_a_missing_signature() {
+        let error = Subtitle::from_vtt_text("00:00:00.000 --> 00:00:01.000\nText\n").unwrap_err();
+
+        assert!(matches!(error, VttParseError::MissingSignature));
+    }
+
+    #[test]
+    fn from_vtt_text_rejects_timestamps_with_invalid_seconds() {
+        let error =
+            Subtitle::from_vtt_text("WEBVTT\n\n00:00:60.000 --> 00:01:01.000\nText\n").unwrap_err();
+
+        assert!(matches!(error, VttParseError::MalformedTimestamp(_)));
+    }
+
+    #[test]
+    fn from_vtt_text_rejects_a_cue_that_ends_before_it_starts() {
+        let error =
+            Subtitle::from_vtt_text("WEBVTT\n\n00:00:02.000 --> 00:00:01.000\nText\n").unwrap_err();
+
+        assert!(matches!(error, VttParseError::NegativeDuration(2_000)));
+    }
+
+    #[test]
+    fn to_vtt_text_formats_hour_boundaries() {
+        let subtitle = Subtitle {
+            cues: vec![Cue {
+                start: 3_600_000,
+                end: 3_601_001,
+                text: "Text".into(),
+            }],
+        };
+
+        assert_eq!(
+            subtitle.to_vtt_text(),
+            "WEBVTT\n\n01:00:00.000 --> 01:00:01.001\nText\n"
+        );
+    }
+}

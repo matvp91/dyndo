@@ -152,3 +152,112 @@ fn snapped_cuts(segments: &[Segment], boundaries: impl IntoIterator<Item = u32>)
     cuts.dedup();
     cuts
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use crate::codec::{CodecConfig, WvttCodec};
+    use crate::segment::InitSegment;
+
+    use super::{Segment, ServedSegment};
+
+    fn segments(specifications: &[(u64, u64, u64, u64)]) -> Vec<Segment> {
+        let init = Arc::new(InitSegment::new(CodecConfig::Wvtt(WvttCodec), 1_000, 0, 0));
+        specifications
+            .iter()
+            .map(|&(start, end, start_byte, end_byte)| {
+                Segment::new(Arc::clone(&init), start, end, start_byte, end_byte)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn group_returns_no_served_segments_when_the_source_is_empty() {
+        assert!(ServedSegment::group(&[], 1_000, &[]).is_empty());
+    }
+
+    #[test]
+    fn group_keeps_each_source_segment_when_minimum_duration_is_zero() {
+        let segments = segments(&[(0, 500, 0, 50), (500, 1_000, 50, 100)]);
+
+        let grouped = ServedSegment::group(&segments, 0, &[]);
+
+        assert_eq!(
+            grouped
+                .iter()
+                .map(|segment| segment.segments().len())
+                .collect::<Vec<_>>(),
+            [1, 1]
+        );
+    }
+
+    #[test]
+    fn group_accumulates_source_segments_until_the_minimum_duration() {
+        let segments = segments(&[(0, 400, 0, 40), (400, 800, 40, 80), (800, 1_200, 80, 120)]);
+
+        let grouped = ServedSegment::group(&segments, 800, &[]);
+
+        assert_eq!(
+            grouped
+                .iter()
+                .map(|segment| segment.segments().len())
+                .collect::<Vec<_>>(),
+            [2, 1]
+        );
+    }
+
+    #[test]
+    fn group_cuts_at_a_boundary_before_the_minimum_duration() {
+        let segments = segments(&[
+            (0, 500, 0, 50),
+            (500, 1_000, 50, 100),
+            (1_000, 1_500, 100, 150),
+        ]);
+
+        let grouped = ServedSegment::group(&segments, 1_500, &[1_000]);
+
+        assert_eq!(
+            grouped
+                .iter()
+                .map(|segment| segment.segments().len())
+                .collect::<Vec<_>>(),
+            [2, 1]
+        );
+    }
+
+    #[test]
+    fn group_normalizes_unsorted_duplicate_boundaries() {
+        let segments = segments(&[
+            (0, 500, 0, 50),
+            (500, 1_000, 50, 100),
+            (1_000, 1_500, 100, 150),
+        ]);
+
+        let grouped = ServedSegment::group(&segments, 1_500, &[1_000, 1_000, 500]);
+
+        assert_eq!(
+            grouped
+                .iter()
+                .map(|segment| segment.segments().len())
+                .collect::<Vec<_>>(),
+            [1, 1, 1]
+        );
+    }
+
+    #[test]
+    fn average_bitrate_weights_segments_by_their_duration() {
+        let segments = segments(&[(0, 1_000, 0, 100), (1_000, 3_000, 100, 500)]);
+        let grouped = ServedSegment::group(&segments, 0, &[]);
+
+        assert_eq!(ServedSegment::average_bitrate(&grouped), 1_334);
+    }
+
+    #[test]
+    fn bitrate_is_zero_when_a_segment_has_no_duration() {
+        let segments = segments(&[(0, 0, 0, 100)]);
+        let grouped = ServedSegment::group(&segments, 0, &[]);
+
+        assert_eq!(grouped[0].bitrate(), 0);
+    }
+}
