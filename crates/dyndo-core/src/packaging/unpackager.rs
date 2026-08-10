@@ -1,7 +1,7 @@
 use mp4_atom::{Any, DecodeMaybe, Moof};
 
 use super::format::Format;
-use super::{media_segment, UnpackageError, UnpackagedMedia};
+use super::{UnpackageError, UnpackagedMedia, media_segment};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Unpackager<F> {

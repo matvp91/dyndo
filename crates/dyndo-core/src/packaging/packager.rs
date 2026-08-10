@@ -1,7 +1,7 @@
 use mp4_atom::{Encode, Sidx};
 
 use super::format::Format;
-use super::{initialization, media_segment, MediaSegment, PackageError};
+use super::{MediaSegment, PackageError, initialization, media_segment};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Packager<F> {
