@@ -17,16 +17,18 @@ impl Segmenter {
         }
     }
 
-    pub fn group(&self, segments: &[Segment]) -> Vec<Range<usize>> {
+    pub fn group<'a>(&self, segments: &'a [Segment]) -> Vec<&'a [Segment]> {
         if segments.is_empty() {
             return Vec::new();
         }
 
-        if self.minimum_duration == 0 {
-            return (0..segments.len()).map(|index| index..index + 1).collect();
-        }
+        let ranges = if self.minimum_duration == 0 {
+            (0..segments.len()).map(|index| index..index + 1).collect()
+        } else {
+            minimum_ranges(segments, self.minimum_duration, &self.boundaries)
+        };
 
-        minimum_ranges(segments, self.minimum_duration, &self.boundaries)
+        ranges.into_iter().map(|range| &segments[range]).collect()
     }
 }
 
