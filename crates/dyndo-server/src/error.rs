@@ -50,7 +50,7 @@ impl IntoResponse for ServerError {
             | Self::FilterMatchedNothing
             | Self::Dash(DashError::Thumbnail(
                 ThumbnailError::Disabled
-                | ThumbnailError::InvalidNumber
+                | ThumbnailError::InvalidTime
                 | ThumbnailError::NotFound(_)
                 | ThumbnailError::NotVideo
                 | ThumbnailError::FrameGrab(

@@ -98,6 +98,23 @@ fn generated_compact_mpd_matches_the_golden_fixture() {
 }
 
 #[test]
+fn generated_thumbnail_mpd_addresses_sprites_by_start_time() {
+    let xml = generate(
+        &[video_track("video-main", 16, 16, 100)],
+        &SegmentOptions::default(),
+        &DashOptions {
+            thumbnail_tile_size: 2,
+            thumbnail_step: 1_000,
+            ..DashOptions::default()
+        },
+    );
+
+    assert!(xml.contains(
+        "media=\"video-main/$Time$.jpg\" timescale=\"1000\" presentationTimeOffset=\"0\"><SegmentTimeline><S t=\"0\" d=\"4000\"/></SegmentTimeline>"
+    ));
+}
+
+#[test]
 fn generated_multi_period_mpd_matches_the_golden_fixture() {
     let xml = generate(
         &[video_track("video-main", 16, 16, 100)],

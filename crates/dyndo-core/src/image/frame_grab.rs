@@ -55,7 +55,8 @@ impl<'a> FrameGrab<'a> {
         Ok(Self { op, track })
     }
 
-    /// Returns the displayed frame at `time`, expressed in milliseconds, as JPEG bytes.
+    /// Returns the displayed frame at `time`, expressed in milliseconds, as a JPEG scaled to
+    /// `width` by `height`.
     ///
     /// Only the initialization data and the media segment containing `time` are
     /// read from storage. Decoding and JPEG encoding run on Tokio's blocking
@@ -64,33 +65,15 @@ impl<'a> FrameGrab<'a> {
     ///
     /// # Errors
     ///
-    /// Returns an error when `time` falls outside the track, storage cannot be
-    /// read, or FFmpeg cannot decode or encode the frame.
-    pub async fn jpeg(&self, time: u64) -> Result<Bytes, FrameGrabError> {
-        self.jpeg_at_size(time, None).await
-    }
-
-    /// Returns the displayed frame at `time` as a JPEG scaled to `width` by `height`.
-    ///
-    /// # Errors
-    ///
     /// Returns an error when `time` falls outside the track, the requested
     /// dimensions are unsupported, storage cannot be read, or FFmpeg cannot
     /// decode or encode the frame.
-    pub async fn jpeg_scaled(
-        &self,
-        time: u64,
-        width: u32,
-        height: u32,
-    ) -> Result<Bytes, FrameGrabError> {
-        self.jpeg_at_size(time, Some((width, height))).await
-    }
-
-    async fn jpeg_at_size(
-        &self,
-        time: u64,
-        size: Option<(u32, u32)>,
-    ) -> Result<Bytes, FrameGrabError> {
+    pub async fn jpeg(&self, time: u64, width: u32, height: u32) -> Result<Bytes, FrameGrabError> {
+        let width = i32::try_from(width).map_err(|_| FrameGrabError::UnsupportedFrame)?;
+        let height = i32::try_from(height).map_err(|_| FrameGrabError::UnsupportedFrame)?;
+        if width <= 0 || height <= 0 {
+            return Err(FrameGrabError::UnsupportedFrame);
+        }
         let segment = self
             .track
             .segments()
@@ -99,7 +82,8 @@ impl<'a> FrameGrab<'a> {
             .ok_or(FrameGrabError::TimeOutsideTrack(time))?;
         let input = self.read_segment(segment).await?;
 
-        tokio::task::spawn_blocking(move || encode_frame_as_jpeg(input, time, size)).await?
+        tokio::task::spawn_blocking(move || encode_frame_as_jpeg(input, time, width, height))
+            .await?
     }
 
     async fn read_segment(&self, segment: &Segment) -> Result<Vec<u8>, FrameGrabError> {
@@ -123,7 +107,8 @@ impl<'a> FrameGrab<'a> {
 fn encode_frame_as_jpeg(
     input: Vec<u8>,
     time: u64,
-    size: Option<(u32, u32)>,
+    width: i32,
+    height: i32,
 ) -> Result<Bytes, FrameGrabError> {
     let mut position: usize = 0;
     let io = AVIOContextCustom::alloc_context(
@@ -160,7 +145,7 @@ fn encode_frame_as_jpeg(
         time_base,
         time,
     )?;
-    jpeg(&decoder_context, &frame, size)
+    encode_jpeg(&decoder_context, &frame, width, height)
 }
 
 fn decode_frame(
@@ -213,10 +198,11 @@ fn frame_time(frame: &AVFrame, time_base: AVRational) -> Option<u64> {
     u64::try_from(milliseconds).ok()
 }
 
-fn jpeg(
+fn encode_jpeg(
     decoder: &AVCodecContext,
     frame: &AVFrame,
-    size: Option<(u32, u32)>,
+    width: i32,
+    height: i32,
 ) -> Result<Bytes, FrameGrabError> {
     let encoder =
         AVCodec::find_encoder(ffi::AV_CODEC_ID_MJPEG).ok_or(FrameGrabError::MissingJpegEncoder)?;
@@ -225,17 +211,6 @@ fn jpeg(
         .and_then(|formats| formats.first())
         .copied()
         .ok_or(FrameGrabError::UnsupportedFrame)?;
-    let (width, height) = size.map_or_else(
-        || Ok((frame.width, frame.height)),
-        |(width, height)| {
-            let width = i32::try_from(width).map_err(|_| FrameGrabError::UnsupportedFrame)?;
-            let height = i32::try_from(height).map_err(|_| FrameGrabError::UnsupportedFrame)?;
-            if width <= 0 || height <= 0 {
-                return Err(FrameGrabError::UnsupportedFrame);
-            }
-            Ok((width, height))
-        },
-    )?;
     let mut encoder_context = AVCodecContext::new(&encoder);
     encoder_context.set_bit_rate(decoder.bit_rate);
     encoder_context.set_width(width);

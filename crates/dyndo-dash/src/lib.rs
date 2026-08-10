@@ -43,9 +43,10 @@ pub fn generate_mpd(
     Ok(mpd)
 }
 
-/// Generates the JPEG sprite named by a DASH thumbnail segment number.
+/// Generates the JPEG sprite named by a DASH thumbnail segment start time.
 ///
-/// The number is the `$Number$` substitution emitted by [`generate_mpd`].
+/// The time is the `$Time$` substitution emitted by [`generate_mpd`], expressed
+/// in milliseconds from the start of the video track.
 ///
 /// # Errors
 ///
@@ -56,7 +57,7 @@ pub async fn generate_thumbnail(
     op: &Operator,
     track: &Track,
     dash_options: &DashOptions,
-    number: u64,
+    time: u64,
 ) -> Result<Bytes, ThumbnailError> {
-    thumbnail::generate_jpeg(op, track, dash_options, number).await
+    thumbnail::generate_jpeg(op, track, dash_options, time).await
 }

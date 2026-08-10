@@ -1,7 +1,9 @@
 use std::ops::Range;
 
 use bytes::Bytes;
-use dash_mpd::{AdaptationSet, EssentialProperty, Representation, SegmentTemplate};
+use dash_mpd::{
+    AdaptationSet, EssentialProperty, Representation, S, SegmentTemplate, SegmentTimeline,
+};
 use dyndo_core::image::{FrameGrab, FrameGrabError, Sprite, SpriteError};
 use dyndo_core::track::Track;
 use dyndo_core::track_kind::{TrackKind, VideoKind};
@@ -33,9 +35,9 @@ pub enum ThumbnailError {
         width: u32,
         height: u32,
     },
-    #[error("thumbnail sprite number must be greater than zero")]
-    InvalidNumber,
-    #[error("thumbnail sprite {0} is outside the video track")]
+    #[error("thumbnail sprite time must be a multiple of the sprite duration")]
+    InvalidTime,
+    #[error("thumbnail sprite at {0} ms is outside the video track")]
     NotFound(u64),
     #[error("thumbnails can only be generated from video tracks")]
     NotVideo,
@@ -87,8 +89,10 @@ impl Thumbnail {
             return Ok(None);
         };
         let (width, height) = self.canvas_dimensions(video)?;
-        let first_number = self.number_at(u64::from(span.start))?;
-        let first_time = self.presentation_time(first_number)?;
+        let first_time = self.sprite_start_time(u64::from(span.start))?;
+        let last_time = self.sprite_start_time(u64::from(span.end).saturating_sub(1))?;
+        let repeats = (last_time - first_time) / self.duration;
+        let repeats = i64::try_from(repeats).map_err(|_| ThumbnailError::DurationOverflow)?;
 
         Ok(Some(AdaptationSet {
             id: Some(id.to_string()),
@@ -105,13 +109,17 @@ impl Thumbnail {
                     ..Default::default()
                 }],
                 SegmentTemplate: Some(SegmentTemplate {
-                    media: Some(format!("{}/$Number$.jpg", source.id())),
+                    media: Some(format!("{}/$Time$.jpg", source.id())),
                     timescale: Some(TIMESCALE),
-                    duration: Some(self.duration as f64),
-                    startNumber: Some(first_number),
-                    // A Period may begin in the middle of a sprite. Retaining its
-                    // actual start lets both periods address the same overlapping image.
-                    presentationTimeOffset: Some(u64::from(span.start).saturating_sub(first_time)),
+                    presentationTimeOffset: Some(u64::from(span.start)),
+                    SegmentTimeline: Some(SegmentTimeline {
+                        segments: vec![S {
+                            t: Some(first_time),
+                            d: self.duration,
+                            r: (repeats != 0).then_some(repeats),
+                            ..Default::default()
+                        }],
+                    }),
                     ..Default::default()
                 }),
                 ..Default::default()
@@ -120,28 +128,25 @@ impl Thumbnail {
         }))
     }
 
-    async fn jpeg(
-        self,
-        op: &Operator,
-        track: &Track,
-        number: u64,
-    ) -> Result<Bytes, ThumbnailError> {
+    async fn jpeg(self, op: &Operator, track: &Track, time: u64) -> Result<Bytes, ThumbnailError> {
         let TrackKind::Video(video) = track.kind() else {
             return Err(ThumbnailError::NotVideo);
         };
         let (width, height) = self.canvas_dimensions(video)?;
-        let presentation_time = self.presentation_time(number)?;
+        if !time.is_multiple_of(self.duration) {
+            return Err(ThumbnailError::InvalidTime);
+        }
         let Some(first_segment) = track.segments().first() else {
-            return Err(ThumbnailError::NotFound(number));
+            return Err(ThumbnailError::NotFound(time));
         };
         let Some(last_segment) = track.segments().last() else {
-            return Err(ThumbnailError::NotFound(number));
+            return Err(ThumbnailError::NotFound(time));
         };
-        let Some(first_time) = first_segment.start_time().checked_add(presentation_time) else {
-            return Err(ThumbnailError::NotFound(number));
+        let Some(first_time) = first_segment.start_time().checked_add(time) else {
+            return Err(ThumbnailError::NotFound(time));
         };
         if first_time >= last_segment.end_time() {
-            return Err(ThumbnailError::NotFound(number));
+            return Err(ThumbnailError::NotFound(time));
         }
 
         let frame_grab = FrameGrab::new(op, track)?;
@@ -159,10 +164,9 @@ impl Thumbnail {
                 .unwrap_or(last_segment.end_time());
             Some(current)
         });
-        let mut frames = stream::iter(
-            frame_times.map(|time| frame_grab.jpeg_scaled(time, tile_width, tile_height)),
-        )
-        .buffered(CONCURRENT_FRAME_GRABS);
+        let mut frames =
+            stream::iter(frame_times.map(|time| frame_grab.jpeg(time, tile_width, tile_height)))
+                .buffered(CONCURRENT_FRAME_GRABS);
         while let Some(jpeg) = frames.try_next().await? {
             sprite.add(&jpeg)?;
         }
@@ -184,18 +188,10 @@ impl Thumbnail {
         Ok((width, height))
     }
 
-    fn number_at(self, presentation_time: u64) -> Result<u64, ThumbnailError> {
+    fn sprite_start_time(self, presentation_time: u64) -> Result<u64, ThumbnailError> {
         presentation_time
             .checked_div(self.duration)
-            .and_then(|index| index.checked_add(1))
-            .ok_or(ThumbnailError::DurationOverflow)
-    }
-
-    fn presentation_time(self, number: u64) -> Result<u64, ThumbnailError> {
-        number
-            .checked_sub(1)
-            .ok_or(ThumbnailError::InvalidNumber)?
-            .checked_mul(self.duration)
+            .and_then(|index| index.checked_mul(self.duration))
             .ok_or(ThumbnailError::DurationOverflow)
     }
 
@@ -215,9 +211,9 @@ pub(crate) async fn generate_jpeg(
     op: &Operator,
     track: &Track,
     options: &DashOptions,
-    number: u64,
+    time: u64,
 ) -> Result<Bytes, ThumbnailError> {
     let thumbnail = Thumbnail::new(options)?.ok_or(ThumbnailError::Disabled)?;
 
-    thumbnail.jpeg(op, track, number).await
+    thumbnail.jpeg(op, track, time).await
 }

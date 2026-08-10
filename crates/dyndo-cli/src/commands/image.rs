@@ -27,7 +27,12 @@ pub(crate) async fn run(op: &Operator, args: ImageArgs) -> Result<(), Box<dyn st
         .ok_or("asset has no video track")?;
     let path = asset.track_path(descriptor);
     let track = Track::probe(op, &path, Some(descriptor), &asset.segment_options).await?;
-    let jpeg = FrameGrab::new(op, &track)?.jpeg(args.time).await?;
+    let TrackKind::Video(video) = track.kind() else {
+        return Err("probed track is not a video track".into());
+    };
+    let jpeg = FrameGrab::new(op, &track)?
+        .jpeg(args.time, video.width, video.height)
+        .await?;
 
     op.write(&args.output, jpeg).await?;
     println!("wrote {}", args.output);

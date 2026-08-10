@@ -25,7 +25,7 @@ async fn jpeg_decodes_a_black_frame_at_the_requested_time() {
 
     let jpeg = FrameGrab::new(&operator, &track)
         .unwrap()
-        .jpeg(0)
+        .jpeg(0, 16, 16)
         .await
         .unwrap();
     let image = image::load_from_memory_with_format(&jpeg, ImageFormat::Jpeg)
@@ -37,7 +37,7 @@ async fn jpeg_decodes_a_black_frame_at_the_requested_time() {
 }
 
 #[tokio::test]
-async fn jpeg_scaled_returns_the_requested_dimensions() {
+async fn jpeg_returns_the_requested_dimensions() {
     let operator = memory_operator();
     let path = RelativePath::new("video.mp4");
     operator.write(path.as_str(), VIDEO_FIXTURE).await.unwrap();
@@ -47,7 +47,7 @@ async fn jpeg_scaled_returns_the_requested_dimensions() {
 
     let jpeg = FrameGrab::new(&operator, &track)
         .unwrap()
-        .jpeg_scaled(0, 8, 4)
+        .jpeg(0, 8, 4)
         .await
         .unwrap();
     let image = image::load_from_memory_with_format(&jpeg, ImageFormat::Jpeg).unwrap();
@@ -97,7 +97,7 @@ async fn jpeg_rejects_a_time_at_the_end_of_the_video_track() {
         .unwrap();
     let error = FrameGrab::new(&operator, &track)
         .unwrap()
-        .jpeg(1_000)
+        .jpeg(1_000, 16, 16)
         .await
         .unwrap_err();
 
@@ -122,7 +122,7 @@ async fn jpeg_seeks_from_a_keyframe_to_the_requested_interframe() {
 }
 
 async fn jpeg_image(grab: &FrameGrab<'_>, time: u64) -> RgbImage {
-    let jpeg = grab.jpeg(time).await.unwrap();
+    let jpeg = grab.jpeg(time, 16, 16).await.unwrap();
     image::load_from_memory_with_format(&jpeg, ImageFormat::Jpeg)
         .unwrap()
         .to_rgb8()

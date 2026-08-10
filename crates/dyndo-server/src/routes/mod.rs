@@ -3,7 +3,6 @@ pub(crate) mod filter;
 mod manifest;
 mod manifest_query;
 mod segment;
-mod thumbnail;
 
 use axum::{
     Router,
@@ -72,9 +71,9 @@ async fn track_file(
         ("init", "mp4") => segment::initialization(&op, &context, &track_id).await,
         (time, "m4s") => segment::media(&op, &context, &track_id, segment_time(time, &file)?).await,
         (time, "vtt") => segment::text(&op, &context, &track_id, segment_time(time, &file)?).await,
-        (number, "jpg") => {
+        (time, "jpg") => {
             let context = parse_context::<DashOptions>(&options)?;
-            thumbnail::image(&op, &context, &track_id, segment_time(number, &file)?).await
+            segment::thumbnail(&op, &context, &track_id, segment_time(time, &file)?).await
         }
         _ => Err(not_found()),
     }
