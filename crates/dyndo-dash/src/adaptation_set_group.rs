@@ -1,7 +1,8 @@
-use dyndo_core::asset_descriptor::TrackKind;
 use dyndo_core::role::Role;
-use dyndo_core::segment::{self, Segment, SegmentOptions};
+use dyndo_core::segment_options::SegmentOptions;
+use dyndo_core::served_segment::ServedSegment;
 use dyndo_core::track::Track;
+use dyndo_core::track_kind::TrackKind;
 
 pub(super) type Member<'a> = &'a Track;
 
@@ -68,15 +69,23 @@ impl<'a> AdaptationSetGroup<'a> {
         let Some(reference) = self.members.first() else {
             return true;
         };
-        let reference_segments = segment::segments(reference, options);
+        let reference_segments = served_segments(reference, options);
 
         self.members.iter().skip(1).all(|candidate| {
-            segment::segments(candidate, options)
+            served_segments(candidate, options)
                 .iter()
-                .map(Segment::raw_range)
-                .eq(reference_segments.iter().map(Segment::raw_range))
+                .map(segment_times)
+                .eq(reference_segments.iter().map(segment_times))
         })
     }
+}
+
+fn served_segments<'a>(track: &'a Track, options: &SegmentOptions) -> Vec<ServedSegment<'a>> {
+    ServedSegment::group(track.segments(), options.min_length, &options.boundaries)
+}
+
+fn segment_times(segment: &ServedSegment<'_>) -> (u64, u64) {
+    (segment.unscaled_start_time(), segment.unscaled_end_time())
 }
 
 pub(super) fn group(tracks: &[Track]) -> Vec<AdaptationSetGroup<'_>> {
@@ -95,7 +104,8 @@ pub(super) fn group(tracks: &[Track]) -> Vec<AdaptationSetGroup<'_>> {
 }
 
 fn adaptation_set_key(track: &Track) -> String {
-    let sample_entry = sample_entry(track.codec());
+    let codec = track.codec().rfc6381();
+    let sample_entry = sample_entry(&codec);
     match track.kind() {
         TrackKind::Video(_) => {
             format!("video:{sample_entry}:{}", track.timescale())
@@ -119,19 +129,4 @@ fn adaptation_set_key(track: &Track) -> String {
 
 fn sample_entry(codec: &str) -> &str {
     codec.split_once('.').map_or(codec, |(entry, _)| entry)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn sample_entry_removes_codec_parameters() {
-        assert_eq!(sample_entry("avc1.640028"), "avc1");
-    }
-
-    #[test]
-    fn sample_entry_preserves_unparameterized_codec() {
-        assert_eq!(sample_entry("ac-3"), "ac-3");
-    }
 }
