@@ -5,16 +5,23 @@ mod builder;
 mod compact;
 pub mod options;
 mod roles;
+mod thumbnail;
 
+use bytes::Bytes;
 use dash_mpd::MPD;
 use dyndo_core::segment_options::SegmentOptions;
 use dyndo_core::track::Track;
+use opendal::Operator;
 use options::DashOptions;
+
+pub use thumbnail::ThumbnailError;
 
 #[derive(Debug, thiserror::Error)]
 pub enum DashError {
     #[error("tracks in an adaptation set are not segment-aligned")]
     SegmentAlignment,
+    #[error(transparent)]
+    Thumbnail(#[from] ThumbnailError),
 }
 
 /// Generates a static DASH media presentation description for an asset.
@@ -34,4 +41,22 @@ pub fn generate_mpd(
     }
 
     Ok(mpd)
+}
+
+/// Generates the JPEG sprite named by a DASH thumbnail segment number.
+///
+/// The number is the `$Number$` substitution emitted by [`generate_mpd`].
+///
+/// # Errors
+///
+/// Returns an error when thumbnails are disabled or invalid, the track is not
+/// video, the requested sprite is outside the track, or a frame cannot be read
+/// or encoded.
+pub async fn generate_thumbnail(
+    op: &Operator,
+    track: &Track,
+    dash_options: &DashOptions,
+    number: u64,
+) -> Result<Bytes, ThumbnailError> {
+    thumbnail::generate_jpeg(op, track, dash_options, number).await
 }

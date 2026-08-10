@@ -79,9 +79,9 @@ async fn locate(
     Ok((track, segment_options, range))
 }
 
-async fn read_track(
+pub(super) async fn read_track<T>(
     op: &Operator,
-    context: &RequestContext<()>,
+    context: &RequestContext<T>,
     track_id: &str,
 ) -> Result<(Track, SegmentOptions), ServerError> {
     let asset = context.read_asset(op).await?;

@@ -103,8 +103,14 @@ impl<S> MediaSegment<S> {
             let mut offset = 0usize;
 
             for entry in traf.trun.iter().flat_map(|trun| &trun.entries) {
-                let duration = entry.duration.ok_or(UnpackageError::MissingSampleTiming)?;
-                let size = entry.size.ok_or(UnpackageError::MissingSampleTiming)?;
+                let duration = entry
+                    .duration
+                    .or(traf.tfhd.default_sample_duration)
+                    .ok_or(UnpackageError::MissingSampleTiming)?;
+                let size = entry
+                    .size
+                    .or(traf.tfhd.default_sample_size)
+                    .ok_or(UnpackageError::MissingSampleTiming)?;
                 let end = offset
                     .checked_add(size as usize)
                     .ok_or(UnpackageError::SampleOutOfRange)?;

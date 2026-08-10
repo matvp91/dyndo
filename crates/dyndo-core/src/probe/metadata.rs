@@ -80,13 +80,17 @@ fn build_text_kind(boxes: &Boxes) -> TextKind {
 
 fn frame_rate(boxes: &Boxes) -> Result<String, ProbeError> {
     let track = &boxes.moov.trak[0];
-    let sample_duration = boxes
+    let fragment = boxes
         .moof
         .traf
         .first()
-        .and_then(|fragment| fragment.trun.first())
+        .ok_or(ProbeError::MissingFrameRate)?;
+    let sample_duration = fragment
+        .trun
+        .first()
         .and_then(|run| run.entries.first())
         .and_then(|sample| sample.duration)
+        .or(fragment.tfhd.default_sample_duration)
         .filter(|duration| *duration != 0)
         .ok_or(ProbeError::MissingFrameRate)?;
     let timescale = track.mdia.mdhd.timescale;

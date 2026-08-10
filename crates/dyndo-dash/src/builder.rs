@@ -14,6 +14,7 @@ use crate::DashError;
 use crate::adaptation_group::AdaptationGroup;
 use crate::options::DashOptions;
 use crate::roles;
+use crate::thumbnail::Thumbnail;
 
 const DASH_PROFILE: &str = "urn:mpeg:dash:profile:isoff-live:2011";
 const DASH_XMLNS: &str = "urn:mpeg:dash:schema:mpd:2011";
@@ -39,7 +40,8 @@ pub(crate) fn build_mpd(
     );
     let groups = AdaptationGroup::group(tracks);
     ensure_segment_alignment(&groups, segment_options)?;
-    let periods = build_periods(&period_spans, &groups, segment_options);
+    let thumbnail = Thumbnail::new(dash_options)?;
+    let periods = build_periods(&period_spans, &groups, segment_options, tracks, thumbnail)?;
 
     Ok(MPD {
         xmlns: Some(DASH_XMLNS.to_string()),
@@ -73,14 +75,24 @@ fn build_periods(
     spans: &[Range<u32>],
     groups: &[AdaptationGroup<'_>],
     segment_options: &SegmentOptions,
-) -> Vec<Period> {
+    tracks: &[Track],
+    thumbnail: Option<Thumbnail>,
+) -> Result<Vec<Period>, DashError> {
     let mut periods = Vec::new();
     for span in spans {
-        let next = build_period(periods.len(), span, periods.last(), groups, segment_options);
+        let next = build_period(
+            periods.len(),
+            span,
+            periods.last(),
+            groups,
+            segment_options,
+            tracks,
+            thumbnail,
+        )?;
         periods.extend(next);
     }
 
-    periods
+    Ok(periods)
 }
 
 fn build_period(
@@ -89,23 +101,32 @@ fn build_period(
     previous: Option<&Period>,
     groups: &[AdaptationGroup<'_>],
     segment_options: &SegmentOptions,
-) -> Option<Period> {
-    let adaptations: Vec<AdaptationSet> = groups
+    tracks: &[Track],
+    thumbnail: Option<Thumbnail>,
+) -> Result<Option<Period>, DashError> {
+    let mut adaptations: Vec<AdaptationSet> = groups
         .iter()
         .enumerate()
         .filter_map(|(id, group)| build_adaptation_set(id, group, segment_options, previous, span))
         .collect();
+    if let Some(thumbnail) = thumbnail {
+        let id = groups.len();
+        if let Some(mut adaptation_set) = thumbnail.adaptation_set(id, tracks, span)? {
+            adaptation_set.supplemental_property = build_period_continuity(id, previous);
+            adaptations.push(adaptation_set);
+        }
+    }
     if adaptations.is_empty() {
-        return None;
+        return Ok(None);
     }
 
-    Some(Period {
+    Ok(Some(Period {
         id: Some(index.to_string()),
         start: Some(Duration::from_millis(u64::from(span.start))),
         duration: Some(Duration::from_millis(u64::from(span.end - span.start))),
         adaptations,
         ..Default::default()
-    })
+    }))
 }
 
 fn build_adaptation_set(

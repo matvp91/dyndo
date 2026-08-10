@@ -1,7 +1,7 @@
 use dyndo_core::image::FrameGrab;
 use dyndo_core::segment_options::SegmentOptions;
 use dyndo_core::track::Track;
-use image::{ImageFormat, RgbImage};
+use image::{GenericImageView, ImageFormat, RgbImage};
 use opendal::{Operator, services::Memory};
 use relative_path::RelativePath;
 
@@ -34,6 +34,25 @@ async fn jpeg_decodes_a_black_frame_at_the_requested_time() {
 
     assert_eq!(image.dimensions(), (16, 16));
     assert!(is_nearly_black(&image));
+}
+
+#[tokio::test]
+async fn jpeg_scaled_returns_the_requested_dimensions() {
+    let operator = memory_operator();
+    let path = RelativePath::new("video.mp4");
+    operator.write(path.as_str(), VIDEO_FIXTURE).await.unwrap();
+    let track = Track::probe(&operator, path, None, &SegmentOptions::default())
+        .await
+        .unwrap();
+
+    let jpeg = FrameGrab::new(&operator, &track)
+        .unwrap()
+        .jpeg_scaled(0, 8, 4)
+        .await
+        .unwrap();
+    let image = image::load_from_memory_with_format(&jpeg, ImageFormat::Jpeg).unwrap();
+
+    assert_eq!(image.dimensions(), (8, 4));
 }
 
 fn is_nearly_black(image: &RgbImage) -> bool {

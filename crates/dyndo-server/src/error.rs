@@ -3,10 +3,11 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use dyndo_core::asset_descriptor::AssetDescriptorError;
+use dyndo_core::image::FrameGrabError;
 use dyndo_core::probe::ProbeError;
 use dyndo_core::reader::TrackReadError;
 use dyndo_core::text::wvtt::WvttParseError;
-use dyndo_dash::DashError;
+use dyndo_dash::{DashError, ThumbnailError};
 use dyndo_hls::HlsError;
 
 #[derive(Debug, thiserror::Error)]
@@ -38,8 +39,24 @@ pub enum ServerError {
 impl IntoResponse for ServerError {
     fn into_response(self) -> Response {
         let status = match &self {
-            Self::InvalidOptions(_) | Self::InvalidFilter(_) => StatusCode::BAD_REQUEST,
-            Self::NotFound(_) | Self::FilterMatchedNothing => StatusCode::NOT_FOUND,
+            Self::InvalidOptions(_)
+            | Self::InvalidFilter(_)
+            | Self::Dash(DashError::Thumbnail(
+                ThumbnailError::InvalidStep
+                | ThumbnailError::DurationOverflow
+                | ThumbnailError::TileSizeTooLarge { .. },
+            )) => StatusCode::BAD_REQUEST,
+            Self::NotFound(_)
+            | Self::FilterMatchedNothing
+            | Self::Dash(DashError::Thumbnail(
+                ThumbnailError::Disabled
+                | ThumbnailError::InvalidNumber
+                | ThumbnailError::NotFound(_)
+                | ThumbnailError::NotVideo
+                | ThumbnailError::FrameGrab(
+                    FrameGrabError::NotVideo | FrameGrabError::TimeOutsideTrack(_),
+                ),
+            )) => StatusCode::NOT_FOUND,
             // A filter that narrowed an asset down to nothing is an addressing error,
             // like an unknown track id, rather than a fault in the asset.
             Self::AssetDescriptor(AssetDescriptorError::Storage(error))

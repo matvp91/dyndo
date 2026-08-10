@@ -74,9 +74,17 @@ impl Sprite {
             return Err(SpriteError::Full(capacity));
         }
 
-        let tile = image::load_from_memory_with_format(jpeg, ImageFormat::Jpeg)?
-            .resize_exact(self.tile_width, self.tile_height, FilterType::Triangle)
-            .to_rgb8();
+        let image = image::load_from_memory_with_format(jpeg, ImageFormat::Jpeg)?.to_rgb8();
+        let tile = if image.dimensions() == (self.tile_width, self.tile_height) {
+            image
+        } else {
+            imageops::resize(
+                &image,
+                self.tile_width,
+                self.tile_height,
+                FilterType::Triangle,
+            )
+        };
         let column = self.tiles % u64::from(self.tile_size);
         let row = self.tiles / u64::from(self.tile_size);
         imageops::replace(

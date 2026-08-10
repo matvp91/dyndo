@@ -23,6 +23,8 @@ pub enum FrameGrabError {
     Storage(#[from] opendal::Error),
     #[error(transparent)]
     Ffmpeg(#[from] RsmpegError),
+    #[error("frame encoding task failed: {0}")]
+    Task(#[from] tokio::task::JoinError),
     #[error("the media contains no video stream")]
     MissingVideoStream,
     #[error("no video frame could be decoded at the requested time")]
@@ -56,14 +58,39 @@ impl<'a> FrameGrab<'a> {
     /// Returns the displayed frame at `time`, expressed in milliseconds, as JPEG bytes.
     ///
     /// Only the initialization data and the media segment containing `time` are
-    /// read from storage. Decoding and JPEG encoding are performed in-process
-    /// with FFmpeg through `rsmpeg`.
+    /// read from storage. Decoding and JPEG encoding run on Tokio's blocking
+    /// pool, so callers can extract multiple frames without occupying async
+    /// executor workers.
     ///
     /// # Errors
     ///
     /// Returns an error when `time` falls outside the track, storage cannot be
     /// read, or FFmpeg cannot decode or encode the frame.
     pub async fn jpeg(&self, time: u64) -> Result<Bytes, FrameGrabError> {
+        self.jpeg_at_size(time, None).await
+    }
+
+    /// Returns the displayed frame at `time` as a JPEG scaled to `width` by `height`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when `time` falls outside the track, the requested
+    /// dimensions are unsupported, storage cannot be read, or FFmpeg cannot
+    /// decode or encode the frame.
+    pub async fn jpeg_scaled(
+        &self,
+        time: u64,
+        width: u32,
+        height: u32,
+    ) -> Result<Bytes, FrameGrabError> {
+        self.jpeg_at_size(time, Some((width, height))).await
+    }
+
+    async fn jpeg_at_size(
+        &self,
+        time: u64,
+        size: Option<(u32, u32)>,
+    ) -> Result<Bytes, FrameGrabError> {
         let segment = self
             .track
             .segments()
@@ -72,7 +99,7 @@ impl<'a> FrameGrab<'a> {
             .ok_or(FrameGrabError::TimeOutsideTrack(time))?;
         let input = self.read_segment(segment).await?;
 
-        encode_frame_as_jpeg(input, time)
+        tokio::task::spawn_blocking(move || encode_frame_as_jpeg(input, time, size)).await?
     }
 
     async fn read_segment(&self, segment: &Segment) -> Result<Vec<u8>, FrameGrabError> {
@@ -93,7 +120,11 @@ impl<'a> FrameGrab<'a> {
     }
 }
 
-fn encode_frame_as_jpeg(input: Vec<u8>, time: u64) -> Result<Bytes, FrameGrabError> {
+fn encode_frame_as_jpeg(
+    input: Vec<u8>,
+    time: u64,
+    size: Option<(u32, u32)>,
+) -> Result<Bytes, FrameGrabError> {
     let mut position: usize = 0;
     let io = AVIOContextCustom::alloc_context(
         AVMem::new(4_096),
@@ -129,7 +160,7 @@ fn encode_frame_as_jpeg(input: Vec<u8>, time: u64) -> Result<Bytes, FrameGrabErr
         time_base,
         time,
     )?;
-    jpeg(&decoder_context, &frame)
+    jpeg(&decoder_context, &frame, size)
 }
 
 fn decode_frame(
@@ -182,7 +213,11 @@ fn frame_time(frame: &AVFrame, time_base: AVRational) -> Option<u64> {
     u64::try_from(milliseconds).ok()
 }
 
-fn jpeg(decoder: &AVCodecContext, frame: &AVFrame) -> Result<Bytes, FrameGrabError> {
+fn jpeg(
+    decoder: &AVCodecContext,
+    frame: &AVFrame,
+    size: Option<(u32, u32)>,
+) -> Result<Bytes, FrameGrabError> {
     let encoder =
         AVCodec::find_encoder(ffi::AV_CODEC_ID_MJPEG).ok_or(FrameGrabError::MissingJpegEncoder)?;
     let pixel_format = encoder
@@ -190,10 +225,21 @@ fn jpeg(decoder: &AVCodecContext, frame: &AVFrame) -> Result<Bytes, FrameGrabErr
         .and_then(|formats| formats.first())
         .copied()
         .ok_or(FrameGrabError::UnsupportedFrame)?;
+    let (width, height) = size.map_or_else(
+        || Ok((frame.width, frame.height)),
+        |(width, height)| {
+            let width = i32::try_from(width).map_err(|_| FrameGrabError::UnsupportedFrame)?;
+            let height = i32::try_from(height).map_err(|_| FrameGrabError::UnsupportedFrame)?;
+            if width <= 0 || height <= 0 {
+                return Err(FrameGrabError::UnsupportedFrame);
+            }
+            Ok((width, height))
+        },
+    )?;
     let mut encoder_context = AVCodecContext::new(&encoder);
     encoder_context.set_bit_rate(decoder.bit_rate);
-    encoder_context.set_width(frame.width);
-    encoder_context.set_height(frame.height);
+    encoder_context.set_width(width);
+    encoder_context.set_height(height);
     encoder_context.set_time_base(AVRational { num: 1, den: 1 });
     encoder_context.set_pix_fmt(pixel_format);
     encoder_context.open(None)?;
@@ -202,8 +248,8 @@ fn jpeg(decoder: &AVCodecContext, frame: &AVFrame) -> Result<Bytes, FrameGrabErr
         frame.width,
         frame.height,
         frame.format,
-        frame.width,
-        frame.height,
+        width,
+        height,
         pixel_format,
         ffi::SWS_FAST_BILINEAR,
         None,
@@ -211,8 +257,8 @@ fn jpeg(decoder: &AVCodecContext, frame: &AVFrame) -> Result<Bytes, FrameGrabErr
         None,
     )
     .ok_or(FrameGrabError::UnsupportedFrame)?;
-    let image = AVImage::new(pixel_format, frame.width, frame.height, 1)
-        .ok_or(FrameGrabError::UnsupportedFrame)?;
+    let image =
+        AVImage::new(pixel_format, width, height, 1).ok_or(FrameGrabError::UnsupportedFrame)?;
     let mut converted = AVFrameWithImage::new(image);
     scaler.scale_frame(frame, 0, frame.height, &mut converted)?;
 
