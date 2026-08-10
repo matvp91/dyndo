@@ -2,7 +2,9 @@
 #EXT-X-VERSION:6
 #EXT-X-TARGETDURATION:1
 #EXT-X-PLAYLIST-TYPE:VOD
-#EXT-X-MAP:URI="video-main/init.mp4"
+#EXT-X-MAP:URI="text-en/init.mp4"
 #EXTINF:1,
-video-main/0.m4s
+text-en/0.m4s
+#EXTINF:1,
+text-en/1000.m4s
 #EXT-X-ENDLIST
