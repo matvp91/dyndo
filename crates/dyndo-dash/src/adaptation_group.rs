@@ -71,13 +71,7 @@ impl<'a> AdaptationGroup<'a> {
         &self.members
     }
 
-    /// Whether every member cuts its segments at the same times, which is what lets
-    /// one timeline stand for all of them.
-    ///
-    /// Comparing the times themselves covers where the tracks begin and how they are
-    /// cut in one go: two tracks with matching durations but different earliest
-    /// presentation times never line up, and neither do two whose last segments differ
-    /// in length.
+    // Matching start and end times ensure one timeline can represent every member.
     pub(super) fn is_segment_aligned(&self, options: &SegmentOptions) -> bool {
         let Some(reference) = self.members.first() else {
             return true;

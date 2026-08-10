@@ -1,9 +1,3 @@
-//! Compacts a built MPD by hoisting shared segment-template data.
-//!
-//! DASH representations inherit `SegmentTemplate` fields from their parent
-//! `AdaptationSet`, so moving identical fields upward preserves the manifest's
-//! meaning while reducing the serialized XML.
-
 use dash_mpd::{AdaptationSet, MPD, SegmentTemplate};
 
 pub fn compact(mpd: &mut MPD) {

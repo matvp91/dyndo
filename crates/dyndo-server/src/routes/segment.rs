@@ -27,7 +27,6 @@ pub(super) async fn initialization(
     Ok(([(CONTENT_TYPE, track.kind().mime_type())], bytes).into_response())
 }
 
-/// Serves the segment starting at `time` as the packaged CMAF bytes it is stored as.
 pub(super) async fn media(
     op: &Operator,
     context: &RequestContext<()>,
@@ -42,12 +41,6 @@ pub(super) async fn media(
     Ok(([(CONTENT_TYPE, track.kind().mime_type())], bytes).into_response())
 }
 
-/// Serves one segment of a text track as a WebVTT document, read back out of the
-/// bytes [`media`] would have served.
-///
-/// The two are the same segment — the same cut points, the same duration, the same
-/// byte range — so a text track stays addressable both ways at once: HLS asks for
-/// the document while DASH asks for the packaged bytes.
 pub(super) async fn text(
     op: &Operator,
     context: &RequestContext<()>,
@@ -66,10 +59,6 @@ pub(super) async fn text(
     Ok(([(CONTENT_TYPE, "text/vtt")], subtitle.to_vtt_text()).into_response())
 }
 
-/// The track `track_id` names and the byte range of the segment starting at `time`.
-///
-/// `time` has to be one a segment begins at, since that is what a manifest addresses
-/// them by; a time inside one names nothing.
 async fn locate(
     op: &Operator,
     context: &RequestContext<()>,
@@ -90,9 +79,6 @@ async fn locate(
     Ok((track, segment_options, range))
 }
 
-/// The track `track_id` names, probed under the segment options this request asks
-/// for. Those options are returned alongside it, since reading any of its bytes
-/// has to package the track the same way the probe did.
 async fn read_track(
     op: &Operator,
     context: &RequestContext<()>,

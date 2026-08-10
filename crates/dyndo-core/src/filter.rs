@@ -1,8 +1,3 @@
-//! Narrows resolved tracks with Unified-compatible boolean expressions.
-//!
-//! Missing attributes never satisfy a comparison: for example, `height<=720`
-//! excludes audio and text tracks because they have no height.
-
 use std::borrow::Cow;
 
 use winnow::ascii::{digit1, multispace0};

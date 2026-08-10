@@ -1,3 +1,5 @@
+//! Media models, probing, segmentation, and packaging for dyndo.
+
 pub mod asset_descriptor;
 pub mod codec;
 pub mod filter;

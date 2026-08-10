@@ -1,5 +1,3 @@
-//! Text segments are exact because subtitle samples can be split at any timestamp.
-
 use std::iter::successors;
 use std::ops::Range;
 

@@ -33,9 +33,7 @@ fn operator() -> Result<Operator, Box<dyn std::error::Error>> {
     Ok(Operator::new(Fs::default().root(&root))?)
 }
 
-/// Reports what went wrong rather than how it is spelled in Rust: returning the
-/// error from `main` would print its `Debug`, which quotes a message or, for a unit
-/// error like a filter matching nothing, drops it entirely.
+// Print Display because Rust's default main error handling prints Debug.
 #[tokio::main]
 async fn main() -> ExitCode {
     if let Err(error) = run().await {

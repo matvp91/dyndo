@@ -1,8 +1,3 @@
-//! Reads byte ranges from the effective media representation.
-//!
-//! Plain WebVTT sources are packaged while they are read, so probing and serving
-//! must use the same configured operator to agree on what each byte range means.
-
 use std::ops::Range;
 
 use bytes::Bytes;

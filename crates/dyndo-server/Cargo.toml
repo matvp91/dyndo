@@ -27,12 +27,3 @@ serde = { version = "1", features = ["derive"] }
 rison = "0.1"
 quick-xml = { version = "0.40", features = ["serialize"] }
 thiserror = "2"
-
-[dev-dependencies]
-serde_json = "1"
-tower = { version = "0.5", features = ["util"] }
-tempfile = "3"
-# `Jail` (used by config::tests) is gated behind figment's own "test" feature;
-# Cargo unions this with the "yaml"/"env" features from [dependencies] when
-# building test targets.
-figment = { version = "0.10", features = ["test"] }

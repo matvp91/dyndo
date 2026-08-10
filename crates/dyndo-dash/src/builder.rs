@@ -1,5 +1,3 @@
-//! DASH manifest construction from dyndo assets.
-
 use std::ops::Range;
 use std::time::Duration;
 
@@ -24,7 +22,6 @@ const INITIALIZATION_TEMPLATE: &str = "$RepresentationID$/init.mp4";
 const MEDIA_TEMPLATE: &str = "$RepresentationID$/$Time$.m4s";
 const PERIOD_CONTINUITY_SCHEME: &str = "urn:mpeg:dash:period-continuity:2015";
 
-/// Builds the manifest from tracks already probed and already narrowed.
 pub(crate) fn build_mpd(
     tracks: &[Track],
     segment_options: &SegmentOptions,
@@ -85,12 +82,6 @@ fn build_periods(
     periods
 }
 
-/// The period a span covers, holding whatever each track has to give it, or
-/// `None` when no track has anything.
-///
-/// A group's id is its index among all of them and never its position among those
-/// that survive: it is the key a client matches a rendition on across periods, so
-/// renumbering it would pair unrelated tracks.
 fn build_period(
     index: usize,
     span: &Range<u32>,
@@ -116,8 +107,6 @@ fn build_period(
     })
 }
 
-/// The AdaptationSet for `group` within `span`, or `None` when none of its
-/// renditions reach that far.
 fn build_adaptation_set(
     id: usize,
     group: &AdaptationGroup<'_>,
@@ -149,14 +138,7 @@ fn build_adaptation_set(
     })
 }
 
-/// Declares that the AdaptationSet carries on from the one holding the same id in
-/// the period before it.
-///
-/// dyndo only ever cuts a single encode into periods, so every period after the
-/// first continues the one before on an unbroken timeline. Left unsaid, a client
-/// is entitled to tear down its decoder at each period it crosses. A group the
-/// previous period never carried says nothing, since it begins here rather than
-/// continuing.
+// Continuity lets clients keep their decoder across Periods.
 fn build_period_continuity(id: usize, previous: Option<&Period>) -> Vec<SupplementalProperty> {
     let id = id.to_string();
 
@@ -176,9 +158,6 @@ fn build_period_continuity(id: usize, previous: Option<&Period>) -> Vec<Suppleme
         .collect()
 }
 
-/// The Representation for `track` within `span`, or `None` when the track has no
-/// segments there — a timeline has to hold at least one, and there would be
-/// nothing to fetch anyway.
 fn build_representation(
     track: &Track,
     segment_options: &SegmentOptions,
@@ -245,17 +224,8 @@ fn build_segment_template(
     }
 }
 
-/// The media time the period begins at, which is what the times in its timeline
-/// are read against.
-///
-/// This is the period's own start rather than the track's first segment, so that
-/// a track cutting after the boundary presents where it always did instead of
-/// being pulled back to the period edge. The difference between the two shows up
-/// as the gap between this and the first time in the timeline.
 fn presentation_time_offset(track: &Track, span_ms: &Range<u32>) -> u64 {
-    // The span is milliseconds and the timeline counts the track's timescale units.
-    // Rounded down, so the offset never lands past the segment the period opens on —
-    // a player reading the timeline against it would place every segment early.
+    // Round down so the offset cannot place the period's segments early.
     let offset = u128::from(span_ms.start) * u128::from(track.timescale()) / 1000;
 
     track
@@ -264,13 +234,6 @@ fn presentation_time_offset(track: &Track, span_ms: &Range<u32>) -> u64 {
         .saturating_add(u64::try_from(offset).unwrap_or(u64::MAX))
 }
 
-/// The timeline `segments` describe, with equal durations folded into one entry
-/// repeated `r` times.
-///
-/// An entry opens with the time its first segment begins at, so a run only continues
-/// while the next segment starts where the previous one ended. Two segments of equal
-/// duration with a gap between them are two runs, since a player reads the entries as
-/// one unbroken stretch.
 fn build_segment_timeline(segments: &[ServedSegment<'_>]) -> SegmentTimeline {
     let mut entries: Vec<S> = Vec::new();
     let mut end = None;
@@ -285,9 +248,7 @@ fn build_segment_timeline(segments: &[ServedSegment<'_>]) -> SegmentTimeline {
                 *previous.r.get_or_insert(0) += 1;
             }
             _ => entries.push(S {
-                // A player reads an entry with no time of its own as continuing from
-                // the one before it, so only a run that follows nothing states where
-                // it begins: the first, and any that opens after a gap.
+                // A missing `t` continues the preceding run, so a run after a gap states it.
                 t: (!continues).then_some(start),
                 d: duration,
                 ..Default::default()
@@ -332,10 +293,6 @@ fn max_segment_duration(tracks: &[Track], options: &SegmentOptions) -> u32 {
         .unwrap_or(0)
 }
 
-/// Divides the presentation at valid unique boundaries.
-///
-/// Boundaries at or beyond either edge produce no empty Period because an empty
-/// Period cannot carry a representation timeline.
 fn period_spans(boundaries: &[u32], duration: u32) -> Vec<Range<u32>> {
     let mut edges: Vec<_> = boundaries
         .iter()
