@@ -1,12 +1,10 @@
 use std::process::ExitCode;
 
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use opendal::Operator;
 use opendal::services::Fs;
 
-mod commands;
-
-use commands::Command;
+mod index;
 
 /// dyndo — dynamic media packaging for adaptive streaming.
 #[derive(Parser)]
@@ -16,7 +14,20 @@ struct Cli {
     command: Command,
 }
 
-/// Build the filesystem operator, rooted at `OPENDAL_FS_ROOT` (default `.`).
+#[derive(Subcommand)]
+enum Command {
+    /// Build or update an asset descriptor from one or more media tracks.
+    Index(index::IndexArgs),
+}
+
+impl Command {
+    async fn run(self, op: &Operator) -> Result<(), Box<dyn std::error::Error>> {
+        match self {
+            Self::Index(args) => index::run(op, args).await,
+        }
+    }
+}
+
 fn operator() -> Result<Operator, Box<dyn std::error::Error>> {
     let root = std::env::var("OPENDAL_FS_ROOT").unwrap_or_else(|_| ".".to_string());
     Ok(Operator::new(Fs::default().root(&root))?)

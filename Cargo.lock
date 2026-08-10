@@ -642,16 +642,10 @@ version = "0.4.0"
 dependencies = [
  "clap",
  "dyndo-core",
- "dyndo-dash",
- "dyndo-hls",
- "dyndo-image",
  "language-tags",
  "opendal",
- "quick-xml 0.40.1",
  "relative-path",
- "serde",
  "serde_json",
- "tempfile",
  "tokio",
 ]
 
