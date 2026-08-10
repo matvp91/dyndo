@@ -3,12 +3,12 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use dyndo_core::asset_descriptor::AssetDescriptor;
-use dyndo_core::image::FrameGrabError;
+use dyndo_core::image::Thumbnail;
 use dyndo_core::reader::Reader;
 use dyndo_core::text::Subtitle;
-use dyndo_dash::{ThumbnailError, generate_thumbnail, options::DashOptions};
 use opendal::Operator;
 
+use super::options::Options;
 use super::track_resolver::{LocatedSegment, TrackResolver};
 use crate::error::ServerError;
 
@@ -65,32 +65,15 @@ pub(super) async fn text(
 pub(super) async fn thumbnail(
     op: &Operator,
     asset: &AssetDescriptor,
-    options: &DashOptions,
+    options: &Options,
     track_id: &str,
     time: u64,
 ) -> Result<Response, ServerError> {
     let track = TrackResolver::new(op, asset).probe(track_id).await?;
-    let bytes = generate_thumbnail(op, &track, options, time)
-        .await
-        .map_err(thumbnail_error)?;
+    let thumbnail = Thumbnail::new(options.thumbnail_tile_size, options.thumbnail_step);
+    let Some(bytes) = thumbnail.generate(op, &track, time).await? else {
+        return Err(ServerError::NotFound("thumbnail".to_string()));
+    };
 
     Ok(([(CONTENT_TYPE, "image/jpeg")], bytes).into_response())
-}
-
-fn thumbnail_error(error: ThumbnailError) -> ServerError {
-    match error {
-        error @ (ThumbnailError::DurationOverflow | ThumbnailError::TileSizeTooLarge { .. }) => {
-            ServerError::BadRequest(error.to_string())
-        }
-        error @ (ThumbnailError::Disabled
-        | ThumbnailError::InvalidTime
-        | ThumbnailError::NotFound(_)
-        | ThumbnailError::NotVideo
-        | ThumbnailError::FrameGrab(
-            FrameGrabError::NotVideo | FrameGrabError::TimeOutsideTrack(_),
-        )) => ServerError::NotFound(error.to_string()),
-        error @ (ThumbnailError::FrameGrab(_) | ThumbnailError::Sprite(_)) => {
-            ServerError::Dash(error.into())
-        }
-    }
 }

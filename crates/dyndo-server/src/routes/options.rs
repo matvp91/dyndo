@@ -21,9 +21,9 @@ pub(super) struct Options {
     #[serde(default, alias = "mp")]
     multi_period: bool,
     #[serde(default, alias = "tts")]
-    thumbnail_tile_size: u32,
+    pub(super) thumbnail_tile_size: u32,
     #[serde(default, alias = "ts")]
-    thumbnail_step: u32,
+    pub(super) thumbnail_step: u32,
     #[serde(default)]
     wvtt: bool,
 }

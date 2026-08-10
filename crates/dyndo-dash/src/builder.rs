@@ -13,7 +13,6 @@ use crate::DashError;
 use crate::adaptation_group::AdaptationGroup;
 use crate::options::DashOptions;
 use crate::roles;
-use crate::thumbnail::Thumbnail;
 
 const DASH_PROFILE: &str = "urn:mpeg:dash:profile:isoff-live:2011";
 const DASH_XMLNS: &str = "urn:mpeg:dash:schema:mpd:2011";
@@ -30,17 +29,20 @@ pub(crate) fn build_mpd(
     let presentation_duration = presentation_duration(tracks);
     let groups = AdaptationGroup::group(tracks);
     ensure_segment_alignment(&groups, segment_options)?;
-    let thumbnail = Thumbnail::new(dash_options)?;
     let mut adaptations: Vec<AdaptationSet> = groups
         .iter()
         .enumerate()
         .filter_map(|(id, group)| build_adaptation_set(id, group, segment_options))
         .collect();
-    if let Some(thumbnail) = thumbnail {
-        let id = groups.len();
-        if let Some(adaptation_set) = thumbnail.adaptation_set(id, tracks, presentation_duration)? {
-            adaptations.push(adaptation_set);
-        }
+    let id = groups.len();
+    if let Some(adaptation_set) = crate::thumbnail::build_adaptation_set(
+        id,
+        tracks,
+        presentation_duration,
+        dash_options.thumbnail_tile_size,
+        dash_options.thumbnail_step,
+    ) {
+        adaptations.push(adaptation_set);
     }
     let periods = (!adaptations.is_empty()).then_some(Period {
         id: Some("0".to_string()),

@@ -3,6 +3,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use dyndo_core::asset_descriptor::AssetDescriptorError;
+use dyndo_core::image::ThumbnailError;
 use dyndo_core::probe::ProbeError;
 use dyndo_core::reader::TrackReadError;
 use dyndo_core::text::wvtt::WvttParseError;
@@ -21,6 +22,8 @@ pub enum ServerError {
     Probe(#[from] ProbeError),
     #[error(transparent)]
     TrackRead(#[from] TrackReadError),
+    #[error(transparent)]
+    Thumbnail(#[from] ThumbnailError),
     #[error(transparent)]
     Dash(#[from] DashError),
     #[error(transparent)]
@@ -46,6 +49,7 @@ impl ServerError {
             Self::AssetDescriptor(_)
             | Self::Probe(_)
             | Self::TrackRead(_)
+            | Self::Thumbnail(_)
             | Self::Dash(_)
             | Self::Hls(_)
             | Self::WvttParse(_)

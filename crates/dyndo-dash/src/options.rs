@@ -9,7 +9,6 @@ pub struct DashOptions {
     pub multi_period: bool,
     /// Thumbnails per sprite row and column. Zero disables thumbnail output.
     pub thumbnail_tile_size: u32,
-    /// Milliseconds between adjacent thumbnails in a sprite. Zero disables
-    /// thumbnail output.
+    /// Milliseconds between adjacent thumbnails. Zero disables thumbnail output.
     pub thumbnail_step: u32,
 }

@@ -744,12 +744,9 @@ dependencies = [
 name = "dyndo-dash"
 version = "0.4.0"
 dependencies = [
- "bytes",
  "dash-mpd",
  "dyndo-core",
- "futures-util",
  "mp4-atom",
- "opendal",
  "quick-xml 0.40.1",
  "thiserror 2.0.18",
 ]

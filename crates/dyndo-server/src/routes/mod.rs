@@ -100,15 +100,7 @@ async fn track_file(
         (time, "m4s") => segment::media(&op, &asset, &track_id, segment_time(time, &file)?).await,
         (time, "vtt") => segment::text(&op, &asset, &track_id, segment_time(time, &file)?).await,
         (time, "jpg") => {
-            let dash_options = options.dash_options();
-            segment::thumbnail(
-                &op,
-                &asset,
-                &dash_options,
-                &track_id,
-                segment_time(time, &file)?,
-            )
-            .await
+            segment::thumbnail(&op, &asset, &options, &track_id, segment_time(time, &file)?).await
         }
         _ => Err(not_found()),
     }
