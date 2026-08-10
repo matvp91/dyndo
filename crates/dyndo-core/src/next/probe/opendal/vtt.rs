@@ -1,5 +1,9 @@
 use std::sync::Arc;
 
+use super::super::super::packaging::wvtt::{WvttPackager, WvttSample};
+use super::super::super::packaging::{MediaSegment, Sample};
+use super::super::super::segmentation::{DurationPolicy, SegmentationPolicy, Segmenter};
+use super::super::super::text::{timeline, vtt};
 use ::opendal::raw::oio::{Read, ReadStream, StreamRead};
 use ::opendal::raw::{
     Layer, OpCopier, OpCopy, OpCreateDir, OpList, OpPresign, OpRead, OpRename, OpStat, OpWrite,
@@ -8,23 +12,21 @@ use ::opendal::raw::{
 use ::opendal::{
     Buffer, BytesRange, Capability, EntryMode, Error, ErrorKind, Metadata, OperationContext, Result,
 };
-use dyndo_text::{fragmenter, vtt};
-
-use super::super::super::packaging::{TimedFragment, TimedSample, TimedTrack, wvtt};
 
 const TIMESCALE: u32 = 1_000;
 
 #[derive(Debug, Clone)]
-pub(super) struct WvttLayer {
-    boundaries: Arc<[u32]>,
-    text_length: u32,
+pub(super) struct VttLayer {
+    segmenter: Segmenter,
 }
 
-impl WvttLayer {
+impl VttLayer {
     pub(super) fn new(boundaries: &[u32], text_length: u32) -> Self {
         Self {
-            boundaries: boundaries.into(),
-            text_length,
+            segmenter: Segmenter::new(SegmentationPolicy::new(
+                boundaries,
+                DurationPolicy::Exact(text_length),
+            )),
         }
     }
 
@@ -40,31 +42,33 @@ impl WvttLayer {
             .await?;
         let document = String::from_utf8(stream.read_all().await?.to_vec()).map_err(unpackable)?;
         let subtitle = vtt::parse(&document).map_err(unpackable)?;
-        let fragments = fragmenter::fragment(&subtitle, &self.boundaries, self.text_length)
+        let duration = subtitle.cues.iter().map(|cue| cue.end).max().unwrap_or(0);
+        let segments = self
+            .segmenter
+            .exact(duration)
             .into_iter()
-            .map(|fragment| {
-                let samples = fragment
-                    .samples
+            .map(|range| {
+                let samples = timeline::samples(&subtitle, range.clone())
                     .into_iter()
                     .map(|sample| {
-                        let duration = sample.duration();
-                        let cues = sample.cues.into_iter().map(|cue| cue.text).collect();
-                        TimedSample::new(duration, wvtt::WvttSample::new(cues))
+                        let cues = sample.cues().iter().map(|cue| cue.text.clone()).collect();
+                        Sample::new(sample.duration(), WvttSample::new(cues))
                     })
                     .collect();
-                TimedFragment::new(u64::from(fragment.start), samples)
+                MediaSegment::new(u64::from(range.start), samples)
             })
-            .collect();
-        let track = TimedTrack::new(TIMESCALE, fragments);
-        let packaged = wvtt::package(&track).map_err(unpackable)?;
+            .collect::<Vec<_>>();
+        let packaged = WvttPackager::new(TIMESCALE)
+            .package(&segments)
+            .map_err(unpackable)?;
 
         Ok(Buffer::from(packaged))
     }
 }
 
-impl Layer for WvttLayer {
+impl Layer for VttLayer {
     fn apply_service(&self, inner: Servicer) -> Servicer {
-        Arc::new(WvttService {
+        Arc::new(VttService {
             inner,
             layer: self.clone(),
         })
@@ -80,12 +84,12 @@ fn is_subtitle(path: &str) -> bool {
 }
 
 #[derive(Debug)]
-struct WvttService {
+struct VttService {
     inner: Servicer,
-    layer: WvttLayer,
+    layer: VttLayer,
 }
 
-impl Service for WvttService {
+impl Service for VttService {
     type Reader = oio::Reader;
     type Writer = oio::Writer;
     type Lister = oio::Lister;
@@ -180,7 +184,7 @@ struct PackagedReader {
     inner: Servicer,
     ctx: OperationContext,
     path: String,
-    layer: WvttLayer,
+    layer: VttLayer,
 }
 
 impl StreamRead for PackagedReader {
