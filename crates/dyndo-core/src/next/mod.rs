@@ -1,9 +1,9 @@
 pub mod asset_descriptor;
 pub mod codec;
+pub mod probe;
 pub mod segment;
 pub mod segment_options;
 pub mod time;
 pub mod track;
 pub mod track_descriptor;
 pub mod track_kind;
-pub mod track_prober;
