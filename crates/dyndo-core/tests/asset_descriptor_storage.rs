@@ -1,21 +1,41 @@
 use dyndo_core::asset_descriptor::AssetDescriptor;
+use dyndo_core::codec::{CodecConfig, WvttCodec};
+use dyndo_core::segment::InitSegment;
+use dyndo_core::track::Track;
+use dyndo_core::track_kind::{TextKind, TrackKind};
 use opendal::{Operator, services::Memory};
-use relative_path::RelativePath;
+use relative_path::{RelativePath, RelativePathBuf};
+use std::sync::Arc;
 
 fn memory_operator() -> Operator {
     Operator::new(Memory::default()).unwrap()
 }
 
 #[tokio::test]
-async fn read_or_new_returns_an_empty_descriptor_when_the_descriptor_is_missing() {
-    let descriptor = AssetDescriptor::read_or_new(
+async fn read_or_new_preserves_the_descriptor_base_when_adding_a_track() {
+    let mut descriptor = AssetDescriptor::read_or_new(
         &memory_operator(),
         RelativePath::new("assets/movie/asset.json"),
     )
     .await
     .unwrap();
 
-    assert!(descriptor.tracks.is_empty());
+    let track = Track::new(
+        "text".into(),
+        RelativePathBuf::from("assets/movie/subtitles/en.vtt"),
+        TrackKind::Text(TextKind {
+            language: "en".parse().unwrap(),
+            role: None,
+        }),
+        Arc::new(InitSegment::new(CodecConfig::Wvtt(WvttCodec), 1_000, 0, 0)),
+        Vec::new(),
+    );
+    descriptor.add_track(&track);
+
+    assert_eq!(
+        descriptor.track_path(descriptor.find_track_by_id("text").unwrap()),
+        RelativePath::new("assets/movie/subtitles/en.vtt")
+    );
 }
 
 #[tokio::test]

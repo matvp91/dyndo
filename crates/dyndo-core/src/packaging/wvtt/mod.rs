@@ -156,3 +156,49 @@ impl Default for WvttUnpackager {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::Sample;
+    use super::{
+        MediaSegment, PackageError, UnpackageError, WvttPackager, WvttSample, WvttUnpackager,
+    };
+
+    fn segment() -> MediaSegment<WvttSample> {
+        MediaSegment::new(
+            0,
+            vec![Sample::new(1_000, WvttSample::new(vec!["cue".into()]))],
+        )
+    }
+
+    #[test]
+    fn package_rejects_a_zero_track_id() {
+        let error = WvttPackager::new(1_000)
+            .with_track_id(0)
+            .package(&[segment()])
+            .unwrap_err();
+
+        assert!(matches!(error, PackageError::InvalidTrackId));
+    }
+
+    #[test]
+    fn package_rejects_a_zero_timescale() {
+        let error = WvttPackager::new(0).package(&[segment()]).unwrap_err();
+
+        assert!(matches!(error, PackageError::InvalidTimescale));
+    }
+
+    #[test]
+    fn package_rejects_media_that_covers_no_time() {
+        let error = WvttPackager::new(1_000).package(&[]).unwrap_err();
+
+        assert!(matches!(error, PackageError::Empty));
+    }
+
+    #[test]
+    fn unpackage_rejects_media_without_a_movie_timescale() {
+        let error = WvttUnpackager::new().unpackage(&[]).unwrap_err();
+
+        assert!(matches!(error, UnpackageError::MissingTimescale));
+    }
+}
