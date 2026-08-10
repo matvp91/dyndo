@@ -44,6 +44,6 @@ fn generated_video_manifests_match_the_golden_fixtures() {
         .unwrap()
         .to_string();
 
-    assert_eq!(master, include_str!("fixtures/video-master.m3u8"));
-    assert_eq!(media, include_str!("fixtures/video-media.m3u8"));
+    assert_eq!(master, include_str!("fixtures/video/master.m3u8"));
+    assert_eq!(media, include_str!("fixtures/video/media.m3u8"));
 }
