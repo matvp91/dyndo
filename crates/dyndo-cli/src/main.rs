@@ -4,7 +4,7 @@ use clap::{Parser, Subcommand};
 use opendal::Operator;
 use opendal::services::Fs;
 
-mod index;
+mod commands;
 
 /// dyndo — dynamic media packaging for adaptive streaming.
 #[derive(Parser)]
@@ -17,13 +17,16 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     /// Build or update an asset descriptor from one or more media tracks.
-    Index(index::IndexArgs),
+    Index(commands::index::IndexArgs),
+    /// Extract a video frame as a JPEG image.
+    Image(commands::image::ImageArgs),
 }
 
 impl Command {
     async fn run(self, op: &Operator) -> Result<(), Box<dyn std::error::Error>> {
         match self {
-            Self::Index(args) => index::run(op, args).await,
+            Self::Index(args) => commands::index::run(op, args).await,
+            Self::Image(args) => commands::image::run(op, args).await,
         }
     }
 }

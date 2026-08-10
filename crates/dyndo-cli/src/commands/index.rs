@@ -17,7 +17,7 @@ pub(crate) struct IndexArgs {
     output: String,
 }
 
-pub(super) async fn run(op: &Operator, args: IndexArgs) -> Result<(), Box<dyn std::error::Error>> {
+pub(crate) async fn run(op: &Operator, args: IndexArgs) -> Result<(), Box<dyn std::error::Error>> {
     let output_path = RelativePathBuf::from(args.output.as_str());
     let output_base = output_path.parent().unwrap_or(RelativePath::new(""));
     let mut descriptor = AssetDescriptor::read_or_new(op, &output_path).await?;
