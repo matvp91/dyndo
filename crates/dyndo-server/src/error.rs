@@ -15,6 +15,8 @@ pub enum ServerError {
     InvalidOptions(String),
     #[error("invalid filter: {0}")]
     InvalidFilter(String),
+    #[error("no track matches the filter")]
+    FilterMatchedNothing,
     #[error("resource not found: {0}")]
     NotFound(String),
     #[error(transparent)]
@@ -37,12 +39,9 @@ impl IntoResponse for ServerError {
     fn into_response(self) -> Response {
         let status = match &self {
             Self::InvalidOptions(_) | Self::InvalidFilter(_) => StatusCode::BAD_REQUEST,
-            Self::NotFound(_) => StatusCode::NOT_FOUND,
+            Self::NotFound(_) | Self::FilterMatchedNothing => StatusCode::NOT_FOUND,
             // A filter that narrowed an asset down to nothing is an addressing error,
             // like an unknown track id, rather than a fault in the asset.
-            Self::Dash(DashError::Filter(_)) | Self::Hls(HlsError::Filter(_)) => {
-                StatusCode::NOT_FOUND
-            }
             Self::AssetDescriptor(AssetDescriptorError::Storage(error))
                 if error.kind() == opendal::ErrorKind::NotFound =>
             {

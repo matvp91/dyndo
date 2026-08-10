@@ -1,4 +1,5 @@
 mod context;
+pub(crate) mod filter;
 mod manifest;
 mod manifest_query;
 mod segment;

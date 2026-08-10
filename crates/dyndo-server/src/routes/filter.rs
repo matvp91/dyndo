@@ -8,25 +8,25 @@ use winnow::error::{StrContext, StrContextValue};
 use winnow::prelude::*;
 use winnow::token::take_while;
 
-use super::segment_options::SegmentOptions;
-use super::served_segment::ServedSegment;
-use super::track::Track;
-use super::track_kind::TrackKind;
+use dyndo_core::segment_options::SegmentOptions;
+use dyndo_core::served_segment::ServedSegment;
+use dyndo_core::track::Track;
+use dyndo_core::track_kind::TrackKind;
 
 #[derive(Debug, thiserror::Error)]
 #[error("at offset {offset}: {message}")]
-pub struct FilterParseError {
+pub(super) struct FilterParseError {
     pub offset: usize,
     message: String,
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct Filter {
+pub(super) struct Filter {
     expression: Expression,
 }
 
 impl Filter {
-    pub fn parse(input: &str) -> Result<Self, FilterParseError> {
+    pub(super) fn parse(input: &str) -> Result<Self, FilterParseError> {
         terminated(parse_expression, multispace0)
             .parse(input)
             .map(|expression| Self { expression })
@@ -36,11 +36,11 @@ impl Filter {
             })
     }
 
-    pub fn matches(&self, track: &Track, options: &SegmentOptions) -> bool {
+    fn matches(&self, track: &Track, options: &SegmentOptions) -> bool {
         self.expression.matches(track, options)
     }
 
-    pub fn narrow(
+    pub(super) fn narrow(
         &self,
         tracks: Vec<Track>,
         options: &SegmentOptions,
@@ -60,7 +60,7 @@ impl Filter {
 
 #[derive(Debug, thiserror::Error)]
 #[error("no track matches the filter")]
-pub struct FilterMatchedNothing;
+pub(super) struct FilterMatchedNothing;
 
 #[derive(Debug, PartialEq, Eq)]
 enum Expression {

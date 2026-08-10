@@ -1,6 +1,6 @@
-use dyndo_core::filter::Filter;
 use serde::Deserialize;
 
+use super::filter::Filter;
 use crate::error::ServerError;
 
 // Rejecting unknown fields prevents an unencoded `&&` from silently truncating a filter.
