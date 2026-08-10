@@ -75,3 +75,23 @@ fn rfc6381(prefix: &str, configuration: &Hvcc) -> String {
 
     codec
 }
+
+#[cfg(test)]
+mod tests {
+    use mp4_atom::Hvcc;
+
+    use super::rfc6381;
+
+    #[test]
+    fn rfc6381_reverses_compatibility_bits_and_omits_trailing_zero_constraints() {
+        let configuration = Hvcc {
+            general_profile_idc: 1,
+            general_profile_compatibility_flags: [0x60, 0, 0, 0],
+            general_level_idc: 120,
+            general_constraint_indicator_flags: [0xb0, 0, 0, 0, 0, 0],
+            ..Hvcc::default()
+        };
+
+        assert_eq!(rfc6381("hvc1", &configuration), "hvc1.1.6.L120.b0");
+    }
+}

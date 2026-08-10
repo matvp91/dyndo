@@ -45,3 +45,22 @@ impl Codec for AvcCodec {
         )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{AvcCodec, Codec};
+
+    #[test]
+    fn rfc6381_uses_lowercase_hex_profile_components() {
+        let codec = AvcCodec {
+            profile: 0x42,
+            compatibility: 0xc0,
+            level: 0x0a,
+            nal_length_size: 4,
+            sequence_parameter_sets: Vec::new(),
+            picture_parameter_sets: Vec::new(),
+        };
+
+        assert_eq!(codec.rfc6381(), "avc1.42c00a");
+    }
+}

@@ -20,3 +20,15 @@ impl Codec for AacCodec {
         format!("mp4a.40.{}", self.profile)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{AacCodec, Codec};
+
+    #[test]
+    fn rfc6381_includes_the_audio_object_type() {
+        let codec = AacCodec { profile: 2 };
+
+        assert_eq!(codec.rfc6381(), "mp4a.40.2");
+    }
+}

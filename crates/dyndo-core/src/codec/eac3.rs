@@ -8,3 +8,13 @@ impl Codec for Eac3Codec {
         "ec-3".to_string()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{Codec, Eac3Codec};
+
+    #[test]
+    fn rfc6381_identifies_eac3() {
+        assert_eq!(Eac3Codec.rfc6381(), "ec-3");
+    }
+}

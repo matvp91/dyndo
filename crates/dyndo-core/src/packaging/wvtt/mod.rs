@@ -159,9 +159,12 @@ impl Default for WvttUnpackager {
 
 #[cfg(test)]
 mod tests {
+    use mp4_atom::{Any, DecodeMaybe, Encode, Mdat, Mfhd, Moof, Tfdt, Traf, Trun, TrunEntry};
+
     use super::super::Sample;
     use super::{
-        MediaSegment, PackageError, UnpackageError, WvttPackager, WvttSample, WvttUnpackager,
+        MediaSegment, PackageError, UnpackageError, WvttFormat, WvttPackager, WvttSample,
+        WvttUnpackager,
     };
 
     fn segment() -> MediaSegment<WvttSample> {
@@ -169,6 +172,17 @@ mod tests {
             0,
             vec![Sample::new(1_000, WvttSample::new(vec!["cue".into()]))],
         )
+    }
+
+    fn without_media_data(bytes: &[u8]) -> Vec<u8> {
+        let mut input = bytes;
+        let mut output = Vec::new();
+        while let Some(atom) = Any::decode_maybe(&mut input).unwrap() {
+            if !matches!(atom, Any::Mdat(_)) {
+                atom.encode(&mut output).unwrap();
+            }
+        }
+        output
     }
 
     #[test]
@@ -200,5 +214,87 @@ mod tests {
         let error = WvttUnpackager::new().unpackage(&[]).unwrap_err();
 
         assert!(matches!(error, UnpackageError::MissingTimescale));
+    }
+
+    #[test]
+    fn unpackage_rejects_media_data_without_a_movie_fragment() {
+        let mut bytes = Vec::new();
+        Mdat { data: Vec::new() }.encode(&mut bytes).unwrap();
+
+        let error = WvttUnpackager::new().unpackage(&bytes).unwrap_err();
+
+        assert!(matches!(error, UnpackageError::UnpairedMediaSegment));
+    }
+
+    #[test]
+    fn unpackage_rejects_a_movie_fragment_without_media_data() {
+        let bytes = WvttPackager::new(1_000).package(&[segment()]).unwrap();
+
+        let error = WvttUnpackager::new()
+            .unpackage(&without_media_data(&bytes))
+            .unwrap_err();
+
+        assert!(matches!(error, UnpackageError::UnpairedMediaSegment));
+    }
+
+    #[test]
+    fn unpackage_rejects_a_fragment_without_a_base_decode_time() {
+        let header = Moof {
+            mfhd: Mfhd { sequence_number: 1 },
+            traf: vec![Traf {
+                trun: vec![Trun::default()],
+                ..Traf::default()
+            }],
+        };
+
+        let error = MediaSegment::<WvttSample>::parse(&WvttFormat, &header, &[]).unwrap_err();
+
+        assert!(matches!(error, UnpackageError::MissingBaseTime));
+    }
+
+    #[test]
+    fn unpackage_rejects_a_fragment_without_sample_timing() {
+        let header = Moof {
+            mfhd: Mfhd { sequence_number: 1 },
+            traf: vec![Traf {
+                tfdt: Some(Tfdt {
+                    base_media_decode_time: 0,
+                }),
+                trun: vec![Trun {
+                    entries: vec![TrunEntry::default()],
+                    ..Trun::default()
+                }],
+                ..Traf::default()
+            }],
+        };
+
+        let error = MediaSegment::<WvttSample>::parse(&WvttFormat, &header, &[]).unwrap_err();
+
+        assert!(matches!(error, UnpackageError::MissingSampleTiming));
+    }
+
+    #[test]
+    fn unpackage_rejects_sample_data_that_exceeds_the_media_data() {
+        let header = Moof {
+            mfhd: Mfhd { sequence_number: 1 },
+            traf: vec![Traf {
+                tfdt: Some(Tfdt {
+                    base_media_decode_time: 0,
+                }),
+                trun: vec![Trun {
+                    entries: vec![TrunEntry {
+                        duration: Some(1_000),
+                        size: Some(1),
+                        ..TrunEntry::default()
+                    }],
+                    ..Trun::default()
+                }],
+                ..Traf::default()
+            }],
+        };
+
+        let error = MediaSegment::<WvttSample>::parse(&WvttFormat, &header, &[]).unwrap_err();
+
+        assert!(matches!(error, UnpackageError::SampleOutOfRange));
     }
 }

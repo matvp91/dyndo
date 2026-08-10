@@ -8,3 +8,13 @@ impl Codec for Ac3Codec {
         "ac-3".to_string()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{Ac3Codec, Codec};
+
+    #[test]
+    fn rfc6381_identifies_ac3() {
+        assert_eq!(Ac3Codec.rfc6381(), "ac-3");
+    }
+}

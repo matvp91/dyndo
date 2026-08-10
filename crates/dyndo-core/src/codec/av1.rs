@@ -35,3 +35,20 @@ impl Codec for Av1Codec {
         )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{Av1Codec, Codec};
+
+    #[test]
+    fn rfc6381_includes_profile_level_tier_and_bit_depth() {
+        let codec = Av1Codec {
+            profile: 0,
+            level: 8,
+            tier: 'M',
+            bit_depth: 10,
+        };
+
+        assert_eq!(codec.rfc6381(), "av01.0.08M.10");
+    }
+}
