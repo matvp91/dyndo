@@ -27,9 +27,14 @@ pub struct Reader<'a> {
 impl<'a> Reader<'a> {
     pub fn new(op: &Operator, track: &'a Track, options: &SegmentOptions) -> Self {
         Self {
-            op: operator(op, options),
+            op: Self::op(op, options),
             track,
         }
+    }
+
+    pub(crate) fn op(op: &Operator, options: &SegmentOptions) -> Operator {
+        op.clone()
+            .layer(VttLayer::new(&options.boundaries, options.text_length))
     }
 
     pub async fn read_initialization(&self) -> Result<Bytes, TrackReadError> {
@@ -45,9 +50,4 @@ impl<'a> Reader<'a> {
             .await?
             .to_bytes())
     }
-}
-
-pub(crate) fn operator(op: &Operator, options: &SegmentOptions) -> Operator {
-    op.clone()
-        .layer(VttLayer::new(&options.boundaries, options.text_length))
 }

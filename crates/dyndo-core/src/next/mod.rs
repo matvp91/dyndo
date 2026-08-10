@@ -6,7 +6,7 @@ pub mod reader;
 pub mod role;
 pub mod segment;
 pub mod segment_options;
-pub mod segmenter;
+pub mod served_segment;
 pub mod text;
 pub mod time;
 pub mod track;
