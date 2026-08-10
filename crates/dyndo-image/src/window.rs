@@ -55,7 +55,7 @@ impl Window {
                     anchor.saturating_add(raw_time(time + cell * u64::from(step), timescale));
                 segments
                     .iter()
-                    .find(|segment| segment.raw_range().contains(&time))
+                    .find(|segment| segment.time_range().contains(&time))
                     .map(|segment| Cell {
                         segment: segment.byte_range(),
                         time,

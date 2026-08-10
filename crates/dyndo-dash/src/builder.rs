@@ -11,7 +11,7 @@ use dyndo_core::asset_descriptor::{AssetDescriptor, TrackKind};
 use dyndo_core::boundary_utils::BoundaryUtils;
 use dyndo_core::filter::{Filter, FilterMatchedNothing};
 use dyndo_core::segment::{self, Segment, SegmentOptions, max_bitrate, max_segment_duration};
-use dyndo_core::track::{Track, TrackError, max_duration};
+use dyndo_core::track::{Track, TrackError, max_duration_ms};
 use opendal::Operator;
 
 use crate::adaptation_set_group::{self, AdaptationSetGroup};
@@ -68,7 +68,7 @@ fn build_mpd(
     segment_options: &SegmentOptions,
     dash_options: &DashOptions,
 ) -> Result<MPD, DashError> {
-    let duration = Duration::from_millis(u64::from(max_duration(tracks)));
+    let duration = Duration::from_millis(u64::from(max_duration_ms(tracks)));
     let groups = adaptation_set_group::group(tracks);
     if groups
         .iter()
@@ -83,7 +83,7 @@ fn build_mpd(
         &[]
     };
     let mut periods: Vec<Period> = Vec::new();
-    for span in BoundaryUtils::divide(boundaries, max_duration(tracks)) {
+    for span in BoundaryUtils::divide(boundaries, max_duration_ms(tracks)) {
         let next = period(
             periods.len(),
             &span,
@@ -224,11 +224,7 @@ fn representation(
     segment_options: &SegmentOptions,
     span: &Range<u32>,
 ) -> Option<Representation> {
-    let segments = segment::span(
-        &segment::segments(track, segment_options),
-        track.timescale(),
-        span,
-    );
+    let segments = segment::span(&segment::segments(track, segment_options), span);
     if segments.is_empty() {
         return None;
     }
@@ -306,10 +302,10 @@ pub(crate) fn segment_timeline(segments: &[Segment]) -> SegmentTimeline {
     let mut end = None;
 
     for segment in segments {
-        let range = segment.raw_range();
+        let range = segment.time_range();
         let continues = end == Some(range.start);
         match entries.last_mut() {
-            Some(previous) if previous.d == segment.raw_duration() && continues => {
+            Some(previous) if previous.d == segment.duration() && continues => {
                 *previous.r.get_or_insert(0) += 1;
             }
             _ => entries.push(S {
@@ -317,7 +313,7 @@ pub(crate) fn segment_timeline(segments: &[Segment]) -> SegmentTimeline {
                 // the one before it, so only a run that follows nothing states where
                 // it begins: the first, and any that opens after a gap.
                 t: (!continues).then_some(range.start),
-                d: segment.raw_duration(),
+                d: segment.duration(),
                 ..Default::default()
             }),
         }

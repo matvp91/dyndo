@@ -67,7 +67,7 @@ impl Thumbnail {
 
         // A sprite is cut when it is asked for, so it has no bytes to point at.
         (first..last)
-            .map(|index| Segment::new(0, 0, index * duration, duration))
+            .map(|index| Segment::new(0..0, index * duration..(index + 1) * duration, TIMESCALE))
             .collect()
     }
 
@@ -184,7 +184,7 @@ mod tests {
         thumbnail
             .sprites(span_ms)
             .iter()
-            .map(|sprite| sprite.raw_range().start)
+            .map(|sprite| sprite.time_range().start)
             .collect()
     }
 

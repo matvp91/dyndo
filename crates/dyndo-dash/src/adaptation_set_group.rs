@@ -73,8 +73,8 @@ impl<'a> AdaptationSetGroup<'a> {
         self.members.iter().skip(1).all(|candidate| {
             segment::segments(candidate, options)
                 .iter()
-                .map(Segment::raw_range)
-                .eq(reference_segments.iter().map(Segment::raw_range))
+                .map(Segment::time_range)
+                .eq(reference_segments.iter().map(Segment::time_range))
         })
     }
 }

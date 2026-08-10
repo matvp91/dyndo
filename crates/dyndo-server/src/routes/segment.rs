@@ -69,7 +69,7 @@ async fn locate(
     let (track, segment_options) = read_track(op, context, track_id).await?;
     let segment = segment::segments(&track, &segment_options)
         .into_iter()
-        .find(|segment| segment.raw_range().start == time)
+        .find(|segment| segment.time_range().start == time)
         .ok_or_else(|| ServerError::NotFound(format!("segment {time} for track {track_id}")))?;
 
     Ok((track, segment_options, segment.byte_range()))

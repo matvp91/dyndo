@@ -3,6 +3,7 @@ pub mod boundary_utils;
 pub mod box_reader;
 pub mod filter;
 pub(crate) mod fragment;
+pub mod frame_reader;
 pub(crate) mod opendal;
 pub mod probe;
 pub mod role;

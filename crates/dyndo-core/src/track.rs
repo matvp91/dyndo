@@ -129,7 +129,7 @@ impl Track {
     }
 
     /// Returns the total duration of the track's fragments in milliseconds.
-    pub fn duration(&self) -> u32 {
+    pub fn duration_ms(&self) -> u32 {
         let raw_duration: u128 = self
             .fragments
             .iter()
@@ -181,7 +181,7 @@ pub fn generate_id(kind: &TrackKind, path: &RelativePath) -> String {
 /// Returns the longest video duration in milliseconds, or the longest audio
 /// duration when no video track is present. Text tracks do not determine
 /// presentation length.
-pub fn max_duration(tracks: &[Track]) -> u32 {
+pub fn max_duration_ms(tracks: &[Track]) -> u32 {
     max_matching_duration(tracks, |kind| matches!(kind, TrackKind::Video(_))).unwrap_or_else(|| {
         max_matching_duration(tracks, |kind| matches!(kind, TrackKind::Audio(_))).unwrap_or(0)
     })
@@ -191,7 +191,7 @@ fn max_matching_duration(tracks: &[Track], include: impl Fn(&TrackKind) -> bool)
     tracks
         .iter()
         .filter(|track| include(track.kind()))
-        .map(Track::duration)
+        .map(Track::duration_ms)
         .max()
 }
 
@@ -229,7 +229,7 @@ mod tests {
             vec![Fragment::new(0, 10, 295_200).unwrap()],
         );
 
-        assert_eq!(track.duration(), 3_280);
+        assert_eq!(track.duration_ms(), 3_280);
     }
 
     #[test]
@@ -240,28 +240,28 @@ mod tests {
             vec![Fragment::new(0, 10, 3_001).unwrap()],
         );
 
-        assert_eq!(track.duration(), 1_000);
+        assert_eq!(track.duration_ms(), 1_000);
     }
 
     #[test]
     fn max_duration_prefers_video_over_longer_audio() {
         let tracks = vec![track(audio_kind(), 10_000), track(video_kind(), 4_000)];
 
-        assert_eq!(max_duration(&tracks), 4_000);
+        assert_eq!(max_duration_ms(&tracks), 4_000);
     }
 
     #[test]
     fn max_duration_falls_back_to_audio_without_video() {
         let tracks = vec![track(text_kind(), 20_000), track(audio_kind(), 5_000)];
 
-        assert_eq!(max_duration(&tracks), 5_000);
+        assert_eq!(max_duration_ms(&tracks), 5_000);
     }
 
     #[test]
     fn max_duration_ignores_text_only_assets() {
         let tracks = vec![track(text_kind(), 20_000)];
 
-        assert_eq!(max_duration(&tracks), 0);
+        assert_eq!(max_duration_ms(&tracks), 0);
     }
 
     fn track(kind: TrackKind, raw_duration: u32) -> Track {

@@ -171,9 +171,6 @@ fn frame_rate(boxes: &Boxes) -> Result<String, ProbeError> {
         .filter(|duration| *duration != 0)
         .ok_or(ProbeError::MissingFrameRate)?;
     let timescale = track.mdia.mdhd.timescale;
-    if timescale == 0 {
-        return Err(ProbeError::MissingFrameRate);
-    }
     let divisor = greatest_common_divisor(timescale, sample_duration);
 
     Ok(format!(

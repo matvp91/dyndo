@@ -58,7 +58,7 @@ const ATTRIBUTES: &[Attribute] = &[
     Attribute::number("avg_bitrate", |track, options| {
         Some(average_bitrate(track, options))
     }),
-    Attribute::number("duration", |track, _| Some(track.duration().into())),
+    Attribute::number("duration", |track, _| Some(track.duration_ms().into())),
     Attribute::number("width", |track, _| match track.kind() {
         TrackKind::Video(video) => Some(video.width.into()),
         _ => None,

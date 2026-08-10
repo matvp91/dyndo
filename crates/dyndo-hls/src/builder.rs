@@ -115,15 +115,15 @@ fn build_media_playlist(
     let segments = segment::segments(track, segment_options);
     let target_duration = segments
         .iter()
-        .map(|segment| rounded_duration_seconds(segment.raw_duration(), track.timescale()))
+        .map(|segment| rounded_duration_seconds(segment.duration(), segment.timescale()))
         .max()
         .unwrap_or(0);
     let segments = segments
         .into_iter()
         .enumerate()
         .map(|(index, segment)| {
-            let duration = media_duration(segment.raw_duration(), track.timescale());
-            let start_time = segment.raw_range().start;
+            let duration = Duration::from_millis(segment.duration_ms());
+            let start_time = segment.time_range().start;
 
             let mut builder = MediaSegment::builder();
             builder
@@ -147,15 +147,6 @@ fn build_media_playlist(
 
 /// A segment's duration as `EXTINF` states it.
 ///
-/// Rounded to the nearest millisecond rather than either way: a player sums these to
-/// place a segment on its timeline, so a bias in one direction accumulates across a
-/// playlist while a rounding error does not.
-fn media_duration(raw_duration: u64, timescale: u32) -> Duration {
-    let duration =
-        (u128::from(raw_duration) * 1_000 + u128::from(timescale) / 2) / u128::from(timescale);
-    Duration::from_millis(u64::try_from(duration).unwrap_or(u64::MAX))
-}
-
 fn rounded_duration_seconds(raw_duration: u64, timescale: u32) -> u64 {
     let raw_duration = u128::from(raw_duration);
     let timescale = u128::from(timescale);
@@ -496,17 +487,9 @@ mod tests {
     }
 
     #[test]
-    fn media_duration_rounds_to_milliseconds() {
-        assert_eq!(
-            media_duration(3_280_499, 1_000_000),
-            Duration::from_millis(3_280)
-        );
-    }
-
-    #[test]
     fn serialize_media_playlist_rounds_extinf_to_three_decimals() {
         let segment = MediaSegment::builder()
-            .duration(media_duration(3_280, 1_000))
+            .duration(Duration::from_millis(3_280))
             .uri("segment.m4s")
             .build()
             .unwrap();

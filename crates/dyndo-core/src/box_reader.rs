@@ -45,6 +45,15 @@ fn validate(boxes: &Boxes) -> Result<(), BoxReaderError> {
     if boxes.sidx.timescale == 0 {
         return Err(BoxReaderError::Container("sidx timescale is zero"));
     }
+    // Segment times are counted on the index clock and sample times are stamped on the
+    // media one. CMAF expects the two to agree and nothing in the format makes them, so
+    // a source where they differ is refused rather than served with everything that
+    // reaches inside a fragment silently mistimed.
+    if boxes.sidx.timescale != track.mdia.mdhd.timescale {
+        return Err(BoxReaderError::Container(
+            "sidx and media timescales disagree",
+        ));
+    }
     if boxes
         .sidx
         .references

@@ -87,6 +87,42 @@ async fn probe_rejects_non_sap_codec_fixtures() {
     }
 }
 
+/// Segment times are counted on the index clock and sample times are stamped on the
+/// media one, so a source whose clocks differ is refused rather than served with
+/// everything that reaches inside a fragment silently mistimed.
+#[tokio::test]
+async fn probe_rejects_a_track_whose_clocks_disagree() {
+    let mut source = std::fs::read(fixture("video_avc_1080.mp4")).unwrap();
+    // The sidx body opens on its version and flags and its reference id, so its
+    // timescale is the third word after the box name.
+    let timescale = source.windows(4).position(|kind| kind == b"sidx").unwrap() + 12;
+    source[timescale..timescale + 4].copy_from_slice(&1_000u32.to_be_bytes());
+    let op = Operator::new(Memory::default()).unwrap();
+    op.write("track.mp4", source).await.unwrap();
+
+    let error = match Track::probe(
+        &op,
+        RelativePath::new("track.mp4"),
+        None,
+        &SegmentOptions::default(),
+    )
+    .await
+    {
+        Ok(_) => panic!("a track whose clocks disagree unexpectedly probed"),
+        Err(error) => error,
+    };
+
+    assert!(
+        matches!(
+            error,
+            TrackError::Probe(ProbeError::BoxReader(
+                dyndo_core::box_reader::BoxReaderError::Container(_)
+            ))
+        ),
+        "unexpected error: {error}"
+    );
+}
+
 #[tokio::test]
 async fn probe_generates_deterministic_content_prefixed_id() {
     let (_, first, _) = probe_fixture("video_avc_1080.mp4").await;
@@ -104,7 +140,7 @@ async fn probe_packages_a_vtt_document_as_a_wvtt_track() {
         panic!("expected text track");
     };
     assert_eq!(
-        (track.codec(), track.timescale(), track.duration()),
+        (track.codec(), track.timescale(), track.duration_ms()),
         ("wvtt", 1_000, 12_500)
     );
 
@@ -113,7 +149,7 @@ async fn probe_packages_a_vtt_document_as_a_wvtt_track() {
     assert_eq!(
         segments
             .iter()
-            .map(|segment| segment.raw_duration())
+            .map(|segment| segment.duration())
             .collect::<Vec<_>>(),
         vec![4_000, 4_000, 4_000, 500]
     );
@@ -143,7 +179,7 @@ async fn probe_fragments_a_subtitle_at_its_splice_points() {
     let durations = |track: &Track| {
         segment::segments(track, &SegmentOptions::default())
             .iter()
-            .map(|segment| segment.raw_duration())
+            .map(|segment| segment.duration())
             .collect::<Vec<_>>()
     };
     assert_eq!(durations(&spliced), vec![2_000, 10_500]);

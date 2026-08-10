@@ -32,48 +32,76 @@ pub struct SegmentOptions {
 
 /// One served segment: where its bytes are, and when it is shown.
 ///
-/// A segment sits at a position on two axes, and holds an extent on both. Its
-/// presentation time is cumulative rather than stored — the track's earliest
-/// presentation time plus every duration before it — so it follows from the
-/// grouping that produced the segment and is settled there, once.
+/// A segment sits at a position on two axes and holds an extent on both, so it is kept
+/// as the two edges of each rather than a start and a length — which is what its callers
+/// ask it for, and what a manifest writes.
+///
+/// Times are the presentation the segment covers, counted in the track's timescale: they
+/// begin at the track's earliest presentation time plus every duration before it, so
+/// consecutive segments meet without a gap. They stay in those units because a manifest
+/// writes them verbatim against a timescale it declares, and a segment is addressed by
+/// the time it begins at — milliseconds would round, and the rounding would accumulate
+/// across a presentation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Segment {
-    byte_offset: u64,
-    byte_size: u64,
-    raw_start: u64,
-    raw_duration: u64,
+    start_byte: u64,
+    end_byte: u64,
+    start_time: u64,
+    end_time: u64,
+    timescale: u32,
 }
 
 impl Segment {
-    /// A resource cut when it is asked for rather than stored has no bytes to point
-    /// at, and passes zero for both.
-    pub fn new(byte_offset: u64, byte_size: u64, raw_start: u64, raw_duration: u64) -> Self {
+    /// A segment over `bytes`, shown for `time` on a clock of `timescale` units to the
+    /// second.
+    ///
+    /// The two axes are taken as ranges rather than four numbers, since they are four
+    /// edges of the same type and nothing else would catch them being crossed. A
+    /// resource cut when it is asked for rather than stored has no bytes to point at,
+    /// and passes an empty range.
+    pub fn new(bytes: Range<u64>, time: Range<u64>, timescale: u32) -> Self {
         Self {
-            byte_offset,
-            byte_size,
-            raw_start,
-            raw_duration,
+            start_byte: bytes.start,
+            end_byte: bytes.end,
+            start_time: time.start,
+            end_time: time.end,
+            timescale,
         }
     }
 
     pub fn byte_range(&self) -> Range<u64> {
-        self.byte_offset..self.byte_offset + self.byte_size
+        self.start_byte..self.end_byte
     }
 
     pub fn byte_size(&self) -> u64 {
-        self.byte_size
+        self.end_byte - self.start_byte
     }
 
-    /// Returns the presentation time the segment covers, in the track's timescale
-    /// units. It begins at the track's earliest presentation time plus every duration
-    /// before it, so consecutive segments meet without a gap.
-    pub fn raw_range(&self) -> Range<u64> {
-        self.raw_start..self.raw_start + self.raw_duration
+    /// Returns the presentation the segment covers, in the units of its own clock.
+    pub fn time_range(&self) -> Range<u64> {
+        self.start_time..self.end_time
     }
 
-    /// Returns the segment's duration in the track's timescale units.
-    pub fn raw_duration(&self) -> u64 {
-        self.raw_duration
+    /// Returns how long the segment is shown, in the units of its own clock.
+    pub fn duration(&self) -> u64 {
+        self.end_time - self.start_time
+    }
+
+    /// Returns the clock the segment's times are counted on, in units to the second.
+    /// A manifest writing those times verbatim declares this alongside them.
+    pub fn timescale(&self) -> u32 {
+        self.timescale
+    }
+
+    /// Returns how long the segment is shown, in milliseconds.
+    ///
+    /// Rounded to the nearest, since this is read rather than counted with: a duration
+    /// a manifest states for a viewer, not one another time is derived from.
+    pub fn duration_ms(&self) -> u64 {
+        let timescale = u128::from(self.timescale);
+        let duration = (u128::from(self.duration()) * 1000 + timescale / 2) / timescale;
+
+        u64::try_from(duration).unwrap_or(u64::MAX)
     }
 }
 
@@ -97,11 +125,14 @@ pub fn segments(track: &Track, options: &SegmentOptions) -> Vec<Segment> {
 /// snap to their own nearest edge, so a span opens before some tracks have anything to
 /// give. That segment carries the time it begins at, which is what a manifest reads the
 /// timeline against.
-pub fn span(segments: &[Segment], timescale: u32, span_ms: &Range<u32>) -> Vec<Segment> {
+pub fn span(segments: &[Segment], span_ms: &Range<u32>) -> Vec<Segment> {
+    let Some(timescale) = segments.first().map(Segment::timescale) else {
+        return Vec::new();
+    };
     let mut edges = Vec::with_capacity(segments.len() + 1);
     edges.push(0u64);
     for segment in segments {
-        edges.push(edges[edges.len() - 1] + segment.raw_duration());
+        edges.push(edges[edges.len() - 1] + segment.duration());
     }
 
     let start = BoundaryUtils::snap_cut(&edges, timescale, span_ms.start);
@@ -110,18 +141,38 @@ pub fn span(segments: &[Segment], timescale: u32, span_ms: &Range<u32>) -> Vec<S
     segments[start..end].to_vec()
 }
 
+/// Returns the segment showing `at_ms`, counted from where the presentation begins, or
+/// `None` once the presentation ends before it.
+///
+/// The presentation's own origin is where its first segment starts, so a time is placed
+/// on it without anything the list does not already carry.
+///
+/// Rounded down, so a time inside a segment's own span names that segment rather than
+/// the one after it.
+pub fn at(segments: &[Segment], at_ms: u64) -> Option<&Segment> {
+    let first = segments.first()?;
+    let raw = u128::from(at_ms) * u128::from(first.timescale) / 1000;
+    let time = first
+        .start_time
+        .saturating_add(u64::try_from(raw).unwrap_or(u64::MAX));
+
+    segments
+        .iter()
+        .find(|segment| segment.time_range().contains(&time))
+}
+
 /// Returns the longest audio or video segment duration in milliseconds.
 pub fn max_segment_duration(tracks: &[Track], options: &SegmentOptions) -> u32 {
     tracks
         .iter()
         .filter(|track| matches!(track.kind(), TrackKind::Video(_) | TrackKind::Audio(_)))
         .flat_map(|track| {
-            let timescale = track.timescale();
-            segments(track, options).into_iter().map(move |segment| {
-                // Rounded up: this sizes a client's buffer, which has to cover the
-                // whole of the longest segment rather than most of it.
-                let duration =
-                    (u128::from(segment.raw_duration()) * 1000).div_ceil(u128::from(timescale));
+            segments(track, options).into_iter().map(|segment| {
+                // Rounded up rather than to the nearest: this sizes a client's buffer,
+                // which has to cover the whole of the longest segment rather than most
+                // of it.
+                let duration = (u128::from(segment.duration()) * 1000)
+                    .div_ceil(u128::from(segment.timescale()));
                 u32::try_from(duration).unwrap_or(u32::MAX)
             })
         })
@@ -135,8 +186,8 @@ pub fn max_bitrate(track: &Track, options: &SegmentOptions) -> u64 {
         .iter()
         .map(|segment| {
             let bits = u128::from(segment.byte_size()) * 8;
-            let scaled_bits = bits * u128::from(track.timescale());
-            let bitrate = scaled_bits.div_ceil(u128::from(segment.raw_duration()));
+            let scaled_bits = bits * u128::from(segment.timescale());
+            let bitrate = scaled_bits.div_ceil(u128::from(segment.duration()));
             u64::try_from(bitrate).unwrap_or(u64::MAX)
         })
         .max()
@@ -150,7 +201,7 @@ pub fn average_bitrate(track: &Track, options: &SegmentOptions) -> u64 {
         |(byte_size, raw_duration), segment| {
             (
                 byte_size + u128::from(segment.byte_size()),
-                raw_duration + u128::from(segment.raw_duration()),
+                raw_duration + u128::from(segment.duration()),
             )
         },
     );
@@ -160,6 +211,7 @@ pub fn average_bitrate(track: &Track, options: &SegmentOptions) -> u64 {
 
     let bits = byte_size * 8;
     let scaled_bits = bits * u128::from(track.timescale());
+
     u64::try_from(scaled_bits.div_ceil(raw_duration)).unwrap_or(u64::MAX)
 }
 
@@ -172,17 +224,14 @@ fn group(
     options: &SegmentOptions,
 ) -> Vec<Segment> {
     if options.min_length == 0 {
-        let mut raw_start = raw_anchor;
+        let mut start_time = raw_anchor;
         return fragments
             .iter()
             .map(|fragment| {
-                let segment = Segment::new(
-                    fragment.byte_offset,
-                    fragment.byte_size,
-                    raw_start,
-                    u64::from(fragment.raw_duration),
-                );
-                raw_start += u64::from(fragment.raw_duration);
+                let end_time = start_time + u64::from(fragment.raw_duration);
+                let segment =
+                    Segment::new(fragment.byte_range(), start_time..end_time, timescale);
+                start_time = end_time;
 
                 segment
             })
@@ -208,15 +257,13 @@ fn group(
         let long_enough = u128::from(raw_duration) * 1000 >= minimum;
         let at_cut = next_cut < cuts.len() && cuts[next_cut] == end;
         if long_enough || at_cut || end == fragments.len() {
-            let byte_offset = fragments[start].byte_offset;
-            let byte_end = fragments[end - 1].byte_range().end;
             segments.push(Segment::new(
-                byte_offset,
-                byte_end - byte_offset,
+                fragments[start].byte_offset..fragments[end - 1].byte_range().end,
                 // `cumulative` is already the table of elapsed durations, so the
-                // segment's own start is the entry its first fragment sits at.
-                raw_anchor + cumulative[start],
-                raw_duration,
+                // segment's own edges are the entries its first and last fragment
+                // sit at.
+                raw_anchor + cumulative[start]..raw_anchor + cumulative[end],
+                timescale,
             ));
             start = end;
         }
@@ -265,8 +312,8 @@ mod tests {
         assert_eq!(
             segments,
             vec![
-                Segment::new(100, 10, 0, 1000),
-                Segment::new(110, 10, 1000, 1000),
+                Segment::new(100..110, 0..1000, 1000),
+                Segment::new(110..120, 1000..2000, 1000),
             ]
         );
     }
@@ -277,10 +324,7 @@ mod tests {
         let segments = group(&fragments, 1000, 0, &options(3_000, &[]));
 
         assert_eq!(
-            segments
-                .iter()
-                .map(Segment::raw_duration)
-                .collect::<Vec<_>>(),
+            segments.iter().map(Segment::duration).collect::<Vec<_>>(),
             vec![3840, 3840]
         );
     }
@@ -291,10 +335,7 @@ mod tests {
         let segments = group(&fragments, 1000, 0, &options(3_000, &[3_960]));
 
         assert_eq!(
-            segments
-                .iter()
-                .map(Segment::raw_duration)
-                .collect::<Vec<_>>(),
+            segments.iter().map(Segment::duration).collect::<Vec<_>>(),
             vec![3840, 120, 3720]
         );
     }
@@ -310,10 +351,7 @@ mod tests {
         let segments = group(&fragments, 1000, 0, &options(3_000, &[]));
 
         assert_eq!(
-            segments
-                .iter()
-                .map(Segment::raw_duration)
-                .collect::<Vec<_>>(),
+            segments.iter().map(Segment::duration).collect::<Vec<_>>(),
             vec![4000, 500]
         );
     }
@@ -324,10 +362,7 @@ mod tests {
         let segments = group(&fragments, 1000, 0, &options(5_000, &[2_000]));
 
         assert_eq!(
-            segments
-                .iter()
-                .map(Segment::raw_duration)
-                .collect::<Vec<_>>(),
+            segments.iter().map(Segment::duration).collect::<Vec<_>>(),
             vec![2000, 1000]
         );
     }
@@ -341,10 +376,7 @@ mod tests {
         let segments = group(&fragments, 48_000, 0, &options(3_000, &[2_000]));
 
         assert_eq!(
-            segments
-                .iter()
-                .map(Segment::raw_duration)
-                .collect::<Vec<_>>(),
+            segments.iter().map(Segment::duration).collect::<Vec<_>>(),
             vec![100_352, 176_128]
         );
     }
@@ -366,7 +398,7 @@ mod tests {
         let segments = group(&fragments, 1000, 0, &options(0, &[]));
 
         assert_eq!(
-            segments.iter().map(Segment::raw_range).collect::<Vec<_>>(),
+            segments.iter().map(Segment::time_range).collect::<Vec<_>>(),
             vec![0..1000, 1000..2500, 2500..3500]
         );
     }
@@ -379,7 +411,7 @@ mod tests {
         let segments = group(&fragments, 1000, 0, &options(2_000, &[]));
 
         assert_eq!(
-            segments.iter().map(Segment::raw_range).collect::<Vec<_>>(),
+            segments.iter().map(Segment::time_range).collect::<Vec<_>>(),
             vec![0..2000, 2000..4000]
         );
     }
@@ -395,8 +427,11 @@ mod tests {
 
         assert_eq!(
             (
-                ungrouped.iter().map(Segment::raw_range).collect::<Vec<_>>(),
-                grouped[0].raw_range()
+                ungrouped
+                    .iter()
+                    .map(Segment::time_range)
+                    .collect::<Vec<_>>(),
+                grouped[0].time_range()
             ),
             (vec![9_000..10_000, 10_000..11_000], 9_000..11_000)
         );
@@ -501,9 +536,9 @@ mod tests {
         BoundaryUtils::divide(&options.boundaries, duration)
             .iter()
             .map(|range| {
-                span(&segments(track, options), track.timescale(), range)
+                span(&segments(track, options), range)
                     .iter()
-                    .map(Segment::raw_duration)
+                    .map(Segment::duration)
                     .collect()
             })
             .collect()
@@ -548,9 +583,9 @@ mod tests {
         BoundaryUtils::divide(&options.boundaries, duration)
             .iter()
             .filter_map(|range| {
-                span(&segments(track, options), track.timescale(), range)
+                span(&segments(track, options), range)
                     .first()
-                    .map(|segment| segment.raw_range().start)
+                    .map(|segment| segment.time_range().start)
             })
             .collect()
     }
