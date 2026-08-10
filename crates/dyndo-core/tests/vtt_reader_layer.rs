@@ -51,3 +51,24 @@ async fn vtt_reader_layer_probes_and_serves_packaged_subtitles() {
         ]
     );
 }
+
+#[tokio::test]
+async fn vtt_reader_layer_reports_an_invalid_subtitle_document() {
+    let operator = memory_operator();
+    let path = RelativePath::new("subtitles/invalid.vtt");
+    operator
+        .write(path.as_str(), "this is not a WebVTT document")
+        .await
+        .unwrap();
+
+    let error = Track::probe(&operator, path, None, &SegmentOptions::default())
+        .await
+        .err()
+        .unwrap();
+
+    assert!(
+        error
+            .to_string()
+            .contains("cannot package subtitle document")
+    );
+}

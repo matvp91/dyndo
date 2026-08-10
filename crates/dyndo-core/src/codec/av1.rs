@@ -38,6 +38,8 @@ impl Codec for Av1Codec {
 
 #[cfg(test)]
 mod tests {
+    use mp4_atom::{Av01, Av1c};
+
     use super::{Av1Codec, Codec};
 
     #[test]
@@ -50,5 +52,21 @@ mod tests {
         };
 
         assert_eq!(codec.rfc6381(), "av01.0.08M.10");
+    }
+
+    #[test]
+    fn new_maps_the_configuration_tier_and_bit_depth() {
+        let entry = Av01 {
+            av1c: Av1c {
+                seq_profile: 2,
+                seq_level_idx_0: 12,
+                seq_tier_0: true,
+                twelve_bit: true,
+                ..Av1c::default()
+            },
+            ..Av01::default()
+        };
+
+        assert_eq!(Av1Codec::new(&entry).rfc6381(), "av01.2.12H.12");
     }
 }

@@ -78,9 +78,9 @@ fn rfc6381(prefix: &str, configuration: &Hvcc) -> String {
 
 #[cfg(test)]
 mod tests {
-    use mp4_atom::Hvcc;
+    use mp4_atom::{Hev1, Hvc1, Hvcc};
 
-    use super::rfc6381;
+    use super::{Codec, HevcCodec, rfc6381};
 
     #[test]
     fn rfc6381_reverses_compatibility_bits_and_omits_trailing_zero_constraints() {
@@ -93,5 +93,25 @@ mod tests {
         };
 
         assert_eq!(rfc6381("hvc1", &configuration), "hvc1.1.6.L120.b0");
+    }
+
+    #[test]
+    fn new_uses_the_sample_entry_prefix() {
+        let configuration = Hvcc {
+            general_profile_idc: 1,
+            general_level_idc: 120,
+            ..Hvcc::default()
+        };
+        let hvc1 = Hvc1 {
+            hvcc: configuration.clone(),
+            ..Hvc1::default()
+        };
+        let hev1 = Hev1 {
+            hvcc: configuration,
+            ..Hev1::default()
+        };
+
+        assert_eq!(HevcCodec::new(&hvc1).rfc6381(), "hvc1.1.0.L120");
+        assert_eq!(HevcCodec::new(&hev1).rfc6381(), "hev1.1.0.L120");
     }
 }

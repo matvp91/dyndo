@@ -48,6 +48,8 @@ impl Codec for AvcCodec {
 
 #[cfg(test)]
 mod tests {
+    use mp4_atom::{Avc1, Avcc};
+
     use super::{AvcCodec, Codec};
 
     #[test]
@@ -62,5 +64,27 @@ mod tests {
         };
 
         assert_eq!(codec.rfc6381(), "avc1.42c00a");
+    }
+
+    #[test]
+    fn new_preserves_h264_configuration() {
+        let entry = Avc1 {
+            avcc: Avcc {
+                avc_profile_indication: 0x64,
+                profile_compatibility: 0,
+                avc_level_indication: 0x1f,
+                length_size: 2,
+                sequence_parameter_sets: vec![vec![1, 2]],
+                picture_parameter_sets: vec![vec![3]],
+                ..Avcc::default()
+            },
+            ..Avc1::default()
+        };
+        let codec = AvcCodec::new(&entry);
+
+        assert_eq!(codec.rfc6381(), "avc1.64001f");
+        assert_eq!(codec.nal_length_size(), 2);
+        assert_eq!(codec.sequence_parameter_sets(), [vec![1, 2]]);
+        assert_eq!(codec.picture_parameter_sets(), [vec![3]]);
     }
 }

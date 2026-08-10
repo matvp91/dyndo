@@ -50,6 +50,19 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: make test
 
+  fixture-budget:
+    name: fixture budget
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Reject oversized MP4 fixtures
+        run: |
+          oversized=$(find crates/dyndo-core/tests/fixtures -type f -name '*.mp4' -size +4k -print -quit)
+          test -z "$oversized" || {
+            echo "MP4 test fixtures must be at most 4 KiB: $oversized"
+            exit 1
+          }
+
   doc:
     name: doc
     runs-on: ubuntu-latest

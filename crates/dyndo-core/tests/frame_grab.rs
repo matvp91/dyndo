@@ -6,6 +6,8 @@ use opendal::{Operator, services::Memory};
 use relative_path::RelativePath;
 
 const VIDEO_FIXTURE: &[u8] = include_bytes!("fixtures/three-frame-black-h264.mp4");
+const TWO_SEGMENT_VIDEO_FIXTURE: &[u8] =
+    include_bytes!("fixtures/two-segment-black-white-h264.mp4");
 
 fn memory_operator() -> Operator {
     Operator::new(Memory::default()).unwrap()
@@ -37,4 +39,60 @@ fn is_nearly_black(image: &RgbImage) -> bool {
     image
         .pixels()
         .all(|pixel| pixel.0.iter().all(|&channel| channel <= 5))
+}
+
+#[tokio::test]
+async fn jpeg_selects_the_frame_on_each_side_of_a_media_segment_boundary() {
+    let operator = memory_operator();
+    let path = RelativePath::new("video.mp4");
+    operator
+        .write(path.as_str(), TWO_SEGMENT_VIDEO_FIXTURE)
+        .await
+        .unwrap();
+    let track = Track::probe(&operator, path, None, &SegmentOptions::default())
+        .await
+        .unwrap();
+    let grab = FrameGrab::new(&operator, &track).unwrap();
+
+    let before_boundary = jpeg_image(&grab, 499).await;
+    let at_boundary = jpeg_image(&grab, 500).await;
+    let after_boundary = jpeg_image(&grab, 999).await;
+
+    assert_eq!(track.segments().len(), 2);
+    assert!(is_nearly_black(&before_boundary));
+    assert!(is_nearly_white(&at_boundary));
+    assert!(is_nearly_white(&after_boundary));
+}
+
+#[tokio::test]
+async fn jpeg_rejects_a_time_at_the_end_of_the_video_track() {
+    let operator = memory_operator();
+    let path = RelativePath::new("video.mp4");
+    operator
+        .write(path.as_str(), TWO_SEGMENT_VIDEO_FIXTURE)
+        .await
+        .unwrap();
+    let track = Track::probe(&operator, path, None, &SegmentOptions::default())
+        .await
+        .unwrap();
+    let error = FrameGrab::new(&operator, &track)
+        .unwrap()
+        .jpeg(1_000)
+        .await
+        .unwrap_err();
+
+    assert_eq!(error.to_string(), "time 1000 ms is outside the video track");
+}
+
+async fn jpeg_image(grab: &FrameGrab<'_>, time: u64) -> RgbImage {
+    let jpeg = grab.jpeg(time).await.unwrap();
+    image::load_from_memory_with_format(&jpeg, ImageFormat::Jpeg)
+        .unwrap()
+        .to_rgb8()
+}
+
+fn is_nearly_white(image: &RgbImage) -> bool {
+    image
+        .pixels()
+        .all(|pixel| pixel.0.iter().all(|&channel| channel >= 250))
 }
