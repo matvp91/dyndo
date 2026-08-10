@@ -4,13 +4,10 @@ use axum::{
     http::header::CONTENT_TYPE,
     response::{IntoResponse, Response},
 };
-use dyndo_core::packaging::UnpackagedMedia;
-use dyndo_core::packaging::wvtt::{WvttSample, WvttUnpackager};
 use dyndo_core::reader::Reader;
 use dyndo_core::segment_options::SegmentOptions;
 use dyndo_core::served_segment::ServedSegment;
-use dyndo_core::text::{Cue, Subtitle};
-use dyndo_core::time::Time;
+use dyndo_core::text::Subtitle;
 use dyndo_core::track::Track;
 use opendal::Operator;
 
@@ -64,8 +61,7 @@ pub(super) async fn text(
     let mut bytes = Vec::with_capacity(initialization.len() + segment.len());
     bytes.extend_from_slice(&initialization);
     bytes.extend_from_slice(&segment);
-    let media = WvttUnpackager::new().unpackage(&bytes)?;
-    let subtitle = subtitle(&media)?;
+    let subtitle = Subtitle::from_wvtt(&bytes)?;
 
     Ok(([(CONTENT_TYPE, "text/vtt")], subtitle.to_vtt_text()).into_response())
 }
@@ -111,53 +107,4 @@ async fn read_track(
     let track = Track::probe(op, &path, Some(descriptor), &segment_options).await?;
 
     Ok((track, segment_options))
-}
-
-fn subtitle(media: &UnpackagedMedia<WvttSample>) -> Result<Subtitle, ServerError> {
-    let mut cues: Vec<Cue> = Vec::new();
-    let mut open: Vec<usize> = Vec::new();
-
-    for segment in media.segments() {
-        let mut start = segment.base_decode_time();
-        for sample in segment.samples() {
-            let end = start
-                .checked_add(u64::from(sample.duration()))
-                .ok_or(ServerError::SubtitleTimeOverflow(start))?;
-            let start_ms = timestamp(start, media.timescale())?;
-            let end_ms = timestamp(end, media.timescale())?;
-            let mut still_open = Vec::with_capacity(sample.payload().cues().len());
-
-            for text in sample.payload().cues() {
-                let continued = open
-                    .iter()
-                    .copied()
-                    .find(|&index| cues[index].end == start_ms && cues[index].text == *text);
-                match continued {
-                    Some(index) => {
-                        cues[index].end = end_ms;
-                        still_open.push(index);
-                    }
-                    None => {
-                        cues.push(Cue {
-                            start: start_ms,
-                            end: end_ms,
-                            text: text.clone(),
-                        });
-                        still_open.push(cues.len() - 1);
-                    }
-                }
-            }
-
-            open = still_open;
-            start = end;
-        }
-    }
-
-    cues.sort_by_key(|cue| (cue.start, cue.end));
-    Ok(Subtitle { cues })
-}
-
-fn timestamp(time: u64, timescale: u32) -> Result<u32, ServerError> {
-    let milliseconds = Time::milliseconds(time, timescale);
-    u32::try_from(milliseconds).map_err(|_| ServerError::SubtitleTimeOverflow(milliseconds))
 }

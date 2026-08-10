@@ -1,7 +1,5 @@
 use std::sync::Arc;
 
-use super::super::packaging::wvtt::{WvttPackager, WvttSample};
-use super::super::packaging::{MediaSegment, Sample};
 use super::super::text::Subtitle;
 use ::opendal::raw::oio::{Read, ReadStream, StreamRead};
 use ::opendal::raw::{
@@ -11,8 +9,6 @@ use ::opendal::raw::{
 use ::opendal::{
     Buffer, BytesRange, Capability, EntryMode, Error, ErrorKind, Metadata, OperationContext, Result,
 };
-
-const TIMESCALE: u32 = 1_000;
 
 #[derive(Debug, Clone)]
 pub(super) struct VttLayer {
@@ -40,23 +36,8 @@ impl VttLayer {
             .await?;
         let document = String::from_utf8(stream.read_all().await?.to_vec()).map_err(unpackable)?;
         let subtitle = Subtitle::from_vtt_text(&document).map_err(unpackable)?;
-        let segments = subtitle
-            .segments(self.segment_duration, &self.boundaries)
-            .into_iter()
-            .map(|segment| {
-                let samples = segment
-                    .samples()
-                    .into_iter()
-                    .map(|sample| {
-                        let cues = sample.cues().iter().map(|cue| cue.text.clone()).collect();
-                        Sample::new(sample.duration(), WvttSample::new(cues))
-                    })
-                    .collect();
-                MediaSegment::new(u64::from(segment.start()), samples)
-            })
-            .collect::<Vec<_>>();
-        let packaged = WvttPackager::new(TIMESCALE)
-            .package(&segments)
+        let packaged = subtitle
+            .to_wvtt(self.segment_duration, &self.boundaries)
             .map_err(unpackable)?;
 
         Ok(Buffer::from(packaged))

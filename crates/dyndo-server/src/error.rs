@@ -3,9 +3,9 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use dyndo_core::asset_descriptor::AssetDescriptorError;
-use dyndo_core::packaging::UnpackageError;
 use dyndo_core::probe::ProbeError;
 use dyndo_core::reader::TrackReadError;
+use dyndo_core::text::wvtt::WvttParseError;
 use dyndo_dash::DashError;
 use dyndo_hls::HlsError;
 
@@ -28,9 +28,7 @@ pub enum ServerError {
     #[error(transparent)]
     Hls(#[from] HlsError),
     #[error(transparent)]
-    Unpackage(#[from] UnpackageError),
-    #[error("subtitle timestamp {0}ms overflows")]
-    SubtitleTimeOverflow(u64),
+    WvttParse(#[from] WvttParseError),
     #[error("manifest serialization failed: {0}")]
     Serialization(String),
 }
@@ -55,8 +53,7 @@ impl IntoResponse for ServerError {
             | Self::TrackRead(_)
             | Self::Dash(_)
             | Self::Hls(_)
-            | Self::Unpackage(_)
-            | Self::SubtitleTimeOverflow(_)
+            | Self::WvttParse(_)
             | Self::Serialization(_) => StatusCode::INTERNAL_SERVER_ERROR,
         };
         (status, self.to_string()).into_response()
