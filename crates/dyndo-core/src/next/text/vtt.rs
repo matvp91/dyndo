@@ -5,7 +5,7 @@ const TIMING_ARROW: &str = "-->";
 const NON_CUE_KEYWORDS: [&str; 3] = ["NOTE", "STYLE", "REGION"];
 
 #[derive(Debug, thiserror::Error)]
-pub enum ParseError {
+pub enum VttParseError {
     #[error("missing WEBVTT signature")]
     MissingSignature,
     #[error("malformed timestamp {0:?}")]
@@ -14,43 +14,45 @@ pub enum ParseError {
     NegativeDuration(u32),
 }
 
-pub fn parse(document: &str) -> Result<Subtitle, ParseError> {
-    let document = document.strip_prefix('\u{feff}').unwrap_or(document);
-    let mut lines = document.lines();
+impl Subtitle {
+    pub fn from_vtt_text(document: &str) -> Result<Self, VttParseError> {
+        let document = document.strip_prefix('\u{feff}').unwrap_or(document);
+        let mut lines = document.lines();
 
-    if !is_signature(lines.next().unwrap_or_default()) {
-        return Err(ParseError::MissingSignature);
-    }
-
-    let mut cues = Vec::new();
-    let mut block: Vec<&str> = Vec::new();
-    for line in lines.chain(std::iter::once("")) {
-        if line.trim().is_empty() {
-            cues.extend(parse_block(&block)?);
-            block.clear();
-        } else {
-            block.push(line);
+        if !is_signature(lines.next().unwrap_or_default()) {
+            return Err(VttParseError::MissingSignature);
         }
+
+        let mut cues = Vec::new();
+        let mut block: Vec<&str> = Vec::new();
+        for line in lines.chain(std::iter::once("")) {
+            if line.trim().is_empty() {
+                cues.extend(parse_block(&block)?);
+                block.clear();
+            } else {
+                block.push(line);
+            }
+        }
+
+        cues.sort_by_key(|cue| (cue.start, cue.end));
+
+        Ok(Self { cues })
     }
 
-    cues.sort_by_key(|cue| (cue.start, cue.end));
+    pub fn to_vtt_text(&self) -> String {
+        let mut document = String::from("WEBVTT\n");
+        for cue in &self.cues {
+            document.push('\n');
+            document.push_str(&write_timestamp(cue.start));
+            document.push_str(" --> ");
+            document.push_str(&write_timestamp(cue.end));
+            document.push('\n');
+            document.push_str(&cue.text);
+            document.push('\n');
+        }
 
-    Ok(Subtitle { cues })
-}
-
-pub fn write(subtitle: &Subtitle) -> String {
-    let mut document = String::from("WEBVTT\n");
-    for cue in &subtitle.cues {
-        document.push('\n');
-        document.push_str(&write_timestamp(cue.start));
-        document.push_str(" --> ");
-        document.push_str(&write_timestamp(cue.end));
-        document.push('\n');
-        document.push_str(&cue.text);
-        document.push('\n');
+        document
     }
-
-    document
 }
 
 fn write_timestamp(timestamp: u32) -> String {
@@ -70,7 +72,7 @@ fn is_signature(line: &str) -> bool {
         .is_some_and(|rest| rest.is_empty() || rest.starts_with([' ', '\t']))
 }
 
-fn parse_block(block: &[&str]) -> Result<Option<Cue>, ParseError> {
+fn parse_block(block: &[&str]) -> Result<Option<Cue>, VttParseError> {
     let keyword = block
         .first()
         .and_then(|line| line.split_whitespace().next());
@@ -92,7 +94,7 @@ fn parse_block(block: &[&str]) -> Result<Option<Cue>, ParseError> {
     }))
 }
 
-fn parse_timing(line: &str) -> Result<(u32, u32), ParseError> {
+fn parse_timing(line: &str) -> Result<(u32, u32), VttParseError> {
     let (start, end) = line
         .split_once(TIMING_ARROW)
         .expect("callers only pass timing lines");
@@ -100,14 +102,14 @@ fn parse_timing(line: &str) -> Result<(u32, u32), ParseError> {
     let end = parse_timestamp(end.split_whitespace().next().unwrap_or_default())?;
 
     if end < start {
-        return Err(ParseError::NegativeDuration(start));
+        return Err(VttParseError::NegativeDuration(start));
     }
 
     Ok((start, end))
 }
 
-fn parse_timestamp(timestamp: &str) -> Result<u32, ParseError> {
-    let malformed = || ParseError::MalformedTimestamp(timestamp.to_string());
+fn parse_timestamp(timestamp: &str) -> Result<u32, VttParseError> {
+    let malformed = || VttParseError::MalformedTimestamp(timestamp.to_string());
 
     let (clock, millis) = timestamp.split_once('.').ok_or_else(malformed)?;
     if millis.len() != 3 {

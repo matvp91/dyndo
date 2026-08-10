@@ -3,7 +3,7 @@ use std::sync::Arc;
 use super::super::super::packaging::wvtt::{WvttPackager, WvttSample};
 use super::super::super::packaging::{MediaSegment, Sample};
 use super::super::super::segmentation::{DurationPolicy, SegmentationPolicy, Segmenter};
-use super::super::super::text::{timeline, vtt};
+use super::super::super::text::Subtitle;
 use ::opendal::raw::oio::{Read, ReadStream, StreamRead};
 use ::opendal::raw::{
     Layer, OpCopier, OpCopy, OpCreateDir, OpList, OpPresign, OpRead, OpRename, OpStat, OpWrite,
@@ -41,14 +41,15 @@ impl VttLayer {
             .open(BytesRange::default())
             .await?;
         let document = String::from_utf8(stream.read_all().await?.to_vec()).map_err(unpackable)?;
-        let subtitle = vtt::parse(&document).map_err(unpackable)?;
+        let subtitle = Subtitle::from_vtt_text(&document).map_err(unpackable)?;
         let duration = subtitle.cues.iter().map(|cue| cue.end).max().unwrap_or(0);
         let segments = self
             .segmenter
             .exact(duration)
             .into_iter()
             .map(|range| {
-                let samples = timeline::samples(&subtitle, range.clone())
+                let samples = subtitle
+                    .samples(range.clone())
                     .into_iter()
                     .map(|sample| {
                         let cues = sample.cues().iter().map(|cue| cue.text.clone()).collect();

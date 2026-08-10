@@ -1,6 +1,6 @@
 mod subtitle;
 
-pub mod timeline;
+pub mod sampling;
 pub mod vtt;
 
 pub use subtitle::{Cue, Subtitle};

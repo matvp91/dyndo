@@ -1,7 +1,8 @@
 use std::iter::successors;
 use std::ops::Range;
 
-use super::{DurationPolicy, SegmentationPolicy};
+use super::super::time::Time;
+use super::{DurationPolicy, SegmentationPolicy, partition};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Segmenter {
@@ -17,6 +18,7 @@ impl Segmenter {
         &self.policy
     }
 
+    /// Produces exact media ranges for sources that dyndo can cut at any time.
     pub fn exact(&self, duration: u32) -> Vec<Range<u32>> {
         let divisions = self
             .policy
@@ -24,7 +26,7 @@ impl Segmenter {
             .iter()
             .copied()
             .chain(grid(self.policy.duration().duration(), duration));
-        intervals(0, duration, divisions)
+        partition(0..duration, divisions)
     }
 
     pub fn constrained(&self, durations: &[u32], timescale: u32) -> Vec<Range<usize>> {
@@ -40,7 +42,8 @@ impl Segmenter {
 
         match self.policy.duration() {
             DurationPolicy::Exact(length) => {
-                let duration = milliseconds(*cumulative.last().unwrap_or(&0), timescale);
+                let duration = Time::milliseconds(*cumulative.last().unwrap_or(&0), timescale);
+                let duration = u32::try_from(duration).unwrap_or(u32::MAX);
                 let boundaries = self
                     .policy
                     .boundaries()
@@ -108,12 +111,7 @@ fn snapped_cuts(
 }
 
 fn index_ranges(end: usize, cuts: &[usize]) -> Vec<Range<usize>> {
-    intervals(0, end, cuts.iter().copied())
-}
-
-fn milliseconds(duration: u64, timescale: u32) -> u32 {
-    let milliseconds = (u128::from(duration) * 1_000).div_ceil(u128::from(timescale));
-    u32::try_from(milliseconds).unwrap_or(u32::MAX)
+    partition(0..end, cuts.iter().copied())
 }
 
 fn grid(length: u32, end: u32) -> impl Iterator<Item = u32> {
@@ -121,20 +119,4 @@ fn grid(length: u32, end: u32) -> impl Iterator<Item = u32> {
         time.checked_add(length)
     })
     .take_while(move |&time| time < end)
-}
-
-fn intervals<T: Ord + Copy>(
-    start: T,
-    end: T,
-    divisions: impl IntoIterator<Item = T>,
-) -> Vec<Range<T>> {
-    let mut edges: Vec<_> = divisions
-        .into_iter()
-        .filter(|&division| division > start && division < end)
-        .chain([start, end])
-        .collect();
-    edges.sort_unstable();
-    edges.dedup();
-
-    edges.windows(2).map(|edges| edges[0]..edges[1]).collect()
 }
