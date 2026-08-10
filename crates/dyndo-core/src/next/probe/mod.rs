@@ -1,10 +1,9 @@
+use ::opendal::Operator;
 use futures_util::future::try_join_all;
-use opendal::Operator;
 use relative_path::RelativePath;
 use uuid::Uuid;
 
 use super::asset_descriptor::AssetDescriptor;
-use super::opendal::add_operator_layers;
 use super::segment_options::SegmentOptions;
 use super::track::Track;
 use super::track_descriptor::TrackDescriptor;
@@ -12,10 +11,12 @@ use super::track_kind::TrackKind;
 
 use self::box_reader::BoxReaderError;
 use self::metadata::{build_codec, build_kind};
+use self::opendal::add_operator_layers;
 use self::segment_index::{build_init_segment, build_segments};
 
 mod box_reader;
 mod metadata;
+mod opendal;
 mod segment_index;
 
 #[derive(Debug, thiserror::Error)]

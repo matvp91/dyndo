@@ -1,8 +1,11 @@
 pub mod asset_descriptor;
 pub mod codec;
+pub mod packaging;
 pub mod probe;
+pub mod role;
 pub mod segment;
 pub mod segment_options;
+pub mod text;
 pub mod time;
 pub mod track;
 pub mod track_descriptor;
