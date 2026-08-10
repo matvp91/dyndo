@@ -8,6 +8,7 @@ use relative_path::RelativePath;
 const VIDEO_FIXTURE: &[u8] = include_bytes!("fixtures/three-frame-black-h264.mp4");
 const TWO_SEGMENT_VIDEO_FIXTURE: &[u8] =
     include_bytes!("fixtures/two-segment-black-white-h264.mp4");
+const INTERFRAME_VIDEO_FIXTURE: &[u8] = include_bytes!("fixtures/four-colour-interframe-h264.mp4");
 
 fn memory_operator() -> Operator {
     Operator::new(Memory::default()).unwrap()
@@ -84,6 +85,23 @@ async fn jpeg_rejects_a_time_at_the_end_of_the_video_track() {
     assert_eq!(error.to_string(), "time 1000 ms is outside the video track");
 }
 
+#[tokio::test]
+async fn jpeg_seeks_from_a_keyframe_to_the_requested_interframe() {
+    let operator = memory_operator();
+    let path = RelativePath::new("video.mp4");
+    operator
+        .write(path.as_str(), INTERFRAME_VIDEO_FIXTURE)
+        .await
+        .unwrap();
+    let track = Track::probe(&operator, path, None, &SegmentOptions::default())
+        .await
+        .unwrap();
+    let grab = FrameGrab::new(&operator, &track).unwrap();
+    let image = jpeg_image(&grab, 500).await;
+
+    assert!(is_predominantly_blue(&image));
+}
+
 async fn jpeg_image(grab: &FrameGrab<'_>, time: u64) -> RgbImage {
     let jpeg = grab.jpeg(time).await.unwrap();
     image::load_from_memory_with_format(&jpeg, ImageFormat::Jpeg)
@@ -95,4 +113,11 @@ fn is_nearly_white(image: &RgbImage) -> bool {
     image
         .pixels()
         .all(|pixel| pixel.0.iter().all(|&channel| channel >= 250))
+}
+
+fn is_predominantly_blue(image: &RgbImage) -> bool {
+    image.pixels().all(|pixel| {
+        u16::from(pixel.0[2]) > u16::from(pixel.0[0]) + 40
+            && u16::from(pixel.0[2]) > u16::from(pixel.0[1]) + 40
+    })
 }
