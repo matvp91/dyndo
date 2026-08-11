@@ -9,7 +9,6 @@ use dyndo_hls::options::HlsOptions;
 use opendal::Operator;
 use serde::Serialize;
 
-use super::filter::Filter;
 use super::track_resolver::TrackResolver;
 use crate::error::ServerError;
 
@@ -20,9 +19,8 @@ pub(super) async fn dash(
     op: &Operator,
     asset: &AssetDescriptor,
     options: &DashOptions,
-    filter: Option<&Filter>,
 ) -> Result<Response, ServerError> {
-    let tracks = manifest_tracks(op, asset, filter).await?;
+    let tracks = manifest_tracks(op, asset).await?;
     let mpd = dyndo_dash::generate_mpd(&tracks, &asset.segment_options, options)?;
     let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
     let mut serializer = quick_xml::se::Serializer::new(&mut xml);
@@ -36,9 +34,8 @@ pub(super) async fn hls_master(
     op: &Operator,
     asset: &AssetDescriptor,
     options: &HlsOptions,
-    filter: Option<&Filter>,
 ) -> Result<Response, ServerError> {
-    let tracks = manifest_tracks(op, asset, filter).await?;
+    let tracks = manifest_tracks(op, asset).await?;
     let playlist = dyndo_hls::generate_master_playlist(&tracks, &asset.segment_options, options)?;
     Ok(([(CONTENT_TYPE, HLS_CONTENT_TYPE)], playlist).into_response())
 }
@@ -46,16 +43,8 @@ pub(super) async fn hls_master(
 async fn manifest_tracks(
     op: &Operator,
     asset: &AssetDescriptor,
-    filter: Option<&Filter>,
 ) -> Result<Vec<Track>, ServerError> {
-    let tracks = TrackResolver::new(op, asset).probe_all().await?;
-
-    match filter {
-        Some(filter) => filter
-            .narrow(tracks, &asset.segment_options)
-            .map_err(|error| ServerError::NotFound(error.to_string())),
-        None => Ok(tracks),
-    }
+    TrackResolver::new(op, asset).probe_all().await
 }
 
 pub(super) async fn hls_media(

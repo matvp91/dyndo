@@ -67,16 +67,21 @@ async fn manifest(
     let not_found = || ServerError::NotFound(resource.clone());
     let resource = resource.rsplit_once('.').ok_or_else(not_found)?;
     let options = Options::parse(&encoded_options)?;
-    let asset = load_asset(&op, &options).await?;
+    let mut asset = load_asset(&op, &options).await?;
+    if let Some(filter) = &query.filter {
+        filter
+            .apply(&mut asset)
+            .map_err(|error| ServerError::NotFound(error.to_string()))?;
+    }
 
     match resource {
         ("index", "mpd") => {
             let dash_options = options.dash_options();
-            manifest::dash(&op, &asset, &dash_options, query.filter.as_ref()).await
+            manifest::dash(&op, &asset, &dash_options).await
         }
         ("master", "m3u8") => {
             let hls_options = options.hls_options();
-            manifest::hls_master(&op, &asset, &hls_options, query.filter.as_ref()).await
+            manifest::hls_master(&op, &asset, &hls_options).await
         }
         (resource, "m3u8") => {
             let hls_options = options.hls_options();

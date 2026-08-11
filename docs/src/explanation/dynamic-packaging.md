@@ -40,7 +40,7 @@ Track IDs derive from source paths rather than mutable metadata. A language or r
 
 The descriptor supplies track metadata and default segmentation settings. Server options in the request path can override segmentation and choose output behavior, while the `filter` query parameter can narrow the tracks in a top-level manifest. Without writing new media objects, a request can:
 
-- filter renditions by type, codec, bitrate, resolution, language, or role;
+- filter descriptor entries by type, codec, resolution, language, role, or thumbnail settings;
 - group source fragments into longer served segments;
 - introduce boundaries for splicing or period changes;
 - render one DASH period or several;

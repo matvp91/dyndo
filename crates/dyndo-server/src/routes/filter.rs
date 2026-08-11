@@ -1,8 +1,6 @@
-use std::borrow::Cow;
-
-use dyndo_core::segment_options::SegmentOptions;
-use dyndo_core::served_segment::ServedSegment;
-use dyndo_core::track::Track;
+use dyndo_core::asset_descriptor::AssetDescriptor;
+use dyndo_core::thumbnail_descriptor::ThumbnailDescriptor;
+use dyndo_core::track_descriptor::TrackDescriptor;
 use dyndo_core::track_kind::TrackKind;
 use serde::{Deserialize, Deserializer, de};
 use winnow::ascii::{digit1, multispace0};
@@ -43,31 +41,34 @@ impl Filter {
             })
     }
 
-    fn matches(&self, track: &Track, options: &SegmentOptions) -> bool {
-        self.expression.matches(track, options)
-    }
-
-    pub(super) fn narrow(
+    pub(super) fn apply(
         &self,
-        tracks: Vec<Track>,
-        options: &SegmentOptions,
-    ) -> Result<Vec<Track>, FilterMatchedNothing> {
-        let tracks: Vec<_> = tracks
-            .into_iter()
-            .filter(|track| self.matches(track, options))
-            .collect();
+        descriptor: &mut AssetDescriptor,
+    ) -> Result<(), FilterMatchedNothing> {
+        descriptor
+            .tracks
+            .retain(|track| self.expression.matches(Descriptor::Track(track)));
+        descriptor
+            .thumbnails
+            .retain(|thumbnail| self.expression.matches(Descriptor::Thumbnail(thumbnail)));
 
-        if tracks.is_empty() {
+        if descriptor.tracks.is_empty() && descriptor.thumbnails.is_empty() {
             Err(FilterMatchedNothing)
         } else {
-            Ok(tracks)
+            Ok(())
         }
     }
 }
 
 #[derive(Debug, thiserror::Error)]
-#[error("no track matches the filter")]
+#[error("no asset descriptor entry matches the filter")]
 pub(super) struct FilterMatchedNothing;
+
+#[derive(Clone, Copy)]
+enum Descriptor<'a> {
+    Track(&'a TrackDescriptor),
+    Thumbnail(&'a ThumbnailDescriptor),
+}
 
 #[derive(Debug, PartialEq, Eq)]
 enum Expression {
@@ -77,11 +78,11 @@ enum Expression {
 }
 
 impl Expression {
-    fn matches(&self, track: &Track, options: &SegmentOptions) -> bool {
+    fn matches(&self, descriptor: Descriptor<'_>) -> bool {
         match self {
-            Self::And(left, right) => left.matches(track, options) && right.matches(track, options),
-            Self::Or(left, right) => left.matches(track, options) || right.matches(track, options),
-            Self::Comparison(comparison) => comparison.matches(track, options),
+            Self::And(left, right) => left.matches(descriptor) && right.matches(descriptor),
+            Self::Or(left, right) => left.matches(descriptor) || right.matches(descriptor),
+            Self::Comparison(comparison) => comparison.matches(descriptor),
         }
     }
 }
@@ -94,15 +95,15 @@ struct Comparison {
 }
 
 impl Comparison {
-    fn matches(&self, track: &Track, options: &SegmentOptions) -> bool {
+    fn matches(&self, descriptor: Descriptor<'_>) -> bool {
         match &self.value {
             Literal::Text(wanted) => self
                 .attribute
-                .text(track)
+                .text(descriptor)
                 .is_some_and(|actual| self.operator.holds(actual.as_ref(), wanted.as_str())),
             Literal::Number(wanted) => self
                 .attribute
-                .number(track, options)
+                .number(descriptor)
                 .is_some_and(|actual| self.operator.holds(&actual, wanted)),
         }
     }
@@ -116,13 +117,12 @@ enum Attribute {
     FrameRate,
     Language,
     Role,
-    Bitrate,
-    AverageBitrate,
-    Duration,
     Width,
     Height,
     SampleRate,
     Channels,
+    TileSize,
+    Step,
 }
 
 impl Attribute {
@@ -134,13 +134,12 @@ impl Attribute {
             "frame_rate" => Some(Self::FrameRate),
             "language" => Some(Self::Language),
             "role" => Some(Self::Role),
-            "bitrate" => Some(Self::Bitrate),
-            "avg_bitrate" => Some(Self::AverageBitrate),
-            "duration" => Some(Self::Duration),
             "width" => Some(Self::Width),
             "height" => Some(Self::Height),
             "sample_rate" => Some(Self::SampleRate),
             "channels" => Some(Self::Channels),
+            "tile_size" => Some(Self::TileSize),
+            "step" => Some(Self::Step),
             _ => None,
         }
     }
@@ -148,73 +147,66 @@ impl Attribute {
     fn is_numeric(self) -> bool {
         matches!(
             self,
-            Self::Bitrate
-                | Self::AverageBitrate
-                | Self::Duration
-                | Self::Width
+            Self::Width
                 | Self::Height
                 | Self::SampleRate
                 | Self::Channels
+                | Self::TileSize
+                | Self::Step
         )
     }
 
-    fn text<'a>(self, track: &'a Track) -> Option<Cow<'a, str>> {
-        match self {
-            Self::Type => Some(Cow::Borrowed(track.kind().content_type())),
-            Self::Id => Some(Cow::Borrowed(track.id())),
-            Self::Codec => Some(Cow::Owned(track.codec().rfc6381())),
-            Self::FrameRate => match track.kind() {
-                TrackKind::Video(video) => Some(Cow::Borrowed(&video.frame_rate)),
+    fn text<'a>(self, descriptor: Descriptor<'a>) -> Option<&'a str> {
+        match (self, descriptor) {
+            (Self::Type, Descriptor::Track(track)) => Some(track.kind.content_type()),
+            (Self::Type, Descriptor::Thumbnail(_)) => Some("image"),
+            (Self::Id, Descriptor::Track(track)) => Some(&track.id),
+            (Self::Id, Descriptor::Thumbnail(thumbnail)) => Some(&thumbnail.id),
+            (Self::Codec, Descriptor::Track(track)) => Some(&track.codec),
+            (Self::FrameRate, Descriptor::Track(track)) => match &track.kind {
+                TrackKind::Video(video) => Some(&video.frame_rate),
                 _ => None,
             },
-            Self::Language => match track.kind() {
-                TrackKind::Audio(audio) => Some(Cow::Borrowed(audio.language.as_str())),
-                TrackKind::Text(text) => Some(Cow::Borrowed(text.language.as_str())),
+            (Self::Language, Descriptor::Track(track)) => match &track.kind {
+                TrackKind::Audio(audio) => Some(audio.language.as_str()),
+                TrackKind::Text(text) => Some(text.language.as_str()),
                 TrackKind::Video(_) => None,
             },
-            Self::Role => match track.kind() {
-                TrackKind::Audio(audio) => audio.role.map(|role| Cow::Borrowed(role.as_str())),
-                TrackKind::Text(text) => text.role.map(|role| Cow::Borrowed(role.as_str())),
+            (Self::Role, Descriptor::Track(track)) => match &track.kind {
+                TrackKind::Audio(audio) => audio.role.as_ref().map(|role| role.as_str()),
+                TrackKind::Text(text) => text.role.as_ref().map(|role| role.as_str()),
                 TrackKind::Video(_) => None,
             },
             _ => None,
         }
     }
 
-    fn number(self, track: &Track, options: &SegmentOptions) -> Option<u64> {
-        match self {
-            Self::Bitrate => {
-                let segments = served_segments(track, options);
-                Some(ServedSegment::maximum_bitrate(&segments))
-            }
-            Self::AverageBitrate => {
-                let segments = served_segments(track, options);
-                Some(ServedSegment::average_bitrate(&segments))
-            }
-            Self::Duration => Some(u64::from(track.duration())),
-            Self::Width => match track.kind() {
+    fn number(self, descriptor: Descriptor<'_>) -> Option<u64> {
+        match (self, descriptor) {
+            (Self::Width, Descriptor::Track(track)) => match &track.kind {
                 TrackKind::Video(video) => Some(u64::from(video.width)),
                 _ => None,
             },
-            Self::Height => match track.kind() {
+            (Self::Width, Descriptor::Thumbnail(thumbnail)) => Some(u64::from(thumbnail.width)),
+            (Self::Height, Descriptor::Track(track)) => match &track.kind {
                 TrackKind::Video(video) => Some(u64::from(video.height)),
                 _ => None,
             },
-            Self::SampleRate => match track.kind() {
+            (Self::SampleRate, Descriptor::Track(track)) => match &track.kind {
                 TrackKind::Audio(audio) => Some(u64::from(audio.sample_rate)),
                 _ => None,
             },
-            Self::Channels => match track.kind() {
+            (Self::Channels, Descriptor::Track(track)) => match &track.kind {
                 TrackKind::Audio(audio) => Some(u64::from(audio.channels)),
                 _ => None,
             },
+            (Self::TileSize, Descriptor::Thumbnail(thumbnail)) => {
+                Some(u64::from(thumbnail.tile_size))
+            }
+            (Self::Step, Descriptor::Thumbnail(thumbnail)) => Some(u64::from(thumbnail.step)),
             _ => None,
         }
     }
-}
-
-fn served_segments<'a>(track: &'a Track, options: &SegmentOptions) -> Vec<ServedSegment<'a>> {
-    ServedSegment::group(track.segments(), options.min_length, &options.boundaries)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -330,5 +322,90 @@ fn parse_literal(numeric: bool, input: &mut &str) -> ModalResult<Literal> {
         )
         .map(|value: &str| Literal::Text(value.to_string()))
         .parse_next(input)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use dyndo_core::asset_descriptor::AssetDescriptor;
+
+    use super::Filter;
+
+    fn asset() -> AssetDescriptor {
+        serde_json::from_str(
+            r#"
+            {
+              "tracks": [
+                {
+                  "id": "video",
+                  "path": "video.mp4",
+                  "codec": "avc1.640028",
+                  "type": "video",
+                  "width": 1920,
+                  "height": 1080,
+                  "frame_rate": "25/1"
+                },
+                {
+                  "id": "audio",
+                  "path": "audio.mp4",
+                  "codec": "mp4a.40.2",
+                  "type": "audio",
+                  "sample_rate": 48000,
+                  "channels": 2,
+                  "language": "eng"
+                }
+              ],
+              "thumbnails": [
+                {
+                  "id": "preview",
+                  "tile_size": 4,
+                  "width": 640,
+                  "step": 1000
+                }
+              ]
+            }
+            "#,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn apply_keeps_matching_thumbnail_descriptors() {
+        let mut asset = asset();
+
+        Filter::parse("type==image&&width>=640")
+            .unwrap()
+            .apply(&mut asset)
+            .unwrap();
+
+        assert_eq!(asset.thumbnails.len(), 1);
+    }
+
+    #[test]
+    fn apply_uses_track_descriptor_fields_without_probing() {
+        let mut asset = asset();
+
+        Filter::parse("codec==mp4a.40.2")
+            .unwrap()
+            .apply(&mut asset)
+            .unwrap();
+
+        assert_eq!(asset.tracks[0].id, "audio");
+    }
+
+    #[test]
+    fn apply_returns_an_error_when_no_descriptor_entry_matches() {
+        let mut asset = asset();
+
+        let result = Filter::parse("type==text").unwrap().apply(&mut asset);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_rejects_segment_derived_attributes() {
+        let result = Filter::parse("bitrate>=800000");
+
+        assert!(result.is_err());
     }
 }

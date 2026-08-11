@@ -16,7 +16,7 @@ Because the options travel in the path rather than a query string, a manifest
 and every segment it references share one prefix, and the relative URLs inside a
 manifest resolve correctly without rewriting.
 
-[`filter`](#filtering-tracks) is the exception, and deliberately so: it travels
+[`filter`](#filtering-descriptor-entries) is the exception, and deliberately so: it travels
 in the query string because it shapes a manifest without needing to reach the
 resources that manifest references.
 
@@ -98,22 +98,26 @@ shorthand. The forms are equivalent:
 
 Unknown keys are rejected on every output route.
 
-## Filtering tracks
+## Filtering descriptor entries
 
-A request can narrow which of an asset's tracks are served, so one descriptor
-covers every variation you want to offer — a resolution cap, one audio language,
-a version without subtitles — instead of one descriptor per variation.
+A request can narrow an asset's tracks and thumbnail configurations, so one
+descriptor covers every variation you want to offer — a resolution cap, one
+audio language, or selected thumbnail tracks — instead of one descriptor per
+variation.
 
 | Parameter | Applies to |
 |---|---|
-| `filter` | `index.mpd` and `master.m3u8` |
+| `filter` | every manifest route |
 
 ```text
 /out/(asset:demo)/index.mpd?filter=type!=video%7C%7Cheight%3C=720
 /out/(asset:demo)/master.m3u8?filter=type==audio
 ```
 
-The `filter` parameter is accepted on all routes handled as manifests, including a per-track HLS media playlist, but it only affects `index.mpd` and `master.m3u8`. Track-file routes do not parse a query. A filter therefore shapes top-level manifests and never gates addressing: a track a filter dropped stays fetchable by its own URL.
+The `filter` parameter is accepted on every manifest route. It first removes
+non-matching entries from the asset descriptor, then the route resolves the
+remaining entries. Track-file routes do not parse a query, so filtering never
+gates their URLs.
 
 The syntax follows [Unified Streaming's URL
 filters](https://docs.unified-streaming.com/documentation/vod/player-urls.html),
@@ -121,7 +125,7 @@ so filters written for that stack read the same here.
 
 ### Expression syntax
 
-A filter is a boolean expression over track attributes:
+A filter is a boolean expression over asset descriptor fields:
 
 ```text
 attribute <operator> value
@@ -161,37 +165,33 @@ a manifest URL a `400` — put those in the path's
 
 ### Attributes
 
-Filtering runs on **resolved** tracks — tracks dyndo has probed — so `bitrate`,
-`avg_bitrate` and `duration` are available, and `codec` is the value the source
-actually declares rather than the descriptor's claim.
+Filtering runs before media is probed. Consequently, every available attribute
+is stored in the descriptor and `codec` is the descriptor value. Segment-derived
+`bitrate`, `avg_bitrate`, and `duration` filters are not available.
 
 | Attribute | Type | Present on | Description |
 |---|---|---|---|
-| `type` | text | every track | `video`, `audio` or `text`. |
-| `id` | text | every track | The track's `id`, as it appears in manifest URLs. |
-| `codec` | text | every track | The probed codec, for example `avc1.640028`. |
-| `bitrate` | numeric | every track | Peak segment bitrate in bits per second. |
-| `avg_bitrate` | numeric | every track | Mean segment bitrate in bits per second. |
-| `duration` | numeric | every track | Track duration in milliseconds. |
-| `width` | numeric | video | Frame width in pixels. |
+| `type` | text | every entry | `video`, `audio`, `text`, or `image` for a thumbnail. |
+| `id` | text | every entry | The track or thumbnail identifier. |
+| `codec` | text | track | The descriptor codec, for example `avc1.640028`. |
+| `width` | numeric | video, thumbnail | Frame or complete sprite width in pixels. |
 | `height` | numeric | video | Frame height in pixels. |
 | `frame_rate` | text | video | The rate as written, for example `25/1`. |
 | `sample_rate` | numeric | audio | Samples per second. |
 | `channels` | numeric | audio | Channel count. |
 | `language` | text | audio, text | The track's language tag, compared exactly as the descriptor spells it. |
 | `role` | text | audio, text | One of the [track roles](../roles.md). |
-
-`bitrate` and `avg_bitrate` are derived from segment sizes, so they reflect the
-segmentation options the same request asked for.
+| `tile_size` | numeric | thumbnail | Thumbnails per sprite row and column. |
+| `step` | numeric | thumbnail | Milliseconds between adjacent thumbnails. |
 
 A textual value is not checked against what exists — `role==narrator` parses
-happily and simply matches no track. A numeric attribute does check: `height==tall`
-is a `400`.
+happily and simply matches no entry. A numeric attribute does check:
+`height==tall` is a `400`.
 
 ### What a filter keeps
 
-**A track is served only if the expression is true for that track.** Each track
-is judged on its own; nothing is judged as a group.
+**A descriptor entry is kept only if the expression is true for that entry.**
+Each track and thumbnail is judged on its own; nothing is judged as a group.
 
 **A comparison against an attribute the track does not carry is false, whatever
 the operator.** An audio track has no `height`, so `height<=720` is false for it
@@ -213,14 +213,14 @@ attribute every track carries:
 | Everything but the audio | `type!=audio` |
 | Video up to 720 plus subtitles, no audio | `type!=audio&&(type!=video\|\|height<=720)` |
 | Dutch audio only, video untouched | `type!=audio\|\|language==nld` |
-| Drop low-bitrate video renditions | `type!=video\|\|bitrate>=800000` |
+| Keep only image thumbnails at least 640 pixels wide | `type!=image\|\|width>=640` |
 
 Mind `&&` against `||` here: `type!=video&&height<=720` requires *both*, so it
 drops the audio it was meant to spare. Use `||` to spare, `&&` to narrow.
 
-A filter that leaves at least one track produces a manifest — dropping all video
-but keeping audio is a legitimate audio-only presentation. A filter that matches
-**nothing** is a `404`.
+A filter that leaves at least one descriptor entry produces a manifest — dropping
+all video but keeping audio is a legitimate audio-only presentation. A filter
+that matches **nothing** is a `404`.
 
 ### Caching
 
@@ -337,8 +337,8 @@ shared path prefix.
 | Code | When |
 |---|---|
 | `200 OK` | The manifest or segment was generated and returned; also the `/health` probe. |
-| `400 Bad Request` | The options path segment is malformed Rison or contains an unknown option, a manifest route carries an unrecognised query parameter, or the [filter](#filtering-tracks) is malformed — an unknown attribute, an ordering operator on a textual attribute, or a non-numeric value for a numeric attribute. |
-| `404 Not Found` | The path does not contain separate options and resource components; `<track-id>` matches no track; a segment filename has an unsupported extension or a non-integer time; `<time>` is not a segment boundary; a thumbnail is disabled or unavailable; the descriptor does not exist; or the [filter](#filtering-tracks) matched no track. |
+| `400 Bad Request` | The options path segment is malformed Rison or contains an unknown option, a manifest route carries an unrecognised query parameter, or the [filter](#filtering-descriptor-entries) is malformed — an unknown attribute, an ordering operator on a textual attribute, or a non-numeric value for a numeric attribute. |
+| `404 Not Found` | The path does not contain separate options and resource components; `<track-id>` matches no track; a segment filename has an unsupported extension or a non-integer time; `<time>` is not a segment boundary; a thumbnail is disabled or unavailable; the descriptor does not exist; or the [filter](#filtering-descriptor-entries) matched no descriptor entry. |
 | `500 Internal Server Error` | The descriptor JSON is malformed; a source file is unreadable or is not valid, supported CMAF; packaged subtitle cues cannot be parsed; thumbnail generation fails; or manifest serialization fails. |
 
 The split between `404` and `500` reflects ownership: a **missing** object is
