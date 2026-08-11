@@ -64,8 +64,21 @@ impl ResolvedTimedTextTrack {
         .map_err(Into::into)
     }
 
-    /// Returns the raw WebVTT document for a served segment.
-    pub fn web_vtt_segment(&self, start: u64, end: u64) -> Option<String> {
+    /// Returns the raw WebVTT document addressed by a served segment start time.
+    pub async fn served_web_vtt_segment(
+        &self,
+        time: u64,
+        options: &SegmentOptions,
+    ) -> Result<Option<String>, WebVttPackageError> {
+        let cmaf = self.package_wvtt(options).await?;
+        let Some(segment) = cmaf.served_segment(time, options) else {
+            return Ok(None);
+        };
+
+        Ok(self.web_vtt_segment(segment.start_time(), segment.end_time()))
+    }
+
+    fn web_vtt_segment(&self, start: u64, end: u64) -> Option<String> {
         if !self.format().is_web_vtt() {
             return None;
         }

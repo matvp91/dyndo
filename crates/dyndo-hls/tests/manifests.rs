@@ -1,10 +1,13 @@
 use std::sync::Arc;
 
-use dyndo_core::codec::{AacCodec, AvcCodec, CodecConfig, WvttCodec};
+use dyndo_core::asset::ResolvedAsset;
+use dyndo_core::codec::{AacCodec, AvcCodec, CodecConfig};
 use dyndo_core::segment_options::SegmentOptions;
+use dyndo_core::track::ResolvedTrack;
 use dyndo_core::track::cmaf::{CmafKind, InitSegment, ResolvedCmafTrack, Segment};
 use dyndo_core::track::metadata::{AudioMetadata, TextMetadata, VideoMetadata};
 use dyndo_core::track::thumbnail::ThumbnailTrack;
+use dyndo_core::track::timed_text::ResolvedTimedTextTrack;
 use dyndo_hls::{
     generate_image_playlist, generate_master_playlist, generate_media_playlist, options::HlsOptions,
 };
@@ -70,10 +73,10 @@ fn video_track() -> ResolvedCmafTrack {
     )
 }
 
-fn rendition_tracks() -> Vec<ResolvedCmafTrack> {
+fn rendition_tracks() -> Vec<ResolvedTrack> {
     vec![
-        video_track(),
-        track(
+        ResolvedTrack::Cmaf(video_track()),
+        ResolvedTrack::Cmaf(track(
             "audio-en",
             CmafKind::Audio(AudioMetadata {
                 sample_rate: 48_000,
@@ -83,26 +86,35 @@ fn rendition_tracks() -> Vec<ResolvedCmafTrack> {
             }),
             aac_codec(),
             50,
-        ),
-        track(
-            "text-en",
-            CmafKind::Text(TextMetadata {
+        )),
+        ResolvedTrack::TimedText(ResolvedTimedTextTrack::from_web_vtt_text(
+            "text-en".to_string(),
+            "text-en.vtt".into(),
+            TextMetadata {
                 language: "en".parse().unwrap(),
                 role: None,
-            }),
-            CodecConfig::Wvtt(WvttCodec),
-            25,
-        ),
+            },
+            "WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nHello\n\n00:00:01.000 --> 00:00:02.000\nWorld\n",
+        )
+        .unwrap()),
     ]
 }
 
-fn generate(tracks: &[ResolvedCmafTrack], hls_options: &HlsOptions) -> (String, Vec<String>) {
-    let segment_options = SegmentOptions::default();
-    let master = generate_master_playlist(tracks, &[], &segment_options, hls_options).unwrap();
-    let media = tracks
-        .iter()
-        .map(|track| generate_media_playlist(track, &segment_options, hls_options).unwrap())
-        .collect();
+async fn generate(tracks: &[ResolvedTrack], hls_options: &HlsOptions) -> (String, Vec<String>) {
+    let segment_options = SegmentOptions {
+        text_length: 1_000,
+        ..SegmentOptions::default()
+    };
+    let asset = ResolvedAsset::new(segment_options.clone(), tracks.to_vec());
+    let master = generate_master_playlist(&asset, hls_options).await.unwrap();
+    let mut media = Vec::new();
+    for track in tracks {
+        media.push(
+            generate_media_playlist(track, &segment_options, hls_options)
+                .await
+                .unwrap(),
+        );
+    }
     (master, media)
 }
 
@@ -110,9 +122,13 @@ fn thumbnail(step: u32) -> ThumbnailTrack {
     ThumbnailTrack::new("preview".to_string(), 2, 16, step)
 }
 
-#[test]
-fn generated_two_segment_video_manifests_match_the_golden_fixtures() {
-    let (master, media) = generate(&[video_track()], &HlsOptions::default());
+#[tokio::test]
+async fn generated_two_segment_video_manifests_match_the_golden_fixtures() {
+    let (master, media) = generate(
+        &[ResolvedTrack::Cmaf(video_track())],
+        &HlsOptions::default(),
+    )
+    .await;
 
     assert_eq!(
         (master.as_str(), media[0].as_str()),
@@ -123,9 +139,9 @@ fn generated_two_segment_video_manifests_match_the_golden_fixtures() {
     );
 }
 
-#[test]
-fn generated_plain_webvtt_renditions_match_the_golden_fixtures() {
-    let (master, media) = generate(&rendition_tracks(), &HlsOptions::default());
+#[tokio::test]
+async fn generated_plain_webvtt_renditions_match_the_golden_fixtures() {
+    let (master, media) = generate(&rendition_tracks(), &HlsOptions::default()).await;
 
     assert_eq!(
         (
@@ -143,9 +159,9 @@ fn generated_plain_webvtt_renditions_match_the_golden_fixtures() {
     );
 }
 
-#[test]
-fn generated_packaged_wvtt_renditions_match_the_golden_fixtures() {
-    let (master, media) = generate(&rendition_tracks(), &HlsOptions { wvtt: true });
+#[tokio::test]
+async fn generated_packaged_wvtt_renditions_match_the_golden_fixtures() {
+    let (master, media) = generate(&rendition_tracks(), &HlsOptions { wvtt: true }).await;
 
     assert_eq!(
         (
@@ -163,28 +179,32 @@ fn generated_packaged_wvtt_renditions_match_the_golden_fixtures() {
     );
 }
 
-#[test]
-fn generated_image_playlists_advertise_existing_thumbnail_sprites() {
+#[tokio::test]
+async fn generated_image_playlists_advertise_existing_thumbnail_sprites() {
     let tracks = [video_track()];
     let configured = thumbnail(1_000);
     let preview = configured.resolve(&tracks).unwrap();
     let alternate = ThumbnailTrack::new("alternate".to_string(), 2, 16, 500);
     let alternate = alternate.resolve(&tracks).unwrap();
-    let master = generate_master_playlist(
-        &tracks,
-        &[preview, alternate],
-        &SegmentOptions::default(),
-        &HlsOptions::default(),
-    )
-    .unwrap();
+    let asset = ResolvedAsset::new(
+        SegmentOptions::default(),
+        vec![
+            ResolvedTrack::Cmaf(tracks[0].clone()),
+            ResolvedTrack::Thumbnail(preview),
+            ResolvedTrack::Thumbnail(alternate),
+        ],
+    );
+    let master = generate_master_playlist(&asset, &HlsOptions::default())
+        .await
+        .unwrap();
     let thumbnail = configured.resolve(&tracks).unwrap();
     let images = generate_image_playlist(&thumbnail).unwrap();
 
     assert!(master.contains(
-        "#EXT-X-IMAGE-STREAM-INF:BANDWIDTH=64,CODECS=\"jpeg\",RESOLUTION=8x8,URI=\"image_preview.m3u8\""
+        "#EXT-X-IMAGE-STREAM-INF:BANDWIDTH=64,CODECS=\"jpeg\",RESOLUTION=8x8,URI=\"preview.m3u8\""
     ));
     assert!(master.contains(
-        "#EXT-X-IMAGE-STREAM-INF:BANDWIDTH=128,CODECS=\"jpeg\",RESOLUTION=8x8,URI=\"image_alternate.m3u8\""
+        "#EXT-X-IMAGE-STREAM-INF:BANDWIDTH=128,CODECS=\"jpeg\",RESOLUTION=8x8,URI=\"alternate.m3u8\""
     ));
     assert_eq!(
         images,
@@ -196,7 +216,7 @@ fn generated_image_playlists_advertise_existing_thumbnail_sprites() {
             "#EXT-X-IMAGES-ONLY\n",
             "#EXT-X-TILES:RESOLUTION=8x8,LAYOUT=2x2,DURATION=1.000\n",
             "#EXTINF:2,\n",
-            "image_preview/0.jpg\n",
+            "preview/0.jpg\n",
             "#EXT-X-ENDLIST\n",
         )
     );
@@ -212,6 +232,6 @@ fn generated_image_playlist_shortens_the_final_sprite() {
     assert!(playlist.contains(concat!(
         "#EXT-X-TILES:RESOLUTION=8x8,LAYOUT=2x2,DURATION=0.400\n",
         "#EXTINF:0.4,\n",
-        "image_preview/1600.jpg\n",
+        "preview/1600.jpg\n",
     )));
 }

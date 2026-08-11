@@ -2,11 +2,11 @@ use language_tags::LanguageTag;
 use opendal::Operator;
 use relative_path::{RelativePath, RelativePathBuf};
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
-use super::cmaf::{CmafKind, CmafTrack, ResolvedCmafTrack};
-use super::metadata::{AudioMetadata, TextMetadata, VideoMetadata};
-use super::timed_text::{ResolvedTimedTextTrack, TimedTextTrack};
+use super::cmaf::{CmafKind, CmafTrack};
+use super::metadata::{AudioMetadata, VideoMetadata};
+use super::resolved::{ResolvedTrack, TrackResolveError};
+use super::timed_text::TimedTextTrack;
 use crate::role::Role;
 
 /// A track backed by a file stored with an asset.
@@ -96,98 +96,35 @@ impl SourceTrack {
         &self,
         op: &Operator,
         path: &RelativePath,
-    ) -> Result<ResolvedSourceTrack, SourceResolveError> {
+    ) -> Result<ResolvedTrack, TrackResolveError> {
         match self {
             Self::Cmaf(track) => track
                 .resolve(op, path)
                 .await
-                .map(ResolvedSourceTrack::Cmaf)
+                .map(ResolvedTrack::Cmaf)
                 .map_err(Into::into),
             Self::TimedText(track) => track
                 .resolve(op, path)
                 .await
-                .map(ResolvedSourceTrack::TimedText)
+                .map(ResolvedTrack::TimedText)
                 .map_err(Into::into),
         }
     }
 
-    pub(crate) fn from_resolved(track: &ResolvedSourceTrack, path: RelativePathBuf) -> Self {
+    pub(crate) fn from_resolved(track: &ResolvedTrack, path: RelativePathBuf) -> Option<Self> {
         match track {
-            ResolvedSourceTrack::TimedText(track) => Self::TimedText(TimedTextTrack {
+            ResolvedTrack::TimedText(track) => Some(Self::TimedText(TimedTextTrack {
                 id: track.id().to_string(),
                 path,
                 format: track.format().clone(),
-            }),
-            ResolvedSourceTrack::Cmaf(track) => Self::Cmaf(CmafTrack {
+            })),
+            ResolvedTrack::Cmaf(track) => Some(Self::Cmaf(CmafTrack {
                 id: track.id().to_string(),
                 path,
                 codec: track.codec().rfc6381(),
                 kind: track.kind().clone(),
-            }),
+            })),
+            ResolvedTrack::Thumbnail(_) => None,
         }
     }
-}
-
-/// A track backed by a resolved asset source.
-#[derive(Clone)]
-pub enum ResolvedSourceTrack {
-    Cmaf(ResolvedCmafTrack),
-    TimedText(ResolvedTimedTextTrack),
-}
-
-impl ResolvedSourceTrack {
-    /// Discovers and resolves an unconfigured source.
-    pub async fn discover(op: &Operator, path: &RelativePath) -> Result<Self, SourceResolveError> {
-        let id = source_id(path);
-        if path.as_str().ends_with(".vtt") {
-            return ResolvedTimedTextTrack::from_web_vtt_source(
-                op,
-                path,
-                id,
-                TextMetadata::default(),
-            )
-            .await
-            .map(Self::TimedText)
-            .map_err(Into::into);
-        }
-
-        ResolvedCmafTrack::discover(op, path, id)
-            .await
-            .map(Self::Cmaf)
-            .map_err(Into::into)
-    }
-
-    pub fn id(&self) -> &str {
-        match self {
-            Self::Cmaf(track) => track.id(),
-            Self::TimedText(track) => track.id(),
-        }
-    }
-
-    pub fn cmaf(&self) -> Option<&ResolvedCmafTrack> {
-        match self {
-            Self::Cmaf(track) => Some(track),
-            Self::TimedText(_) => None,
-        }
-    }
-
-    /// Returns the stored source path, or `None` for an in-memory CMAF representation.
-    pub fn source_path(&self) -> Option<&RelativePath> {
-        match self {
-            Self::Cmaf(track) => track.source_path(),
-            Self::TimedText(track) => Some(track.source_path()),
-        }
-    }
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum SourceResolveError {
-    #[error(transparent)]
-    Cmaf(#[from] super::cmaf::CmafError),
-    #[error(transparent)]
-    TimedText(#[from] super::timed_text::TimedTextError),
-}
-
-fn source_id(path: &RelativePath) -> String {
-    Uuid::new_v5(&Uuid::NAMESPACE_URL, path.as_str().as_bytes()).to_string()
 }

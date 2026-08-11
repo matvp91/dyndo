@@ -1,6 +1,5 @@
 use dyndo_core::role::Role;
-use dyndo_core::segment_options::SegmentOptions;
-use dyndo_core::track::cmaf::{CmafKind, ResolvedCmafTrack, ServedSegment};
+use dyndo_core::track::cmaf::{CmafKind, ResolvedCmafTrack};
 
 pub(super) struct AdaptationGroup<'a> {
     key: String,
@@ -60,32 +59,6 @@ impl<'a> AdaptationGroup<'a> {
     pub(super) fn members(&self) -> &[&'a ResolvedCmafTrack] {
         &self.members
     }
-
-    // Matching start and end times ensure one timeline can represent every member.
-    pub(super) fn is_segment_aligned(&self, options: &SegmentOptions) -> bool {
-        let Some(reference) = self.members.first() else {
-            return true;
-        };
-        let reference_segments = served_segments(reference, options);
-
-        self.members.iter().skip(1).all(|candidate| {
-            served_segments(candidate, options)
-                .iter()
-                .map(segment_times)
-                .eq(reference_segments.iter().map(segment_times))
-        })
-    }
-}
-
-fn served_segments<'a>(
-    track: &'a ResolvedCmafTrack,
-    options: &SegmentOptions,
-) -> Vec<ServedSegment<'a>> {
-    ServedSegment::group(track.segments(), options.min_length, &options.boundaries)
-}
-
-fn segment_times(segment: &ServedSegment<'_>) -> (u64, u64) {
-    (segment.unscaled_start_time(), segment.unscaled_end_time())
 }
 
 fn adaptation_set_key(track: &ResolvedCmafTrack) -> String {

@@ -42,11 +42,7 @@ impl Renditions {
             if hls_options.wvtt || !matches!(track.kind(), CmafKind::Text(_)) {
                 push_unique(&mut codecs, track.codec().rfc6381());
             }
-            let segments = ServedSegment::group(
-                track.segments(),
-                segment_options.min_length,
-                &segment_options.boundaries,
-            );
+            let segments = track.served_segments(segment_options);
             bitrates.0 = bitrates.0.max(ServedSegment::maximum_bitrate(&segments));
             bitrates.1 = bitrates.1.max(ServedSegment::average_bitrate(&segments));
         }
@@ -103,7 +99,7 @@ fn build_media_entry(
     let default = default_audio_id == Some(track.id());
     Some(AlternativeMedia {
         media_type,
-        uri: Some(format!("{}.m3u8", crate::media_resource_name(track))),
+        uri: Some(format!("{}.m3u8", track.id())),
         group_id: group_id.to_string(),
         language: Some(language.to_string()),
         assoc_language: None,

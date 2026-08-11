@@ -1,5 +1,7 @@
-use dyndo_core::asset::Asset;
-use dyndo_core::track::Track;
+use std::borrow::Cow;
+
+use dyndo_core::asset::ResolvedAsset;
+use dyndo_core::track::ResolvedTrack;
 use serde::{Deserialize, Deserializer, de};
 use winnow::ascii::{digit1, multispace0};
 use winnow::combinator::{
@@ -39,14 +41,18 @@ impl Filter {
             })
     }
 
-    pub(super) fn apply(&self, asset: &mut Asset) -> Result<(), FilterMatchedNothing> {
-        asset.tracks.retain(|track| self.expression.matches(track));
+    pub(super) fn apply(&self, asset: &mut ResolvedAsset) -> Result<(), FilterMatchedNothing> {
+        asset.retain_tracks(|track| self.matches(track));
 
-        if asset.tracks.is_empty() {
+        if asset.tracks().is_empty() {
             Err(FilterMatchedNothing)
         } else {
             Ok(())
         }
+    }
+
+    pub(super) fn matches(&self, track: &ResolvedTrack) -> bool {
+        self.expression.matches(track)
     }
 }
 
@@ -62,7 +68,7 @@ enum Expression {
 }
 
 impl Expression {
-    fn matches(&self, track: &Track) -> bool {
+    fn matches(&self, track: &ResolvedTrack) -> bool {
         match self {
             Self::And(left, right) => left.matches(track) && right.matches(track),
             Self::Or(left, right) => left.matches(track) || right.matches(track),
@@ -79,7 +85,7 @@ struct Comparison {
 }
 
 impl Comparison {
-    fn matches(&self, track: &Track) -> bool {
+    fn matches(&self, track: &ResolvedTrack) -> bool {
         match &self.value {
             Literal::Text(wanted) => self
                 .attribute
@@ -140,21 +146,18 @@ impl Attribute {
         )
     }
 
-    fn text(self, track: &Track) -> Option<&str> {
-        let source = track.source();
+    fn text(self, track: &ResolvedTrack) -> Option<Cow<'_, str>> {
         match self {
-            Self::Type => Some(track.asset_type()),
-            Self::Id => Some(track.id()),
-            Self::Codec => source.and_then(|track| track.codec()),
-            Self::FrameRate => source
-                .and_then(|track| track.video_metadata())
-                .map(|kind| kind.frame_rate.as_str()),
-            Self::Language => source
-                .and_then(|track| track.language())
-                .map(|language| language.as_str()),
-            Self::Role => source
-                .and_then(|track| track.role())
-                .map(|role| role.as_str()),
+            Self::Type => Some(Cow::Borrowed(track.asset_type())),
+            Self::Id => Some(Cow::Borrowed(track.id())),
+            Self::Codec => track.codec().map(Cow::Owned),
+            Self::FrameRate => track
+                .video_metadata()
+                .map(|kind| Cow::Borrowed(kind.frame_rate.as_str())),
+            Self::Language => track
+                .language()
+                .map(|language| Cow::Borrowed(language.as_str())),
+            Self::Role => track.role().map(|role| Cow::Borrowed(role.as_str())),
             Self::Width
             | Self::Height
             | Self::SampleRate
@@ -164,25 +167,23 @@ impl Attribute {
         }
     }
 
-    fn number(self, track: &Track) -> Option<u64> {
-        let source = track.source();
+    fn number(self, track: &ResolvedTrack) -> Option<u64> {
         let thumbnail = track.thumbnail();
         match self {
-            Self::Width => source
-                .and_then(|track| track.video_metadata())
+            Self::Width => track
+                .video_metadata()
                 .map(|kind| u64::from(kind.width))
-                .or_else(|| thumbnail.map(|track| u64::from(track.width))),
-            Self::Height => source
-                .and_then(|track| track.video_metadata())
-                .map(|kind| u64::from(kind.height)),
-            Self::SampleRate => source
-                .and_then(|track| track.audio_metadata())
+                .or_else(|| thumbnail.map(|track| u64::from(track.width()))),
+            Self::Height => track
+                .video_metadata()
+                .map(|kind| u64::from(kind.height))
+                .or_else(|| thumbnail.map(|track| u64::from(track.height()))),
+            Self::SampleRate => track
+                .audio_metadata()
                 .map(|kind| u64::from(kind.sample_rate)),
-            Self::Channels => source
-                .and_then(|track| track.audio_metadata())
-                .map(|kind| u64::from(kind.channels)),
-            Self::TileSize => thumbnail.map(|track| u64::from(track.tile_size)),
-            Self::Step => thumbnail.map(|track| u64::from(track.step)),
+            Self::Channels => track.audio_metadata().map(|kind| u64::from(kind.channels)),
+            Self::TileSize => thumbnail.map(|track| u64::from(track.tile_size())),
+            Self::Step => thumbnail.map(|track| u64::from(track.step())),
             Self::Type | Self::Id | Self::Codec | Self::FrameRate | Self::Language | Self::Role => {
                 None
             }
@@ -308,45 +309,57 @@ fn parse_literal(numeric: bool, input: &mut &str) -> ModalResult<Literal> {
 
 #[cfg(test)]
 mod tests {
-    use dyndo_core::asset::Asset;
+    use std::sync::Arc;
+
+    use dyndo_core::asset::ResolvedAsset;
+    use dyndo_core::codec::{CodecConfig, WvttCodec};
+    use dyndo_core::segment_options::SegmentOptions;
+    use dyndo_core::track::ResolvedTrack;
+    use dyndo_core::track::cmaf::{CmafKind, InitSegment, ResolvedCmafTrack};
+    use dyndo_core::track::metadata::{AudioMetadata, VideoMetadata};
+    use dyndo_core::track::thumbnail::ThumbnailTrack;
 
     use super::Filter;
 
-    fn asset() -> Asset {
-        serde_json::from_str(
-            r#"
-            {
-              "tracks": [
-                {
-                  "id": "video",
-                  "path": "video.mp4",
-                  "codec": "avc1.640028",
-                  "type": "video",
-                  "width": 1920,
-                  "height": 1080,
-                  "frame_rate": "25/1"
-                },
-                {
-                  "id": "audio",
-                  "path": "audio.mp4",
-                  "codec": "mp4a.40.2",
-                  "type": "audio",
-                  "sample_rate": 48000,
-                  "channels": 2,
-                  "language": "eng"
-                },
-                {
-                  "id": "preview",
-                  "tile_size": 4,
-                  "width": 640,
-                  "step": 1000,
-                  "type": "thumbnail"
-                }
-              ]
-            }
-            "#,
+    fn cmaf(id: &str, kind: CmafKind) -> ResolvedCmafTrack {
+        ResolvedCmafTrack::new(
+            id.to_string(),
+            format!("{id}.mp4").into(),
+            kind,
+            Arc::new(InitSegment::new(CodecConfig::Wvtt(WvttCodec), 1_000, 0, 0)),
+            Vec::new(),
         )
-        .unwrap()
+    }
+
+    fn asset() -> ResolvedAsset {
+        let video = cmaf(
+            "video",
+            CmafKind::Video(VideoMetadata {
+                width: 1_920,
+                height: 1_080,
+                frame_rate: "25/1".to_string(),
+            }),
+        );
+        let audio = cmaf(
+            "audio",
+            CmafKind::Audio(AudioMetadata {
+                sample_rate: 48_000,
+                channels: 2,
+                language: "eng".parse().unwrap(),
+                role: None,
+            }),
+        );
+        let thumbnail = ThumbnailTrack::new("preview".to_string(), 4, 640, 1_000)
+            .resolve([&video])
+            .unwrap();
+        ResolvedAsset::new(
+            SegmentOptions::default(),
+            vec![
+                ResolvedTrack::Cmaf(video),
+                ResolvedTrack::Cmaf(audio),
+                ResolvedTrack::Thumbnail(thumbnail),
+            ],
+        )
     }
 
     #[test]
@@ -358,19 +371,19 @@ mod tests {
             .apply(&mut asset)
             .unwrap();
 
-        assert_eq!(asset.thumbnail_tracks().count(), 1);
+        assert_eq!(asset.thumbnails().count(), 1);
     }
 
     #[test]
-    fn apply_uses_track_fields_without_resolving_sources() {
+    fn apply_uses_resolved_track_fields() {
         let mut asset = asset();
 
-        Filter::parse("codec==mp4a.40.2")
+        Filter::parse("codec==wvtt&&type==audio")
             .unwrap()
             .apply(&mut asset)
             .unwrap();
 
-        assert_eq!(asset.tracks[0].id(), "audio");
+        assert_eq!(asset.tracks()[0].id(), "audio");
     }
 
     #[test]

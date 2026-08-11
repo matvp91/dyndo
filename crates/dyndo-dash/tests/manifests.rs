@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
+use dyndo_core::asset::ResolvedAsset;
 use dyndo_core::codec::{AacCodec, AvcCodec, CodecConfig, WvttCodec};
 use dyndo_core::segment_options::SegmentOptions;
+use dyndo_core::track::ResolvedTrack;
 use dyndo_core::track::cmaf::{CmafKind, InitSegment, ResolvedCmafTrack, Segment};
 use dyndo_core::track::metadata::{AudioMetadata, TextMetadata, VideoMetadata};
 use dyndo_core::track::thumbnail::ThumbnailTrack;
@@ -68,7 +70,7 @@ fn video_track(id: &str, width: u32, height: u32, bytes_per_segment: u64) -> Res
     )
 }
 
-fn generate(
+async fn generate(
     tracks: &[ResolvedCmafTrack],
     thumbnail_tracks: &[ThumbnailTrack],
     segment_options: &SegmentOptions,
@@ -78,40 +80,37 @@ fn generate(
         .iter()
         .filter_map(|thumbnail| thumbnail.resolve(tracks))
         .collect();
-    let mpd = generate_mpd(tracks, &thumbnails, segment_options, dash_options).unwrap();
-    quick_xml::se::to_string(&mpd).unwrap()
+    let mut resolved_tracks: Vec<_> = tracks.iter().cloned().map(ResolvedTrack::Cmaf).collect();
+    resolved_tracks.extend(thumbnails.into_iter().map(ResolvedTrack::Thumbnail));
+    let asset = ResolvedAsset::new(segment_options.clone(), resolved_tracks);
+    generate_mpd(&asset, dash_options)
+        .await
+        .unwrap()
+        .lines()
+        .skip(1)
+        .map(str::trim)
+        .collect()
 }
 
 fn thumbnail() -> ThumbnailTrack {
     ThumbnailTrack::new("preview".to_string(), 2, 16, 1_000)
 }
 
-fn named_fixture(fixture: &str) -> String {
-    fixture
-        .replace("id=\"video-main\"", "id=\"video_video-main\"")
-        .replace("id=\"video-low\"", "id=\"video_video-low\"")
-        .replace("id=\"video-high\"", "id=\"video_video-high\"")
-        .replace("id=\"audio-en\"", "id=\"audio_audio-en\"")
-        .replace("id=\"text-en\"", "id=\"text_text-en\"")
-}
-
-#[test]
-fn generated_two_segment_video_mpd_matches_the_golden_fixture() {
+#[tokio::test]
+async fn generated_two_segment_video_mpd_matches_the_golden_fixture() {
     let xml = generate(
         &[video_track("video-main", 16, 16, 100)],
         &[],
         &SegmentOptions::default(),
         &DashOptions::default(),
-    );
+    )
+    .await;
 
-    assert_eq!(
-        xml,
-        named_fixture(include_str!("fixtures/video.mpd")).trim_end()
-    );
+    assert_eq!(xml, include_str!("fixtures/video.mpd").trim_end());
 }
 
-#[test]
-fn generated_compact_mpd_matches_the_golden_fixture() {
+#[tokio::test]
+async fn generated_compact_mpd_matches_the_golden_fixture() {
     let xml = generate(
         &[video_track("video-main", 16, 16, 100)],
         &[],
@@ -120,30 +119,29 @@ fn generated_compact_mpd_matches_the_golden_fixture() {
             compact: true,
             ..DashOptions::default()
         },
-    );
+    )
+    .await;
 
-    assert_eq!(
-        xml,
-        named_fixture(include_str!("fixtures/compact.mpd")).trim_end()
-    );
+    assert_eq!(xml, include_str!("fixtures/compact.mpd").trim_end());
 }
 
-#[test]
-fn generated_thumbnail_mpd_addresses_sprites_by_start_time() {
+#[tokio::test]
+async fn generated_thumbnail_mpd_addresses_sprites_by_start_time() {
     let xml = generate(
         &[video_track("video-main", 16, 16, 100)],
         &[thumbnail()],
         &SegmentOptions::default(),
         &DashOptions::default(),
-    );
+    )
+    .await;
 
     assert!(xml.contains(
-        "media=\"image_preview/$Time$.jpg\" timescale=\"1000\" presentationTimeOffset=\"0\"><SegmentTimeline><S t=\"0\" d=\"4000\"/></SegmentTimeline>"
+        "media=\"preview/$Time$.jpg\" timescale=\"1000\" presentationTimeOffset=\"0\"><SegmentTimeline><S t=\"0\" d=\"4000\"/></SegmentTimeline>"
     ));
 }
 
-#[test]
-fn generated_multi_period_mpd_matches_the_golden_fixture() {
+#[tokio::test]
+async fn generated_multi_period_mpd_matches_the_golden_fixture() {
     let xml = generate(
         &[video_track("video-main", 16, 16, 100)],
         &[],
@@ -155,16 +153,14 @@ fn generated_multi_period_mpd_matches_the_golden_fixture() {
             multi_period: true,
             ..DashOptions::default()
         },
-    );
+    )
+    .await;
 
-    assert_eq!(
-        xml,
-        named_fixture(include_str!("fixtures/multi-period.mpd")).trim_end()
-    );
+    assert_eq!(xml, include_str!("fixtures/multi-period.mpd").trim_end());
 }
 
-#[test]
-fn generated_multi_period_mpd_slides_templates_by_the_millisecond_boundary() {
+#[tokio::test]
+async fn generated_multi_period_mpd_slides_templates_by_the_millisecond_boundary() {
     let xml = generate(
         &[video_track("video-main", 16, 16, 100)],
         &[thumbnail()],
@@ -176,15 +172,16 @@ fn generated_multi_period_mpd_slides_templates_by_the_millisecond_boundary() {
             multi_period: true,
             ..DashOptions::default()
         },
-    );
+    )
+    .await;
 
     assert!(xml.contains(
-        "<Period id=\"1\" start=\"PT0.75S\" duration=\"PT1.25S\"><AdaptationSet id=\"0\" contentType=\"video\" segmentAlignment=\"true\" mimeType=\"video/mp4\" startWithSAP=\"1\"><SupplementalProperty schemeIdUri=\"urn:mpeg:dash:period-connectivity:2015\" value=\"0\"/><Representation id=\"video_video-main\" bandwidth=\"800\" width=\"16\" height=\"16\" frameRate=\"4/1\" codecs=\"avc1.42001e\"><SegmentTemplate media=\"$RepresentationID$/$Time$.m4s\" initialization=\"$RepresentationID$/init.mp4\" timescale=\"1000\" presentationTimeOffset=\"750\"><SegmentTimeline><S t=\"0\" d=\"1000\" r=\"1\"/></SegmentTimeline>"
+        "<Period id=\"1\" start=\"PT0.75S\" duration=\"PT1.25S\"><AdaptationSet id=\"0\" contentType=\"video\" mimeType=\"video/mp4\" startWithSAP=\"1\"><SupplementalProperty schemeIdUri=\"urn:mpeg:dash:period-connectivity:2015\" value=\"0\"/><Representation id=\"video-main\" bandwidth=\"800\" width=\"16\" height=\"16\" frameRate=\"4/1\" codecs=\"avc1.42001e\"><SegmentTemplate media=\"$RepresentationID$/$Time$.m4s\" initialization=\"$RepresentationID$/init.mp4\" timescale=\"1000\" presentationTimeOffset=\"750\"><SegmentTimeline><S t=\"0\" d=\"1000\" r=\"1\"/></SegmentTimeline>"
     ));
 }
 
-#[test]
-fn generated_multi_period_mpd_references_a_boundary_crossing_thumbnail_sprite_twice() {
+#[tokio::test]
+async fn generated_multi_period_mpd_references_a_boundary_crossing_thumbnail_sprite_twice() {
     let xml = generate(
         &[video_track("video-main", 16, 16, 100)],
         &[thumbnail()],
@@ -196,15 +193,16 @@ fn generated_multi_period_mpd_references_a_boundary_crossing_thumbnail_sprite_tw
             multi_period: true,
             ..DashOptions::default()
         },
-    );
+    )
+    .await;
 
     assert!(xml.contains(
-        "contentType=\"image\" mimeType=\"image/jpeg\"><SupplementalProperty schemeIdUri=\"urn:mpeg:dash:period-connectivity:2015\" value=\"0\"/><Representation id=\"image_preview\" bandwidth=\"64\" width=\"16\" height=\"16\"><EssentialProperty schemeIdUri=\"http://dashif.org/guidelines/thumbnail_tile\" value=\"2x2\"/><SegmentTemplate media=\"image_preview/$Time$.jpg\" timescale=\"1000\" presentationTimeOffset=\"1000\"><SegmentTimeline><S t=\"0\" d=\"4000\"/></SegmentTimeline>"
+        "contentType=\"image\" mimeType=\"image/jpeg\"><SupplementalProperty schemeIdUri=\"urn:mpeg:dash:period-connectivity:2015\" value=\"0\"/><Representation id=\"preview\" bandwidth=\"64\" width=\"16\" height=\"16\"><EssentialProperty schemeIdUri=\"http://dashif.org/guidelines/thumbnail_tile\" value=\"2x2\"/><SegmentTemplate media=\"preview/$Time$.jpg\" timescale=\"1000\" presentationTimeOffset=\"1000\"><SegmentTimeline><S t=\"0\" d=\"4000\"/></SegmentTimeline>"
     ));
 }
 
-#[test]
-fn generated_grouped_rendition_mpd_matches_the_golden_fixture() {
+#[tokio::test]
+async fn generated_grouped_rendition_mpd_matches_the_golden_fixture() {
     let tracks = vec![
         video_track("video-low", 16, 16, 100),
         video_track("video-high", 32, 32, 200),
@@ -234,10 +232,8 @@ fn generated_grouped_rendition_mpd_matches_the_golden_fixture() {
         &[],
         &SegmentOptions::default(),
         &DashOptions::default(),
-    );
+    )
+    .await;
 
-    assert_eq!(
-        xml,
-        named_fixture(include_str!("fixtures/grouped.mpd")).trim_end()
-    );
+    assert_eq!(xml, include_str!("fixtures/grouped.mpd").trim_end());
 }

@@ -1,6 +1,6 @@
 use dyndo_core::asset::Asset;
 use dyndo_core::segment_options::SegmentOptions;
-use dyndo_core::track::ResolvedSourceTrack;
+use dyndo_core::track::ResolvedTrack;
 use dyndo_core::track::SourceTrack;
 use dyndo_core::track::cmaf::CmafKind;
 use dyndo_core::track::timed_text::TimedTextFormat;
@@ -25,9 +25,7 @@ async fn web_vtt_track_packages_cmaf_on_demand_and_serves_vtt_directly() {
     };
     operator.write(path.as_str(), VTT).await.unwrap();
 
-    let ResolvedSourceTrack::TimedText(vtt) = ResolvedSourceTrack::discover(&operator, path)
-        .await
-        .unwrap()
+    let ResolvedTrack::TimedText(vtt) = ResolvedTrack::discover(&operator, path).await.unwrap()
     else {
         panic!("expected a WebVTT source track");
     };
@@ -49,14 +47,17 @@ async fn web_vtt_track_packages_cmaf_on_demand_and_serves_vtt_directly() {
     assert_eq!(&initialization[4..8], b"ftyp");
     assert_eq!(&media[4..8], b"styp");
     assert_eq!(
-        vtt.web_vtt_segment(0, 750).as_deref(),
+        vtt.served_web_vtt_segment(0, &options)
+            .await
+            .unwrap()
+            .as_deref(),
         Some("WEBVTT\n\n00:00:00.500 --> 00:00:00.750\nFirst\n")
     );
-    assert_eq!(
-        vtt.web_vtt_segment(0, 1_500).as_deref(),
-        Some(
-            "WEBVTT\n\n00:00:00.500 --> 00:00:01.500\nFirst\n\n00:00:01.000 --> 00:00:01.500\nSecond\n"
-        )
+    assert!(
+        vtt.served_web_vtt_segment(500, &options)
+            .await
+            .unwrap()
+            .is_none()
     );
 }
 
@@ -65,9 +66,8 @@ async fn asset_rejects_packaged_web_vtt_as_a_source_track() {
     let operator = memory_operator();
     let path = RelativePath::new("subtitles/en.vtt");
     operator.write(path.as_str(), VTT).await.unwrap();
-    let ResolvedSourceTrack::TimedText(timed_text) = ResolvedSourceTrack::discover(&operator, path)
-        .await
-        .unwrap()
+    let ResolvedTrack::TimedText(timed_text) =
+        ResolvedTrack::discover(&operator, path).await.unwrap()
     else {
         panic!("expected a WebVTT source track");
     };
@@ -75,7 +75,7 @@ async fn asset_rejects_packaged_web_vtt_as_a_source_track() {
         .package_wvtt(&SegmentOptions::default())
         .await
         .unwrap();
-    let packaged = ResolvedSourceTrack::Cmaf(packaged);
+    let packaged = ResolvedTrack::Cmaf(packaged);
     let mut asset = Asset::read_or_new(&operator, RelativePath::new("asset.json"))
         .await
         .unwrap();
@@ -97,7 +97,7 @@ async fn web_vtt_track_reports_an_invalid_subtitle_document() {
         .await
         .unwrap();
 
-    let error = ResolvedSourceTrack::discover(&operator, path)
+    let error = ResolvedTrack::discover(&operator, path)
         .await
         .err()
         .unwrap();

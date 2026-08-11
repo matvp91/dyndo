@@ -1,6 +1,6 @@
 use std::ops::Range;
 
-use dyndo_core::track::ResolvedSourceTrack;
+use dyndo_core::track::ResolvedTrack;
 use dyndo_core::track::cmaf::CmafKind;
 use opendal::{Operator, services::Memory};
 use relative_path::RelativePath;
@@ -23,9 +23,7 @@ async fn video_resolve_and_read_returns_the_indexed_portions_of_a_fragmented_mp4
     let path = RelativePath::new("video.mp4");
     operator.write(path.as_str(), VIDEO_FIXTURE).await.unwrap();
 
-    let track = ResolvedSourceTrack::discover(&operator, path)
-        .await
-        .unwrap();
+    let track = ResolvedTrack::discover(&operator, path).await.unwrap();
     let track = track.cmaf().unwrap();
     let initialization = track
         .read_range(&operator, track.init_segment().byte_range())

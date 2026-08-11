@@ -4,11 +4,13 @@ use self::thumbnail::ThumbnailTrack;
 
 pub mod cmaf;
 pub mod metadata;
+mod resolved;
 mod source;
 pub mod thumbnail;
 pub mod timed_text;
 
-pub use source::{ResolvedSourceTrack, SourceResolveError, SourceTrack};
+pub use resolved::{CmafRepresentationError, ResolvedTrack, TrackResolveError};
+pub use source::SourceTrack;
 
 /// A track stored in an asset.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

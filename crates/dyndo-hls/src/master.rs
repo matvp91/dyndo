@@ -40,7 +40,7 @@ fn image_streams(thumbnails: &[ResolvedThumbnailTrack]) -> Vec<ExtTag> {
                 rest: Some(format!(
                     "BANDWIDTH={},CODECS=\"jpeg\",RESOLUTION={width}x{height},URI=\"{}.m3u8\"",
                     thumbnail.bandwidth(),
-                    crate::image_resource_name(thumbnail),
+                    thumbnail.id(),
                 )),
             }
         })
@@ -69,10 +69,10 @@ fn build_variant_stream(
     segment_options: &SegmentOptions,
     renditions: &Renditions,
 ) -> Result<VariantStream, HlsError> {
-    let segments = served_segments(track, segment_options);
+    let segments = track.served_segments(segment_options);
     Ok(VariantStream {
         is_i_frame: false,
-        uri: format!("{}.m3u8", crate::media_resource_name(track)),
+        uri: format!("{}.m3u8", track.id()),
         bandwidth: ServedSegment::maximum_bitrate(&segments)
             .saturating_add(renditions.maximum_bitrate),
         average_bandwidth: Some(
@@ -110,11 +110,4 @@ fn frame_rate(value: &str) -> Result<f64, HlsError> {
     }
 
     Ok((f64::from(numerator) / f64::from(denominator) * 1000.0).round() / 1000.0)
-}
-
-fn served_segments<'a>(
-    track: &'a ResolvedCmafTrack,
-    options: &SegmentOptions,
-) -> Vec<ServedSegment<'a>> {
-    ServedSegment::group(track.segments(), options.min_length, &options.boundaries)
 }

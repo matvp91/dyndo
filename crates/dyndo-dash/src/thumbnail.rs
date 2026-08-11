@@ -36,7 +36,7 @@ fn build_adaptation_set(
         contentType: Some(CONTENT_TYPE.to_string()),
         mimeType: Some(MIME_TYPE.to_string()),
         representations: vec![Representation {
-            id: Some(format!("image_{}", thumbnail.id())),
+            id: Some(thumbnail.id().to_string()),
             bandwidth: Some(thumbnail.bandwidth()),
             width: Some(u64::from(thumbnail.width())),
             height: Some(u64::from(thumbnail.height())),
@@ -50,7 +50,7 @@ fn build_adaptation_set(
                 ..Default::default()
             }],
             SegmentTemplate: Some(SegmentTemplate {
-                media: Some(format!("image_{}/$Time$.jpg", thumbnail.id())),
+                media: Some(format!("{}/$Time$.jpg", thumbnail.id())),
                 timescale: Some(TIMESCALE),
                 presentationTimeOffset: Some(0),
                 SegmentTimeline: Some(SegmentTimeline {

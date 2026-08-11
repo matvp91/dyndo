@@ -8,13 +8,17 @@ mod roles;
 
 use std::io;
 
+use dyndo_core::asset::ResolvedAsset;
 use dyndo_core::segment_options::SegmentOptions;
-use dyndo_core::track::cmaf::ResolvedCmafTrack;
+use dyndo_core::track::cmaf::CmafKind;
 use dyndo_core::track::thumbnail::ResolvedThumbnailTrack;
+use dyndo_core::track::{CmafRepresentationError, ResolvedTrack};
 use options::HlsOptions;
 
 #[derive(Debug, thiserror::Error)]
 pub enum HlsError {
+    #[error(transparent)]
+    CmafRepresentation(#[from] CmafRepresentationError),
     #[error(transparent)]
     Io(#[from] io::Error),
     #[error(transparent)]
@@ -27,14 +31,22 @@ pub enum HlsError {
 ///
 /// # Errors
 ///
-/// Returns a [`HlsError`] when the resulting playlist is invalid.
-pub fn generate_master_playlist(
-    tracks: &[ResolvedCmafTrack],
-    thumbnails: &[ResolvedThumbnailTrack],
-    segment_options: &SegmentOptions,
+/// Returns a [`HlsError`] when a track cannot provide a CMAF representation or
+/// the resulting playlist is invalid.
+pub async fn generate_master_playlist(
+    asset: &ResolvedAsset,
     hls_options: &HlsOptions,
 ) -> Result<String, HlsError> {
-    let playlist = master::build_playlist(tracks, thumbnails, segment_options, hls_options)?;
+    let tracks = asset.cmaf_representations().await?;
+    let thumbnails: Vec<_> = asset.thumbnails().cloned().collect();
+    let mut hls_options = *hls_options;
+    hls_options.wvtt |= asset
+        .tracks()
+        .iter()
+        .filter_map(ResolvedTrack::cmaf)
+        .any(|track| matches!(track.kind(), CmafKind::Text(_)));
+    let playlist =
+        master::build_playlist(&tracks, &thumbnails, asset.segment_options(), &hls_options)?;
     serialize(|output| playlist.write_to(output))
 }
 
@@ -42,13 +54,17 @@ pub fn generate_master_playlist(
 ///
 /// # Errors
 ///
-/// Returns a [`HlsError`] when the resulting playlist is invalid.
-pub fn generate_media_playlist(
-    track: &ResolvedCmafTrack,
+/// Returns a [`HlsError`] when the track cannot provide a CMAF representation
+/// or the resulting playlist is invalid.
+pub async fn generate_media_playlist(
+    track: &ResolvedTrack,
     segment_options: &SegmentOptions,
     hls_options: &HlsOptions,
 ) -> Result<String, HlsError> {
-    let playlist = media::build_playlist(track, segment_options, hls_options);
+    let cmaf = track.cmaf_representation(segment_options).await?;
+    let mut hls_options = *hls_options;
+    hls_options.wvtt |= track.timed_text().is_none();
+    let playlist = media::build_playlist(&cmaf, segment_options, &hls_options);
     serialize(|output| playlist.write_to(output))
 }
 
@@ -62,12 +78,4 @@ fn serialize(write: impl FnOnce(&mut Vec<u8>) -> io::Result<()>) -> Result<Strin
     let mut output = Vec::new();
     write(&mut output)?;
     Ok(String::from_utf8(output)?)
-}
-
-fn media_resource_name(track: &ResolvedCmafTrack) -> String {
-    format!("{}_{}", track.kind().content_type(), track.id())
-}
-
-fn image_resource_name(thumbnail: &ResolvedThumbnailTrack) -> String {
-    format!("image_{}", thumbnail.id())
 }

@@ -8,7 +8,6 @@ use dyndo_core::segment_options::SegmentOptions;
 use dyndo_core::track::cmaf::{CmafKind, ResolvedCmafTrack, ServedSegment};
 use dyndo_core::track::thumbnail::ResolvedThumbnailTrack;
 
-use crate::DashError;
 use crate::adaptation_group::AdaptationGroup;
 use crate::roles;
 
@@ -23,10 +22,9 @@ pub(crate) fn build_mpd(
     tracks: &[ResolvedCmafTrack],
     thumbnails: &[ResolvedThumbnailTrack],
     segment_options: &SegmentOptions,
-) -> Result<MPD, DashError> {
+) -> MPD {
     let presentation_duration = presentation_duration(tracks);
     let groups = AdaptationGroup::group(tracks);
-    ensure_segment_alignment(&groups, segment_options)?;
     let mut adaptations: Vec<AdaptationSet> = groups
         .iter()
         .enumerate()
@@ -45,7 +43,7 @@ pub(crate) fn build_mpd(
         ..Default::default()
     });
 
-    Ok(MPD {
+    MPD {
         xmlns: Some(DASH_XMLNS.to_string()),
         mpdtype: Some("static".to_string()),
         profiles: Some(DASH_PROFILE.to_string()),
@@ -56,20 +54,6 @@ pub(crate) fn build_mpd(
         mediaPresentationDuration: Some(Duration::from_millis(u64::from(presentation_duration))),
         periods: periods.into_iter().collect(),
         ..Default::default()
-    })
-}
-
-fn ensure_segment_alignment(
-    groups: &[AdaptationGroup<'_>],
-    segment_options: &SegmentOptions,
-) -> Result<(), DashError> {
-    if groups
-        .iter()
-        .all(|group| group.is_segment_aligned(segment_options))
-    {
-        Ok(())
-    } else {
-        Err(DashError::SegmentAlignment)
     }
 }
 
@@ -92,7 +76,6 @@ fn build_adaptation_set(
         contentType: Some(group.content_type().to_string()),
         mimeType: Some(group.mime_type().to_string()),
         lang: group.language().map(str::to_string),
-        segmentAlignment: Some(true),
         startWithSAP: Some(1),
         Role: roles::roles(group.content_type(), group.role()),
         Accessibility: roles::accessibility(group.content_type(), group.role()),
@@ -105,13 +88,13 @@ fn build_representation(
     track: &ResolvedCmafTrack,
     segment_options: &SegmentOptions,
 ) -> Option<Representation> {
-    let segments = served_segments(track, segment_options);
+    let segments = track.served_segments(segment_options);
     if segments.is_empty() {
         return None;
     }
 
     let mut representation = Representation {
-        id: Some(resource_name(track)),
+        id: Some(track.id().to_string()),
         bandwidth: Some(ServedSegment::maximum_bitrate(&segments)),
         codecs: Some(track.codec().rfc6381()),
         SegmentTemplate: Some(build_segment_template(track, &segments)),
@@ -133,10 +116,6 @@ fn build_representation(
     }
 
     Some(representation)
-}
-
-fn resource_name(track: &ResolvedCmafTrack) -> String {
-    format!("{}_{}", track.kind().content_type(), track.id())
 }
 
 fn build_audio_channel_configuration(channels: u16) -> AudioChannelConfiguration {
@@ -187,13 +166,6 @@ fn build_segment_timeline(segments: &[ServedSegment<'_>]) -> SegmentTimeline {
     SegmentTimeline { segments: entries }
 }
 
-fn served_segments<'a>(
-    track: &'a ResolvedCmafTrack,
-    options: &SegmentOptions,
-) -> Vec<ServedSegment<'a>> {
-    ServedSegment::group(track.segments(), options.min_length, &options.boundaries)
-}
-
 fn presentation_duration(tracks: &[ResolvedCmafTrack]) -> u32 {
     maximum_duration(tracks, |kind| matches!(kind, CmafKind::Video(_))).unwrap_or_else(|| {
         maximum_duration(tracks, |kind| matches!(kind, CmafKind::Audio(_))).unwrap_or(0)
@@ -216,7 +188,7 @@ fn max_segment_duration(tracks: &[ResolvedCmafTrack], options: &SegmentOptions) 
         .iter()
         .filter(|track| matches!(track.kind(), CmafKind::Video(_) | CmafKind::Audio(_)))
         .flat_map(|track| {
-            served_segments(track, options).into_iter().map(|segment| {
+            track.served_segments(options).into_iter().map(|segment| {
                 let duration = u128::from(segment.unscaled_duration()) * 1_000;
                 let duration = duration.div_ceil(u128::from(track.timescale()));
                 u32::try_from(duration).unwrap_or(u32::MAX)

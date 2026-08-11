@@ -2,11 +2,10 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use dyndo_core::asset::AssetError;
-use dyndo_core::track::SourceResolveError;
+use dyndo_core::asset::{AssetError, AssetResolveError};
+use dyndo_core::track::CmafRepresentationError;
 use dyndo_core::track::cmaf::CmafReadError;
 use dyndo_core::track::thumbnail::ThumbnailError;
-use dyndo_core::track::timed_text::WebVttPackageError;
 use dyndo_dash::DashError;
 use dyndo_hls::HlsError;
 
@@ -19,9 +18,9 @@ pub enum ServerError {
     #[error(transparent)]
     Asset(#[from] AssetError),
     #[error(transparent)]
-    SourceResolve(#[from] SourceResolveError),
+    AssetResolve(#[from] AssetResolveError),
     #[error(transparent)]
-    WebVttPackage(#[from] WebVttPackageError),
+    CmafRepresentation(#[from] CmafRepresentationError),
     #[error(transparent)]
     CmafRead(#[from] CmafReadError),
     #[error(transparent)]
@@ -30,8 +29,6 @@ pub enum ServerError {
     Dash(#[from] DashError),
     #[error(transparent)]
     Hls(#[from] HlsError),
-    #[error("manifest serialization failed: {0}")]
-    Serialization(String),
 }
 
 impl IntoResponse for ServerError {
@@ -47,13 +44,12 @@ impl ServerError {
             Self::BadRequest(_) => StatusCode::BAD_REQUEST,
             Self::NotFound(_) => StatusCode::NOT_FOUND,
             Self::Asset(_)
-            | Self::SourceResolve(_)
-            | Self::WebVttPackage(_)
+            | Self::AssetResolve(_)
+            | Self::CmafRepresentation(_)
             | Self::CmafRead(_)
             | Self::Thumbnail(_)
             | Self::Dash(_)
-            | Self::Hls(_)
-            | Self::Serialization(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            | Self::Hls(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 }

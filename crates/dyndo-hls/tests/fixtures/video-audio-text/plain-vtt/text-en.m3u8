@@ -2,7 +2,7 @@
 #EXT-X-TARGETDURATION:1
 #EXT-X-PLAYLIST-TYPE:VOD
 #EXTINF:1,
-text_text-en/0.vtt
+text-en/0.vtt
 #EXTINF:1,
-text_text-en/1000.vtt
+text-en/1000.vtt
 #EXT-X-ENDLIST

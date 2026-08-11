@@ -9,15 +9,15 @@ mod roles;
 mod thumbnail;
 
 use dash_mpd::MPD;
-use dyndo_core::segment_options::SegmentOptions;
-use dyndo_core::track::cmaf::ResolvedCmafTrack;
-use dyndo_core::track::thumbnail::ResolvedThumbnailTrack;
+use dyndo_core::asset::ResolvedAsset;
+use dyndo_core::track::CmafRepresentationError;
 use options::DashOptions;
+use serde::Serialize;
 
 #[derive(Debug, thiserror::Error)]
 pub enum DashError {
-    #[error("tracks in an adaptation set are not segment-aligned")]
-    SegmentAlignment,
+    #[error(transparent)]
+    CmafRepresentation(#[from] CmafRepresentationError),
     #[error("multi-period splitting requires at most one MPD Period")]
     MultiPeriodSource,
     #[error(
@@ -30,21 +30,24 @@ pub enum DashError {
     MultiPeriodTemplate,
     #[error("multi-period splitting cannot expand the MPD SegmentTimeline")]
     MultiPeriodTimeline,
+    #[error("manifest serialization failed: {0}")]
+    Serialization(String),
 }
 
 /// Generates a static DASH media presentation description for an asset.
 ///
 /// # Errors
 ///
-/// Returns a [`DashError`] when tracks grouped into an AdaptationSet are not
-/// segment-aligned.
-pub fn generate_mpd(
-    tracks: &[ResolvedCmafTrack],
-    thumbnails: &[ResolvedThumbnailTrack],
-    segment_options: &SegmentOptions,
+/// Returns a [`DashError`] when a track cannot provide CMAF metadata,
+/// multi-period transformation fails, or XML serialization fails.
+pub async fn generate_mpd(
+    asset: &ResolvedAsset,
     dash_options: &DashOptions,
-) -> Result<MPD, DashError> {
-    let mut mpd = builder::build_mpd(tracks, thumbnails, segment_options)?;
+) -> Result<String, DashError> {
+    let tracks = asset.cmaf_representations().await?;
+    let thumbnails: Vec<_> = asset.thumbnails().cloned().collect();
+    let segment_options = asset.segment_options();
+    let mut mpd = builder::build_mpd(&tracks, &thumbnails, segment_options);
     if dash_options.multi_period {
         multi_period::split(&mut mpd, &segment_options.boundaries)?;
     }
@@ -52,5 +55,14 @@ pub fn generate_mpd(
         compact::compact(&mut mpd);
     }
 
-    Ok(mpd)
+    serialize(&mpd)
+}
+
+fn serialize(mpd: &MPD) -> Result<String, DashError> {
+    let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+    let mut serializer = quick_xml::se::Serializer::new(&mut xml);
+    serializer.indent(' ', 2);
+    mpd.serialize(serializer)
+        .map_err(|error| DashError::Serialization(error.to_string()))?;
+    Ok(xml)
 }

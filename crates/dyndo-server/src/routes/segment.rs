@@ -3,9 +3,11 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use dyndo_core::asset::Asset;
+use dyndo_core::track::cmaf::ResolvedCmafTrack;
+use dyndo_core::track::{CmafRepresentationError, ResolvedTrack};
 use opendal::Operator;
 
-use super::track_resolver::{LocatedSegment, RequestTrack, TrackResolver};
+use super::resolve_track;
 use crate::error::ServerError;
 
 pub(super) async fn initialization(
@@ -13,10 +15,13 @@ pub(super) async fn initialization(
     asset: &Asset,
     track_id: &str,
 ) -> Result<Response, ServerError> {
-    let track = TrackResolver::new(op, asset).resolve(track_id).await?;
-    let bytes = read_range(op, &track, track.cmaf().init_segment().byte_range()).await?;
+    let track = resolve_track(op, asset, track_id, None).await?;
+    let cmaf = cmaf_representation(&track, asset).await?;
+    let bytes = cmaf
+        .read_range(op, cmaf.init_segment().byte_range())
+        .await?;
 
-    Ok(([(CONTENT_TYPE, track.cmaf().kind().mime_type())], bytes).into_response())
+    Ok(([(CONTENT_TYPE, cmaf.kind().mime_type())], bytes).into_response())
 }
 
 pub(super) async fn media(
@@ -25,14 +30,14 @@ pub(super) async fn media(
     track_id: &str,
     time: u64,
 ) -> Result<Response, ServerError> {
-    let LocatedSegment {
-        track, byte_range, ..
-    } = TrackResolver::new(op, asset)
-        .locate_segment(track_id, time)
-        .await?;
-    let bytes = read_range(op, &track, byte_range).await?;
+    let track = resolve_track(op, asset, track_id, None).await?;
+    let cmaf = cmaf_representation(&track, asset).await?;
+    let segment = cmaf
+        .served_segment(time, &asset.segment_options)
+        .ok_or_else(|| ServerError::NotFound(format!("segment {time} for track {track_id}")))?;
+    let bytes = cmaf.read_range(op, segment.byte_range()).await?;
 
-    Ok(([(CONTENT_TYPE, track.cmaf().kind().mime_type())], bytes).into_response())
+    Ok(([(CONTENT_TYPE, cmaf.kind().mime_type())], bytes).into_response())
 }
 
 pub(super) async fn text(
@@ -41,27 +46,27 @@ pub(super) async fn text(
     track_id: &str,
     time: u64,
 ) -> Result<Response, ServerError> {
-    let LocatedSegment {
-        track,
-        start_time,
-        end_time,
-        ..
-    } = TrackResolver::new(op, asset)
-        .locate_segment(track_id, time)
-        .await?;
-    let text = track
-        .web_vtt_segment(start_time, end_time)
+    let track = resolve_track(op, asset, track_id, None).await?;
+    let timed_text = track
+        .timed_text()
+        .ok_or_else(|| ServerError::NotFound(format!("track {track_id}")))?;
+    let text = timed_text
+        .served_web_vtt_segment(time, &asset.segment_options)
+        .await
+        .map_err(CmafRepresentationError::from)?
         .ok_or_else(|| ServerError::NotFound(format!("segment {time} for track {track_id}")))?;
 
     Ok(([(CONTENT_TYPE, "text/vtt")], text).into_response())
 }
 
-async fn read_range(
-    op: &Operator,
-    track: &RequestTrack,
-    range: std::ops::Range<u64>,
-) -> Result<bytes::Bytes, ServerError> {
-    Ok(track.cmaf().read_range(op, range).await?)
+async fn cmaf_representation(
+    track: &ResolvedTrack,
+    asset: &Asset,
+) -> Result<ResolvedCmafTrack, ServerError> {
+    track
+        .cmaf_representation(&asset.segment_options)
+        .await
+        .map_err(Into::into)
 }
 
 /// Serves the thumbnail sprite named by the DASH `$Time$` substitution.
@@ -71,17 +76,10 @@ pub(super) async fn thumbnail(
     thumbnail_id: &str,
     time: u64,
 ) -> Result<Response, ServerError> {
-    let configured = asset
-        .find_thumbnail_track_by_id(thumbnail_id)
+    let track = resolve_track(op, asset, thumbnail_id, None).await?;
+    let thumbnail = track
+        .thumbnail()
         .ok_or_else(|| ServerError::NotFound(format!("thumbnail {thumbnail_id}")))?;
-    let source_tracks = TrackResolver::new(op, asset).resolve_sources().await?;
-    let thumbnail = asset
-        .resolve_thumbnails(&source_tracks)
-        .into_iter()
-        .find(|track| track.id() == configured.id);
-    let Some(thumbnail) = thumbnail else {
-        return Err(ServerError::NotFound("thumbnail".to_string()));
-    };
     let Some(bytes) = thumbnail.jpeg(op, time).await? else {
         return Err(ServerError::NotFound("thumbnail".to_string()));
     };

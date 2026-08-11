@@ -1,5 +1,5 @@
 use dyndo_core::asset::Asset;
-use dyndo_core::track::ResolvedSourceTrack;
+use dyndo_core::track::ResolvedTrack;
 use dyndo_core::track::cmaf::CmafKind;
 use dyndo_core::track::timed_text::TimedTextFormat;
 use opendal::{Operator, services::Memory};
@@ -12,7 +12,7 @@ fn memory_operator() -> Operator {
 }
 
 #[tokio::test]
-async fn resolved_source_tracks_serve_the_video_and_subtitle_tracks_of_one_asset() {
+async fn resolved_asset_contains_video_subtitle_and_thumbnail_tracks() {
     let operator = memory_operator();
     operator
         .write(
@@ -40,26 +40,18 @@ async fn resolved_source_tracks_serve_the_video_and_subtitle_tracks_of_one_asset
     let asset = Asset::read(&operator, "assets/movie/asset.json")
         .await
         .unwrap();
-    let tracks = asset.resolve_sources(&operator).await.unwrap();
-    assert_eq!(tracks.len(), 2);
-    assert_eq!(asset.resolve_thumbnails(&tracks).len(), 1);
-    let video = tracks
-        .iter()
-        .find(|track| track.id() == "video-main")
-        .and_then(ResolvedSourceTrack::cmaf)
+    let resolved = asset.resolve(&operator).await.unwrap();
+    assert_eq!(resolved.tracks().len(), 3);
+    assert_eq!(resolved.thumbnails().count(), 1);
+    let video = resolved
+        .track("video-main")
+        .and_then(ResolvedTrack::cmaf)
         .unwrap();
-    let subtitles = tracks
-        .iter()
-        .find_map(|track| match track {
-            ResolvedSourceTrack::TimedText(track)
-                if track.id() == "text-en"
-                    && matches!(track.format(), TimedTextFormat::WebVtt(_)) =>
-            {
-                Some(track)
-            }
-            ResolvedSourceTrack::Cmaf(_) | ResolvedSourceTrack::TimedText(_) => None,
-        })
+    let subtitles = resolved
+        .track("text-en")
+        .and_then(ResolvedTrack::timed_text)
         .unwrap();
+    assert!(matches!(subtitles.format(), TimedTextFormat::WebVtt(_)));
     let packaged_subtitles = subtitles
         .package_wvtt(&asset.segment_options)
         .await
@@ -75,4 +67,31 @@ async fn resolved_source_tracks_serve_the_video_and_subtitle_tracks_of_one_asset
         &VIDEO_FIXTURE[..video.init_segment().byte_range().end as usize]
     );
     assert_eq!(packaged_subtitles.segments().len(), 1);
+}
+
+#[tokio::test]
+async fn asset_resolves_one_track_without_resolving_the_full_asset() {
+    let operator = memory_operator();
+    operator
+        .write(
+            "asset.json",
+            r#"{
+                "tracks":[
+                    {"id":"video-main","path":"video.mp4","codec":"avc1.42c00a","type":"video","width":16,"height":16,"frame_rate":"4/1"},
+                    {"id":"missing-text","path":"missing.vtt","type":"webvtt","language":"und"}
+                ]
+            }"#,
+        )
+        .await
+        .unwrap();
+    operator.write("video.mp4", VIDEO_FIXTURE).await.unwrap();
+    let asset = Asset::read(&operator, "asset.json").await.unwrap();
+
+    let track = asset
+        .resolve_track(&operator, "video-main")
+        .await
+        .unwrap()
+        .unwrap();
+
+    assert!(matches!(track, ResolvedTrack::Cmaf(_)));
 }

@@ -1,6 +1,21 @@
 use std::ops::Range;
 
-use super::Segment;
+use super::{ResolvedCmafTrack, Segment};
+use crate::segment_options::SegmentOptions;
+
+impl ResolvedCmafTrack {
+    /// Returns the addressable segments produced by the configured delivery policy.
+    pub fn served_segments(&self, options: &SegmentOptions) -> Vec<ServedSegment<'_>> {
+        ServedSegment::group(self.segments(), options.min_length, &options.boundaries)
+    }
+
+    /// Finds an addressable segment by its unscaled start time.
+    pub fn served_segment(&self, time: u64, options: &SegmentOptions) -> Option<ServedSegment<'_>> {
+        self.served_segments(options)
+            .into_iter()
+            .find(|segment| segment.unscaled_start_time() == time)
+    }
+}
 
 /// One addressable media segment after consecutive source segments are grouped.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -9,7 +24,7 @@ pub struct ServedSegment<'a> {
 }
 
 impl<'a> ServedSegment<'a> {
-    pub fn group(segments: &'a [Segment], minimum_duration: u32, boundaries: &[u32]) -> Vec<Self> {
+    fn group(segments: &'a [Segment], minimum_duration: u32, boundaries: &[u32]) -> Vec<Self> {
         if segments.is_empty() {
             return Vec::new();
         }
@@ -157,18 +172,43 @@ fn snapped_cuts(segments: &[Segment], boundaries: impl IntoIterator<Item = u32>)
 mod tests {
     use std::sync::Arc;
 
-    use super::{Segment, ServedSegment};
+    use super::{ResolvedCmafTrack, Segment, ServedSegment};
     use crate::codec::{CodecConfig, WvttCodec};
-    use crate::track::cmaf::InitSegment;
+    use crate::segment_options::SegmentOptions;
+    use crate::track::cmaf::{CmafKind, InitSegment};
+    use crate::track::metadata::TextMetadata;
+
+    fn init_segment() -> Arc<InitSegment> {
+        Arc::new(InitSegment::new(CodecConfig::Wvtt(WvttCodec), 1_000, 0, 0))
+    }
 
     fn segments(specifications: &[(u64, u64, u64, u64)]) -> Vec<Segment> {
-        let init = Arc::new(InitSegment::new(CodecConfig::Wvtt(WvttCodec), 1_000, 0, 0));
+        let init = init_segment();
+        segments_with_init(&init, specifications)
+    }
+
+    fn segments_with_init(
+        init: &Arc<InitSegment>,
+        specifications: &[(u64, u64, u64, u64)],
+    ) -> Vec<Segment> {
         specifications
             .iter()
             .map(|&(start, end, start_byte, end_byte)| {
-                Segment::new(Arc::clone(&init), start, end, start_byte, end_byte)
+                Segment::new(Arc::clone(init), start, end, start_byte, end_byte)
             })
             .collect()
+    }
+
+    fn track(specifications: &[(u64, u64, u64, u64)]) -> ResolvedCmafTrack {
+        let init = init_segment();
+        let segments = segments_with_init(&init, specifications);
+        ResolvedCmafTrack::new(
+            "text".to_string(),
+            "text.mp4".into(),
+            CmafKind::Text(TextMetadata::default()),
+            init,
+            segments,
+        )
     }
 
     #[test]
@@ -242,6 +282,30 @@ mod tests {
                 .collect::<Vec<_>>(),
             [1, 1, 1]
         );
+    }
+
+    #[test]
+    fn served_segment_finds_a_group_by_its_addressable_start_time() {
+        let track = track(&[(0, 400, 0, 40), (400, 800, 40, 80), (800, 1_200, 80, 120)]);
+        let options = SegmentOptions {
+            min_length: 800,
+            ..Default::default()
+        };
+
+        let segment = track.served_segment(800, &options).unwrap();
+
+        assert_eq!(segment.byte_range(), 80..120);
+    }
+
+    #[test]
+    fn served_segment_rejects_a_source_time_hidden_by_grouping() {
+        let track = track(&[(0, 400, 0, 40), (400, 800, 40, 80)]);
+        let options = SegmentOptions {
+            min_length: 800,
+            ..Default::default()
+        };
+
+        assert!(track.served_segment(400, &options).is_none());
     }
 
     #[test]

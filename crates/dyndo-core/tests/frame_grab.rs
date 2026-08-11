@@ -1,5 +1,5 @@
 use dyndo_core::image::FrameExtractor;
-use dyndo_core::track::ResolvedSourceTrack;
+use dyndo_core::track::ResolvedTrack;
 use image::{GenericImageView, ImageFormat, RgbImage};
 use opendal::{Operator, services::Memory};
 use relative_path::RelativePath;
@@ -18,9 +18,7 @@ async fn jpeg_decodes_a_black_frame_at_the_requested_time() {
     let operator = memory_operator();
     let path = RelativePath::new("video.mp4");
     operator.write(path.as_str(), VIDEO_FIXTURE).await.unwrap();
-    let track = ResolvedSourceTrack::discover(&operator, path)
-        .await
-        .unwrap();
+    let track = ResolvedTrack::discover(&operator, path).await.unwrap();
 
     let jpeg = FrameExtractor::new(&operator, track.cmaf().unwrap())
         .jpeg(0, 16, 16)
@@ -39,9 +37,7 @@ async fn jpeg_returns_the_requested_dimensions() {
     let operator = memory_operator();
     let path = RelativePath::new("video.mp4");
     operator.write(path.as_str(), VIDEO_FIXTURE).await.unwrap();
-    let track = ResolvedSourceTrack::discover(&operator, path)
-        .await
-        .unwrap();
+    let track = ResolvedTrack::discover(&operator, path).await.unwrap();
 
     let jpeg = FrameExtractor::new(&operator, track.cmaf().unwrap())
         .jpeg(0, 8, 4)
@@ -66,9 +62,7 @@ async fn jpeg_selects_the_frame_on_each_side_of_a_media_segment_boundary() {
         .write(path.as_str(), TWO_SEGMENT_VIDEO_FIXTURE)
         .await
         .unwrap();
-    let track = ResolvedSourceTrack::discover(&operator, path)
-        .await
-        .unwrap();
+    let track = ResolvedTrack::discover(&operator, path).await.unwrap();
     let extractor = FrameExtractor::new(&operator, track.cmaf().unwrap());
 
     let before_boundary = jpeg_image(&extractor, 499).await;
@@ -89,9 +83,7 @@ async fn jpeg_rejects_a_time_at_the_end_of_the_video_track() {
         .write(path.as_str(), TWO_SEGMENT_VIDEO_FIXTURE)
         .await
         .unwrap();
-    let track = ResolvedSourceTrack::discover(&operator, path)
-        .await
-        .unwrap();
+    let track = ResolvedTrack::discover(&operator, path).await.unwrap();
     let error = FrameExtractor::new(&operator, track.cmaf().unwrap())
         .jpeg(1_000, 16, 16)
         .await
@@ -108,9 +100,7 @@ async fn jpeg_seeks_from_a_keyframe_to_the_requested_interframe() {
         .write(path.as_str(), INTERFRAME_VIDEO_FIXTURE)
         .await
         .unwrap();
-    let track = ResolvedSourceTrack::discover(&operator, path)
-        .await
-        .unwrap();
+    let track = ResolvedTrack::discover(&operator, path).await.unwrap();
     let extractor = FrameExtractor::new(&operator, track.cmaf().unwrap());
     let image = jpeg_image(&extractor, 500).await;
 

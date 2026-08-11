@@ -1,7 +1,7 @@
 use clap::Args;
 use dyndo_core::asset::Asset;
 use dyndo_core::role::Role;
-use dyndo_core::track::ResolvedSourceTrack;
+use dyndo_core::track::ResolvedTrack;
 use language_tags::LanguageTag;
 use opendal::Operator;
 use relative_path::{RelativePath, RelativePathBuf};
@@ -28,7 +28,7 @@ pub(crate) async fn run(op: &Operator, args: IndexArgs) -> Result<(), Box<dyn st
             continue;
         }
 
-        let track = ResolvedSourceTrack::discover(op, &path).await?;
+        let track = ResolvedTrack::discover(op, &path).await?;
         input.apply(asset.add_source_track(&track)?);
     }
 

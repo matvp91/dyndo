@@ -27,12 +27,12 @@ contains a `SourceTrack`, while `Track::Thumbnail` contains a
 `ThumbnailTrack`. Only `SourceTrack` has a path. Its variants are `CmafTrack`
 and `TimedTextTrack`.
 
-After resolution, the runtime model uses `ResolvedSourceTrack`, which is either
-a `ResolvedCmafTrack` or a `ResolvedTimedTextTrack`. Each resolved source track
-carries the distinction relevant to its representation: `CmafKind` is `Video`,
-`Audio`, or `Text`; `TimedTextFormat` is `WebVtt` today and can gain `Imsc1`
-when supported. CMAF's `Text` kind remains the container-level media category,
-independent of the timed-text document format.
+After resolution, `ResolvedTrack` preserves the configured track form. Its
+variants are `Cmaf`, `TimedText`, and `Thumbnail`. A `ResolvedAsset` contains
+the resolved tracks of one asset and its segment options. `CmafKind` remains
+`Video`, `Audio`, or `Text`; `TimedTextFormat` is `WebVtt` today and can gain
+`Imsc1` when supported. CMAF's `Text` kind is the container-level media
+category, independent of the timed-text document format.
 
 Shared sum types such as `Track` and `SourceTrack` live directly in `track`.
 Representation-specific types have one public home: CMAF types live in
@@ -70,17 +70,34 @@ The word **type** has two deliberate meanings in the system:
 For example, `webvtt` is a timed-text document format, while CMAF `text` is the
 container category used when that document is packaged with the `wvtt` codec.
 
+## Resolution and filtering
+
+The server first reads persisted configuration with `Asset::read`. Asset-wide
+outputs such as an MPD or HLS multivariant playlist call `Asset::resolve`, then
+apply any track filter to the resulting `ResolvedAsset`. Resolving before
+filtering lets thumbnails bind to source video even when that video is later
+excluded from the output.
+
+Track-specific outputs do not resolve the full asset. An HLS media playlist or
+media segment calls `Asset::resolve_track` for the requested identifier. A
+thumbnail is the exception: resolving one thumbnail must inspect candidate
+video sources because source selection is part of thumbnail resolution.
+
+There is no resolver service type. The loaded `Asset` already owns the asset
+path, track configuration, and segment options; the storage operator is the
+only additional input needed for resolution.
+
 ## Operation ownership
 
 Operations live on the value that has the information needed to perform them:
 
 - `Asset::read` and `Asset::write` persist asset configuration.
-- `Asset::resolve_sources` and `Asset::resolve_thumbnails` orchestrate all
-  tracks in an asset.
+- `Asset::resolve` creates a `ResolvedAsset` for asset-wide operations.
+- `Asset::resolve_track` resolves one configured track by identifier.
 - `SourceTrack::resolve` resolves a configured source using its declared form
   and metadata.
-- `ResolvedSourceTrack::discover` identifies an unconfigured input for the
-  indexing workflow.
+- `ResolvedTrack::discover` identifies an unconfigured input for the indexing
+  workflow.
 - `TimedTextTrack::resolve`, `CmafTrack::resolve`, and
   `ThumbnailTrack::resolve` implement representation-specific resolution.
 - `ResolvedTimedTextTrack::from_web_vtt_text` creates a resolved WebVTT track
@@ -132,14 +149,23 @@ operation. A stored representation returns its path from `source_path`; an
 in-memory representation returns no path. Consequently, an in-memory CMAF
 representation cannot be added to an `Asset` as a source track.
 
-The complete resolution flow is therefore:
+The asset-wide resolution flow is:
 
 ```text
 asset.json
-  → Asset
-  → Track
-  → SourceTrack::resolve
-  → ResolvedSourceTrack
-  → ResolvedCmafTrack, when a CMAF representation is required
-  → manifest or segment representation requested by the client
+  → Asset::read
+  → Asset::resolve
+  → ResolvedAsset
+  → filter resolved tracks
+  → manifest
+```
+
+Track-specific resolution avoids resolving unrelated tracks:
+
+```text
+asset.json
+  → Asset::read
+  → Asset::resolve_track
+  → ResolvedTrack
+  → requested CMAF, timed-text, or thumbnail representation
 ```

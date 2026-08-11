@@ -13,11 +13,7 @@ pub(crate) fn build_playlist(
     hls_options: &HlsOptions,
 ) -> MediaPlaylist {
     let plain_vtt = !hls_options.wvtt && matches!(track.kind(), CmafKind::Text(_));
-    let segments = ServedSegment::group(
-        track.segments(),
-        segment_options.min_length,
-        &segment_options.boundaries,
-    );
+    let segments = track.served_segments(segment_options);
     let target_duration = segments
         .iter()
         .map(|segment| rounded_duration_seconds(segment.unscaled_duration(), track.timescale()))
@@ -68,7 +64,7 @@ pub(crate) fn build_image_playlist(thumbnail: &ResolvedThumbnailTrack) -> MediaP
                 )),
             });
             MediaSegment {
-                uri: format!("{}/{}.jpg", crate::image_resource_name(thumbnail), start),
+                uri: format!("{}/{start}.jpg", thumbnail.id()),
                 duration: image_duration as f32 / 1_000.0,
                 title: None,
                 byte_range: None,
@@ -118,17 +114,14 @@ fn build_segment(
     let extension = if plain_vtt { "vtt" } else { "m4s" };
     let start_time = segment.unscaled_start_time();
     MediaSegment {
-        uri: format!(
-            "{}/{start_time}.{extension}",
-            crate::media_resource_name(track)
-        ),
+        uri: format!("{}/{start_time}.{extension}", track.id()),
         duration: media_duration(segment.unscaled_duration(), track.timescale()),
         title: None,
         byte_range: None,
         discontinuity: false,
         key: None,
         map: (first && !plain_vtt).then(|| Map {
-            uri: format!("{}/init.mp4", crate::media_resource_name(track)),
+            uri: format!("{}/init.mp4", track.id()),
             byte_range: None,
             other_attributes: HashMap::new(),
         }),

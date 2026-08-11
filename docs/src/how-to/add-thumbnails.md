@@ -63,11 +63,11 @@ The DASH MPD gains an `image/jpeg` adaptation set with the DASH thumbnail-tile
 property. The HLS multivariant playlist gains an image-stream reference like:
 
 ```text
-#EXT-X-IMAGE-STREAM-INF:BANDWIDTH=...,CODECS="jpeg",RESOLUTION=160x90,URI="image_preview.m3u8"
+#EXT-X-IMAGE-STREAM-INF:BANDWIDTH=...,CODECS="jpeg",RESOLUTION=160x90,URI="preview.m3u8"
 ```
 
 The image media playlist points at JPEG sprites such as
-`image_preview/0.jpg`. Both protocols reference the same generated JPEG
+`preview/0.jpg`. Both protocols reference the same generated JPEG
 sprites; requesting a sprite does not write it to storage.
 
 ## Select thumbnail configurations per request

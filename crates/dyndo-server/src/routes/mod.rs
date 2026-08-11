@@ -2,7 +2,6 @@ pub(crate) mod filter;
 mod manifest;
 mod options;
 mod segment;
-mod track_resolver;
 
 use axum::{
     Router,
@@ -11,7 +10,8 @@ use axum::{
     response::Response,
     routing::get,
 };
-use dyndo_core::asset::{Asset, AssetError};
+use dyndo_core::asset::{Asset, AssetError, ResolvedAsset};
+use dyndo_core::track::ResolvedTrack;
 use opendal::Operator;
 use serde::Deserialize;
 use tower_http::cors::{Any, CorsLayer};
@@ -67,36 +67,60 @@ async fn manifest(
     let not_found = || ServerError::NotFound(resource.clone());
     let resource = resource.rsplit_once('.').ok_or_else(not_found)?;
     let options = Options::parse(&encoded_options)?;
-    let source_asset = load_asset(&op, &options).await?;
-    let mut asset = source_asset.clone();
-    if let Some(filter) = &query.filter {
-        filter
-            .apply(&mut asset)
-            .map_err(|error| ServerError::NotFound(error.to_string()))?;
-    }
+    let asset = load_asset(&op, &options).await?;
 
     match resource {
         ("index", "mpd") => {
+            let resolved = resolve_asset(&op, &asset, query.filter.as_ref()).await?;
             let dash_options = options.dash_options();
-            manifest::dash(&op, &source_asset, &asset, &dash_options).await
+            manifest::dash(&resolved, &dash_options).await
         }
         ("master", "m3u8") => {
+            let resolved = resolve_asset(&op, &asset, query.filter.as_ref()).await?;
             let hls_options = options.hls_options();
-            manifest::hls_master(&op, &source_asset, &asset, &hls_options).await
+            manifest::hls_master(&resolved, &hls_options).await
         }
         (resource, "m3u8") => {
             let hls_options = options.hls_options();
-            let Some(id) = resource_id(resource) else {
-                return Err(not_found());
-            };
-            if resource.starts_with("image_") {
-                manifest::hls_images(&op, &source_asset, &asset, id).await
+            let track = resolve_track(&op, &asset, resource, query.filter.as_ref()).await?;
+            if track.thumbnail().is_some() {
+                manifest::hls_images(&track).await
             } else {
-                manifest::hls_media(&op, &asset, &hls_options, id).await
+                manifest::hls_media(&track, &asset.segment_options, &hls_options).await
             }
         }
         _ => Err(not_found()),
     }
+}
+
+async fn resolve_asset(
+    op: &Operator,
+    asset: &Asset,
+    filter: Option<&Filter>,
+) -> Result<ResolvedAsset, ServerError> {
+    let mut resolved = asset.resolve(op).await?;
+    if let Some(filter) = filter {
+        filter
+            .apply(&mut resolved)
+            .map_err(|error| ServerError::NotFound(error.to_string()))?;
+    }
+    Ok(resolved)
+}
+
+pub(in crate::routes) async fn resolve_track(
+    op: &Operator,
+    asset: &Asset,
+    id: &str,
+    filter: Option<&Filter>,
+) -> Result<ResolvedTrack, ServerError> {
+    let track = asset
+        .resolve_track(op, id)
+        .await?
+        .ok_or_else(|| ServerError::NotFound(format!("track {id}")))?;
+    if filter.is_some_and(|filter| !filter.matches(&track)) {
+        return Err(ServerError::NotFound(format!("track {id}")));
+    }
+    Ok(track)
 }
 
 async fn track_file(
@@ -107,24 +131,16 @@ async fn track_file(
     let (file_name, extension) = file.rsplit_once('.').ok_or_else(not_found)?;
     let options = Options::parse(&encoded_options)?;
     let asset = load_asset(&op, &options).await?;
-    let track_id = resource_id(&track_id).ok_or_else(not_found)?;
 
     match (file_name, extension) {
-        ("init", "mp4") => segment::initialization(&op, &asset, track_id).await,
-        (time, "m4s") => segment::media(&op, &asset, track_id, segment_time(time, &file)?).await,
-        (time, "vtt") => segment::text(&op, &asset, track_id, segment_time(time, &file)?).await,
+        ("init", "mp4") => segment::initialization(&op, &asset, &track_id).await,
+        (time, "m4s") => segment::media(&op, &asset, &track_id, segment_time(time, &file)?).await,
+        (time, "vtt") => segment::text(&op, &asset, &track_id, segment_time(time, &file)?).await,
         (time, "jpg") => {
-            segment::thumbnail(&op, &asset, track_id, segment_time(time, &file)?).await
+            segment::thumbnail(&op, &asset, &track_id, segment_time(time, &file)?).await
         }
         _ => Err(not_found()),
     }
-}
-
-fn resource_id(resource: &str) -> Option<&str> {
-    resource
-        .rsplit_once('_')
-        .map(|(_, id)| id)
-        .filter(|id| !id.is_empty())
 }
 
 fn segment_time(name: &str, file: &str) -> Result<u64, ServerError> {
@@ -137,7 +153,7 @@ mod tests {
     use axum::extract::Query;
     use axum::http::Uri;
 
-    use super::{ManifestQuery, resource_id};
+    use super::ManifestQuery;
 
     #[test]
     fn manifest_query_deserializes_filter() {
@@ -152,15 +168,5 @@ mod tests {
         let uri: Uri = "/?filter=type%3Evideo".parse().unwrap();
 
         assert!(Query::<ManifestQuery>::try_from_uri(&uri).is_err());
-    }
-
-    #[test]
-    fn resource_id_reads_the_last_underscore_separated_chunk() {
-        assert_eq!(resource_id("video_6b745be5"), Some("6b745be5"));
-    }
-
-    #[test]
-    fn resource_id_rejects_resources_without_an_identifier() {
-        assert_eq!(resource_id("video_"), None);
     }
 }
