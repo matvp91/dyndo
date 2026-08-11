@@ -6,6 +6,8 @@ use dyndo_core::asset_descriptor::AssetDescriptor;
 use dyndo_core::image::Thumbnail;
 use dyndo_core::reader::Reader;
 use dyndo_core::text::Subtitle;
+use dyndo_core::thumbnail_descriptor::ThumbnailDescriptor;
+use dyndo_core::track_kind::TrackKind;
 use opendal::Operator;
 
 use super::options::Options;
@@ -71,8 +73,19 @@ pub(super) async fn thumbnail(
 ) -> Result<Response, ServerError> {
     let track = TrackResolver::new(op, asset).probe(track_id).await?;
     let (tile_size, step) = options.thumbnail_settings();
-    let thumbnail = Thumbnail::new(tile_size, step);
-    let Some(bytes) = thumbnail.generate(op, &track, time).await? else {
+    let TrackKind::Video(video) = track.kind() else {
+        return Err(ServerError::NotFound("thumbnail".to_string()));
+    };
+    let descriptor = ThumbnailDescriptor {
+        id: track.id().to_string(),
+        tile_size,
+        width: video.width,
+        step,
+    };
+    let Some(thumbnail) = Thumbnail::new(&descriptor, std::slice::from_ref(&track)) else {
+        return Err(ServerError::NotFound("thumbnail".to_string()));
+    };
+    let Some(bytes) = thumbnail.generate(op, time).await? else {
         return Err(ServerError::NotFound("thumbnail".to_string()));
     };
 

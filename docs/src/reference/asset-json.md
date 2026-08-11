@@ -6,8 +6,8 @@ The file is pretty-printed JSON and safe to read, diff, and hand-edit.
 
 ## Top-level structure
 
-A descriptor is an object with a `tracks` array and an optional block of segment
-options:
+A descriptor is an object with a `tracks` array, an optional `thumbnails`
+array, and an optional block of segment options:
 
 ```json
 {
@@ -15,7 +15,8 @@ options:
     "min_length": 6000,
     "boundaries": [683640]
   },
-  "tracks": [ /* track objects */ ]
+  "tracks": [ /* source track objects */ ],
+  "thumbnails": [ /* optional thumbnail objects */ ]
 }
 ```
 
@@ -23,6 +24,25 @@ Track order is preserved as written and is **significant**: within the HLS audio
 group, the default rendition is the first `main`-role track, or the first audio
 track with no role when none is marked `main`. `index` appends tracks in the
 order you pass them.
+
+## Thumbnail objects
+
+Thumbnails describe JPEG sprite sheets derived from the source tracks. They have
+no source path or codec: dyndo resolves their source at request time. Each
+thumbnail has a stable `id`:
+
+```json
+{
+  "id": "preview",
+  "tile_size": 4,
+  "width": 640,
+  "step": 1000
+}
+```
+
+`tile_size` is the number of thumbnails in each row and column, `width` is the
+full sprite width in pixels, and `step` is the interval between adjacent
+thumbnails in milliseconds.
 
 ## Segmentation
 

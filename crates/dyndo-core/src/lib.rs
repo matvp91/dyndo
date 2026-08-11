@@ -11,6 +11,7 @@ pub mod segment;
 pub mod segment_options;
 pub mod served_segment;
 pub mod text;
+pub mod thumbnail_descriptor;
 pub mod time;
 pub mod track;
 pub mod track_descriptor;

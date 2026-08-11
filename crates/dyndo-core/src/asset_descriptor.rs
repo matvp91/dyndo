@@ -3,6 +3,7 @@ use relative_path::{RelativePath, RelativePathBuf};
 use serde::{Deserialize, Serialize};
 
 use super::segment_options::SegmentOptions;
+use super::thumbnail_descriptor::ThumbnailDescriptor;
 use super::track::Track;
 use super::track_descriptor::TrackDescriptor;
 
@@ -22,6 +23,8 @@ pub struct AssetDescriptor {
     #[serde(default, skip_serializing_if = "is_default")]
     pub segment_options: SegmentOptions,
     pub tracks: Vec<TrackDescriptor>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub thumbnails: Vec<ThumbnailDescriptor>,
 }
 
 fn is_default<T: Default + PartialEq>(value: &T) -> bool {
@@ -63,6 +66,10 @@ impl AssetDescriptor {
 
     pub fn find_track_by_id(&self, id: &str) -> Option<&TrackDescriptor> {
         self.tracks.iter().find(|track| track.id == id)
+    }
+
+    pub fn find_thumbnail_by_id(&self, id: &str) -> Option<&ThumbnailDescriptor> {
+        self.thumbnails.iter().find(|thumbnail| thumbnail.id == id)
     }
 
     pub fn find_track_by_path(&mut self, path: &RelativePath) -> Option<&mut TrackDescriptor> {
