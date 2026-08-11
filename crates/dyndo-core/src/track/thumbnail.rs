@@ -36,7 +36,7 @@ impl ThumbnailTrack {
         &self,
         tracks: impl IntoIterator<Item = &'a ResolvedCmafTrack>,
     ) -> Option<ResolvedThumbnailTrack> {
-        let source = select_source(self.width, tracks)?;
+        let source = select_source(tile_width(self), tracks)?;
         let (_, height) = dimensions(self, source)?;
 
         Some(ResolvedThumbnailTrack {
@@ -97,10 +97,8 @@ impl ResolvedThumbnailTrack {
 
     /// Returns the dimensions of one thumbnail tile.
     pub fn tile_dimensions(&self) -> (u32, u32) {
-        (
-            self.width() / self.track.tile_size,
-            self.height / self.track.tile_size,
-        )
+        let tile_size = self.track.tile_size.max(1);
+        (self.width() / tile_size, self.height / tile_size)
     }
 
     /// Returns the duration covered by one thumbnail sprite, in milliseconds.
@@ -117,7 +115,7 @@ impl ResolvedThumbnailTrack {
             .saturating_mul(u128::from(BITS_PER_PIXEL));
         let bits_per_second = bits
             .saturating_mul(1_000)
-            .div_ceil(u128::from(self.sprite_duration()));
+            .div_ceil(u128::from(self.sprite_duration()).max(1));
 
         u64::try_from(bits_per_second).unwrap_or(u64::MAX).max(1)
     }
@@ -210,21 +208,26 @@ fn video_width(track: &ResolvedCmafTrack) -> Option<(&ResolvedCmafTrack, u32)> {
     Some((track, video.width))
 }
 
+fn tile_width(track: &ThumbnailTrack) -> u32 {
+    track.width / track.tile_size.max(1)
+}
+
 fn dimensions(track: &ThumbnailTrack, source: &ResolvedCmafTrack) -> Option<(u32, u32)> {
     let CmafKind::Video(video) = source.kind() else {
         return None;
     };
-    if track.tile_size == 0 || track.width == 0 || track.step == 0 || video.width == 0 {
-        return None;
-    }
-    if !track.width.is_multiple_of(track.tile_size) {
+    if video.width == 0 {
         return None;
     }
     let height =
         u64::from(track.width).saturating_mul(u64::from(video.height)) / u64::from(video.width);
-    let height = height - height % u64::from(track.tile_size);
+    let height = if track.tile_size == 0 {
+        height
+    } else {
+        height - height % u64::from(track.tile_size)
+    };
     let height = u32::try_from(height).ok()?;
-    (height != 0).then_some((track.width, height))
+    Some((track.width, height))
 }
 
 #[cfg(test)]
@@ -250,24 +253,24 @@ mod tests {
         )
     }
 
-    fn track(width: u32) -> ThumbnailTrack {
-        ThumbnailTrack::new("thumbnail".to_string(), 4, width, 1_000)
+    fn track(tile_size: u32, width: u32) -> ThumbnailTrack {
+        ThumbnailTrack::new("thumbnail".to_string(), tile_size, width, 1_000)
     }
 
     #[test]
-    fn thumbnail_selects_the_smallest_video_that_meets_the_sprite_width() {
+    fn thumbnail_selects_the_smallest_video_that_meets_the_tile_width() {
         let tracks = [video("720", 1_280, 720), video("1080", 1_920, 1_080)];
-        let track = track(1_500);
+        let track = track(2, 1_080);
 
         let thumbnail = track.resolve(&tracks).unwrap();
 
-        assert_eq!(thumbnail.source().id(), "1080");
+        assert_eq!(thumbnail.source().id(), "720");
     }
 
     #[test]
     fn thumbnail_uses_the_largest_video_when_all_sources_are_too_small() {
         let tracks = [video("720", 1_280, 720), video("1080", 1_920, 1_080)];
-        let track = track(3_840);
+        let track = track(4, 8_000);
 
         let thumbnail = track.resolve(&tracks).unwrap();
 
@@ -276,10 +279,20 @@ mod tests {
 
     #[test]
     fn thumbnail_preserves_its_track_settings() {
-        let configured = track(640);
+        let configured = track(4, 640);
         let track = video("720", 1_280, 720);
         let thumbnail = configured.resolve([&track]).unwrap();
 
         assert_eq!(thumbnail.width(), 640);
+    }
+
+    #[test]
+    fn thumbnail_resolves_with_zero_settings() {
+        let configured = ThumbnailTrack::new("thumbnail".to_string(), 0, 0, 0);
+        let source = video("720", 1_280, 720);
+
+        let thumbnail = configured.resolve([&source]).unwrap();
+
+        assert_eq!(thumbnail.source().id(), "720");
     }
 }
