@@ -1,8 +1,10 @@
 use std::sync::Arc;
 
 use dyndo_core::codec::{AacCodec, AvcCodec, CodecConfig, WvttCodec};
+use dyndo_core::image::Thumbnail;
 use dyndo_core::segment::{InitSegment, Segment};
 use dyndo_core::segment_options::SegmentOptions;
+use dyndo_core::thumbnail_descriptor::ThumbnailDescriptor;
 use dyndo_core::track::Track;
 use dyndo_core::track_kind::{AudioKind, TextKind, TrackKind, VideoKind};
 use dyndo_dash::{generate_mpd, options::DashOptions};
@@ -65,11 +67,25 @@ fn video_track(id: &str, width: u32, height: u32, bytes_per_segment: u64) -> Tra
 
 fn generate(
     tracks: &[Track],
+    descriptors: &[ThumbnailDescriptor],
     segment_options: &SegmentOptions,
     dash_options: &DashOptions,
 ) -> String {
-    let mpd = generate_mpd(tracks, segment_options, dash_options).unwrap();
+    let thumbnails: Vec<_> = descriptors
+        .iter()
+        .filter_map(|descriptor| Thumbnail::new(descriptor, tracks))
+        .collect();
+    let mpd = generate_mpd(tracks, &thumbnails, segment_options, dash_options).unwrap();
     quick_xml::se::to_string(&mpd).unwrap()
+}
+
+fn thumbnail() -> ThumbnailDescriptor {
+    ThumbnailDescriptor {
+        id: "preview".to_string(),
+        tile_size: 2,
+        width: 16,
+        step: 1_000,
+    }
 }
 
 fn named_fixture(fixture: &str) -> String {
@@ -85,6 +101,7 @@ fn named_fixture(fixture: &str) -> String {
 fn generated_two_segment_video_mpd_matches_the_golden_fixture() {
     let xml = generate(
         &[video_track("video-main", 16, 16, 100)],
+        &[],
         &SegmentOptions::default(),
         &DashOptions::default(),
     );
@@ -99,6 +116,7 @@ fn generated_two_segment_video_mpd_matches_the_golden_fixture() {
 fn generated_compact_mpd_matches_the_golden_fixture() {
     let xml = generate(
         &[video_track("video-main", 16, 16, 100)],
+        &[],
         &SegmentOptions::default(),
         &DashOptions {
             compact: true,
@@ -116,16 +134,13 @@ fn generated_compact_mpd_matches_the_golden_fixture() {
 fn generated_thumbnail_mpd_addresses_sprites_by_start_time() {
     let xml = generate(
         &[video_track("video-main", 16, 16, 100)],
+        &[thumbnail()],
         &SegmentOptions::default(),
-        &DashOptions {
-            thumbnail_tile_size: 2,
-            thumbnail_step: 1_000,
-            ..DashOptions::default()
-        },
+        &DashOptions::default(),
     );
 
     assert!(xml.contains(
-        "media=\"video_video-main/$Time$.jpg\" timescale=\"1000\" presentationTimeOffset=\"0\"><SegmentTimeline><S t=\"0\" d=\"4000\"/></SegmentTimeline>"
+        "media=\"image_preview/$Time$.jpg\" timescale=\"1000\" presentationTimeOffset=\"0\"><SegmentTimeline><S t=\"0\" d=\"4000\"/></SegmentTimeline>"
     ));
 }
 
@@ -133,6 +148,7 @@ fn generated_thumbnail_mpd_addresses_sprites_by_start_time() {
 fn generated_multi_period_mpd_matches_the_golden_fixture() {
     let xml = generate(
         &[video_track("video-main", 16, 16, 100)],
+        &[],
         &SegmentOptions {
             boundaries: vec![1_000],
             ..SegmentOptions::default()
@@ -153,6 +169,7 @@ fn generated_multi_period_mpd_matches_the_golden_fixture() {
 fn generated_multi_period_mpd_slides_templates_by_the_millisecond_boundary() {
     let xml = generate(
         &[video_track("video-main", 16, 16, 100)],
+        &[thumbnail()],
         &SegmentOptions {
             boundaries: vec![750],
             ..SegmentOptions::default()
@@ -172,20 +189,19 @@ fn generated_multi_period_mpd_slides_templates_by_the_millisecond_boundary() {
 fn generated_multi_period_mpd_references_a_boundary_crossing_thumbnail_sprite_twice() {
     let xml = generate(
         &[video_track("video-main", 16, 16, 100)],
+        &[thumbnail()],
         &SegmentOptions {
             boundaries: vec![1_000],
             ..SegmentOptions::default()
         },
         &DashOptions {
             multi_period: true,
-            thumbnail_tile_size: 2,
-            thumbnail_step: 1_000,
             ..DashOptions::default()
         },
     );
 
     assert!(xml.contains(
-        "contentType=\"image\" mimeType=\"image/jpeg\"><SupplementalProperty schemeIdUri=\"urn:mpeg:dash:period-connectivity:2015\" value=\"0\"/><Representation id=\"image_thumbnails\" bandwidth=\"64\" width=\"16\" height=\"16\"><EssentialProperty schemeIdUri=\"http://dashif.org/guidelines/thumbnail_tile\" value=\"2x2\"/><SegmentTemplate media=\"video_video-main/$Time$.jpg\" timescale=\"1000\" presentationTimeOffset=\"1000\"><SegmentTimeline><S t=\"0\" d=\"4000\"/></SegmentTimeline>"
+        "contentType=\"image\" mimeType=\"image/jpeg\"><SupplementalProperty schemeIdUri=\"urn:mpeg:dash:period-connectivity:2015\" value=\"0\"/><Representation id=\"image_preview\" bandwidth=\"64\" width=\"16\" height=\"16\"><EssentialProperty schemeIdUri=\"http://dashif.org/guidelines/thumbnail_tile\" value=\"2x2\"/><SegmentTemplate media=\"image_preview/$Time$.jpg\" timescale=\"1000\" presentationTimeOffset=\"1000\"><SegmentTimeline><S t=\"0\" d=\"4000\"/></SegmentTimeline>"
     ));
 }
 
@@ -215,7 +231,12 @@ fn generated_grouped_rendition_mpd_matches_the_golden_fixture() {
             25,
         ),
     ];
-    let xml = generate(&tracks, &SegmentOptions::default(), &DashOptions::default());
+    let xml = generate(
+        &tracks,
+        &[],
+        &SegmentOptions::default(),
+        &DashOptions::default(),
+    );
 
     assert_eq!(
         xml,

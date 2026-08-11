@@ -71,14 +71,12 @@ one.
 
 ### Output options
 
-Four options affect DASH output:
+Two options affect DASH output:
 
 | Full key | Shorthand | Type | Default | Description |
 |---|---|---|---|---|
 | `compact` | `c` | boolean | `false` | Hoist segment-template data shared by DASH representations to their adaptation set. |
 | `multi_period` | `mp` | boolean | `false` | Open a `Period` at each [segment boundary](#segmentation-options) rather than describing the asset as one. |
-| `thumbnail_tile_size` | `tts` | integer | `0` | Number of thumbnails per sprite row and column. `0` disables thumbnail output. |
-| `thumbnail_step` | `ts` | integer | `0` | Milliseconds between adjacent thumbnails. `0` disables thumbnail output. |
 
 One option affects HLS output:
 
@@ -88,8 +86,7 @@ One option affects HLS output:
 
 The supported shorthand map is therefore `asset` → `a`, `min_length` → `sml`,
 `text_length` → `stl`, `boundaries` → `sb`, `compact` → `c`, `multi_period` →
-`mp`, `thumbnail_tile_size` → `tts`, and `thumbnail_step` → `ts`. `wvtt` has no
-shorthand. The forms are equivalent:
+`mp`. `wvtt` has no shorthand. The forms are equivalent:
 
 ```text
 /out/(asset:demo,min_length:6000,compact:!t)/index.mpd
@@ -245,17 +242,17 @@ configured storage backend.
 | `index.mpd` | The DASH manifest (MPD). | `application/dash+xml` |
 | `master.m3u8` | The HLS multivariant playlist. | `application/vnd.apple.mpegurl` |
 | `<type>_<track-id>.m3u8` | One track's HLS media playlist. | `application/vnd.apple.mpegurl` |
-| `image_<track-id>.m3u8` | An HLS thumbnail image media playlist. | `application/vnd.apple.mpegurl` |
+| `image_<thumbnail-id>.m3u8` | An HLS thumbnail image media playlist. | `application/vnd.apple.mpegurl` |
 | `<type>_<track-id>/init.mp4` | A track's CMAF initialization segment. | `video/mp4`, `audio/mp4`, or `application/mp4` |
 | `<type>_<track-id>/<time>.m4s` | The media segment starting at presentation `<time>`. | `video/mp4`, `audio/mp4`, or `application/mp4` |
 | `text_<track-id>/<time>.vtt` | The same segment of a text track, as a WebVTT document. | `text/vtt` |
-| `video_<track-id>/<time>.jpg` | A JPEG thumbnail sprite advertised by the DASH manifest. | `image/jpeg` |
+| `image_<thumbnail-id>/<time>.jpg` | A JPEG thumbnail sprite advertised by DASH and HLS. | `image/jpeg` |
 
 `<track-id>` is a track's `id` exactly as recorded in the descriptor (for
 example `6b745be5-2791-5d95-8ce5-8f8bde29e2fe`). Manifests prefix it with the
 track type (`video`, `audio`, or `text`) when addressing a track; HLS image
-playlists use the `image` prefix. Because manifests emit these same relative
-URLs, players never construct them by hand.
+playlists use the `image` prefix with a thumbnail's own `id`. Because manifests
+emit these same relative URLs, players never construct them by hand.
 
 A full set of requests for one asset:
 
@@ -269,14 +266,19 @@ A full set of requests for one asset:
 
 ### Thumbnail sprites
 
-Set both `thumbnail_tile_size` and `thumbnail_step` on a DASH or HLS request to add thumbnail sprites. A tile size of `4` creates a 4-by-4 sprite, and a step of `1000` samples one frame per second:
+Add a thumbnail object to the asset descriptor to advertise a thumbnail sprite.
+A tile size of `4` creates a 4-by-4 sprite, and a step of `1000` samples one
+frame per second:
 
 ```text
-/out/(asset:demo,tts:4,ts:1000)/index.mpd
-/out/(asset:demo,tts:4,ts:1000)/master.m3u8
+/out/(asset:demo)/index.mpd
+/out/(asset:demo)/master.m3u8
 ```
 
-The MPD addresses each sprite as `video_<track-id>/<time>.jpg`. The HLS multivariant playlist advertises a corresponding `image_<track-id>.m3u8` image media playlist. Use the same options prefix when requesting either resource. If either setting is zero, neither manifest advertises thumbnails and `.jpg` requests return `404`.
+The MPD addresses each sprite as `image_<thumbnail-id>/<time>.jpg`. The HLS
+multivariant playlist advertises `image_<thumbnail-id>.m3u8`. A thumbnail that
+cannot select a video source is omitted from manifests and its image routes
+return `404`.
 
 ## Segments are protocol-independent
 

@@ -9,6 +9,7 @@ use crate::track::Track;
 use crate::track_kind::TrackKind;
 
 const CONCURRENT_FRAME_GRABS: usize = 4;
+const BITS_PER_PIXEL: u64 = 1;
 
 /// An error encountered while generating a video thumbnail sprite.
 #[derive(Debug, thiserror::Error)]
@@ -49,6 +50,21 @@ impl<'a> Thumbnail<'a> {
         self.source
     }
 
+    /// Returns the thumbnail configuration identifier.
+    pub fn id(&self) -> &str {
+        &self.descriptor.id
+    }
+
+    /// Returns the number of tiles in each sprite row and column.
+    pub fn tile_size(&self) -> u32 {
+        self.descriptor.tile_size
+    }
+
+    /// Returns the interval between adjacent thumbnail frames, in milliseconds.
+    pub fn step(&self) -> u32 {
+        self.descriptor.step
+    }
+
     /// Returns the width of the complete thumbnail sprite.
     pub fn width(&self) -> u32 {
         self.width
@@ -59,11 +75,31 @@ impl<'a> Thumbnail<'a> {
         self.height
     }
 
+    /// Returns the dimensions of one thumbnail tile.
+    pub fn tile_dimensions(&self) -> (u32, u32) {
+        (
+            self.width / self.descriptor.tile_size,
+            self.height / self.descriptor.tile_size,
+        )
+    }
+
     /// Returns the duration covered by one thumbnail sprite, in milliseconds.
-    pub fn duration(&self) -> u64 {
+    pub fn sprite_duration(&self) -> u64 {
         u64::from(self.descriptor.tile_size)
             .saturating_mul(u64::from(self.descriptor.tile_size))
             .saturating_mul(u64::from(self.descriptor.step))
+    }
+
+    /// Returns the estimated bandwidth of the JPEG sprite representation.
+    pub fn bandwidth(&self) -> u64 {
+        let bits = u128::from(self.width)
+            .saturating_mul(u128::from(self.height))
+            .saturating_mul(u128::from(BITS_PER_PIXEL));
+        let bits_per_second = bits
+            .saturating_mul(1_000)
+            .div_ceil(u128::from(self.sprite_duration()));
+
+        u64::try_from(bits_per_second).unwrap_or(u64::MAX).max(1)
     }
 
     /// Generates a thumbnail sprite beginning at `time`.

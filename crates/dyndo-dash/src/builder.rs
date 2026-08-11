@@ -4,6 +4,7 @@ use dash_mpd::{
     AdaptationSet, AudioChannelConfiguration, MPD, Period, Representation, S, SegmentTemplate,
     SegmentTimeline,
 };
+use dyndo_core::image::Thumbnail;
 use dyndo_core::segment_options::SegmentOptions;
 use dyndo_core::served_segment::ServedSegment;
 use dyndo_core::track::Track;
@@ -11,7 +12,6 @@ use dyndo_core::track_kind::TrackKind;
 
 use crate::DashError;
 use crate::adaptation_group::AdaptationGroup;
-use crate::options::DashOptions;
 use crate::roles;
 
 const DASH_PROFILE: &str = "urn:mpeg:dash:profile:isoff-live:2011";
@@ -23,8 +23,8 @@ const MEDIA_TEMPLATE: &str = "$RepresentationID$/$Time$.m4s";
 
 pub(crate) fn build_mpd(
     tracks: &[Track],
+    thumbnails: &[Thumbnail<'_>],
     segment_options: &SegmentOptions,
-    dash_options: &DashOptions,
 ) -> Result<MPD, DashError> {
     let presentation_duration = presentation_duration(tracks);
     let groups = AdaptationGroup::group(tracks);
@@ -34,16 +34,11 @@ pub(crate) fn build_mpd(
         .enumerate()
         .filter_map(|(id, group)| build_adaptation_set(id, group, segment_options))
         .collect();
-    let id = groups.len();
-    if let Some(adaptation_set) = crate::thumbnail::build_adaptation_set(
-        id,
-        tracks,
+    adaptations.extend(crate::thumbnail::build_adaptation_sets(
+        groups.len(),
+        thumbnails,
         presentation_duration,
-        dash_options.thumbnail_tile_size,
-        dash_options.thumbnail_step,
-    ) {
-        adaptations.push(adaptation_set);
-    }
+    ));
     let periods = (!adaptations.is_empty()).then_some(Period {
         id: Some("0".to_string()),
         start: Some(Duration::ZERO),

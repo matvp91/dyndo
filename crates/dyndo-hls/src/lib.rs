@@ -9,6 +9,7 @@ mod roles;
 
 use std::io;
 
+use dyndo_core::image::Thumbnail;
 use dyndo_core::segment_options::SegmentOptions;
 use dyndo_core::track::Track;
 use options::HlsOptions;
@@ -30,10 +31,11 @@ pub enum HlsError {
 /// Returns a [`HlsError`] when the resulting playlist is invalid.
 pub fn generate_master_playlist(
     tracks: &[Track],
+    thumbnails: &[Thumbnail<'_>],
     segment_options: &SegmentOptions,
     hls_options: &HlsOptions,
 ) -> Result<String, HlsError> {
-    let playlist = master::build_playlist(tracks, segment_options, hls_options)?;
+    let playlist = master::build_playlist(tracks, thumbnails, segment_options, hls_options)?;
     serialize(|output| playlist.write_to(output))
 }
 
@@ -51,14 +53,10 @@ pub fn generate_media_playlist(
     serialize(|output| playlist.write_to(output))
 }
 
-/// Returns the image media playlist for a video track when thumbnails are enabled.
-pub fn generate_image_playlist(
-    track: &Track,
-    hls_options: &HlsOptions,
-) -> Result<Option<String>, HlsError> {
-    image::build_playlist(track, hls_options)
-        .map(|playlist| serialize(|output| playlist.write_to(output)))
-        .transpose()
+/// Generates the image media playlist for one thumbnail track.
+pub fn generate_image_playlist(thumbnail: &Thumbnail<'_>) -> Result<String, HlsError> {
+    let playlist = image::build_playlist(thumbnail);
+    serialize(|output| playlist.write_to(output))
 }
 
 fn serialize(write: impl FnOnce(&mut Vec<u8>) -> io::Result<()>) -> Result<String, HlsError> {
@@ -71,6 +69,6 @@ fn media_resource_name(track: &Track) -> String {
     format!("{}_{}", track.kind().content_type(), track.id())
 }
 
-fn image_resource_name(track: &Track) -> String {
-    format!("image_{}", track.id())
+fn image_resource_name(thumbnail: &Thumbnail<'_>) -> String {
+    format!("image_{}", thumbnail.id())
 }

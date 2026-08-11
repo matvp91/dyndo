@@ -67,7 +67,8 @@ async fn manifest(
     let not_found = || ServerError::NotFound(resource.clone());
     let resource = resource.rsplit_once('.').ok_or_else(not_found)?;
     let options = Options::parse(&encoded_options)?;
-    let mut asset = load_asset(&op, &options).await?;
+    let source_asset = load_asset(&op, &options).await?;
+    let mut asset = source_asset.clone();
     if let Some(filter) = &query.filter {
         filter
             .apply(&mut asset)
@@ -77,11 +78,11 @@ async fn manifest(
     match resource {
         ("index", "mpd") => {
             let dash_options = options.dash_options();
-            manifest::dash(&op, &asset, &dash_options).await
+            manifest::dash(&op, &source_asset, &asset, &dash_options).await
         }
         ("master", "m3u8") => {
             let hls_options = options.hls_options();
-            manifest::hls_master(&op, &asset, &hls_options).await
+            manifest::hls_master(&op, &source_asset, &asset, &hls_options).await
         }
         (resource, "m3u8") => {
             let hls_options = options.hls_options();
@@ -90,7 +91,7 @@ async fn manifest(
             };
             match content_type {
                 ContentType::Image => {
-                    manifest::hls_images(&op, &asset, &hls_options, track_id).await
+                    manifest::hls_images(&op, &source_asset, &asset, track_id).await
                 }
                 ContentType::Video | ContentType::Audio | ContentType::Text => {
                     manifest::hls_media(&op, &asset, &hls_options, track_id).await
@@ -123,8 +124,8 @@ async fn track_file(
         (ContentType::Text, time, "vtt") => {
             segment::text(&op, &asset, track_id, segment_time(time, &file)?).await
         }
-        (ContentType::Video, time, "jpg") => {
-            segment::thumbnail(&op, &asset, &options, track_id, segment_time(time, &file)?).await
+        (ContentType::Image, time, "jpg") => {
+            segment::thumbnail(&op, &asset, track_id, segment_time(time, &file)?).await
         }
         _ => Err(not_found()),
     }

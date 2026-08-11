@@ -1,3 +1,4 @@
+use dyndo_core::image::Thumbnail;
 use dyndo_core::segment_options::SegmentOptions;
 use dyndo_core::served_segment::ServedSegment;
 use dyndo_core::track::Track;
@@ -13,6 +14,7 @@ const SUBTITLES_GROUP_ID: &str = "subtitles";
 
 pub(crate) fn build_playlist(
     tracks: &[Track],
+    thumbnails: &[Thumbnail<'_>],
     segment_options: &SegmentOptions,
     hls_options: &HlsOptions,
 ) -> Result<MasterPlaylist, HlsError> {
@@ -25,17 +27,12 @@ pub(crate) fn build_playlist(
         start: None,
         independent_segments: true,
         alternatives: Renditions::media_entries(tracks),
-        unknown_tags: image_streams(tracks, hls_options),
+        unknown_tags: image_streams(thumbnails),
     })
 }
 
-fn image_streams(tracks: &[Track], hls_options: &HlsOptions) -> Vec<ExtTag> {
-    tracks
-        .iter()
-        .find(|track| matches!(track.kind(), TrackKind::Video(_)))
-        .and_then(|track| crate::image::stream_inf(track, hls_options))
-        .into_iter()
-        .collect()
+fn image_streams(thumbnails: &[Thumbnail<'_>]) -> Vec<ExtTag> {
+    thumbnails.iter().map(crate::image::stream_inf).collect()
 }
 
 fn build_variant_streams(

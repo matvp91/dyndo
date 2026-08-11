@@ -6,11 +6,8 @@ use dyndo_core::asset_descriptor::AssetDescriptor;
 use dyndo_core::image::Thumbnail;
 use dyndo_core::reader::Reader;
 use dyndo_core::text::Subtitle;
-use dyndo_core::thumbnail_descriptor::ThumbnailDescriptor;
-use dyndo_core::track_kind::TrackKind;
 use opendal::Operator;
 
-use super::options::Options;
 use super::track_resolver::{LocatedSegment, TrackResolver};
 use crate::error::ServerError;
 
@@ -67,22 +64,14 @@ pub(super) async fn text(
 pub(super) async fn thumbnail(
     op: &Operator,
     asset: &AssetDescriptor,
-    options: &Options,
-    track_id: &str,
+    thumbnail_id: &str,
     time: u64,
 ) -> Result<Response, ServerError> {
-    let track = TrackResolver::new(op, asset).probe(track_id).await?;
-    let (tile_size, step) = options.thumbnail_settings();
-    let TrackKind::Video(video) = track.kind() else {
-        return Err(ServerError::NotFound("thumbnail".to_string()));
-    };
-    let descriptor = ThumbnailDescriptor {
-        id: track.id().to_string(),
-        tile_size,
-        width: video.width,
-        step,
-    };
-    let Some(thumbnail) = Thumbnail::new(&descriptor, std::slice::from_ref(&track)) else {
+    let descriptor = asset
+        .find_thumbnail_by_id(thumbnail_id)
+        .ok_or_else(|| ServerError::NotFound(format!("thumbnail {thumbnail_id}")))?;
+    let tracks = TrackResolver::new(op, asset).probe_all().await?;
+    let Some(thumbnail) = Thumbnail::new(descriptor, &tracks) else {
         return Err(ServerError::NotFound("thumbnail".to_string()));
     };
     let Some(bytes) = thumbnail.generate(op, time).await? else {

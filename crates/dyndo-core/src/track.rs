@@ -6,6 +6,7 @@ use super::codec::CodecConfig;
 use super::segment::{InitSegment, Segment};
 use super::track_kind::TrackKind;
 
+#[derive(Clone)]
 pub struct Track {
     id: String,
     path: RelativePathBuf,

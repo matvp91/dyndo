@@ -20,10 +20,6 @@ pub(super) struct Options {
     compact: bool,
     #[serde(default, alias = "mp")]
     multi_period: bool,
-    #[serde(default, alias = "tts")]
-    thumbnail_tile_size: u32,
-    #[serde(default, alias = "ts")]
-    thumbnail_step: u32,
     #[serde(default)]
     wvtt: bool,
 }
@@ -57,25 +53,15 @@ impl Options {
         &self.asset
     }
 
-    pub(super) fn thumbnail_settings(&self) -> (u32, u32) {
-        (self.thumbnail_tile_size, self.thumbnail_step)
-    }
-
     pub(super) fn dash_options(&self) -> dyndo_dash::options::DashOptions {
         dyndo_dash::options::DashOptions {
             compact: self.compact,
             multi_period: self.multi_period,
-            thumbnail_tile_size: self.thumbnail_tile_size,
-            thumbnail_step: self.thumbnail_step,
         }
     }
 
     pub(super) fn hls_options(&self) -> dyndo_hls::options::HlsOptions {
-        dyndo_hls::options::HlsOptions {
-            thumbnail_tile_size: self.thumbnail_tile_size,
-            thumbnail_step: self.thumbnail_step,
-            wvtt: self.wvtt,
-        }
+        dyndo_hls::options::HlsOptions { wvtt: self.wvtt }
     }
 }
 
@@ -141,15 +127,13 @@ mod tests {
 
     #[test]
     fn dash_options_returns_builder_configuration() {
-        let options = Options::parse("asset:demo,c:!t,mp:!t,tts:2,ts:1000").unwrap();
+        let options = Options::parse("asset:demo,c:!t,mp:!t").unwrap();
 
         assert_eq!(
             options.dash_options(),
             dyndo_dash::options::DashOptions {
                 compact: true,
                 multi_period: true,
-                thumbnail_tile_size: 2,
-                thumbnail_step: 1_000,
             }
         );
     }
@@ -160,11 +144,7 @@ mod tests {
 
         assert_eq!(
             options.hls_options(),
-            dyndo_hls::options::HlsOptions {
-                thumbnail_tile_size: 0,
-                thumbnail_step: 0,
-                wvtt: true,
-            }
+            dyndo_hls::options::HlsOptions { wvtt: true }
         );
     }
 }

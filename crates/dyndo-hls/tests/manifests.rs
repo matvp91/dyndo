@@ -1,8 +1,10 @@
 use std::sync::Arc;
 
 use dyndo_core::codec::{AacCodec, AvcCodec, CodecConfig, WvttCodec};
+use dyndo_core::image::Thumbnail;
 use dyndo_core::segment::{InitSegment, Segment};
 use dyndo_core::segment_options::SegmentOptions;
+use dyndo_core::thumbnail_descriptor::ThumbnailDescriptor;
 use dyndo_core::track::Track;
 use dyndo_core::track_kind::{AudioKind, TextKind, TrackKind, VideoKind};
 use dyndo_hls::{
@@ -93,12 +95,21 @@ fn rendition_tracks() -> Vec<Track> {
 
 fn generate(tracks: &[Track], hls_options: &HlsOptions) -> (String, Vec<String>) {
     let segment_options = SegmentOptions::default();
-    let master = generate_master_playlist(tracks, &segment_options, hls_options).unwrap();
+    let master = generate_master_playlist(tracks, &[], &segment_options, hls_options).unwrap();
     let media = tracks
         .iter()
         .map(|track| generate_media_playlist(track, &segment_options, hls_options).unwrap())
         .collect();
     (master, media)
+}
+
+fn thumbnail(step: u32) -> ThumbnailDescriptor {
+    ThumbnailDescriptor {
+        id: "preview".to_string(),
+        tile_size: 2,
+        width: 16,
+        step,
+    }
 }
 
 #[test]
@@ -136,13 +147,7 @@ fn generated_plain_webvtt_renditions_match_the_golden_fixtures() {
 
 #[test]
 fn generated_packaged_wvtt_renditions_match_the_golden_fixtures() {
-    let (master, media) = generate(
-        &rendition_tracks(),
-        &HlsOptions {
-            wvtt: true,
-            ..HlsOptions::default()
-        },
-    );
+    let (master, media) = generate(&rendition_tracks(), &HlsOptions { wvtt: true });
 
     assert_eq!(
         (
@@ -163,20 +168,29 @@ fn generated_packaged_wvtt_renditions_match_the_golden_fixtures() {
 #[test]
 fn generated_image_playlists_advertise_existing_thumbnail_sprites() {
     let tracks = [video_track()];
-    let options = HlsOptions {
-        thumbnail_tile_size: 2,
-        thumbnail_step: 1_000,
-        ..HlsOptions::default()
+    let descriptor = thumbnail(1_000);
+    let preview = Thumbnail::new(&descriptor, &tracks).unwrap();
+    let alternate_descriptor = ThumbnailDescriptor {
+        id: "alternate".to_string(),
+        ..thumbnail(500)
     };
-    let master = generate_master_playlist(&tracks, &SegmentOptions::default(), &options).unwrap();
-    let images = generate_image_playlist(&tracks[0], &options)
-        .unwrap()
-        .unwrap();
+    let alternate = Thumbnail::new(&alternate_descriptor, &tracks).unwrap();
+    let master = generate_master_playlist(
+        &tracks,
+        &[preview, alternate],
+        &SegmentOptions::default(),
+        &HlsOptions::default(),
+    )
+    .unwrap();
+    let thumbnail = Thumbnail::new(&descriptor, &tracks).unwrap();
+    let images = generate_image_playlist(&thumbnail).unwrap();
 
-    assert!(master.contains(&format!(
-        "#EXT-X-IMAGE-STREAM-INF:BANDWIDTH=64,CODECS=\"jpeg\",RESOLUTION=8x8,URI=\"image_{}.m3u8\"",
-        tracks[0].id()
-    )));
+    assert!(master.contains(
+        "#EXT-X-IMAGE-STREAM-INF:BANDWIDTH=64,CODECS=\"jpeg\",RESOLUTION=8x8,URI=\"image_preview.m3u8\""
+    ));
+    assert!(master.contains(
+        "#EXT-X-IMAGE-STREAM-INF:BANDWIDTH=128,CODECS=\"jpeg\",RESOLUTION=8x8,URI=\"image_alternate.m3u8\""
+    ));
     assert_eq!(
         images,
         concat!(
@@ -187,7 +201,7 @@ fn generated_image_playlists_advertise_existing_thumbnail_sprites() {
             "#EXT-X-IMAGES-ONLY\n",
             "#EXT-X-TILES:RESOLUTION=8x8,LAYOUT=2x2,DURATION=1.000\n",
             "#EXTINF:2,\n",
-            "video_video-main/0.jpg\n",
+            "image_preview/0.jpg\n",
             "#EXT-X-ENDLIST\n",
         )
     );
@@ -196,20 +210,13 @@ fn generated_image_playlists_advertise_existing_thumbnail_sprites() {
 #[test]
 fn generated_image_playlist_shortens_the_final_sprite() {
     let track = video_track();
-    let playlist = generate_image_playlist(
-        &track,
-        &HlsOptions {
-            thumbnail_tile_size: 2,
-            thumbnail_step: 400,
-            ..HlsOptions::default()
-        },
-    )
-    .unwrap()
-    .unwrap();
+    let descriptor = thumbnail(400);
+    let thumbnail = Thumbnail::new(&descriptor, std::slice::from_ref(&track)).unwrap();
+    let playlist = generate_image_playlist(&thumbnail).unwrap();
 
     assert!(playlist.contains(concat!(
         "#EXT-X-TILES:RESOLUTION=8x8,LAYOUT=2x2,DURATION=0.400\n",
         "#EXTINF:0.4,\n",
-        "video_video-main/1600.jpg\n",
+        "image_preview/1600.jpg\n",
     )));
 }

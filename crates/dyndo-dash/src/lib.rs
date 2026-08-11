@@ -9,6 +9,7 @@ mod roles;
 mod thumbnail;
 
 use dash_mpd::MPD;
+use dyndo_core::image::Thumbnail;
 use dyndo_core::segment_options::SegmentOptions;
 use dyndo_core::track::Track;
 use options::DashOptions;
@@ -39,10 +40,11 @@ pub enum DashError {
 /// segment-aligned.
 pub fn generate_mpd(
     tracks: &[Track],
+    thumbnails: &[Thumbnail<'_>],
     segment_options: &SegmentOptions,
     dash_options: &DashOptions,
 ) -> Result<MPD, DashError> {
-    let mut mpd = builder::build_mpd(tracks, segment_options, dash_options)?;
+    let mut mpd = builder::build_mpd(tracks, thumbnails, segment_options)?;
     if dash_options.multi_period {
         multi_period::split(&mut mpd, &segment_options.boundaries)?;
     }
