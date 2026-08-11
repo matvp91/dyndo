@@ -5,7 +5,7 @@
     {
       "name": "schema.json",
       "digest": {
-        "sha256": "19a13af11a2378936ae1d72be66e4e2af205264b9d5b4cadef10bc8291c00a3b"
+        "sha256": "5dc6ad10fc8e22be35d4c4ea4182b8bb8fea0e6b21231f822443fd41c0d88487"
       }
     }
   ],
@@ -60,7 +60,7 @@
                 "target": "schema-output",
                 "vcs:localdir:context": ".",
                 "vcs:localdir:dockerfile": ".",
-                "vcs:revision": "3a226acc1fb38157e90663fc90a206abdd9b5afe",
+                "vcs:revision": "2a3447cc3e382c840d7b3aa87020e86345de091c",
                 "vcs:source": "https://github.com/matvp91/dyndo"
               }
             }
@@ -71,19 +71,19 @@
       "internalParameters": {
         "buildConfig": {
           "digestMapping": {
+            "sha256:03803877dd7b38bd3597e2162e244f7885b568437f21a8f9a7e4ba007793b19c": "step9",
+            "sha256:0683d31c75bc4984671d9676ca0fe44035a206e643a2997cb07f5214c0524767": "step11",
             "sha256:0bd9935e2bce7316c9f814f50198d2031bef4009709f23f2d8b8d38b145faf8d": "step7",
+            "sha256:1ad30fdd551a307cf17c0cb15d70e02511e85cc91019f33f8d535eead18bf924": "step10",
             "sha256:1f0ca0a8769e888ce2c3b0f1b9bcbaa79f96e75ac96f02baea743b2d33aac09f": "step0",
-            "sha256:1f148be8a70563e0f95dc6b255e2693a3bbacc192dafed14a8bb8732c1115829": "step11",
             "sha256:2efd0848701597cc4eb7cf8d3994f6ea47202cac6fa1b0e9168801f74cf7403d": "step1",
             "sha256:3df3f1dca2582187b496fc76eebb191d5d5270d92319b30d67e0e9ce2be5c638": "step4",
-            "sha256:47d36fa108926afcb1ceedcecc017404ba70b6bf0a2eaa25da046e0efaa4c4c1": "step10",
-            "sha256:55479b6c544e0dc1d8e425283af62271733aaa476b0080c28eea39b63b14c4b9": "step12",
-            "sha256:593b3c30ee3df5d07a8120147bda69db254ff74499d3cb1881fc38686f18bd57": "step8",
             "sha256:77dd9b747c4c6fd5ef96a536c6ff599278b26cd85bdf4bb344e2ffdff123e7f5": "step6",
             "sha256:7d699f2486b1280a1540a7c757298a3e6cfdaf0556e0b0399a36a7bd04abe33f": "step2",
+            "sha256:7db44ff5a47e79e530b0c03d85b0e953072128043217db553c69e34f1fcb98ff": "step8",
             "sha256:a366ad162d239c6aca3215e1a4dcf97d249f745fcc4ef3791f2638100ca18c1e": "step3",
-            "sha256:edc1906888bb89320ecfb23654aa0749133b9f9e0798dc768d4e6d9d2a0499d3": "step5",
-            "sha256:ffd6f42e8c566a075b4676424576277b2c66486884cbe72d41e2adff595906e6": "step9"
+            "sha256:e238acdefa4759293dc67fb301f54c23ece0ac236a896ac7787d9fb4bc2b0c26": "step12",
+            "sha256:edc1906888bb89320ecfb23654aa0749133b9f9e0798dc768d4e6d9d2a0499d3": "step5"
           },
           "llbDefinition": [
             {
@@ -468,9 +468,9 @@
         "github_actor_id": "12699796",
         "github_event_name": "push",
         "github_event_payload": {
-          "after": "3a226acc1fb38157e90663fc90a206abdd9b5afe",
+          "after": "2a3447cc3e382c840d7b3aa87020e86345de091c",
           "base_ref": null,
-          "before": "d2090872cc7540c07a50986721f9b2ef0c382268",
+          "before": "3a226acc1fb38157e90663fc90a206abdd9b5afe",
           "commits": [
             {
               "author": {
@@ -484,14 +484,14 @@
                 "username": "matvp91"
               },
               "distinct": true,
-              "id": "3a226acc1fb38157e90663fc90a206abdd9b5afe",
-              "message": "chore: Renamed job names",
-              "timestamp": "2026-08-11T22:49:37+02:00",
-              "tree_id": "a8cc5772cfbee40f20dd7af28008831283b5555a",
-              "url": "https://github.com/matvp91/dyndo/commit/3a226acc1fb38157e90663fc90a206abdd9b5afe"
+              "id": "2a3447cc3e382c840d7b3aa87020e86345de091c",
+              "message": "release: 0.5.3",
+              "timestamp": "2026-08-11T22:49:46+02:00",
+              "tree_id": "336f72d034b0f4b1de895c368e8599bf602ea9a0",
+              "url": "https://github.com/matvp91/dyndo/commit/2a3447cc3e382c840d7b3aa87020e86345de091c"
             }
           ],
-          "compare": "https://github.com/matvp91/dyndo/compare/d2090872cc75...3a226acc1fb3",
+          "compare": "https://github.com/matvp91/dyndo/compare/3a226acc1fb3...2a3447cc3e38",
           "created": false,
           "deleted": false,
           "forced": false,
@@ -507,11 +507,11 @@
               "username": "matvp91"
             },
             "distinct": true,
-            "id": "3a226acc1fb38157e90663fc90a206abdd9b5afe",
-            "message": "chore: Renamed job names",
-            "timestamp": "2026-08-11T22:49:37+02:00",
-            "tree_id": "a8cc5772cfbee40f20dd7af28008831283b5555a",
-            "url": "https://github.com/matvp91/dyndo/commit/3a226acc1fb38157e90663fc90a206abdd9b5afe"
+            "id": "2a3447cc3e382c840d7b3aa87020e86345de091c",
+            "message": "release: 0.5.3",
+            "timestamp": "2026-08-11T22:49:46+02:00",
+            "tree_id": "336f72d034b0f4b1de895c368e8599bf602ea9a0",
+            "url": "https://github.com/matvp91/dyndo/commit/2a3447cc3e382c840d7b3aa87020e86345de091c"
           },
           "pusher": {
             "email": "matvp91@gmail.com",
@@ -609,7 +609,7 @@
             "private": false,
             "pull_request_creation_policy": "all",
             "pulls_url": "https://api.github.com/repos/matvp91/dyndo/pulls{/number}",
-            "pushed_at": 1786481380,
+            "pushed_at": 1786481388,
             "releases_url": "https://api.github.com/repos/matvp91/dyndo/releases{/id}",
             "size": 2028,
             "ssh_url": "git@github.com:matvp91/dyndo.git",
@@ -669,35 +669,35 @@
         "github_repository_owner": "matvp91",
         "github_repository_owner_id": "12699796",
         "github_run_attempt": "1",
-        "github_run_id": "31534892012",
-        "github_run_number": "153",
+        "github_run_id": "31534904490",
+        "github_run_number": "155",
         "github_runner_arch": "X64",
         "github_runner_environment": "github-hosted",
         "github_runner_image_os": "ubuntu24",
         "github_runner_image_version": "20260720.247.2",
-        "github_runner_name": "GitHub Actions 1000031788",
+        "github_runner_name": "GitHub Actions 1000031795",
         "github_runner_os": "Linux",
-        "github_runner_tracking_id": "github_b54ef9bd-d798-488c-afc5-88bb9e5ec21d",
+        "github_runner_tracking_id": "github_88f695a7-9304-40dd-bc5f-dbb20d4287f2",
         "github_server_url": "https://github.com",
         "github_triggering_actor": "matvp91",
         "github_workflow": "Docs",
         "github_workflow_ref": "matvp91/dyndo/.github/workflows/docs.yml@refs/heads/main",
-        "github_workflow_sha": "3a226acc1fb38157e90663fc90a206abdd9b5afe"
+        "github_workflow_sha": "2a3447cc3e382c840d7b3aa87020e86345de091c"
       }
     },
     "runDetails": {
       "builder": {
-        "id": "https://github.com/matvp91/dyndo/actions/runs/31534892012/attempts/1"
+        "id": "https://github.com/matvp91/dyndo/actions/runs/31534904490/attempts/1"
       },
       "metadata": {
-        "invocationId": "9tnujzhmmhbikmuj4i0knrjfg",
-        "startedOn": "2026-08-11T20:50:12.328629589Z",
-        "finishedOn": "2026-08-11T20:51:14.532580744Z",
+        "invocationId": "vqwtk4h8m8dxb3rgjc71pn50d",
+        "startedOn": "2026-08-11T20:52:10.766392994Z",
+        "finishedOn": "2026-08-11T20:53:24.376058218Z",
         "buildkit_metadata": {
           "vcs": {
             "localdir:context": ".",
             "localdir:dockerfile": ".",
-            "revision": "3a226acc1fb38157e90663fc90a206abdd9b5afe",
+            "revision": "2a3447cc3e382c840d7b3aa87020e86345de091c",
             "source": "https://github.com/matvp91/dyndo"
           },
           "source": {
@@ -1249,8 +1249,8 @@
                   }
                 ],
                 "digestMapping": {
-                  "sha256:5bd0c78870f0f81e856fecadd4e65ecb46b7404631832f8e1b5f3d15d2ea0621": "step0",
-                  "sha256:e6c253f50d262c325d924a98eac4f2d76c44f72e831620efc7d9b844460ca997": "step1"
+                  "sha256:7251d7c913fee2a13df6418b6054cb630fdd840b40920f789fa955d030b39162": "step1",
+                  "sha256:e5c2473631a18bee8128baf641ffb19d639130cd9c84f9a31c6d48b5f3a0afdd": "step0"
                 }
               }
             ]
@@ -1382,40 +1382,6 @@
                   "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
                   "digest": "sha256:e8879c0f2e2f9bbe1454f7b2169a6253473e6f55f5172a93cacc3c0bf0f9159f",
                   "size": 3140809
-                }
-              ]
-            ],
-            "step9:0": [
-              [
-                {
-                  "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
-                  "digest": "sha256:062e450697faa5f02a3a74eba9864ee4d79bc9cfbd65769fc6cdff2c05c6a053",
-                  "size": 29780905
-                },
-                {
-                  "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
-                  "digest": "sha256:0410f18f530500d4aa1d0ee00bd1b27d5d2151b31058b10e24720cd68a08e501",
-                  "size": 293313963
-                },
-                {
-                  "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
-                  "digest": "sha256:af3243c0e483e08d64955057859a477380f9471b9fa84cd5ac1fc7c81ff094f4",
-                  "size": 135958122
-                },
-                {
-                  "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
-                  "digest": "sha256:378164bf8cd3ab35053aad14bcb3b1ac69e75f29be620c4b891e956dbe0dd221",
-                  "size": 93
-                },
-                {
-                  "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
-                  "digest": "sha256:e8879c0f2e2f9bbe1454f7b2169a6253473e6f55f5172a93cacc3c0bf0f9159f",
-                  "size": 3140809
-                },
-                {
-                  "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
-                  "digest": "sha256:109a706cbe380f9acf54d391ccafde8d6667a6a7d63bbb494d4232d4c702fd3e",
-                  "size": 113136
                 }
               ]
             ]
