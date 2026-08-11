@@ -70,7 +70,7 @@ additional shorthand and legacy spellings; see the
 ## Track objects
 
 Each track is tagged by a `type` discriminator: `"video"`, `"audio"`,
-`"text"`, `"vtt"`, or `"thumbnail"`. CMAF tracks (`video`, `audio`, and `text`)
+`"text"`, `"webvtt"`, or `"thumbnail"`. CMAF tracks (`video`, `audio`, and `text`)
 share these fields:
 
 | Field | Type | Description |
@@ -78,7 +78,7 @@ share these fields:
 | `type` | string | Track kind: `video`, `audio`, or `text`. |
 | `id` | string | Representation id (see [Representation ids](#representation-ids)). Combined with the track type when written as a representation name or segment URL. |
 | `path` | string | Source file path, relative to the descriptor's directory. |
-| `codec` | string | The track's [RFC 6381](https://datatracker.ietf.org/doc/html/rfc6381) codec string, probed from the source (e.g. `avc1.640028`, `mp4a.40.2`, `wvtt`). Written into the manifests as-is. |
+| `codec` | string | The track's [RFC 6381](https://datatracker.ietf.org/doc/html/rfc6381) codec string, discovered from the source (e.g. `avc1.640028`, `mp4a.40.2`, `wvtt`). Written into the manifests as-is. |
 
 Unknown fields in a track entry are ignored on read. Type-specific fields follow.
 
@@ -129,7 +129,7 @@ Video tracks carry no `language` or `role`.
 ### Text and VTT tracks
 
 A text track's source is WebVTT in one of two forms: **CMAF `wvtt`** (WebVTT in
-ISO-BMFF), which is probed and served like any other CMAF track, or a **raw
+ISO-BMFF), which is resolved and served like any other CMAF track, or a **raw
 `.vtt`** file.
 
 > Both forms are served. A raw `.vtt` is parsed and packaged into a `wvtt` track
@@ -273,8 +273,8 @@ track order (which picks the HLS default audio rendition).
 Two things to keep in mind:
 
 - Metadata fields like `width`, `codec`, or `sample_rate` describe the source as
-  probed; editing them does not change the media, and a value that contradicts
+  discovered; editing them does not change the media, and a value that contradicts
   the source will produce manifests players cannot use.
 - Because `index` leaves known tracks untouched, it will **not** notice that a
-  source file's content changed. To re-probe a track, remove its entry from the
+  source file's content changed. To rediscover a track, remove its entry from the
   JSON (or delete the descriptor) and index the file again.

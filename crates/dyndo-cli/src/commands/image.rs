@@ -1,8 +1,7 @@
 use clap::Args;
 use dyndo_core::asset::Asset;
 use dyndo_core::image::FrameExtractor;
-use dyndo_core::track::ResolvedSourceTrack;
-use dyndo_core::track::kind::CmafTrackKind;
+use dyndo_core::track::cmaf::CmafKind;
 use opendal::Operator;
 
 #[derive(Args)]
@@ -22,13 +21,13 @@ pub(crate) async fn run(op: &Operator, args: ImageArgs) -> Result<(), Box<dyn st
     let asset = Asset::read(op, &args.input).await?;
     let source = asset
         .source_tracks()
-        .find(|track| matches!(track.cmaf_kind(), Some(CmafTrackKind::Video(_))))
+        .find(|track| matches!(track.cmaf_kind(), Some(CmafKind::Video(_))))
         .ok_or("asset has no video track")?;
     let path = asset.track_path(source);
-    let track = ResolvedSourceTrack::probe(op, &path, Some(source)).await?;
+    let track = source.resolve(op, &path).await?;
     let cmaf = track.cmaf().ok_or("video track is not CMAF")?;
-    let CmafTrackKind::Video(video) = cmaf.kind() else {
-        return Err("probed track is not a video track".into());
+    let CmafKind::Video(video) = cmaf.kind() else {
+        return Err("resolved track is not a video track".into());
     };
     let jpeg = FrameExtractor::new(op, cmaf)
         .jpeg(args.time, video.width, video.height)

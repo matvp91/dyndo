@@ -1,7 +1,7 @@
 # dyndo-hls
 
 HLS playlist generation for [`dyndo`](../../README.md): it turns an `asset.json`
-descriptor and its probed tracks into a multivariant playlist, media playlists,
+descriptor and its resolved tracks into a multivariant playlist, media playlists,
 and image media playlists for thumbnail sprites. It knows about HLS and nothing
 else — reading CMAF and modelling the descriptor belong to
 [`dyndo-core`](../dyndo-core/README.md), and

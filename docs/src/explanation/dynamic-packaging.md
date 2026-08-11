@@ -30,7 +30,7 @@ This has practical consequences:
 - read-only storage is sufficient;
 - adding a delivery format does not require another media tree;
 - a CMAF source's `sidx` remains the source-fragment index from which served segments are derived;
-- probing a CMAF source uses bounded header reads rather than reading the entire media object.
+- resolving a CMAF source uses bounded header reads rather than reading the entire media object.
 
 ## Metadata is independent of encoded media
 
@@ -87,7 +87,7 @@ Dynamic packaging exchanges stored output for request-time work:
 - source media must already be supported CMAF; dyndo does not transcode;
 - manifest requests parse source headers and build track models;
 - generated responses should be cached in a production deployment where the same URLs are requested repeatedly;
-- moving a source without updating its descriptor breaks the path to it, while replacing a source with incompatible media can make probing or serving fail.
+- moving a source without updating its descriptor breaks the path to it, while replacing a source with incompatible media can make resolution or serving fail.
 
 These trade-offs fit libraries that already have CMAF masters and value immutable media, inexpensive metadata changes, and avoiding protocol-shaped copies.
 

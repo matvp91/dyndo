@@ -1,8 +1,6 @@
 use dyndo_core::role::Role;
 use dyndo_core::segment_options::SegmentOptions;
-use dyndo_core::served_segment::ServedSegment;
-use dyndo_core::track::cmaf::ResolvedCmafTrack;
-use dyndo_core::track::kind::CmafTrackKind;
+use dyndo_core::track::cmaf::{CmafKind, ResolvedCmafTrack, ServedSegment};
 
 pub(super) struct AdaptationGroup<'a> {
     key: String,
@@ -94,10 +92,10 @@ fn adaptation_set_key(track: &ResolvedCmafTrack) -> String {
     let codec = track.codec().rfc6381();
     let sample_entry = sample_entry(&codec);
     match track.kind() {
-        CmafTrackKind::Video(_) => {
+        CmafKind::Video(_) => {
             format!("video:{sample_entry}:{}", track.timescale())
         }
-        CmafTrackKind::Audio(audio) => format!(
+        CmafKind::Audio(audio) => format!(
             "audio:{sample_entry}:{}:{}:{}:{}:{}",
             track.timescale(),
             audio.language,
@@ -105,7 +103,7 @@ fn adaptation_set_key(track: &ResolvedCmafTrack) -> String {
             audio.sample_rate,
             audio.channels
         ),
-        CmafTrackKind::Text(text) => format!(
+        CmafKind::Text(text) => format!(
             "text:{sample_entry}:{}:{}:{}",
             track.timescale(),
             text.language,

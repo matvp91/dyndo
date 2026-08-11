@@ -160,7 +160,7 @@ a manifest URL a `400` — put those in the path's
 
 ### Attributes
 
-Filtering runs before media is probed. Consequently, every available attribute
+Filtering runs before media is resolved. Consequently, every available attribute
 is stored in the descriptor and `codec` is the descriptor value. Segment-derived
 `bitrate`, `avg_bitrate`, and `duration` filters are not available.
 
@@ -174,8 +174,8 @@ is stored in the descriptor and `codec` is the descriptor value. Segment-derived
 | `frame_rate` | text | video | The rate as written, for example `25/1`. |
 | `sample_rate` | numeric | audio | Samples per second. |
 | `channels` | numeric | audio | Channel count. |
-| `language` | text | audio, text, vtt | The track's language tag, compared exactly as the descriptor spells it. |
-| `role` | text | audio, text, vtt | One of the [track roles](../roles.md). |
+| `language` | text | audio, text, webvtt | The track's language tag, compared exactly as the descriptor spells it. |
+| `role` | text | audio, text, webvtt | One of the [track roles](../roles.md). |
 | `tile_size` | numeric | thumbnail | Thumbnails per sprite row and column. |
 | `step` | numeric | thumbnail | Milliseconds between adjacent thumbnails. |
 

@@ -1,9 +1,7 @@
 use std::collections::HashMap;
 
 use dyndo_core::segment_options::SegmentOptions;
-use dyndo_core::served_segment::ServedSegment;
-use dyndo_core::track::cmaf::ResolvedCmafTrack;
-use dyndo_core::track::kind::CmafTrackKind;
+use dyndo_core::track::cmaf::{CmafKind, ResolvedCmafTrack, ServedSegment};
 use dyndo_core::track::thumbnail::ResolvedThumbnailTrack;
 use m3u8_rs::{ExtTag, Map, MediaPlaylist, MediaPlaylistType, MediaSegment};
 
@@ -14,7 +12,7 @@ pub(crate) fn build_playlist(
     segment_options: &SegmentOptions,
     hls_options: &HlsOptions,
 ) -> MediaPlaylist {
-    let plain_vtt = !hls_options.wvtt && matches!(track.kind(), CmafTrackKind::Text(_));
+    let plain_vtt = !hls_options.wvtt && matches!(track.kind(), CmafKind::Text(_));
     let segments = ServedSegment::group(
         track.segments(),
         segment_options.min_length,

@@ -23,13 +23,13 @@ pub(crate) async fn run(op: &Operator, args: IndexArgs) -> Result<(), Box<dyn st
 
     for input in args.inputs {
         let path = output_base.join(&input.path);
-        if let Some(track) = asset.find_track_by_path(&path) {
+        if let Some(track) = asset.find_source_track_by_path(&path) {
             input.apply(track);
             continue;
         }
 
-        let track = ResolvedSourceTrack::probe(op, &path, None).await?;
-        input.apply(asset.add_source_track(&track));
+        let track = ResolvedSourceTrack::discover(op, &path).await?;
+        input.apply(asset.add_source_track(&track)?);
     }
 
     asset.write(op).await?;

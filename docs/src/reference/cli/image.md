@@ -19,7 +19,7 @@ dyndo image --input <INPUT> --time <TIME> --output <OUTPUT>
 
 ## Behavior
 
-The command reads the descriptor, selects its first video track, probes that track from storage, and decodes the displayed frame at the requested millisecond. The JPEG keeps the video's declared width and height.
+The command reads the descriptor, selects its first video track, resolves that track from storage, and decodes the displayed frame at the requested millisecond. The JPEG keeps the video's declared width and height.
 
 All paths use the CLI's [OpenDAL filesystem root](../cli.md#storage-root). The video source path is resolved relative to the descriptor. The output path is resolved from the storage root.
 

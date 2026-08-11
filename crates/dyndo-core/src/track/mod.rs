@@ -1,42 +1,57 @@
-use relative_path::RelativePath;
+use serde::{Deserialize, Serialize};
 
-use self::cmaf::ResolvedCmafTrack;
-use self::timed_text::ResolvedTimedTextTrack;
+use self::thumbnail::ThumbnailTrack;
 
 pub mod cmaf;
-mod config;
-pub mod kind;
+pub mod metadata;
+mod source;
 pub mod thumbnail;
 pub mod timed_text;
 
-pub use config::{CmafTrack, SourceTrack, ThumbnailTrack, TimedTextTrack, Track};
+pub use source::{ResolvedSourceTrack, SourceResolveError, SourceTrack};
 
-/// A track backed by an asset source.
-#[derive(Clone)]
-pub enum ResolvedSourceTrack {
-    Cmaf(ResolvedCmafTrack),
-    TimedText(ResolvedTimedTextTrack),
+/// A track stored in an asset.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "lowercase")]
+pub enum Track {
+    Thumbnail(ThumbnailTrack),
+    #[serde(untagged)]
+    Source(SourceTrack),
 }
 
-impl ResolvedSourceTrack {
+impl Track {
     pub fn id(&self) -> &str {
         match self {
-            Self::Cmaf(track) => track.id(),
-            Self::TimedText(track) => track.id(),
+            Self::Source(track) => track.id(),
+            Self::Thumbnail(track) => &track.id,
         }
     }
 
-    pub fn cmaf(&self) -> Option<&ResolvedCmafTrack> {
+    pub fn asset_type(&self) -> &'static str {
         match self {
-            Self::Cmaf(track) => Some(track),
-            Self::TimedText(_) => None,
+            Self::Source(track) => track.asset_type(),
+            Self::Thumbnail(_) => "thumbnail",
         }
     }
 
-    pub fn source_path(&self) -> &RelativePath {
+    pub fn source(&self) -> Option<&SourceTrack> {
         match self {
-            Self::Cmaf(track) => track.path(),
-            Self::TimedText(track) => track.path(),
+            Self::Source(track) => Some(track),
+            Self::Thumbnail(_) => None,
+        }
+    }
+
+    pub fn source_mut(&mut self) -> Option<&mut SourceTrack> {
+        match self {
+            Self::Source(track) => Some(track),
+            Self::Thumbnail(_) => None,
+        }
+    }
+
+    pub fn thumbnail(&self) -> Option<&ThumbnailTrack> {
+        match self {
+            Self::Source(_) => None,
+            Self::Thumbnail(track) => Some(track),
         }
     }
 }

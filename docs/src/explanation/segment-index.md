@@ -73,7 +73,7 @@ track's native timescale values, so tracks with different timescales (video at
 falls — the two manifests and the segment routes always agree.
 
 One source type arrives at its segment index differently: a raw `.vtt` subtitle
-file has no boxes and no `sidx`, so there is nothing to probe. When CMAF data is
+file has no boxes and no `sidx`, so there is nothing to resolve. When CMAF data is
 needed, dyndo packages a `wvtt` view and indexes *that* — the same box walk over
 bytes that never touch storage. Its fragments are cut where the asset's
 splice points and

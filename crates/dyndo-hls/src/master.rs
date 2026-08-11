@@ -1,7 +1,6 @@
 use dyndo_core::segment_options::SegmentOptions;
-use dyndo_core::served_segment::ServedSegment;
-use dyndo_core::track::cmaf::ResolvedCmafTrack;
-use dyndo_core::track::kind::VideoKind;
+use dyndo_core::track::cmaf::{ResolvedCmafTrack, ServedSegment};
+use dyndo_core::track::metadata::VideoMetadata;
 use dyndo_core::track::thumbnail::ResolvedThumbnailTrack;
 use m3u8_rs::{ClosedCaptionGroupId, ExtTag, MasterPlaylist, Resolution, VariantStream};
 
@@ -66,7 +65,7 @@ fn build_variant_streams(
 
 fn build_variant_stream(
     track: &ResolvedCmafTrack,
-    video: &VideoKind,
+    video: &VideoMetadata,
     segment_options: &SegmentOptions,
     renditions: &Renditions,
 ) -> Result<VariantStream, HlsError> {

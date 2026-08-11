@@ -1,11 +1,21 @@
 use dyndo_core::asset::Asset;
-use dyndo_core::track::ResolvedSourceTrack;
-use dyndo_core::track::ThumbnailTrack;
+use dyndo_core::track::SourceTrack;
+use dyndo_core::track::Track;
+use dyndo_core::track::thumbnail::ThumbnailTrack;
 use opendal::{Operator, services::Memory};
 use relative_path::{RelativePath, RelativePathBuf};
 
 fn memory_operator() -> Operator {
     Operator::new(Memory::default()).unwrap()
+}
+
+#[test]
+fn thumbnail_track_serializes_its_type_from_the_track_variant() {
+    let track = Track::Thumbnail(ThumbnailTrack::new("preview".to_string(), 4, 640, 1_000));
+
+    let value = serde_json::to_value(track).unwrap();
+
+    assert_eq!(value["type"], "thumbnail");
 }
 
 #[tokio::test]
@@ -25,18 +35,18 @@ async fn read_or_new_preserves_the_asset_base_when_adding_a_track() {
         )
         .await
         .unwrap();
-    let source_track = serde_json::from_str(
+    let source_track: SourceTrack = serde_json::from_str(
         r#"{"id":"text","path":"subtitles/en.vtt","type":"webvtt","language":"en"}"#,
     )
     .unwrap();
-    let track = ResolvedSourceTrack::probe(
-        &operator,
-        RelativePath::new("assets/movie/subtitles/en.vtt"),
-        Some(&source_track),
-    )
-    .await
-    .unwrap();
-    asset.add_source_track(&track);
+    let track = source_track
+        .resolve(
+            &operator,
+            RelativePath::new("assets/movie/subtitles/en.vtt"),
+        )
+        .await
+        .unwrap();
+    asset.add_source_track(&track).unwrap();
 
     assert_eq!(
         asset.track_path(asset.find_source_track_by_id("text").unwrap()),

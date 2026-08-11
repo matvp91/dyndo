@@ -11,7 +11,7 @@ Roles apply to **audio and text tracks only** — never video.
 
 ## Set a role while indexing
 
-A role is never probed from the media; you declare it. Add `role=<role>` to a
+A role is never discovered from the media; you declare it. Add `role=<role>` to a
 track descriptor when you [index](./index-sources.md) it:
 
 ```bash

@@ -3,8 +3,6 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use dyndo_core::asset::Asset;
-use dyndo_core::reader::Reader;
-use dyndo_core::track::thumbnail::resolve_thumbnail_tracks;
 use opendal::Operator;
 
 use super::track_resolver::{LocatedSegment, RequestTrack, TrackResolver};
@@ -63,12 +61,7 @@ async fn read_range(
     track: &RequestTrack,
     range: std::ops::Range<u64>,
 ) -> Result<bytes::Bytes, ServerError> {
-    match track.packaged() {
-        Some(track) => track
-            .read(range)
-            .ok_or_else(|| ServerError::NotFound("packaged VTT byte range".to_string())),
-        None => Ok(Reader::new(op).read_range(track.cmaf(), range).await?),
-    }
+    Ok(track.cmaf().read_range(op, range).await?)
 }
 
 /// Serves the thumbnail sprite named by the DASH `$Time$` substitution.
@@ -81,8 +74,9 @@ pub(super) async fn thumbnail(
     let configured = asset
         .find_thumbnail_track_by_id(thumbnail_id)
         .ok_or_else(|| ServerError::NotFound(format!("thumbnail {thumbnail_id}")))?;
-    let source_tracks = TrackResolver::new(op, asset).probe_all().await?;
-    let thumbnail = resolve_thumbnail_tracks(asset, &source_tracks)
+    let source_tracks = TrackResolver::new(op, asset).resolve_sources().await?;
+    let thumbnail = asset
+        .resolve_thumbnails(&source_tracks)
         .into_iter()
         .find(|track| track.id() == configured.id);
     let Some(thumbnail) = thumbnail else {

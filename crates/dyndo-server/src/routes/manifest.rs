@@ -5,7 +5,6 @@ use axum::{
 use dyndo_core::asset::Asset;
 use dyndo_core::track::ResolvedSourceTrack;
 use dyndo_core::track::cmaf::ResolvedCmafTrack;
-use dyndo_core::track::thumbnail::resolve_thumbnail_tracks;
 use dyndo_dash::options::DashOptions;
 use dyndo_hls::options::HlsOptions;
 use opendal::Operator;
@@ -23,8 +22,10 @@ pub(super) async fn dash(
     asset: &Asset,
     options: &DashOptions,
 ) -> Result<Response, ServerError> {
-    let source_tracks = TrackResolver::new(op, source_asset).probe_all().await?;
-    let thumbnails = resolve_thumbnail_tracks(asset, &source_tracks);
+    let source_tracks = TrackResolver::new(op, source_asset)
+        .resolve_sources()
+        .await?;
+    let thumbnails = asset.resolve_thumbnails(&source_tracks);
     let tracks = filtered_tracks(source_tracks, asset).await?;
     let mpd = dyndo_dash::generate_mpd(&tracks, &thumbnails, &asset.segment_options, options)?;
     let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
@@ -41,8 +42,10 @@ pub(super) async fn hls_master(
     asset: &Asset,
     options: &HlsOptions,
 ) -> Result<Response, ServerError> {
-    let source_tracks = TrackResolver::new(op, source_asset).probe_all().await?;
-    let thumbnails = resolve_thumbnail_tracks(asset, &source_tracks);
+    let source_tracks = TrackResolver::new(op, source_asset)
+        .resolve_sources()
+        .await?;
+    let thumbnails = asset.resolve_thumbnails(&source_tracks);
     let mut hls_options = *options;
     hls_options.wvtt |= source_tracks
         .iter()
@@ -81,8 +84,11 @@ pub(super) async fn hls_images(
     let configured = asset
         .find_thumbnail_track_by_id(thumbnail_id)
         .ok_or_else(|| ServerError::NotFound(format!("thumbnail {thumbnail_id}")))?;
-    let source_tracks = TrackResolver::new(op, source_asset).probe_all().await?;
-    let thumbnail = resolve_thumbnail_tracks(asset, &source_tracks)
+    let source_tracks = TrackResolver::new(op, source_asset)
+        .resolve_sources()
+        .await?;
+    let thumbnail = asset
+        .resolve_thumbnails(&source_tracks)
         .into_iter()
         .find(|track| track.id() == configured.id)
         .ok_or_else(|| ServerError::NotFound("thumbnail".to_string()))?;
@@ -101,12 +107,9 @@ async fn filtered_tracks(
         }
         match track {
             ResolvedSourceTrack::Cmaf(track) => resolved.push(track),
-            ResolvedSourceTrack::TimedText(track) => resolved.push(
-                track
-                    .package_wvtt(&asset.segment_options)
-                    .await?
-                    .into_cmaf(),
-            ),
+            ResolvedSourceTrack::TimedText(track) => {
+                resolved.push(track.package_wvtt(&asset.segment_options).await?)
+            }
         }
     }
     Ok(resolved)

@@ -1,9 +1,7 @@
 use dyndo_core::asset::Asset;
-use dyndo_core::probe::probe_source_tracks;
-use dyndo_core::reader::Reader;
 use dyndo_core::track::ResolvedSourceTrack;
-use dyndo_core::track::kind::{CmafTrackKind, TimedTextKind};
-use dyndo_core::track::thumbnail::resolve_thumbnail_tracks;
+use dyndo_core::track::cmaf::CmafKind;
+use dyndo_core::track::timed_text::TimedTextFormat;
 use opendal::{Operator, services::Memory};
 
 const VIDEO_FIXTURE: &[u8] = include_bytes!("fixtures/three-frame-black-h264.mp4");
@@ -14,7 +12,7 @@ fn memory_operator() -> Operator {
 }
 
 #[tokio::test]
-async fn probe_source_tracks_and_readers_serve_the_video_and_subtitle_tracks_of_one_asset() {
+async fn resolved_source_tracks_serve_the_video_and_subtitle_tracks_of_one_asset() {
     let operator = memory_operator();
     operator
         .write(
@@ -42,9 +40,9 @@ async fn probe_source_tracks_and_readers_serve_the_video_and_subtitle_tracks_of_
     let asset = Asset::read(&operator, "assets/movie/asset.json")
         .await
         .unwrap();
-    let tracks = probe_source_tracks(&operator, &asset).await.unwrap();
+    let tracks = asset.resolve_sources(&operator).await.unwrap();
     assert_eq!(tracks.len(), 2);
-    assert_eq!(resolve_thumbnail_tracks(&asset, &tracks).len(), 1);
+    assert_eq!(asset.resolve_thumbnails(&tracks).len(), 1);
     let video = tracks
         .iter()
         .find(|track| track.id() == "video-main")
@@ -54,7 +52,8 @@ async fn probe_source_tracks_and_readers_serve_the_video_and_subtitle_tracks_of_
         .iter()
         .find_map(|track| match track {
             ResolvedSourceTrack::TimedText(track)
-                if track.id() == "text-en" && matches!(track.kind(), TimedTextKind::WebVtt(_)) =>
+                if track.id() == "text-en"
+                    && matches!(track.format(), TimedTextFormat::WebVtt(_)) =>
             {
                 Some(track)
             }
@@ -65,15 +64,15 @@ async fn probe_source_tracks_and_readers_serve_the_video_and_subtitle_tracks_of_
         .package_wvtt(&asset.segment_options)
         .await
         .unwrap();
-    let video_initialization = Reader::new(&operator)
-        .read_initialization(video)
+    let video_initialization = video
+        .read_range(&operator, video.init_segment().byte_range())
         .await
         .unwrap();
 
-    assert!(matches!(video.kind(), CmafTrackKind::Video(_)));
+    assert!(matches!(video.kind(), CmafKind::Video(_)));
     assert_eq!(
         video_initialization.as_ref(),
         &VIDEO_FIXTURE[..video.init_segment().byte_range().end as usize]
     );
-    assert_eq!(packaged_subtitles.cmaf().segments().len(), 1);
+    assert_eq!(packaged_subtitles.segments().len(), 1);
 }

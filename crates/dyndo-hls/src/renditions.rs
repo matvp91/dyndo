@@ -1,8 +1,6 @@
 use dyndo_core::role::Role;
 use dyndo_core::segment_options::SegmentOptions;
-use dyndo_core::served_segment::ServedSegment;
-use dyndo_core::track::cmaf::ResolvedCmafTrack;
-use dyndo_core::track::kind::CmafTrackKind;
+use dyndo_core::track::cmaf::{CmafKind, ResolvedCmafTrack, ServedSegment};
 use language_tags::LanguageTag;
 use m3u8_rs::{AlternativeMedia, AlternativeMediaType};
 
@@ -31,17 +29,17 @@ impl Renditions {
 
         for track in tracks {
             let bitrates = match track.kind() {
-                CmafTrackKind::Video(_) => continue,
-                CmafTrackKind::Audio(_) => {
+                CmafKind::Video(_) => continue,
+                CmafKind::Audio(_) => {
                     has_audio = true;
                     &mut audio_bitrates
                 }
-                CmafTrackKind::Text(_) => {
+                CmafKind::Text(_) => {
                     has_subtitles = true;
                     &mut subtitle_bitrates
                 }
             };
-            if hls_options.wvtt || !matches!(track.kind(), CmafTrackKind::Text(_)) {
+            if hls_options.wvtt || !matches!(track.kind(), CmafKind::Text(_)) {
                 push_unique(&mut codecs, track.codec().rfc6381());
             }
             let segments = ServedSegment::group(
@@ -86,15 +84,15 @@ fn build_media_entry(
     default_audio_id: Option<&str>,
 ) -> Option<AlternativeMedia> {
     let (media_type, group_id, language, role, channels) = match track.kind() {
-        CmafTrackKind::Video(_) => return None,
-        CmafTrackKind::Audio(audio) => (
+        CmafKind::Video(_) => return None,
+        CmafKind::Audio(audio) => (
             AlternativeMediaType::Audio,
             "audio",
             &audio.language,
             audio.role,
             Some(audio.channels.to_string()),
         ),
-        CmafTrackKind::Text(text) => (
+        CmafKind::Text(text) => (
             AlternativeMediaType::Subtitles,
             "subtitles",
             &text.language,
@@ -124,11 +122,11 @@ fn default_audio_id(tracks: &[ResolvedCmafTrack]) -> Option<&str> {
     tracks
         .iter()
         .find(|track| {
-            matches!(track.kind(), CmafTrackKind::Audio(audio) if audio.role == Some(Role::Main))
+            matches!(track.kind(), CmafKind::Audio(audio) if audio.role == Some(Role::Main))
         })
         .or_else(|| {
             tracks.iter().find(
-                |track| matches!(track.kind(), CmafTrackKind::Audio(audio) if audio.role.is_none()),
+                |track| matches!(track.kind(), CmafKind::Audio(audio) if audio.role.is_none()),
             )
         })
         .map(ResolvedCmafTrack::id)
@@ -153,9 +151,9 @@ fn selection_tuple_is_unique(tracks: &[ResolvedCmafTrack], track: &ResolvedCmafT
 
 fn selection_tuple(track: &ResolvedCmafTrack) -> Option<(bool, &LanguageTag, Option<Role>)> {
     match track.kind() {
-        CmafTrackKind::Video(_) => None,
-        CmafTrackKind::Audio(audio) => Some((true, &audio.language, audio.role)),
-        CmafTrackKind::Text(text) => Some((false, &text.language, text.role)),
+        CmafKind::Video(_) => None,
+        CmafKind::Audio(audio) => Some((true, &audio.language, audio.role)),
+        CmafKind::Text(text) => Some((false, &text.language, text.role)),
     }
 }
 

@@ -5,9 +5,7 @@ use dash_mpd::{
     SegmentTimeline,
 };
 use dyndo_core::segment_options::SegmentOptions;
-use dyndo_core::served_segment::ServedSegment;
-use dyndo_core::track::cmaf::ResolvedCmafTrack;
-use dyndo_core::track::kind::CmafTrackKind;
+use dyndo_core::track::cmaf::{CmafKind, ResolvedCmafTrack, ServedSegment};
 use dyndo_core::track::thumbnail::ResolvedThumbnailTrack;
 
 use crate::DashError;
@@ -121,17 +119,17 @@ fn build_representation(
     };
 
     match track.kind() {
-        CmafTrackKind::Video(video) => {
+        CmafKind::Video(video) => {
             representation.width = Some(u64::from(video.width));
             representation.height = Some(u64::from(video.height));
             representation.frameRate = Some(video.frame_rate.clone());
         }
-        CmafTrackKind::Audio(audio) => {
+        CmafKind::Audio(audio) => {
             representation.audioSamplingRate = Some(audio.sample_rate.to_string());
             representation.AudioChannelConfiguration =
                 vec![build_audio_channel_configuration(audio.channels)];
         }
-        CmafTrackKind::Text(_) => {}
+        CmafKind::Text(_) => {}
     }
 
     Some(representation)
@@ -197,14 +195,14 @@ fn served_segments<'a>(
 }
 
 fn presentation_duration(tracks: &[ResolvedCmafTrack]) -> u32 {
-    maximum_duration(tracks, |kind| matches!(kind, CmafTrackKind::Video(_))).unwrap_or_else(|| {
-        maximum_duration(tracks, |kind| matches!(kind, CmafTrackKind::Audio(_))).unwrap_or(0)
+    maximum_duration(tracks, |kind| matches!(kind, CmafKind::Video(_))).unwrap_or_else(|| {
+        maximum_duration(tracks, |kind| matches!(kind, CmafKind::Audio(_))).unwrap_or(0)
     })
 }
 
 fn maximum_duration(
     tracks: &[ResolvedCmafTrack],
-    include: impl Fn(&CmafTrackKind) -> bool,
+    include: impl Fn(&CmafKind) -> bool,
 ) -> Option<u32> {
     tracks
         .iter()
@@ -216,12 +214,7 @@ fn maximum_duration(
 fn max_segment_duration(tracks: &[ResolvedCmafTrack], options: &SegmentOptions) -> u32 {
     tracks
         .iter()
-        .filter(|track| {
-            matches!(
-                track.kind(),
-                CmafTrackKind::Video(_) | CmafTrackKind::Audio(_)
-            )
-        })
+        .filter(|track| matches!(track.kind(), CmafKind::Video(_) | CmafKind::Audio(_)))
         .flat_map(|track| {
             served_segments(track, options).into_iter().map(|segment| {
                 let duration = u128::from(segment.unscaled_duration()) * 1_000;

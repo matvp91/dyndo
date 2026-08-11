@@ -147,7 +147,7 @@ impl Attribute {
             Self::Id => Some(track.id()),
             Self::Codec => source.and_then(|track| track.codec()),
             Self::FrameRate => source
-                .and_then(|track| track.video_kind())
+                .and_then(|track| track.video_metadata())
                 .map(|kind| kind.frame_rate.as_str()),
             Self::Language => source
                 .and_then(|track| track.language())
@@ -169,17 +169,17 @@ impl Attribute {
         let thumbnail = track.thumbnail();
         match self {
             Self::Width => source
-                .and_then(|track| track.video_kind())
+                .and_then(|track| track.video_metadata())
                 .map(|kind| u64::from(kind.width))
                 .or_else(|| thumbnail.map(|track| u64::from(track.width))),
             Self::Height => source
-                .and_then(|track| track.video_kind())
+                .and_then(|track| track.video_metadata())
                 .map(|kind| u64::from(kind.height)),
             Self::SampleRate => source
-                .and_then(|track| track.audio_kind())
+                .and_then(|track| track.audio_metadata())
                 .map(|kind| u64::from(kind.sample_rate)),
             Self::Channels => source
-                .and_then(|track| track.audio_kind())
+                .and_then(|track| track.audio_metadata())
                 .map(|kind| u64::from(kind.channels)),
             Self::TileSize => thumbnail.map(|track| u64::from(track.tile_size)),
             Self::Step => thumbnail.map(|track| u64::from(track.step)),
@@ -362,7 +362,7 @@ mod tests {
     }
 
     #[test]
-    fn apply_uses_track_fields_without_probing() {
+    fn apply_uses_track_fields_without_resolving_sources() {
         let mut asset = asset();
 
         Filter::parse("codec==mp4a.40.2")

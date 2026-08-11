@@ -1,11 +1,8 @@
 use std::ops::Range;
 
 use dyndo_core::asset::Asset;
-use dyndo_core::probe::probe_source_tracks;
-use dyndo_core::served_segment::ServedSegment;
 use dyndo_core::track::ResolvedSourceTrack;
-use dyndo_core::track::cmaf::ResolvedCmafTrack;
-use dyndo_core::track::cmaf::package::CmafPackage;
+use dyndo_core::track::cmaf::{ResolvedCmafTrack, ServedSegment};
 use dyndo_core::track::timed_text::ResolvedTimedTextTrack;
 use opendal::Operator;
 
@@ -27,7 +24,7 @@ pub(super) enum RequestTrack {
     Cmaf(ResolvedCmafTrack),
     TimedText {
         source: ResolvedTimedTextTrack,
-        packaged: CmafPackage,
+        cmaf: ResolvedCmafTrack,
     },
 }
 
@@ -35,13 +32,13 @@ impl RequestTrack {
     pub(super) fn cmaf(&self) -> &ResolvedCmafTrack {
         match self {
             Self::Cmaf(track) => track,
-            Self::TimedText { packaged, .. } => packaged.cmaf(),
+            Self::TimedText { cmaf, .. } => cmaf,
         }
     }
 
     pub(super) fn is_web_vtt(&self) -> bool {
         match self {
-            Self::TimedText { source, .. } => source.kind().is_web_vtt(),
+            Self::TimedText { source, .. } => source.format().is_web_vtt(),
             Self::Cmaf(_) => false,
         }
     }
@@ -52,13 +49,6 @@ impl RequestTrack {
             Self::Cmaf(_) => None,
         }
     }
-
-    pub(super) fn packaged(&self) -> Option<&CmafPackage> {
-        match self {
-            Self::TimedText { packaged, .. } => Some(packaged),
-            Self::Cmaf(_) => None,
-        }
-    }
 }
 
 impl<'a> TrackResolver<'a> {
@@ -66,30 +56,35 @@ impl<'a> TrackResolver<'a> {
         Self { operator, asset }
     }
 
-    pub(super) async fn probe(&self, track_id: &str) -> Result<ResolvedSourceTrack, ServerError> {
+    pub(super) async fn resolve_source(
+        &self,
+        track_id: &str,
+    ) -> Result<ResolvedSourceTrack, ServerError> {
         let source = self
             .asset
             .find_source_track_by_id(track_id)
             .ok_or_else(|| ServerError::NotFound(format!("track {track_id}")))?;
         let path = self.asset.track_path(source);
 
-        ResolvedSourceTrack::probe(self.operator, &path, Some(source))
+        source
+            .resolve(self.operator, &path)
             .await
             .map_err(Into::into)
     }
 
-    pub(super) async fn probe_all(&self) -> Result<Vec<ResolvedSourceTrack>, ServerError> {
-        probe_source_tracks(self.operator, self.asset)
+    pub(super) async fn resolve_sources(&self) -> Result<Vec<ResolvedSourceTrack>, ServerError> {
+        self.asset
+            .resolve_sources(self.operator)
             .await
             .map_err(Into::into)
     }
 
     pub(super) async fn resolve(&self, track_id: &str) -> Result<RequestTrack, ServerError> {
-        match self.probe(track_id).await? {
+        match self.resolve_source(track_id).await? {
             ResolvedSourceTrack::Cmaf(track) => Ok(RequestTrack::Cmaf(track)),
             ResolvedSourceTrack::TimedText(source) => {
-                let packaged = source.package_wvtt(&self.asset.segment_options).await?;
-                Ok(RequestTrack::TimedText { source, packaged })
+                let cmaf = source.package_wvtt(&self.asset.segment_options).await?;
+                Ok(RequestTrack::TimedText { source, cmaf })
             }
         }
     }

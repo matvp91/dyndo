@@ -1,13 +1,10 @@
 use std::sync::Arc;
 
 use dyndo_core::codec::{AacCodec, AvcCodec, CodecConfig, WvttCodec};
-use dyndo_core::segment::{InitSegment, Segment};
 use dyndo_core::segment_options::SegmentOptions;
-use dyndo_core::track::ThumbnailTrack;
-use dyndo_core::track::cmaf::ResolvedCmafTrack;
-use dyndo_core::track::kind::CmafTrackKind;
-use dyndo_core::track::kind::{AudioKind, TextKind, VideoKind};
-use dyndo_core::track::thumbnail::ResolvedThumbnailTrack;
+use dyndo_core::track::cmaf::{CmafKind, InitSegment, ResolvedCmafTrack, Segment};
+use dyndo_core::track::metadata::{AudioMetadata, TextMetadata, VideoMetadata};
+use dyndo_core::track::thumbnail::ThumbnailTrack;
 use dyndo_dash::{generate_mpd, options::DashOptions};
 use mp4_atom::{Audio, Avc1, Avcc, Mp4a};
 
@@ -41,7 +38,7 @@ fn aac_codec() -> CodecConfig {
 
 fn track(
     id: &str,
-    kind: CmafTrackKind,
+    kind: CmafKind,
     codec: CodecConfig,
     bytes_per_segment: u64,
 ) -> ResolvedCmafTrack {
@@ -61,7 +58,7 @@ fn track(
 fn video_track(id: &str, width: u32, height: u32, bytes_per_segment: u64) -> ResolvedCmafTrack {
     track(
         id,
-        CmafTrackKind::Video(VideoKind {
+        CmafKind::Video(VideoMetadata {
             width,
             height,
             frame_rate: "4/1".into(),
@@ -79,7 +76,7 @@ fn generate(
 ) -> String {
     let thumbnails: Vec<_> = thumbnail_tracks
         .iter()
-        .filter_map(|thumbnail| ResolvedThumbnailTrack::from_track(thumbnail, tracks))
+        .filter_map(|thumbnail| thumbnail.resolve(tracks))
         .collect();
     let mpd = generate_mpd(tracks, &thumbnails, segment_options, dash_options).unwrap();
     quick_xml::se::to_string(&mpd).unwrap()
@@ -213,7 +210,7 @@ fn generated_grouped_rendition_mpd_matches_the_golden_fixture() {
         video_track("video-high", 32, 32, 200),
         track(
             "audio-en",
-            CmafTrackKind::Audio(AudioKind {
+            CmafKind::Audio(AudioMetadata {
                 sample_rate: 48_000,
                 channels: 2,
                 language: "en".parse().unwrap(),
@@ -224,7 +221,7 @@ fn generated_grouped_rendition_mpd_matches_the_golden_fixture() {
         ),
         track(
             "text-en",
-            CmafTrackKind::Text(TextKind {
+            CmafKind::Text(TextMetadata {
                 language: "en".parse().unwrap(),
                 role: None,
             }),

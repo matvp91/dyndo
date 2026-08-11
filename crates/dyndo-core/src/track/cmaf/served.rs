@@ -1,6 +1,6 @@
 use std::ops::Range;
 
-use super::segment::Segment;
+use super::Segment;
 
 /// One addressable media segment after consecutive source segments are grouped.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -159,7 +159,7 @@ mod tests {
 
     use super::{Segment, ServedSegment};
     use crate::codec::{CodecConfig, WvttCodec};
-    use crate::segment::InitSegment;
+    use crate::track::cmaf::InitSegment;
 
     fn segments(specifications: &[(u64, u64, u64, u64)]) -> Vec<Segment> {
         let init = Arc::new(InitSegment::new(CodecConfig::Wvtt(WvttCodec), 1_000, 0, 0));

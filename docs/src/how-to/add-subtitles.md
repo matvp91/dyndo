@@ -8,7 +8,7 @@ source forms work:
   source of truth.
   Nothing is written back beside it.
 - **CMAF `wvtt`** — WebVTT already packaged into ISO-BMFF by a packager. Indexed,
-  probed, and served like any other CMAF track.
+  resolved, and served like any other CMAF track.
 
 > CMAF packaging happens only when an operation needs it, so a `.vtt` you edit
 > is served edited on the next request — no re-indexing and no repackaging step.

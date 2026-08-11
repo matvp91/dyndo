@@ -4,36 +4,52 @@ use image::codecs::jpeg::JpegEncoder;
 use image::imageops::FilterType;
 use image::{ImageFormat, RgbImage, imageops};
 use opendal::Operator;
+use serde::{Deserialize, Serialize};
 
-use crate::asset::Asset;
 use crate::image::{FrameExtractor, FrameExtractorError};
-use crate::track::ResolvedSourceTrack;
-use crate::track::ThumbnailTrack;
-use crate::track::cmaf::ResolvedCmafTrack;
-use crate::track::kind::CmafTrackKind;
+use crate::track::cmaf::{CmafKind, ResolvedCmafTrack};
 
 const CONCURRENT_FRAME_GRABS: usize = 4;
 const BITS_PER_PIXEL: u64 = 1;
 
-/// Resolves every thumbnail track that has a suitable video source.
-pub fn resolve_thumbnail_tracks(
-    asset: &Asset,
-    sources: &[ResolvedSourceTrack],
-) -> Vec<ResolvedThumbnailTrack> {
-    asset
-        .thumbnail_tracks()
-        .filter_map(|track| {
-            ResolvedThumbnailTrack::from_track(
-                track,
-                sources.iter().filter_map(ResolvedSourceTrack::cmaf),
-            )
+/// A thumbnail track generated from source video when requested.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ThumbnailTrack {
+    pub id: String,
+    pub tile_size: u32,
+    pub width: u32,
+    pub step: u32,
+}
+
+impl ThumbnailTrack {
+    pub fn new(id: String, tile_size: u32, width: u32, step: u32) -> Self {
+        Self {
+            id,
+            tile_size,
+            width,
+            step,
+        }
+    }
+
+    /// Resolves this thumbnail configuration against available CMAF tracks.
+    pub fn resolve<'a>(
+        &self,
+        tracks: impl IntoIterator<Item = &'a ResolvedCmafTrack>,
+    ) -> Option<ResolvedThumbnailTrack> {
+        let source = select_source(self.width, tracks)?;
+        let (_, height) = dimensions(self, source)?;
+
+        Some(ResolvedThumbnailTrack {
+            track: self.clone(),
+            source: source.clone(),
+            height,
         })
-        .collect()
+    }
 }
 
 /// An error encountered while generating thumbnail media.
 #[derive(Debug, thiserror::Error)]
-pub enum ThumbnailTrackError {
+pub enum ThumbnailError {
     #[error(transparent)]
     FrameExtractor(#[from] FrameExtractorError),
     #[error(transparent)]
@@ -49,24 +65,6 @@ pub struct ResolvedThumbnailTrack {
 }
 
 impl ResolvedThumbnailTrack {
-    /// Creates a thumbnail track from its configuration and source tracks.
-    ///
-    /// Selects the smallest video at least as wide as the requested sprite, or
-    /// the largest video when every source must be upscaled.
-    pub fn from_track<'a>(
-        track: &ThumbnailTrack,
-        tracks: impl IntoIterator<Item = &'a ResolvedCmafTrack>,
-    ) -> Option<Self> {
-        let source = select_source(track.width, tracks)?;
-        let (_, height) = dimensions(track, source)?;
-
-        Some(Self {
-            track: track.clone(),
-            source: source.clone(),
-            height,
-        })
-    }
-
     /// Returns the video track selected to produce this thumbnail sprite.
     pub fn source(&self) -> &ResolvedCmafTrack {
         &self.source
@@ -131,11 +129,7 @@ impl ResolvedThumbnailTrack {
     /// # Errors
     ///
     /// Returns an error when a frame cannot be read, decoded, composed, or encoded.
-    pub async fn jpeg(
-        &self,
-        op: &Operator,
-        time: u64,
-    ) -> Result<Option<Bytes>, ThumbnailTrackError> {
+    pub async fn jpeg(&self, op: &Operator, time: u64) -> Result<Option<Bytes>, ThumbnailError> {
         let (Some(first), Some(last)) = (
             self.source.segments().first(),
             self.source.segments().last(),
@@ -210,14 +204,14 @@ fn select_source<'a>(
 }
 
 fn video_width(track: &ResolvedCmafTrack) -> Option<(&ResolvedCmafTrack, u32)> {
-    let CmafTrackKind::Video(video) = track.kind() else {
+    let CmafKind::Video(video) = track.kind() else {
         return None;
     };
     Some((track, video.width))
 }
 
 fn dimensions(track: &ThumbnailTrack, source: &ResolvedCmafTrack) -> Option<(u32, u32)> {
-    let CmafTrackKind::Video(video) = source.kind() else {
+    let CmafKind::Video(video) = source.kind() else {
         return None;
     };
     if track.tile_size == 0 || track.width == 0 || track.step == 0 || video.width == 0 {
@@ -237,18 +231,16 @@ fn dimensions(track: &ThumbnailTrack, source: &ResolvedCmafTrack) -> Option<(u32
 mod tests {
     use std::sync::Arc;
 
-    use super::ResolvedThumbnailTrack;
+    use super::ThumbnailTrack;
     use crate::codec::{CodecConfig, WvttCodec};
-    use crate::segment::InitSegment;
-    use crate::track::ThumbnailTrack;
-    use crate::track::cmaf::ResolvedCmafTrack;
-    use crate::track::kind::{CmafTrackKind, VideoKind};
+    use crate::track::cmaf::{CmafKind, InitSegment, ResolvedCmafTrack};
+    use crate::track::metadata::VideoMetadata;
 
     fn video(id: &str, width: u32, height: u32) -> ResolvedCmafTrack {
         ResolvedCmafTrack::new(
             id.to_string(),
             format!("{id}.mp4").into(),
-            CmafTrackKind::Video(VideoKind {
+            CmafKind::Video(VideoMetadata {
                 width,
                 height,
                 frame_rate: "25/1".to_string(),
@@ -267,7 +259,7 @@ mod tests {
         let tracks = [video("720", 1_280, 720), video("1080", 1_920, 1_080)];
         let track = track(1_500);
 
-        let thumbnail = ResolvedThumbnailTrack::from_track(&track, &tracks).unwrap();
+        let thumbnail = track.resolve(&tracks).unwrap();
 
         assert_eq!(thumbnail.source().id(), "1080");
     }
@@ -277,7 +269,7 @@ mod tests {
         let tracks = [video("720", 1_280, 720), video("1080", 1_920, 1_080)];
         let track = track(3_840);
 
-        let thumbnail = ResolvedThumbnailTrack::from_track(&track, &tracks).unwrap();
+        let thumbnail = track.resolve(&tracks).unwrap();
 
         assert_eq!(thumbnail.source().id(), "1080");
     }
@@ -286,7 +278,7 @@ mod tests {
     fn thumbnail_preserves_its_track_settings() {
         let configured = track(640);
         let track = video("720", 1_280, 720);
-        let thumbnail = ResolvedThumbnailTrack::from_track(&configured, [&track]).unwrap();
+        let thumbnail = configured.resolve([&track]).unwrap();
 
         assert_eq!(thumbnail.width(), 640);
     }

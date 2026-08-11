@@ -1,67 +1,78 @@
 use bytes::Bytes;
+use opendal::Operator;
+use relative_path::{RelativePath, RelativePathBuf};
 
+use super::{ResolvedTimedTextTrack, TimedTextError, TimedTextFormat};
 use crate::packaging::PackageError;
-use crate::probe::ProbeError;
 use crate::segment_options::SegmentOptions;
-use crate::text::{Cue, Subtitle};
-use crate::track::cmaf::ResolvedCmafTrack;
-use crate::track::cmaf::package::CmafPackage;
-use crate::track::kind::CmafTrackKind;
-use crate::track::timed_text::ResolvedTimedTextTrack;
+use crate::text::Subtitle;
+use crate::track::cmaf::{CmafKind, ResolvedCmafTrack};
+use crate::track::metadata::TextMetadata;
 
 #[derive(Debug, thiserror::Error)]
-pub enum TimedTextPackageError {
+pub enum WebVttPackageError {
     #[error(transparent)]
     Package(#[from] PackageError),
     #[error(transparent)]
-    Cmaf(#[from] ProbeError),
+    Cmaf(#[from] crate::track::cmaf::CmafError),
 }
 
 impl ResolvedTimedTextTrack {
-    pub(crate) fn package_bytes(&self, options: &SegmentOptions) -> Result<Bytes, PackageError> {
+    pub(crate) async fn from_web_vtt_source(
+        op: &Operator,
+        path: &RelativePath,
+        id: String,
+        metadata: TextMetadata,
+    ) -> Result<Self, TimedTextError> {
+        let document = String::from_utf8(op.read(path.as_str()).await?.to_bytes().to_vec())?;
+        Self::from_web_vtt_text(id, path.to_owned(), metadata, &document)
+    }
+
+    /// Creates a resolved timed-text track from a WebVTT document.
+    pub fn from_web_vtt_text(
+        id: String,
+        source_path: RelativePathBuf,
+        metadata: TextMetadata,
+        document: &str,
+    ) -> Result<Self, TimedTextError> {
+        Ok(Self::new(
+            id,
+            source_path,
+            TimedTextFormat::WebVtt(metadata),
+            Subtitle::from_vtt_text(document)?,
+        ))
+    }
+
+    fn package_bytes(&self, options: &SegmentOptions) -> Result<Bytes, PackageError> {
         self.subtitle
             .to_wvtt(options.text_length, &options.boundaries)
             .map(Bytes::from)
     }
 
-    /// Packages this source as temporary CMAF media.
+    /// Packages this source as temporary, in-memory CMAF media.
     pub async fn package_wvtt(
         &self,
         options: &SegmentOptions,
-    ) -> Result<CmafPackage, TimedTextPackageError> {
+    ) -> Result<ResolvedCmafTrack, WebVttPackageError> {
         let bytes = self.package_bytes(options)?;
-        let cmaf = ResolvedCmafTrack::from_bytes(
-            bytes.clone(),
-            self.path(),
+        ResolvedCmafTrack::from_cmaf_bytes(
+            bytes,
             self.id().to_string(),
-            CmafTrackKind::Text(self.kind().text().clone()),
+            CmafKind::Text(self.format().text().clone()),
         )
-        .await?;
-        Ok(CmafPackage::new(cmaf, bytes))
+        .await
+        .map_err(Into::into)
     }
 
     /// Returns the raw WebVTT document for a served segment.
     pub fn web_vtt_segment(&self, start: u64, end: u64) -> Option<String> {
-        if !self.kind().is_web_vtt() {
+        if !self.format().is_web_vtt() {
             return None;
         }
         let start = u32::try_from(start).ok()?;
         let end = u32::try_from(end).ok()?;
-        if start >= end {
-            return None;
-        }
-        let cues = self
-            .subtitle
-            .cues
-            .iter()
-            .filter(|cue| cue.start < end && cue.end > start)
-            .map(|cue| Cue {
-                start: cue.start.max(start),
-                end: cue.end.min(end),
-                text: cue.text.clone(),
-            })
-            .collect();
-
-        Some(Subtitle { cues }.to_vtt_text())
+        self.subtitle
+            .slice(start, end)
+            .map(|subtitle| subtitle.to_vtt_text())
     }
 }

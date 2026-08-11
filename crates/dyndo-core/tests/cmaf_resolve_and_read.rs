@@ -1,8 +1,7 @@
 use std::ops::Range;
 
-use dyndo_core::reader::Reader;
 use dyndo_core::track::ResolvedSourceTrack;
-use dyndo_core::track::kind::CmafTrackKind;
+use dyndo_core::track::cmaf::CmafKind;
 use opendal::{Operator, services::Memory};
 use relative_path::RelativePath;
 
@@ -19,27 +18,30 @@ fn video_fixture_range(range: Range<u64>) -> &'static [u8] {
 }
 
 #[tokio::test]
-async fn video_probe_and_read_returns_the_indexed_portions_of_a_fragmented_mp4() {
+async fn video_resolve_and_read_returns_the_indexed_portions_of_a_fragmented_mp4() {
     let operator = memory_operator();
     let path = RelativePath::new("video.mp4");
     operator.write(path.as_str(), VIDEO_FIXTURE).await.unwrap();
 
-    let track = ResolvedSourceTrack::probe(&operator, path, None)
+    let track = ResolvedSourceTrack::discover(&operator, path)
         .await
         .unwrap();
     let track = track.cmaf().unwrap();
-    let reader = Reader::new(&operator);
-    let initialization = reader.read_initialization(track).await.unwrap();
-    let media = reader
-        .read_range(track, track.segments()[0].byte_range())
+    let initialization = track
+        .read_range(&operator, track.init_segment().byte_range())
+        .await
+        .unwrap();
+    let media = track
+        .read_range(&operator, track.segments()[0].byte_range())
         .await
         .unwrap();
 
     assert!(matches!(
         track.kind(),
-        CmafTrackKind::Video(kind) if (kind.width, kind.height, kind.frame_rate.as_str()) == (16, 16, "4/1")
+        CmafKind::Video(kind) if (kind.width, kind.height, kind.frame_rate.as_str()) == (16, 16, "4/1")
     ));
     assert_eq!(track.id(), "76666358-6bba-5805-9a37-a18e055e9ea8");
+    assert_eq!(track.source_path(), Some(path));
     assert_eq!(track.codec().rfc6381(), "avc1.42c00a");
     assert_eq!(track.segments().len(), 1);
     assert_eq!(

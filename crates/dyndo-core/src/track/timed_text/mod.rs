@@ -1,30 +1,96 @@
+use opendal::Operator;
 use relative_path::{RelativePath, RelativePathBuf};
+use serde::{Deserialize, Serialize};
 
-use crate::text::Subtitle;
-use crate::track::kind::TimedTextKind;
+use super::metadata::TextMetadata;
+use crate::text::{Subtitle, WebVttParseError};
 
-pub mod web_vtt;
+mod web_vtt;
 
-/// A source track represented by timed-text documents.
+pub use web_vtt::WebVttPackageError;
+
+/// A timed-text track stored in an asset.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TimedTextTrack {
+    pub id: String,
+    /// Path relative to the asset file.
+    pub(super) path: RelativePathBuf,
+    #[serde(flatten)]
+    pub format: TimedTextFormat,
+}
+
+impl TimedTextTrack {
+    /// Resolves this configured timed-text source.
+    pub async fn resolve(
+        &self,
+        op: &Operator,
+        path: &RelativePath,
+    ) -> Result<ResolvedTimedTextTrack, TimedTextError> {
+        match &self.format {
+            TimedTextFormat::WebVtt(metadata) => {
+                ResolvedTimedTextTrack::from_web_vtt_source(
+                    op,
+                    path,
+                    self.id.clone(),
+                    metadata.clone(),
+                )
+                .await
+            }
+        }
+    }
+}
+
+/// The document format carried by a timed-text source track.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "lowercase")]
+pub enum TimedTextFormat {
+    WebVtt(TextMetadata),
+}
+
+impl TimedTextFormat {
+    pub fn text(&self) -> &TextMetadata {
+        match self {
+            Self::WebVtt(metadata) => metadata,
+        }
+    }
+
+    pub fn text_mut(&mut self) -> &mut TextMetadata {
+        match self {
+            Self::WebVtt(metadata) => metadata,
+        }
+    }
+
+    pub fn asset_type(&self) -> &'static str {
+        match self {
+            Self::WebVtt(_) => "webvtt",
+        }
+    }
+
+    pub fn is_web_vtt(&self) -> bool {
+        matches!(self, Self::WebVtt(_))
+    }
+}
+
+/// A source track represented by a parsed timed-text document.
 #[derive(Clone)]
 pub struct ResolvedTimedTextTrack {
     id: String,
-    path: RelativePathBuf,
-    kind: TimedTextKind,
+    source_path: RelativePathBuf,
+    format: TimedTextFormat,
     subtitle: Subtitle,
 }
 
 impl ResolvedTimedTextTrack {
-    pub(crate) fn new(
+    fn new(
         id: String,
-        path: RelativePathBuf,
-        kind: TimedTextKind,
+        source_path: RelativePathBuf,
+        format: TimedTextFormat,
         subtitle: Subtitle,
     ) -> Self {
         Self {
             id,
-            path,
-            kind,
+            source_path,
+            format,
             subtitle,
         }
     }
@@ -33,11 +99,21 @@ impl ResolvedTimedTextTrack {
         &self.id
     }
 
-    pub fn path(&self) -> &RelativePath {
-        &self.path
+    pub fn source_path(&self) -> &RelativePath {
+        &self.source_path
     }
 
-    pub fn kind(&self) -> &TimedTextKind {
-        &self.kind
+    pub fn format(&self) -> &TimedTextFormat {
+        &self.format
     }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum TimedTextError {
+    #[error(transparent)]
+    Storage(#[from] opendal::Error),
+    #[error("timed-text source is not UTF-8")]
+    Utf8(#[from] std::string::FromUtf8Error),
+    #[error(transparent)]
+    WebVtt(#[from] WebVttParseError),
 }

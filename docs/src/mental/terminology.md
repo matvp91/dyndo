@@ -1,8 +1,8 @@
 # Terminology
 
-This page defines the terms used to describe an asset and the work dyndo does
-with it. The distinctions are intentional: they tell us which operations a
-track supports.
+This explanation defines the terms used to describe an asset and the work dyndo
+does with it. The distinctions are intentional: they determine which type owns
+an operation and which operations a track supports.
 
 ```text
 Asset
@@ -20,19 +20,25 @@ Asset
 A **source track** is backed by an input stored with the asset. CMAF tracks are
 already fragmented ISO-BMFF media. Timed-text tracks are subtitle documents;
 WebVTT is supported today and IMSC1 belongs to the same category when it is
-added. A source track has a path and can be probed.
+added. Every source track has a path and can be resolved from storage.
 
 The stored model keeps source and thumbnail tracks distinct: `Track::Source`
 contains a `SourceTrack`, while `Track::Thumbnail` contains a
 `ThumbnailTrack`. Only `SourceTrack` has a path. Its variants are `CmafTrack`
 and `TimedTextTrack`.
 
-After probing, the runtime model uses `ResolvedSourceTrack`, which is either a
-`ResolvedCmafTrack` or a `ResolvedTimedTextTrack`. Each resolved source track
-carries its own kind: `CmafTrackKind` is `Video`, `Audio`, or `Text`;
-`TimedTextKind` is `WebVtt` today and can gain `Imsc1` when supported. CMAF's
-`Text` kind remains the container-level media category, independent of the
-timed-text document format.
+After resolution, the runtime model uses `ResolvedSourceTrack`, which is either
+a `ResolvedCmafTrack` or a `ResolvedTimedTextTrack`. Each resolved source track
+carries the distinction relevant to its representation: `CmafKind` is `Video`,
+`Audio`, or `Text`; `TimedTextFormat` is `WebVtt` today and can gain `Imsc1`
+when supported. CMAF's `Text` kind remains the container-level media category,
+independent of the timed-text document format.
+
+Shared sum types such as `Track` and `SourceTrack` live directly in `track`.
+Representation-specific types have one public home: CMAF types live in
+`track::cmaf`, timed-text types in `track::timed_text`, and thumbnail types in
+`track::thumbnail`. Media metadata shared by these representations lives in
+`track::metadata`.
 
 ## Assets, tracks, and discovery
 
@@ -42,12 +48,12 @@ values. Each track names its source form, gives it a stable identifier, and
 supplies metadata that is not necessarily present in the source file.
 
 `Track`, `SourceTrack`, and `ThumbnailTrack` implement serialization directly.
-Only a source track has a source path, so operations that read or probe a file
-accept a source track rather than a general track.
+Only a source track has a source path, so operations that read a file accept a
+source track rather than a general track.
 
-When a track is present, its type is authoritative: a `webvtt` track is resolved
-as raw WebVTT, and a `video`, `audio`, or `text` track is resolved as CMAF. The
-file name does not override that decision.
+When a track is configured, its type is authoritative: a `webvtt` track is
+resolved as raw WebVTT, and a `video`, `audio`, or `text` track is resolved as
+CMAF. The file name does not override that decision.
 
 **Discovery** is the configuration-free operation used when indexing a new source.
 It determines the source form from the input: `.vtt` is discovered as raw
@@ -61,8 +67,33 @@ The word **type** has two deliberate meanings in the system:
 - A CMAF media kind is the container category of a CMAF track: `video`,
   `audio`, or `text`.
 
-For example, `vtt` is a timed-text document format, while CMAF `text` is the
-container category used when that document is packaged as `wvtt`.
+For example, `webvtt` is a timed-text document format, while CMAF `text` is the
+container category used when that document is packaged with the `wvtt` codec.
+
+## Operation ownership
+
+Operations live on the value that has the information needed to perform them:
+
+- `Asset::read` and `Asset::write` persist asset configuration.
+- `Asset::resolve_sources` and `Asset::resolve_thumbnails` orchestrate all
+  tracks in an asset.
+- `SourceTrack::resolve` resolves a configured source using its declared form
+  and metadata.
+- `ResolvedSourceTrack::discover` identifies an unconfigured input for the
+  indexing workflow.
+- `TimedTextTrack::resolve`, `CmafTrack::resolve`, and
+  `ThumbnailTrack::resolve` implement representation-specific resolution.
+- `ResolvedTimedTextTrack::from_web_vtt_text` creates a resolved WebVTT track
+  when the document is already in memory.
+- `ResolvedTimedTextTrack::package_wvtt` creates the CMAF representation needed
+  by HLS or DASH.
+- `ResolvedCmafTrack::read_range` reads CMAF bytes without requiring callers to
+  know where those bytes are stored.
+- `Subtitle::slice` performs subtitle-document slicing independently of track
+  and manifest concerns.
+
+There is no separate probe or reader service. Resolution and reading are
+capabilities of the track types themselves.
 
 ## Thumbnail tracks
 
@@ -82,14 +113,24 @@ thumbnail request. It is not the kind of track configured by the asset. The
 track therefore uses `"type": "thumbnail"`; HLS and DASH still describe
 the resulting output as image media where their specifications require it.
 
-## CMAF packages
+## CMAF representations
 
 A timed-text source can be packaged temporarily into CMAF when a CMAF manifest
-or segment is needed. That package is a runtime representation, not a new
-source track and not a file written beside the asset. Probing resolves a source
-track; packaging converts a raw WebVTT source into its temporary CMAF
-representation. Packaging is one-way: a CMAF source is not unpacked into a
-WebVTT document, so raw WebVTT output is available only from a WebVTT source.
+or segment is needed. The result is a `ResolvedCmafTrack`, not a separate
+package type, not a new source track, and not a file written beside the asset.
+Packaging converts a WebVTT source into a temporary CMAF representation.
+Packaging is one-way: a CMAF source is not unpacked into a WebVTT document, so
+raw WebVTT output is available only from a WebVTT source.
+
+A `ResolvedCmafTrack` can have either of two byte backings:
+
+- A resolved CMAF source is backed by its stored file.
+- CMAF produced from timed text is backed by in-memory bytes.
+
+Both representations expose the same index, metadata, and `read_range`
+operation. A stored representation returns its path from `source_path`; an
+in-memory representation returns no path. Consequently, an in-memory CMAF
+representation cannot be added to an `Asset` as a source track.
 
 The complete resolution flow is therefore:
 
@@ -97,7 +138,8 @@ The complete resolution flow is therefore:
 asset.json
   → Asset
   → Track
+  → SourceTrack::resolve
   → ResolvedSourceTrack
-  → temporary CMAF package, when a CMAF representation is required
+  → ResolvedCmafTrack, when a CMAF representation is required
   → manifest or segment representation requested by the client
 ```

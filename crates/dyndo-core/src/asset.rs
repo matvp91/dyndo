@@ -1,10 +1,11 @@
+use futures_util::future::try_join_all;
 use opendal::Operator;
 use relative_path::{RelativePath, RelativePathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::segment_options::SegmentOptions;
-use crate::track::ResolvedSourceTrack;
-use crate::track::{SourceTrack, ThumbnailTrack, Track};
+use crate::track::thumbnail::{ResolvedThumbnailTrack, ThumbnailTrack};
+use crate::track::{ResolvedSourceTrack, SourceResolveError, SourceTrack, Track};
 
 #[derive(Debug, thiserror::Error)]
 pub enum AssetError {
@@ -12,6 +13,8 @@ pub enum AssetError {
     Storage(#[from] opendal::Error),
     #[error(transparent)]
     Json(#[from] serde_json::Error),
+    #[error("resolved track is not backed by an asset source")]
+    MissingSourcePath,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -79,7 +82,29 @@ impl Asset {
         self.tracks.iter().filter_map(Track::thumbnail)
     }
 
-    pub fn find_track_by_path(&mut self, path: &RelativePath) -> Option<&mut SourceTrack> {
+    /// Resolves every configured source track in this asset.
+    pub async fn resolve_sources(
+        &self,
+        op: &Operator,
+    ) -> Result<Vec<ResolvedSourceTrack>, SourceResolveError> {
+        let resolutions = self.source_tracks().map(|track| {
+            let path = self.track_path(track);
+            async move { track.resolve(op, &path).await }
+        });
+        try_join_all(resolutions).await
+    }
+
+    /// Resolves every thumbnail track that has a suitable video source.
+    pub fn resolve_thumbnails(
+        &self,
+        sources: &[ResolvedSourceTrack],
+    ) -> Vec<ResolvedThumbnailTrack> {
+        self.thumbnail_tracks()
+            .filter_map(|track| track.resolve(sources.iter().filter_map(ResolvedSourceTrack::cmaf)))
+            .collect()
+    }
+
+    pub fn find_source_track_by_path(&mut self, path: &RelativePath) -> Option<&mut SourceTrack> {
         let base = self
             .path
             .parent()
@@ -91,15 +116,22 @@ impl Asset {
             .find(|track| base.join(track.source_path()) == path)
     }
 
-    pub fn add_source_track(&mut self, track: &ResolvedSourceTrack) -> &mut SourceTrack {
+    /// Adds a resolved track backed by a stored asset source.
+    ///
+    /// Returns an error when the resolved representation has no source path.
+    pub fn add_source_track(
+        &mut self,
+        track: &ResolvedSourceTrack,
+    ) -> Result<&mut SourceTrack, AssetError> {
         let base = self.path.parent().unwrap_or(RelativePath::new(""));
-        let path = base.relative(track.source_path());
+        let source_path = track.source_path().ok_or(AssetError::MissingSourcePath)?;
+        let path = base.relative(source_path);
         let index = self.tracks.len();
         self.tracks
             .push(Track::Source(SourceTrack::from_resolved(track, path)));
-        match &mut self.tracks[index] {
+        Ok(match &mut self.tracks[index] {
             Track::Source(track) => track,
             Track::Thumbnail(_) => unreachable!("a source track was just inserted"),
-        }
+        })
     }
 }

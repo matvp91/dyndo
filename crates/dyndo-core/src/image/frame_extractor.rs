@@ -8,8 +8,7 @@ use rsmpeg::avutil::{AVFrame, AVFrameWithImage, AVImage, AVMem, AVRational};
 use rsmpeg::error::RsmpegError;
 use rsmpeg::{ffi, swscale::SwsContext};
 
-use crate::segment::Segment;
-use crate::track::cmaf::ResolvedCmafTrack;
+use crate::track::cmaf::{CmafReadError, ResolvedCmafTrack, Segment};
 
 /// An error encountered while extracting a video frame.
 #[derive(Debug, thiserror::Error)]
@@ -19,7 +18,7 @@ pub enum FrameExtractorError {
     #[error("invalid JPEG frame dimensions")]
     InvalidDimensions,
     #[error(transparent)]
-    Storage(#[from] opendal::Error),
+    Cmaf(#[from] CmafReadError),
     #[error(transparent)]
     Ffmpeg(#[from] RsmpegError),
     #[error("could not extract a JPEG frame")]
@@ -76,15 +75,11 @@ impl<'a> FrameExtractor<'a> {
     }
 
     async fn read_segment(&self, segment: &Segment) -> Result<Vec<u8>, FrameExtractorError> {
-        let path = self.track.path().as_str();
         let (initialization, media) = tokio::try_join!(
-            self.op
-                .read_with(path)
-                .range(self.track.init_segment().byte_range()),
-            self.op.read_with(path).range(segment.byte_range()),
+            self.track
+                .read_range(self.op, self.track.init_segment().byte_range()),
+            self.track.read_range(self.op, segment.byte_range()),
         )?;
-        let initialization = initialization.to_bytes();
-        let media = media.to_bytes();
         let mut input = Vec::with_capacity(initialization.len() + media.len());
         input.extend_from_slice(&initialization);
         input.extend_from_slice(&media);
