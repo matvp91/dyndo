@@ -1,4 +1,4 @@
-use dyndo_core::image::FrameGrab;
+use dyndo_core::image::FrameExtractor;
 use dyndo_core::segment_options::SegmentOptions;
 use dyndo_core::track::Track;
 use image::{GenericImageView, ImageFormat, RgbImage};
@@ -23,7 +23,7 @@ async fn jpeg_decodes_a_black_frame_at_the_requested_time() {
         .await
         .unwrap();
 
-    let jpeg = FrameGrab::new(&operator, &track)
+    let jpeg = FrameExtractor::new(&operator, &track)
         .unwrap()
         .jpeg(0, 16, 16)
         .await
@@ -45,7 +45,7 @@ async fn jpeg_returns_the_requested_dimensions() {
         .await
         .unwrap();
 
-    let jpeg = FrameGrab::new(&operator, &track)
+    let jpeg = FrameExtractor::new(&operator, &track)
         .unwrap()
         .jpeg(0, 8, 4)
         .await
@@ -72,11 +72,11 @@ async fn jpeg_selects_the_frame_on_each_side_of_a_media_segment_boundary() {
     let track = Track::probe(&operator, path, None, &SegmentOptions::default())
         .await
         .unwrap();
-    let grab = FrameGrab::new(&operator, &track).unwrap();
+    let extractor = FrameExtractor::new(&operator, &track).unwrap();
 
-    let before_boundary = jpeg_image(&grab, 499).await;
-    let at_boundary = jpeg_image(&grab, 500).await;
-    let after_boundary = jpeg_image(&grab, 999).await;
+    let before_boundary = jpeg_image(&extractor, 499).await;
+    let at_boundary = jpeg_image(&extractor, 500).await;
+    let after_boundary = jpeg_image(&extractor, 999).await;
 
     assert_eq!(track.segments().len(), 2);
     assert!(is_nearly_black(&before_boundary));
@@ -95,7 +95,7 @@ async fn jpeg_rejects_a_time_at_the_end_of_the_video_track() {
     let track = Track::probe(&operator, path, None, &SegmentOptions::default())
         .await
         .unwrap();
-    let error = FrameGrab::new(&operator, &track)
+    let error = FrameExtractor::new(&operator, &track)
         .unwrap()
         .jpeg(1_000, 16, 16)
         .await
@@ -115,14 +115,14 @@ async fn jpeg_seeks_from_a_keyframe_to_the_requested_interframe() {
     let track = Track::probe(&operator, path, None, &SegmentOptions::default())
         .await
         .unwrap();
-    let grab = FrameGrab::new(&operator, &track).unwrap();
-    let image = jpeg_image(&grab, 500).await;
+    let extractor = FrameExtractor::new(&operator, &track).unwrap();
+    let image = jpeg_image(&extractor, 500).await;
 
     assert!(is_predominantly_blue(&image));
 }
 
-async fn jpeg_image(grab: &FrameGrab<'_>, time: u64) -> RgbImage {
-    let jpeg = grab.jpeg(time, 16, 16).await.unwrap();
+async fn jpeg_image(extractor: &FrameExtractor<'_>, time: u64) -> RgbImage {
+    let jpeg = extractor.jpeg(time, 16, 16).await.unwrap();
     image::load_from_memory_with_format(&jpeg, ImageFormat::Jpeg)
         .unwrap()
         .to_rgb8()

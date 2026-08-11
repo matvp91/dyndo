@@ -74,7 +74,7 @@ pub(super) async fn thumbnail(
     let Some(thumbnail) = Thumbnail::new(descriptor, &tracks) else {
         return Err(ServerError::NotFound("thumbnail".to_string()));
     };
-    let Some(bytes) = thumbnail.generate(op, time).await? else {
+    let Some(bytes) = thumbnail.jpeg(op, time).await? else {
         return Err(ServerError::NotFound("thumbnail".to_string()));
     };
 

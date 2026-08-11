@@ -86,16 +86,13 @@ async fn manifest(
         }
         (resource, "m3u8") => {
             let hls_options = options.hls_options();
-            let Some((content_type, track_id)) = track_resource(resource) else {
+            let Some(id) = resource_id(resource) else {
                 return Err(not_found());
             };
-            match content_type {
-                ContentType::Image => {
-                    manifest::hls_images(&op, &source_asset, &asset, track_id).await
-                }
-                ContentType::Video | ContentType::Audio | ContentType::Text => {
-                    manifest::hls_media(&op, &asset, &hls_options, track_id).await
-                }
+            if resource.starts_with("image_") {
+                manifest::hls_images(&op, &source_asset, &asset, id).await
+            } else {
+                manifest::hls_media(&op, &asset, &hls_options, id).await
             }
         }
         _ => Err(not_found()),
@@ -110,46 +107,24 @@ async fn track_file(
     let (file_name, extension) = file.rsplit_once('.').ok_or_else(not_found)?;
     let options = Options::parse(&encoded_options)?;
     let asset = load_asset(&op, &options).await?;
-    let Some((content_type, track_id)) = track_resource(&track_id) else {
-        return Err(not_found());
-    };
+    let track_id = resource_id(&track_id).ok_or_else(not_found)?;
 
-    match (content_type, file_name, extension) {
-        (ContentType::Video | ContentType::Audio | ContentType::Text, "init", "mp4") => {
-            segment::initialization(&op, &asset, track_id).await
-        }
-        (ContentType::Video | ContentType::Audio | ContentType::Text, time, "m4s") => {
-            segment::media(&op, &asset, track_id, segment_time(time, &file)?).await
-        }
-        (ContentType::Text, time, "vtt") => {
-            segment::text(&op, &asset, track_id, segment_time(time, &file)?).await
-        }
-        (ContentType::Image, time, "jpg") => {
+    match (file_name, extension) {
+        ("init", "mp4") => segment::initialization(&op, &asset, track_id).await,
+        (time, "m4s") => segment::media(&op, &asset, track_id, segment_time(time, &file)?).await,
+        (time, "vtt") => segment::text(&op, &asset, track_id, segment_time(time, &file)?).await,
+        (time, "jpg") => {
             segment::thumbnail(&op, &asset, track_id, segment_time(time, &file)?).await
         }
         _ => Err(not_found()),
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ContentType {
-    Video,
-    Audio,
-    Text,
-    Image,
-}
-
-fn track_resource(resource: &str) -> Option<(ContentType, &str)> {
-    let (content_type, track_id) = resource.rsplit_once('_')?;
-    let content_type = match content_type {
-        "video" => ContentType::Video,
-        "audio" => ContentType::Audio,
-        "text" => ContentType::Text,
-        "image" => ContentType::Image,
-        _ => return None,
-    };
-
-    (!track_id.is_empty()).then_some((content_type, track_id))
+fn resource_id(resource: &str) -> Option<&str> {
+    resource
+        .rsplit_once('_')
+        .map(|(_, id)| id)
+        .filter(|id| !id.is_empty())
 }
 
 fn segment_time(name: &str, file: &str) -> Result<u64, ServerError> {
@@ -162,7 +137,7 @@ mod tests {
     use axum::extract::Query;
     use axum::http::Uri;
 
-    use super::{ContentType, ManifestQuery, track_resource};
+    use super::{ManifestQuery, resource_id};
 
     #[test]
     fn manifest_query_deserializes_filter() {
@@ -180,15 +155,12 @@ mod tests {
     }
 
     #[test]
-    fn track_resource_reads_the_typed_identifier() {
-        assert_eq!(
-            track_resource("video_6b745be5-2791-5d95-8ce5-8f8bde29e2fe"),
-            Some((ContentType::Video, "6b745be5-2791-5d95-8ce5-8f8bde29e2fe"))
-        );
+    fn resource_id_reads_the_last_underscore_separated_chunk() {
+        assert_eq!(resource_id("video_6b745be5"), Some("6b745be5"));
     }
 
     #[test]
-    fn track_resource_rejects_unknown_content_types() {
-        assert_eq!(track_resource("unknown_main"), None);
+    fn resource_id_rejects_resources_without_an_identifier() {
+        assert_eq!(resource_id("video_"), None);
     }
 }

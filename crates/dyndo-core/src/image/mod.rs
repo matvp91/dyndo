@@ -1,8 +1,7 @@
 //! Video frame extraction and image encoding.
 
-mod frame_grab;
-mod sprite_canvas;
+mod frame_extractor;
 mod thumbnail;
 
-pub use frame_grab::{FrameGrab, FrameGrabError};
+pub use frame_extractor::{FrameExtractor, FrameExtractorError};
 pub use thumbnail::{Thumbnail, ThumbnailError};

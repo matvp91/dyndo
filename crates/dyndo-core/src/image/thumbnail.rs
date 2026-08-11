@@ -1,9 +1,11 @@
 use bytes::Bytes;
 use futures_util::{StreamExt, TryStreamExt, stream};
+use image::codecs::jpeg::JpegEncoder;
+use image::imageops::FilterType;
+use image::{ImageFormat, RgbImage, imageops};
 use opendal::Operator;
 
-use super::sprite_canvas::SpriteCanvas;
-use super::{FrameGrab, FrameGrabError};
+use super::{FrameExtractor, FrameExtractorError};
 use crate::thumbnail_descriptor::ThumbnailDescriptor;
 use crate::track::Track;
 use crate::track_kind::TrackKind;
@@ -15,7 +17,7 @@ const BITS_PER_PIXEL: u64 = 1;
 #[derive(Debug, thiserror::Error)]
 pub enum ThumbnailError {
     #[error(transparent)]
-    FrameGrab(#[from] FrameGrabError),
+    FrameExtractor(#[from] FrameExtractorError),
     #[error(transparent)]
     Image(#[from] image::ImageError),
 }
@@ -24,7 +26,6 @@ pub enum ThumbnailError {
 pub struct Thumbnail<'a> {
     descriptor: &'a ThumbnailDescriptor,
     source: &'a Track,
-    width: u32,
     height: u32,
 }
 
@@ -35,12 +36,11 @@ impl<'a> Thumbnail<'a> {
     /// the largest video when every source must be upscaled.
     pub fn new(descriptor: &'a ThumbnailDescriptor, tracks: &'a [Track]) -> Option<Self> {
         let source = select_source(descriptor.width, tracks)?;
-        let (width, height) = dimensions(descriptor, source)?;
+        let (_, height) = dimensions(descriptor, source)?;
 
         Some(Self {
             descriptor,
             source,
-            width,
             height,
         })
     }
@@ -67,7 +67,7 @@ impl<'a> Thumbnail<'a> {
 
     /// Returns the width of the complete thumbnail sprite.
     pub fn width(&self) -> u32 {
-        self.width
+        self.descriptor.width
     }
 
     /// Returns the height of the complete thumbnail sprite.
@@ -78,7 +78,7 @@ impl<'a> Thumbnail<'a> {
     /// Returns the dimensions of one thumbnail tile.
     pub fn tile_dimensions(&self) -> (u32, u32) {
         (
-            self.width / self.descriptor.tile_size,
+            self.width() / self.descriptor.tile_size,
             self.height / self.descriptor.tile_size,
         )
     }
@@ -92,7 +92,7 @@ impl<'a> Thumbnail<'a> {
 
     /// Returns the estimated bandwidth of the JPEG sprite representation.
     pub fn bandwidth(&self) -> u64 {
-        let bits = u128::from(self.width)
+        let bits = u128::from(self.width())
             .saturating_mul(u128::from(self.height))
             .saturating_mul(u128::from(BITS_PER_PIXEL));
         let bits_per_second = bits
@@ -109,11 +109,7 @@ impl<'a> Thumbnail<'a> {
     /// # Errors
     ///
     /// Returns an error when a frame cannot be read, decoded, composed, or encoded.
-    pub async fn generate(
-        &self,
-        op: &Operator,
-        time: u64,
-    ) -> Result<Option<Bytes>, ThumbnailError> {
+    pub async fn jpeg(&self, op: &Operator, time: u64) -> Result<Option<Bytes>, ThumbnailError> {
         let (Some(first), Some(last)) = (
             self.source.segments().first(),
             self.source.segments().last(),
@@ -128,18 +124,32 @@ impl<'a> Thumbnail<'a> {
             return Ok(None);
         }
 
-        let frame_grab = FrameGrab::new(op, self.source)?;
-        let mut canvas = SpriteCanvas::new(self.descriptor.tile_size, self.width, self.height);
-        let (tile_width, tile_height) = canvas.tile_dimensions();
+        let extractor = FrameExtractor::new(op, self.source)?;
+        let (tile_width, tile_height) = self.tile_dimensions();
+        let mut sprite = RgbImage::new(self.width(), self.height);
         let frames = self
             .frame_times(start, end)
-            .map(|time| frame_grab.jpeg(time, tile_width, tile_height));
+            .map(|time| extractor.jpeg(time, tile_width, tile_height));
         let mut frames = stream::iter(frames).buffered(CONCURRENT_FRAME_GRABS);
+        let mut index = 0_u64;
         while let Some(jpeg) = frames.try_next().await? {
-            canvas.add(&jpeg)?;
+            let tile = image::load_from_memory_with_format(&jpeg, ImageFormat::Jpeg)?
+                .resize_exact(tile_width, tile_height, FilterType::Triangle)
+                .to_rgb8();
+            let column = index % u64::from(self.descriptor.tile_size);
+            let row = index / u64::from(self.descriptor.tile_size);
+            imageops::replace(
+                &mut sprite,
+                &tile,
+                i64::try_from(column * u64::from(tile_width)).unwrap_or(i64::MAX),
+                i64::try_from(row * u64::from(tile_height)).unwrap_or(i64::MAX),
+            );
+            index += 1;
         }
 
-        Ok(Some(canvas.jpeg()?))
+        let mut jpeg = Vec::new();
+        JpegEncoder::new(&mut jpeg).encode_image(&sprite)?;
+        Ok(Some(Bytes::from(jpeg)))
     }
 
     fn frame_times(&self, start: u64, end: u64) -> impl Iterator<Item = u64> {

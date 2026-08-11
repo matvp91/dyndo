@@ -1,6 +1,6 @@
 use clap::Args;
 use dyndo_core::asset_descriptor::AssetDescriptor;
-use dyndo_core::image::FrameGrab;
+use dyndo_core::image::FrameExtractor;
 use dyndo_core::track::Track;
 use dyndo_core::track_kind::TrackKind;
 use opendal::Operator;
@@ -30,7 +30,7 @@ pub(crate) async fn run(op: &Operator, args: ImageArgs) -> Result<(), Box<dyn st
     let TrackKind::Video(video) = track.kind() else {
         return Err("probed track is not a video track".into());
     };
-    let jpeg = FrameGrab::new(op, &track)?
+    let jpeg = FrameExtractor::new(op, &track)?
         .jpeg(args.time, video.width, video.height)
         .await?;
 
