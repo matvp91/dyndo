@@ -60,7 +60,7 @@
                 "target": "schema-output",
                 "vcs:localdir:context": ".",
                 "vcs:localdir:dockerfile": ".",
-                "vcs:revision": "d2090872cc7540c07a50986721f9b2ef0c382268",
+                "vcs:revision": "3a226acc1fb38157e90663fc90a206abdd9b5afe",
                 "vcs:source": "https://github.com/matvp91/dyndo"
               }
             }
@@ -73,17 +73,17 @@
           "digestMapping": {
             "sha256:0bd9935e2bce7316c9f814f50198d2031bef4009709f23f2d8b8d38b145faf8d": "step7",
             "sha256:1f0ca0a8769e888ce2c3b0f1b9bcbaa79f96e75ac96f02baea743b2d33aac09f": "step0",
+            "sha256:1f148be8a70563e0f95dc6b255e2693a3bbacc192dafed14a8bb8732c1115829": "step11",
             "sha256:2efd0848701597cc4eb7cf8d3994f6ea47202cac6fa1b0e9168801f74cf7403d": "step1",
             "sha256:3df3f1dca2582187b496fc76eebb191d5d5270d92319b30d67e0e9ce2be5c638": "step4",
+            "sha256:47d36fa108926afcb1ceedcecc017404ba70b6bf0a2eaa25da046e0efaa4c4c1": "step10",
+            "sha256:55479b6c544e0dc1d8e425283af62271733aaa476b0080c28eea39b63b14c4b9": "step12",
+            "sha256:593b3c30ee3df5d07a8120147bda69db254ff74499d3cb1881fc38686f18bd57": "step8",
             "sha256:77dd9b747c4c6fd5ef96a536c6ff599278b26cd85bdf4bb344e2ffdff123e7f5": "step6",
-            "sha256:7cc9dd9b6b8d18bcc885a8ba6ee3c6ec674cdba954c8c636f5377f6bb2b8ecf2": "step10",
             "sha256:7d699f2486b1280a1540a7c757298a3e6cfdaf0556e0b0399a36a7bd04abe33f": "step2",
-            "sha256:8c63e4c2fa3a330fdf81e6764327aa2104fd61103705cad93f047cb32dbc04b7": "step9",
-            "sha256:940ab4bf4467943cd761555bcb7d71577d5df9ab6b11fa0a4c0be0ece6dd1b0e": "step8",
-            "sha256:9ed0180c35719626f348eb831b2914a537d413484d218d5e971cc0d62f40a3ef": "step12",
             "sha256:a366ad162d239c6aca3215e1a4dcf97d249f745fcc4ef3791f2638100ca18c1e": "step3",
-            "sha256:e771d9b5d34ede1f7de175143c8a3db19f25800d00c7f98d2ed2e2558e2ff177": "step11",
-            "sha256:edc1906888bb89320ecfb23654aa0749133b9f9e0798dc768d4e6d9d2a0499d3": "step5"
+            "sha256:edc1906888bb89320ecfb23654aa0749133b9f9e0798dc768d4e6d9d2a0499d3": "step5",
+            "sha256:ffd6f42e8c566a075b4676424576277b2c66486884cbe72d41e2adff595906e6": "step9"
           },
           "llbDefinition": [
             {
@@ -468,9 +468,9 @@
         "github_actor_id": "12699796",
         "github_event_name": "push",
         "github_event_payload": {
-          "after": "d2090872cc7540c07a50986721f9b2ef0c382268",
+          "after": "3a226acc1fb38157e90663fc90a206abdd9b5afe",
           "base_ref": null,
-          "before": "25a0a0687373e8de66433b69b40452cc60d960b4",
+          "before": "d2090872cc7540c07a50986721f9b2ef0c382268",
           "commits": [
             {
               "author": {
@@ -484,14 +484,14 @@
                 "username": "matvp91"
               },
               "distinct": true,
-              "id": "d2090872cc7540c07a50986721f9b2ef0c382268",
-              "message": "build: fetch FFmpeg from GitHub mirror\n\nCo-authored-by: OpenAI Codex \u003cnoreply@openai.com\u003e",
-              "timestamp": "2026-08-11T22:36:52+02:00",
-              "tree_id": "3ed2d7ec90b61a3ca3d2b4db78b4f9ff92b0e1df",
-              "url": "https://github.com/matvp91/dyndo/commit/d2090872cc7540c07a50986721f9b2ef0c382268"
+              "id": "3a226acc1fb38157e90663fc90a206abdd9b5afe",
+              "message": "chore: Renamed job names",
+              "timestamp": "2026-08-11T22:49:37+02:00",
+              "tree_id": "a8cc5772cfbee40f20dd7af28008831283b5555a",
+              "url": "https://github.com/matvp91/dyndo/commit/3a226acc1fb38157e90663fc90a206abdd9b5afe"
             }
           ],
-          "compare": "https://github.com/matvp91/dyndo/compare/25a0a0687373...d2090872cc75",
+          "compare": "https://github.com/matvp91/dyndo/compare/d2090872cc75...3a226acc1fb3",
           "created": false,
           "deleted": false,
           "forced": false,
@@ -507,11 +507,11 @@
               "username": "matvp91"
             },
             "distinct": true,
-            "id": "d2090872cc7540c07a50986721f9b2ef0c382268",
-            "message": "build: fetch FFmpeg from GitHub mirror\n\nCo-authored-by: OpenAI Codex \u003cnoreply@openai.com\u003e",
-            "timestamp": "2026-08-11T22:36:52+02:00",
-            "tree_id": "3ed2d7ec90b61a3ca3d2b4db78b4f9ff92b0e1df",
-            "url": "https://github.com/matvp91/dyndo/commit/d2090872cc7540c07a50986721f9b2ef0c382268"
+            "id": "3a226acc1fb38157e90663fc90a206abdd9b5afe",
+            "message": "chore: Renamed job names",
+            "timestamp": "2026-08-11T22:49:37+02:00",
+            "tree_id": "a8cc5772cfbee40f20dd7af28008831283b5555a",
+            "url": "https://github.com/matvp91/dyndo/commit/3a226acc1fb38157e90663fc90a206abdd9b5afe"
           },
           "pusher": {
             "email": "matvp91@gmail.com",
@@ -609,7 +609,7 @@
             "private": false,
             "pull_request_creation_policy": "all",
             "pulls_url": "https://api.github.com/repos/matvp91/dyndo/pulls{/number}",
-            "pushed_at": 1786480616,
+            "pushed_at": 1786481380,
             "releases_url": "https://api.github.com/repos/matvp91/dyndo/releases{/id}",
             "size": 2028,
             "ssh_url": "git@github.com:matvp91/dyndo.git",
@@ -630,7 +630,7 @@
               "video-streaming"
             ],
             "trees_url": "https://api.github.com/repos/matvp91/dyndo/git/trees{/sha}",
-            "updated_at": "2026-08-11T20:33:00Z",
+            "updated_at": "2026-08-11T20:37:00Z",
             "url": "https://api.github.com/repos/matvp91/dyndo",
             "visibility": "public",
             "watchers": 0,
@@ -669,35 +669,35 @@
         "github_repository_owner": "matvp91",
         "github_repository_owner_id": "12699796",
         "github_run_attempt": "1",
-        "github_run_id": "31533833168",
-        "github_run_number": "152",
+        "github_run_id": "31534892012",
+        "github_run_number": "153",
         "github_runner_arch": "X64",
         "github_runner_environment": "github-hosted",
         "github_runner_image_os": "ubuntu24",
         "github_runner_image_version": "20260720.247.2",
-        "github_runner_name": "GitHub Actions 1000031775",
+        "github_runner_name": "GitHub Actions 1000031788",
         "github_runner_os": "Linux",
-        "github_runner_tracking_id": "github_10598818-6ea2-4264-a188-100caf647312",
+        "github_runner_tracking_id": "github_b54ef9bd-d798-488c-afc5-88bb9e5ec21d",
         "github_server_url": "https://github.com",
         "github_triggering_actor": "matvp91",
         "github_workflow": "Docs",
         "github_workflow_ref": "matvp91/dyndo/.github/workflows/docs.yml@refs/heads/main",
-        "github_workflow_sha": "d2090872cc7540c07a50986721f9b2ef0c382268"
+        "github_workflow_sha": "3a226acc1fb38157e90663fc90a206abdd9b5afe"
       }
     },
     "runDetails": {
       "builder": {
-        "id": "https://github.com/matvp91/dyndo/actions/runs/31533833168/attempts/1"
+        "id": "https://github.com/matvp91/dyndo/actions/runs/31534892012/attempts/1"
       },
       "metadata": {
-        "invocationId": "vd67l45590udftb7tiyovljhx",
-        "startedOn": "2026-08-11T20:37:55.107103153Z",
-        "finishedOn": "2026-08-11T20:40:34.149079429Z",
+        "invocationId": "9tnujzhmmhbikmuj4i0knrjfg",
+        "startedOn": "2026-08-11T20:50:12.328629589Z",
+        "finishedOn": "2026-08-11T20:51:14.532580744Z",
         "buildkit_metadata": {
           "vcs": {
             "localdir:context": ".",
             "localdir:dockerfile": ".",
-            "revision": "d2090872cc7540c07a50986721f9b2ef0c382268",
+            "revision": "3a226acc1fb38157e90663fc90a206abdd9b5afe",
             "source": "https://github.com/matvp91/dyndo"
           },
           "source": {
@@ -1249,22 +1249,13 @@
                   }
                 ],
                 "digestMapping": {
-                  "sha256:4163561b8e4d9294343d9e84be216af6ee0ebea5f3c0ce59e5aea9b0222af78a": "step0",
-                  "sha256:7f9b10ffcbed16f08001080b86301c4af194d10606dd4fd182fb08f36783bbbb": "step1"
+                  "sha256:5bd0c78870f0f81e856fecadd4e65ecb46b7404631832f8e1b5f3d15d2ea0621": "step0",
+                  "sha256:e6c253f50d262c325d924a98eac4f2d76c44f72e831620efc7d9b844460ca997": "step1"
                 }
               }
             ]
           },
           "layers": {
-            "step11:0": [
-              [
-                {
-                  "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
-                  "digest": "sha256:d8fbe2f17da4df93f5bb96fab2e5e86649f48d9181037e04bc11ff5485560484",
-                  "size": 1409
-                }
-              ]
-            ],
             "step1:0": [
               [
                 {
@@ -1308,12 +1299,123 @@
                 }
               ]
             ],
-            "step3:0": [
+            "step4:0": [
               [
                 {
                   "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
                   "digest": "sha256:26c307b5e35a59ce911f5fde5b9458120ec8734e831ea2da5649a9ad14abfd3d",
                   "size": 29780765
+                },
+                {
+                  "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+                  "digest": "sha256:0fdee84d5b3d0c0accb83a5ace2ba9762e9b38ac95b27e29130f8dc4edb8e650",
+                  "size": 112909971
+                }
+              ]
+            ],
+            "step5:0": [
+              [
+                {
+                  "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+                  "digest": "sha256:26c307b5e35a59ce911f5fde5b9458120ec8734e831ea2da5649a9ad14abfd3d",
+                  "size": 29780765
+                },
+                {
+                  "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+                  "digest": "sha256:0fdee84d5b3d0c0accb83a5ace2ba9762e9b38ac95b27e29130f8dc4edb8e650",
+                  "size": 112909971
+                },
+                {
+                  "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+                  "digest": "sha256:4f4fb700ef54461cfa02571ae0db9a0dc1e0cdb5577484a6d75e68dc38e8acc1",
+                  "size": 32
+                }
+              ]
+            ],
+            "step6:0": [
+              [
+                {
+                  "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+                  "digest": "sha256:26c307b5e35a59ce911f5fde5b9458120ec8734e831ea2da5649a9ad14abfd3d",
+                  "size": 29780765
+                },
+                {
+                  "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+                  "digest": "sha256:0fdee84d5b3d0c0accb83a5ace2ba9762e9b38ac95b27e29130f8dc4edb8e650",
+                  "size": 112909971
+                },
+                {
+                  "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+                  "digest": "sha256:4f4fb700ef54461cfa02571ae0db9a0dc1e0cdb5577484a6d75e68dc38e8acc1",
+                  "size": 32
+                },
+                {
+                  "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+                  "digest": "sha256:15ab4e64c7e165a8078b47402643e116d1fbbc87e8777838f7e0900ff7f12f81",
+                  "size": 42369960
+                }
+              ]
+            ],
+            "step7:0": [
+              [
+                {
+                  "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+                  "digest": "sha256:062e450697faa5f02a3a74eba9864ee4d79bc9cfbd65769fc6cdff2c05c6a053",
+                  "size": 29780905
+                },
+                {
+                  "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+                  "digest": "sha256:0410f18f530500d4aa1d0ee00bd1b27d5d2151b31058b10e24720cd68a08e501",
+                  "size": 293313963
+                },
+                {
+                  "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+                  "digest": "sha256:af3243c0e483e08d64955057859a477380f9471b9fa84cd5ac1fc7c81ff094f4",
+                  "size": 135958122
+                },
+                {
+                  "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+                  "digest": "sha256:378164bf8cd3ab35053aad14bcb3b1ac69e75f29be620c4b891e956dbe0dd221",
+                  "size": 93
+                },
+                {
+                  "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+                  "digest": "sha256:e8879c0f2e2f9bbe1454f7b2169a6253473e6f55f5172a93cacc3c0bf0f9159f",
+                  "size": 3140809
+                }
+              ]
+            ],
+            "step9:0": [
+              [
+                {
+                  "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+                  "digest": "sha256:062e450697faa5f02a3a74eba9864ee4d79bc9cfbd65769fc6cdff2c05c6a053",
+                  "size": 29780905
+                },
+                {
+                  "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+                  "digest": "sha256:0410f18f530500d4aa1d0ee00bd1b27d5d2151b31058b10e24720cd68a08e501",
+                  "size": 293313963
+                },
+                {
+                  "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+                  "digest": "sha256:af3243c0e483e08d64955057859a477380f9471b9fa84cd5ac1fc7c81ff094f4",
+                  "size": 135958122
+                },
+                {
+                  "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+                  "digest": "sha256:378164bf8cd3ab35053aad14bcb3b1ac69e75f29be620c4b891e956dbe0dd221",
+                  "size": 93
+                },
+                {
+                  "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+                  "digest": "sha256:e8879c0f2e2f9bbe1454f7b2169a6253473e6f55f5172a93cacc3c0bf0f9159f",
+                  "size": 3140809
+                },
+                {
+                  "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+                  "digest": "sha256:109a706cbe380f9acf54d391ccafde8d6667a6a7d63bbb494d4232d4c702fd3e",
+                  "size": 113136
                 }
               ]
             ]
