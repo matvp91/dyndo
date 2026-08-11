@@ -1,7 +1,8 @@
+use dyndo_core::asset::kind::VideoKind;
 use dyndo_core::segment_options::SegmentOptions;
 use dyndo_core::served_segment::ServedSegment;
 use dyndo_core::track::cmaf::CmafTrack;
-use dyndo_core::track::kind::{CmafTrackKind, VideoKind};
+use dyndo_core::track::kind::CmafTrackKind;
 use dyndo_core::track::synthetic::SyntheticTrack;
 use m3u8_rs::{ClosedCaptionGroupId, ExtTag, MasterPlaylist, Resolution, VariantStream};
 

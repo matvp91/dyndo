@@ -6,11 +6,12 @@ use image::{ImageFormat, RgbImage, imageops};
 use opendal::Operator;
 
 use crate::asset::AssetDescriptor;
-use crate::asset::synthetic::SyntheticTrackDescriptor;
+use crate::asset::descriptor::ThumbnailTrackDescriptor;
+use crate::asset::kind::ThumbnailKind;
 use crate::image::{FrameExtractor, FrameExtractorError};
 use crate::track::SourceTrack;
 use crate::track::cmaf::CmafTrack;
-use crate::track::kind::{CmafTrackKind, SyntheticTrackKind, ThumbnailKind};
+use crate::track::kind::{CmafTrackKind, SyntheticTrackKind};
 
 const CONCURRENT_FRAME_GRABS: usize = 4;
 const BITS_PER_PIXEL: u64 = 1;
@@ -22,7 +23,6 @@ pub fn resolve_synthetic_tracks(
 ) -> Vec<SyntheticTrack> {
     asset
         .thumbnail_tracks()
-        .filter_map(|track| track.thumbnail())
         .filter_map(|descriptor| {
             SyntheticTrack::thumbnail(descriptor, sources.iter().filter_map(SourceTrack::cmaf))
         })
@@ -53,7 +53,7 @@ impl SyntheticTrack {
     /// Selects the smallest video at least as wide as the requested sprite, or
     /// the largest video when every source must be upscaled.
     pub fn thumbnail<'a>(
-        descriptor: &SyntheticTrackDescriptor<ThumbnailKind>,
+        descriptor: &ThumbnailTrackDescriptor,
         tracks: impl IntoIterator<Item = &'a CmafTrack>,
     ) -> Option<Self> {
         let source = select_source(descriptor.kind.width, tracks)?;
@@ -249,11 +249,12 @@ mod tests {
     use std::sync::Arc;
 
     use super::SyntheticTrack;
-    use crate::asset::synthetic::SyntheticTrackDescriptor;
+    use crate::asset::descriptor::ThumbnailTrackDescriptor;
+    use crate::asset::kind::{ThumbnailKind, VideoKind};
     use crate::codec::{CodecConfig, WvttCodec};
     use crate::segment::InitSegment;
     use crate::track::cmaf::CmafTrack;
-    use crate::track::kind::{CmafTrackKind, SyntheticTrackKind, ThumbnailKind, VideoKind};
+    use crate::track::kind::{CmafTrackKind, SyntheticTrackKind};
 
     fn video(id: &str, width: u32, height: u32) -> CmafTrack {
         CmafTrack::new(
@@ -269,8 +270,8 @@ mod tests {
         )
     }
 
-    fn descriptor(width: u32) -> SyntheticTrackDescriptor<ThumbnailKind> {
-        SyntheticTrackDescriptor {
+    fn descriptor(width: u32) -> ThumbnailTrackDescriptor {
+        ThumbnailTrackDescriptor {
             id: "thumbnail".to_string(),
             kind: ThumbnailKind {
                 tile_size: 4,

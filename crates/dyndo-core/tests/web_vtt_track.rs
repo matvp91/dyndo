@@ -1,4 +1,4 @@
-use dyndo_core::asset::track::TrackDescriptor;
+use dyndo_core::asset::track::SourceTrackDescriptor;
 use dyndo_core::segment_options::SegmentOptions;
 use dyndo_core::track::SourceTrack;
 use dyndo_core::track::kind::{CmafTrackKind, TimedTextKind};
@@ -67,7 +67,7 @@ async fn descriptor_type_overrides_the_source_file_extension() {
     let operator = memory_operator();
     let path = RelativePath::new("subtitles/en.vtt");
     operator.write(path.as_str(), VTT).await.unwrap();
-    let descriptor: TrackDescriptor = serde_json::from_str(
+    let descriptor: SourceTrackDescriptor = serde_json::from_str(
         r#"{"id":"video","path":"subtitles/en.vtt","codec":"avc1.42c00a","type":"video","width":16,"height":16,"frame_rate":"4/1"}"#,
     )
     .unwrap();

@@ -1,12 +1,11 @@
 use language_tags::LanguageTag;
 use mp4_atom::{Codec as Mp4Codec, FourCC};
 
+use super::super::asset::kind::{AudioKind, TextKind, VideoKind, undetermined_language};
 use super::super::codec::{
     AacCodec, Ac3Codec, Av1Codec, AvcCodec, CodecConfig, Eac3Codec, HevcCodec, WvttCodec,
 };
-use super::super::track::kind::{
-    AudioKind, CmafTrackKind, TextKind, VideoKind, undetermined_language,
-};
+use super::super::track::kind::CmafTrackKind;
 use super::ProbeError;
 use super::box_reader::Boxes;
 

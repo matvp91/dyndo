@@ -1,11 +1,12 @@
 use std::sync::Arc;
 
-use dyndo_core::asset::synthetic::SyntheticTrackDescriptor;
+use dyndo_core::asset::descriptor::ThumbnailTrackDescriptor;
+use dyndo_core::asset::kind::{AudioKind, TextKind, ThumbnailKind, VideoKind};
 use dyndo_core::codec::{AacCodec, AvcCodec, CodecConfig, WvttCodec};
 use dyndo_core::segment::{InitSegment, Segment};
 use dyndo_core::segment_options::SegmentOptions;
 use dyndo_core::track::cmaf::CmafTrack;
-use dyndo_core::track::kind::{AudioKind, CmafTrackKind, TextKind, ThumbnailKind, VideoKind};
+use dyndo_core::track::kind::CmafTrackKind;
 use dyndo_core::track::synthetic::SyntheticTrack;
 use dyndo_dash::{generate_mpd, options::DashOptions};
 use mp4_atom::{Audio, Avc1, Avcc, Mp4a};
@@ -67,7 +68,7 @@ fn video_track(id: &str, width: u32, height: u32, bytes_per_segment: u64) -> Cma
 
 fn generate(
     tracks: &[CmafTrack],
-    descriptors: &[SyntheticTrackDescriptor<ThumbnailKind>],
+    descriptors: &[ThumbnailTrackDescriptor],
     segment_options: &SegmentOptions,
     dash_options: &DashOptions,
 ) -> String {
@@ -79,8 +80,8 @@ fn generate(
     quick_xml::se::to_string(&mpd).unwrap()
 }
 
-fn thumbnail() -> SyntheticTrackDescriptor<ThumbnailKind> {
-    SyntheticTrackDescriptor {
+fn thumbnail() -> ThumbnailTrackDescriptor {
+    ThumbnailTrackDescriptor {
         id: "preview".to_string(),
         kind: ThumbnailKind {
             tile_size: 2,

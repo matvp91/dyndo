@@ -1,5 +1,5 @@
 use dyndo_core::asset::AssetDescriptor;
-use dyndo_core::asset::track::TrackDescriptor;
+use dyndo_core::asset::track::{SourceTrackDescriptor, SyntheticTrackDescriptor, TrackDescriptor};
 use serde::{Deserialize, Deserializer, de};
 use winnow::ascii::{digit1, multispace0};
 use winnow::combinator::{
@@ -149,20 +149,34 @@ impl Attribute {
         match (self, descriptor) {
             (Self::Type, track) => Some(track.asset_type()),
             (Self::Id, track) => Some(track.id()),
-            (Self::Codec, TrackDescriptor::Video(track)) => Some(&track.codec),
-            (Self::Codec, TrackDescriptor::Audio(track)) => Some(&track.codec),
-            (Self::Codec, TrackDescriptor::Text(track)) => Some(&track.codec),
-            (Self::FrameRate, TrackDescriptor::Video(track)) => Some(&track.kind.frame_rate),
-            (Self::Language, TrackDescriptor::Audio(track)) => Some(track.kind.language.as_str()),
-            (Self::Language, TrackDescriptor::Text(track)) => Some(track.kind.language.as_str()),
-            (Self::Language, TrackDescriptor::WebVtt(track)) => Some(track.kind.language.as_str()),
-            (Self::Role, TrackDescriptor::Audio(track)) => {
+            (Self::Codec, TrackDescriptor::Source(SourceTrackDescriptor::Video(track))) => {
+                Some(&track.codec)
+            }
+            (Self::Codec, TrackDescriptor::Source(SourceTrackDescriptor::Audio(track))) => {
+                Some(&track.codec)
+            }
+            (Self::Codec, TrackDescriptor::Source(SourceTrackDescriptor::Text(track))) => {
+                Some(&track.codec)
+            }
+            (Self::FrameRate, TrackDescriptor::Source(SourceTrackDescriptor::Video(track))) => {
+                Some(&track.kind.frame_rate)
+            }
+            (Self::Language, TrackDescriptor::Source(SourceTrackDescriptor::Audio(track))) => {
+                Some(track.kind.language.as_str())
+            }
+            (Self::Language, TrackDescriptor::Source(SourceTrackDescriptor::Text(track))) => {
+                Some(track.kind.language.as_str())
+            }
+            (Self::Language, TrackDescriptor::Source(SourceTrackDescriptor::WebVtt(track))) => {
+                Some(track.kind.language.as_str())
+            }
+            (Self::Role, TrackDescriptor::Source(SourceTrackDescriptor::Audio(track))) => {
                 track.kind.role.as_ref().map(|role| role.as_str())
             }
-            (Self::Role, TrackDescriptor::Text(track)) => {
+            (Self::Role, TrackDescriptor::Source(SourceTrackDescriptor::Text(track))) => {
                 track.kind.role.as_ref().map(|role| role.as_str())
             }
-            (Self::Role, TrackDescriptor::WebVtt(track)) => {
+            (Self::Role, TrackDescriptor::Source(SourceTrackDescriptor::WebVtt(track))) => {
                 track.kind.role.as_ref().map(|role| role.as_str())
             }
             _ => None,
@@ -171,17 +185,30 @@ impl Attribute {
 
     fn number(self, descriptor: &TrackDescriptor) -> Option<u64> {
         match (self, descriptor) {
-            (Self::Width, TrackDescriptor::Video(track)) => Some(u64::from(track.kind.width)),
-            (Self::Width, TrackDescriptor::Thumbnail(track)) => Some(u64::from(track.kind.width)),
-            (Self::Height, TrackDescriptor::Video(track)) => Some(u64::from(track.kind.height)),
-            (Self::SampleRate, TrackDescriptor::Audio(track)) => {
+            (Self::Width, TrackDescriptor::Source(SourceTrackDescriptor::Video(track))) => {
+                Some(u64::from(track.kind.width))
+            }
+            (
+                Self::Width,
+                TrackDescriptor::Synthetic(SyntheticTrackDescriptor::Thumbnail(track)),
+            ) => Some(u64::from(track.kind.width)),
+            (Self::Height, TrackDescriptor::Source(SourceTrackDescriptor::Video(track))) => {
+                Some(u64::from(track.kind.height))
+            }
+            (Self::SampleRate, TrackDescriptor::Source(SourceTrackDescriptor::Audio(track))) => {
                 Some(u64::from(track.kind.sample_rate))
             }
-            (Self::Channels, TrackDescriptor::Audio(track)) => Some(u64::from(track.kind.channels)),
-            (Self::TileSize, TrackDescriptor::Thumbnail(track)) => {
-                Some(u64::from(track.kind.tile_size))
+            (Self::Channels, TrackDescriptor::Source(SourceTrackDescriptor::Audio(track))) => {
+                Some(u64::from(track.kind.channels))
             }
-            (Self::Step, TrackDescriptor::Thumbnail(track)) => Some(u64::from(track.kind.step)),
+            (
+                Self::TileSize,
+                TrackDescriptor::Synthetic(SyntheticTrackDescriptor::Thumbnail(track)),
+            ) => Some(u64::from(track.kind.tile_size)),
+            (
+                Self::Step,
+                TrackDescriptor::Synthetic(SyntheticTrackDescriptor::Thumbnail(track)),
+            ) => Some(u64::from(track.kind.step)),
             _ => None,
         }
     }

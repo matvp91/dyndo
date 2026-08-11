@@ -24,9 +24,7 @@ pub(crate) async fn run(op: &Operator, args: ImageArgs) -> Result<(), Box<dyn st
         .source_tracks()
         .find(|track| matches!(track.cmaf_kind(), Some(CmafTrackKind::Video(_))))
         .ok_or("asset has no video track")?;
-    let path = asset
-        .track_path(descriptor)
-        .ok_or("video track has no source path")?;
+    let path = asset.track_path(descriptor);
     let track = SourceTrack::probe(op, &path, Some(descriptor)).await?;
     let cmaf = track.cmaf().ok_or("video track is not CMAF")?;
     let CmafTrackKind::Video(video) = cmaf.kind() else {

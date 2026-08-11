@@ -2,15 +2,13 @@ use opendal::Operator;
 use relative_path::{RelativePath, RelativePathBuf};
 use serde::{Deserialize, Serialize};
 
-use self::synthetic::SyntheticTrackDescriptor;
-use self::track::TrackDescriptor;
+use self::descriptor::ThumbnailTrackDescriptor;
+use self::track::{SourceTrackDescriptor, SyntheticTrackDescriptor, TrackDescriptor};
 use crate::segment_options::SegmentOptions;
 use crate::track::SourceTrack;
-use crate::track::kind::ThumbnailKind;
 
-pub mod cmaf;
-pub mod synthetic;
-pub mod timed_text;
+pub mod descriptor;
+pub mod kind;
 pub mod track;
 
 #[derive(Debug, thiserror::Error)]
@@ -62,55 +60,59 @@ impl AssetDescriptor {
         }
     }
 
-    pub fn track_path(&self, track: &TrackDescriptor) -> Option<RelativePathBuf> {
-        Some(
-            self.path
-                .parent()
-                .unwrap_or(RelativePath::new(""))
-                .join(track.source_path()?),
-        )
+    pub fn track_path(&self, track: &SourceTrackDescriptor) -> RelativePathBuf {
+        self.path
+            .parent()
+            .unwrap_or(RelativePath::new(""))
+            .join(track.source_path())
     }
 
-    pub fn find_source_track_by_id(&self, id: &str) -> Option<&TrackDescriptor> {
+    pub fn find_source_track_by_id(&self, id: &str) -> Option<&SourceTrackDescriptor> {
         self.source_tracks().find(|track| track.id() == id)
     }
 
-    pub fn find_thumbnail_track_by_id(
-        &self,
-        id: &str,
-    ) -> Option<&SyntheticTrackDescriptor<ThumbnailKind>> {
-        self.thumbnail_tracks()
-            .find(|track| track.id() == id)
-            .and_then(TrackDescriptor::thumbnail)
+    pub fn find_thumbnail_track_by_id(&self, id: &str) -> Option<&ThumbnailTrackDescriptor> {
+        self.thumbnail_tracks().find(|track| track.id == id)
     }
 
-    pub fn source_tracks(&self) -> impl Iterator<Item = &TrackDescriptor> {
+    pub fn source_tracks(&self) -> impl Iterator<Item = &SourceTrackDescriptor> {
+        self.tracks.iter().filter_map(TrackDescriptor::source)
+    }
+
+    pub fn synthetic_tracks(&self) -> impl Iterator<Item = &SyntheticTrackDescriptor> {
+        self.tracks.iter().filter_map(TrackDescriptor::synthetic)
+    }
+
+    pub fn thumbnail_tracks(&self) -> impl Iterator<Item = &ThumbnailTrackDescriptor> {
+        self.synthetic_tracks()
+            .map(SyntheticTrackDescriptor::thumbnail)
+    }
+
+    pub fn find_track_by_path(
+        &mut self,
+        path: &RelativePath,
+    ) -> Option<&mut SourceTrackDescriptor> {
+        let base = self
+            .path
+            .parent()
+            .unwrap_or(RelativePath::new(""))
+            .to_owned();
         self.tracks
-            .iter()
-            .filter(|track| track.source_path().is_some())
+            .iter_mut()
+            .filter_map(TrackDescriptor::source_mut)
+            .find(|track| base.join(track.source_path()) == path)
     }
 
-    pub fn thumbnail_tracks(&self) -> impl Iterator<Item = &TrackDescriptor> {
-        self.tracks
-            .iter()
-            .filter(|track| track.thumbnail().is_some())
-    }
-
-    pub fn find_track_by_path(&mut self, path: &RelativePath) -> Option<&mut TrackDescriptor> {
-        let index = self
-            .tracks
-            .iter()
-            .position(|track| self.track_path(track).as_deref() == Some(path))?;
-
-        self.tracks.get_mut(index)
-    }
-
-    pub fn add_source_track(&mut self, track: &SourceTrack) -> &mut TrackDescriptor {
+    pub fn add_source_track(&mut self, track: &SourceTrack) -> &mut SourceTrackDescriptor {
         let base = self.path.parent().unwrap_or(RelativePath::new(""));
         let path = base.relative(track.source_path());
         let index = self.tracks.len();
-        self.tracks
-            .push(TrackDescriptor::from_source_track(track, path));
-        &mut self.tracks[index]
+        self.tracks.push(TrackDescriptor::Source(
+            SourceTrackDescriptor::from_source_track(track, path),
+        ));
+        match &mut self.tracks[index] {
+            TrackDescriptor::Source(track) => track,
+            TrackDescriptor::Synthetic(_) => unreachable!("a source track was just inserted"),
+        }
     }
 }

@@ -136,7 +136,7 @@ ISO-BMFF), which is probed and served like any other CMAF track, or a **raw
 > as it is read, so nothing is written beside it and the `.vtt` stays the source
 > of truth; its segments are cut where the asset's splice points and
 > [`text_length`](#segmentation) say. CMAF WebVTT tracks use `"type": "text"`
-> and record their `wvtt` codec. Raw WebVTT tracks use `"type": "vtt"` and do
+> and record their `wvtt` codec. Raw WebVTT tracks use `"type": "webvtt"` and do
 > not have a codec, because dyndo packages them only for CMAF output. HLS serves
 > raw VTT cues directly from a raw WebVTT source; CMAF `wvtt` sources are served
 > as CMAF segments. See
@@ -164,7 +164,7 @@ A CMAF `wvtt` track and a raw `.vtt` track:
 {
   "id": "c9e251a7-4fd1-54f9-abc8-ca86598e1cc5",
   "path": "subtitles_nl.vtt",
-  "type": "vtt",
+  "type": "webvtt",
   "language": "nld"
 }
 ```

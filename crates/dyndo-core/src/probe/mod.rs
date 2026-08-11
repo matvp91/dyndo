@@ -44,9 +44,9 @@ pub async fn probe_source_tracks(
     op: &Operator,
     asset: &AssetDescriptor,
 ) -> Result<Vec<SourceTrack>, ProbeError> {
-    let probes = asset.source_tracks().filter_map(|descriptor| {
-        let path = asset.track_path(descriptor)?;
-        Some(async move { SourceTrack::probe(op, &path, Some(descriptor)).await })
+    let probes = asset.source_tracks().map(|descriptor| {
+        let path = asset.track_path(descriptor);
+        async move { SourceTrack::probe(op, &path, Some(descriptor)).await }
     });
 
     try_join_all(probes).await

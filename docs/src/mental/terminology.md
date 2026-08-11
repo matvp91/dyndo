@@ -36,7 +36,12 @@ An **asset descriptor** is persisted configuration. Its track entry names the
 source form, gives it a stable identifier, and supplies metadata that is not
 necessarily present in the source file.
 
-When a descriptor is present, its type is authoritative: a `vtt` descriptor is
+The stored `TrackDescriptor` separates `SourceTrackDescriptor` from
+`SyntheticTrackDescriptor`. Only a source descriptor has a source path, so
+operations that read or probe a file accept a source descriptor rather than a
+general track descriptor.
+
+When a descriptor is present, its type is authoritative: a `webvtt` descriptor is
 resolved as raw WebVTT, and a `video`, `audio`, or `text` descriptor is resolved
 as CMAF. The file name does not override that decision.
 
@@ -48,7 +53,7 @@ stable source identifier that is then recorded in the descriptor.
 The word **type** has two deliberate meanings in the system:
 
 - An asset descriptor type is the source or synthetic form written in
-  `asset.json`: `video`, `audio`, `text`, `vtt`, or `thumbnail`.
+  `asset.json`: `video`, `audio`, `text`, `webvtt`, or `thumbnail`.
 - A CMAF media kind is the container category of a CMAF track: `video`,
   `audio`, or `text`.
 

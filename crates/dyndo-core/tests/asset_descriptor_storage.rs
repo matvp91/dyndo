@@ -1,9 +1,9 @@
 use dyndo_core::asset::AssetDescriptor;
-use dyndo_core::asset::synthetic::SyntheticTrackDescriptor;
+use dyndo_core::asset::descriptor::ThumbnailTrackDescriptor;
+use dyndo_core::asset::kind::ThumbnailKind;
 use dyndo_core::track::SourceTrack;
-use dyndo_core::track::kind::ThumbnailKind;
 use opendal::{Operator, services::Memory};
-use relative_path::RelativePath;
+use relative_path::{RelativePath, RelativePathBuf};
 
 fn memory_operator() -> Operator {
     Operator::new(Memory::default()).unwrap()
@@ -27,7 +27,7 @@ async fn read_or_new_preserves_the_descriptor_base_when_adding_a_track() {
         .await
         .unwrap();
     let track_descriptor = serde_json::from_str(
-        r#"{"id":"text","path":"subtitles/en.vtt","type":"vtt","language":"en"}"#,
+        r#"{"id":"text","path":"subtitles/en.vtt","type":"webvtt","language":"en"}"#,
     )
     .unwrap();
     let track = SourceTrack::probe(
@@ -40,35 +40,31 @@ async fn read_or_new_preserves_the_descriptor_base_when_adding_a_track() {
     descriptor.add_source_track(&track);
 
     assert_eq!(
-        descriptor
-            .track_path(descriptor.find_source_track_by_id("text").unwrap())
-            .as_deref(),
-        Some(RelativePath::new("assets/movie/subtitles/en.vtt"))
+        descriptor.track_path(descriptor.find_source_track_by_id("text").unwrap()),
+        RelativePathBuf::from("assets/movie/subtitles/en.vtt")
     );
 
     let value = serde_json::to_value(&descriptor).unwrap();
-    assert_eq!(value["tracks"][0]["type"], "vtt");
+    assert_eq!(value["tracks"][0]["type"], "webvtt");
     assert!(value["tracks"][0].get("codec").is_none());
 }
 
 #[tokio::test]
 async fn read_deserializes_an_asset_descriptor_from_storage() {
     let operator = memory_operator();
-    operator.write("assets/asset.json", r#"{"segment_options":{"min_length":1000},"tracks":[{"id":"text","path":"subtitles/en.vtt","type":"vtt"},{"id":"preview","tile_size":4,"width":640,"step":1000,"type":"thumbnail"}]}"#).await.unwrap();
+    operator.write("assets/asset.json", r#"{"segment_options":{"min_length":1000},"tracks":[{"id":"text","path":"subtitles/en.vtt","type":"webvtt"},{"id":"preview","tile_size":4,"width":640,"step":1000,"type":"thumbnail"}]}"#).await.unwrap();
 
     let descriptor = AssetDescriptor::read(&operator, "assets/asset.json")
         .await
         .unwrap();
 
     assert_eq!(
-        descriptor
-            .track_path(descriptor.find_source_track_by_id("text").unwrap())
-            .as_deref(),
-        Some(RelativePath::new("assets/subtitles/en.vtt"))
+        descriptor.track_path(descriptor.find_source_track_by_id("text").unwrap()),
+        RelativePathBuf::from("assets/subtitles/en.vtt")
     );
     assert_eq!(
         descriptor.find_thumbnail_track_by_id("preview"),
-        Some(&SyntheticTrackDescriptor {
+        Some(&ThumbnailTrackDescriptor {
             id: "preview".to_string(),
             kind: ThumbnailKind {
                 tile_size: 4,
@@ -112,6 +108,22 @@ async fn read_rejects_the_removed_image_track_type() {
         .write(
             "asset.json",
             r#"{"tracks":[{"id":"preview","type":"image","tile_size":4,"width":640,"step":1000}]}"#,
+        )
+        .await
+        .unwrap();
+
+    let result = AssetDescriptor::read(&operator, "asset.json").await;
+
+    assert!(result.is_err());
+}
+
+#[tokio::test]
+async fn read_rejects_the_legacy_vtt_track_type() {
+    let operator = memory_operator();
+    operator
+        .write(
+            "asset.json",
+            r#"{"tracks":[{"id":"text","path":"subtitles/en.vtt","type":"vtt"}]}"#,
         )
         .await
         .unwrap();

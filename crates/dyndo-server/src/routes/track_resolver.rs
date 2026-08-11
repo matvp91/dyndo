@@ -71,11 +71,7 @@ impl<'a> TrackResolver<'a> {
             .asset
             .find_source_track_by_id(track_id)
             .ok_or_else(|| ServerError::NotFound(format!("track {track_id}")))?;
-        let path = self
-            .asset
-            .track_path(descriptor)
-            .ok_or_else(|| ServerError::NotFound(format!("track {track_id}")));
-        let path = path?;
+        let path = self.asset.track_path(descriptor);
 
         SourceTrack::probe(self.operator, &path, Some(descriptor))
             .await

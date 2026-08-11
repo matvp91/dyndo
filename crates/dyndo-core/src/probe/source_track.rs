@@ -3,20 +3,20 @@ use relative_path::RelativePath;
 use uuid::Uuid;
 
 use super::ProbeError;
-use crate::asset::track::TrackDescriptor;
+use crate::asset::kind::{TextKind, undetermined_language};
+use crate::asset::track::SourceTrackDescriptor;
 use crate::track::SourceTrack;
 use crate::track::cmaf::CmafTrack;
-use crate::track::kind::{TextKind, undetermined_language};
 use crate::track::timed_text::TimedTextTrack;
 
 impl SourceTrack {
     pub async fn probe(
         op: &Operator,
         path: &RelativePath,
-        descriptor: Option<&TrackDescriptor>,
+        descriptor: Option<&SourceTrackDescriptor>,
     ) -> Result<Self, ProbeError> {
         match descriptor {
-            Some(TrackDescriptor::WebVtt(descriptor)) => TimedTextTrack::probe_web_vtt(
+            Some(SourceTrackDescriptor::WebVtt(descriptor)) => TimedTextTrack::probe_web_vtt(
                 op,
                 path,
                 descriptor.id.clone(),
@@ -24,7 +24,6 @@ impl SourceTrack {
             )
             .await
             .map(Self::TimedText),
-            Some(TrackDescriptor::Thumbnail(_)) => Err(ProbeError::NotSourceTrack),
             Some(descriptor) => {
                 let kind = descriptor.cmaf_kind().ok_or(ProbeError::NotSourceTrack)?;
                 CmafTrack::probe(op, path, descriptor.id().to_string(), Some(kind))

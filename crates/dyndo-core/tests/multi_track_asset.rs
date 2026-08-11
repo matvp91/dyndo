@@ -23,7 +23,7 @@ async fn probe_source_tracks_and_readers_serve_the_video_and_subtitle_tracks_of_
                 "segment_options":{"text_length":1000},
                 "tracks":[
                     {"id":"video-main","path":"video.mp4","codec":"avc1.42c00a","type":"video","width":16,"height":16,"frame_rate":"4/1"},
-                    {"id":"text-en","path":"subtitles/en.vtt","type":"vtt","language":"en"},
+                    {"id":"text-en","path":"subtitles/en.vtt","type":"webvtt","language":"en"},
                     {"id":"preview","type":"thumbnail","tile_size":4,"width":640,"step":1000}
                 ]
             }"#,

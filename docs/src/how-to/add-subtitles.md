@@ -65,7 +65,7 @@ dyndo index subtitles_nl.vtt,language=nld -o asset.json
 {
   "id": "5b9fbdae-2717-5f58-80ed-4f067605a5e6",
   "path": "subtitles_nl.vtt",
-  "type": "vtt",
+  "type": "webvtt",
   "language": "nld"
 }
 ```

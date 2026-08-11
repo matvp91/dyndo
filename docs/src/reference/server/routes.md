@@ -166,7 +166,7 @@ is stored in the descriptor and `codec` is the descriptor value. Segment-derived
 
 | Attribute | Type | Present on | Description |
 |---|---|---|---|
-| `type` | text | every entry | `video`, `audio`, `text`, `vtt`, or `image`. |
+| `type` | text | every entry | `video`, `audio`, `text`, `webvtt`, or `thumbnail`. |
 | `id` | text | every entry | The track identifier. |
 | `codec` | text | CMAF track | The descriptor codec, for example `avc1.640028`. |
 | `width` | numeric | video, thumbnail | Frame or complete sprite width in pixels. |

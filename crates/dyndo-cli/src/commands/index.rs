@@ -1,6 +1,6 @@
 use clap::Args;
 use dyndo_core::asset::AssetDescriptor;
-use dyndo_core::asset::track::TrackDescriptor;
+use dyndo_core::asset::track::SourceTrackDescriptor;
 use dyndo_core::role::Role;
 use dyndo_core::track::SourceTrack;
 use language_tags::LanguageTag;
@@ -47,12 +47,12 @@ struct TrackInput {
 }
 
 impl TrackInput {
-    fn apply(&self, descriptor: &mut TrackDescriptor) {
+    fn apply(&self, descriptor: &mut SourceTrackDescriptor) {
         let (language, role) = match descriptor {
-            TrackDescriptor::Audio(audio) => (&mut audio.kind.language, &mut audio.kind.role),
-            TrackDescriptor::Text(text) => (&mut text.kind.language, &mut text.kind.role),
-            TrackDescriptor::WebVtt(text) => (&mut text.kind.language, &mut text.kind.role),
-            TrackDescriptor::Video(_) | TrackDescriptor::Thumbnail(_) => return,
+            SourceTrackDescriptor::Audio(audio) => (&mut audio.kind.language, &mut audio.kind.role),
+            SourceTrackDescriptor::Text(text) => (&mut text.kind.language, &mut text.kind.role),
+            SourceTrackDescriptor::WebVtt(text) => (&mut text.kind.language, &mut text.kind.role),
+            SourceTrackDescriptor::Video(_) => return,
         };
         if let Some(value) = &self.language {
             language.clone_from(value);

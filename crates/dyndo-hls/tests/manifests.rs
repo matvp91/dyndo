@@ -1,11 +1,12 @@
 use std::sync::Arc;
 
-use dyndo_core::asset::synthetic::SyntheticTrackDescriptor;
+use dyndo_core::asset::descriptor::ThumbnailTrackDescriptor;
+use dyndo_core::asset::kind::{AudioKind, TextKind, ThumbnailKind, VideoKind};
 use dyndo_core::codec::{AacCodec, AvcCodec, CodecConfig, WvttCodec};
 use dyndo_core::segment::{InitSegment, Segment};
 use dyndo_core::segment_options::SegmentOptions;
 use dyndo_core::track::cmaf::CmafTrack;
-use dyndo_core::track::kind::{AudioKind, CmafTrackKind, TextKind, ThumbnailKind, VideoKind};
+use dyndo_core::track::kind::CmafTrackKind;
 use dyndo_core::track::synthetic::SyntheticTrack;
 use dyndo_hls::{
     generate_image_playlist, generate_master_playlist, generate_media_playlist, options::HlsOptions,
@@ -103,8 +104,8 @@ fn generate(tracks: &[CmafTrack], hls_options: &HlsOptions) -> (String, Vec<Stri
     (master, media)
 }
 
-fn thumbnail(step: u32) -> SyntheticTrackDescriptor<ThumbnailKind> {
-    SyntheticTrackDescriptor {
+fn thumbnail(step: u32) -> ThumbnailTrackDescriptor {
+    ThumbnailTrackDescriptor {
         id: "preview".to_string(),
         kind: ThumbnailKind {
             tile_size: 2,
@@ -172,7 +173,7 @@ fn generated_image_playlists_advertise_existing_thumbnail_sprites() {
     let tracks = [video_track()];
     let descriptor = thumbnail(1_000);
     let preview = SyntheticTrack::thumbnail(&descriptor, &tracks).unwrap();
-    let alternate_descriptor = SyntheticTrackDescriptor {
+    let alternate_descriptor = ThumbnailTrackDescriptor {
         id: "alternate".to_string(),
         ..thumbnail(500)
     };
