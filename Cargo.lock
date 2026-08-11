@@ -709,7 +709,7 @@ checksum = "d0881ea181b1df73ff77ffaaf9c7544ecc11e82fba9b5f27b262a3c73a332555"
 
 [[package]]
 name = "dyndo-cli"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "clap",
  "dyndo-core",
@@ -722,7 +722,7 @@ dependencies = [
 
 [[package]]
 name = "dyndo-core"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "bytes",
  "futures-util",
@@ -742,7 +742,7 @@ dependencies = [
 
 [[package]]
 name = "dyndo-dash"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "dash-mpd",
  "dyndo-core",
@@ -755,7 +755,7 @@ dependencies = [
 
 [[package]]
 name = "dyndo-hls"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "dyndo-core",
  "isolang",
@@ -768,7 +768,7 @@ dependencies = [
 
 [[package]]
 name = "dyndo-server"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "axum",
  "bytes",
