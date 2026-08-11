@@ -11,6 +11,7 @@
 
 - [Index your CMAF sources](./how-to/index-sources.md)
 - [Extract a video frame](./how-to/extract-image.md)
+- [Add thumbnail sprites](./how-to/add-thumbnails.md)
 - [Add a subtitle track](./how-to/add-subtitles.md)
 - [Label tracks with roles](./how-to/label-roles.md)
 - [Run and configure the server](./how-to/run-the-server.md)

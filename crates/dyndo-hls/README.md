@@ -1,10 +1,11 @@
 # dyndo-hls
 
 HLS playlist generation for [`dyndo`](../../README.md): it turns an `asset.json`
-descriptor and its probed tracks into a multivariant playlist plus one media
-playlist per track. It knows about HLS and nothing else — reading CMAF and
-modelling the descriptor belong to [`dyndo-core`](../dyndo-core/README.md), and
-[`hls_m3u8`](https://crates.io/crates/hls_m3u8) supplies the playlist model.
+descriptor and its probed tracks into a multivariant playlist, media playlists,
+and image media playlists for thumbnail sprites. It knows about HLS and nothing
+else — reading CMAF and modelling the descriptor belong to
+[`dyndo-core`](../dyndo-core/README.md), and
+[`m3u8-rs`](https://crates.io/crates/m3u8-rs) supplies the playlist model.
 
 [`dyndo-server`](../dyndo-server/README.md) calls this crate's builders to generate playlists on demand.
 
