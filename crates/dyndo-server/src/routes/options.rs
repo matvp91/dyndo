@@ -14,8 +14,6 @@ pub(super) struct Options {
     min_length: u32,
     #[serde(default, alias = "stl", alias = "segment_text_length")]
     text_length: u32,
-    #[serde(default, alias = "sb", alias = "segment_boundaries")]
-    boundaries: Vec<u32>,
     #[serde(default, alias = "c")]
     compact: bool,
     #[serde(default, alias = "mp")]
@@ -44,9 +42,6 @@ impl Options {
         if self.text_length != 0 {
             options.text_length = self.text_length;
         }
-        if !self.boundaries.is_empty() {
-            options.boundaries.clone_from(&self.boundaries);
-        }
     }
 
     pub(super) fn asset(&self) -> &str {
@@ -74,14 +69,9 @@ mod tests {
 
     #[test]
     fn parse_reads_root_segment_options() {
-        let options =
-            Options::parse("asset:demo,min_length:1000,text_length:2000,boundaries:!(3000)")
-                .unwrap();
+        let options = Options::parse("asset:demo,min_length:1000,text_length:2000").unwrap();
 
-        assert_eq!(
-            (options.min_length, options.text_length, options.boundaries),
-            (1_000, 2_000, vec![3_000])
-        );
+        assert_eq!((options.min_length, options.text_length), (1_000, 2_000));
     }
 
     #[test]
@@ -108,10 +98,9 @@ mod tests {
 
     #[test]
     fn apply_to_overwrites_descriptor_values() {
-        let options =
-            Options::parse("asset:demo,min_length:1000,text_length:2000,boundaries:!(3000)")
-                .unwrap();
+        let options = Options::parse("asset:demo,min_length:1000,text_length:2000").unwrap();
         let mut descriptor = AssetDescriptor::default();
+        descriptor.segment_options.boundaries = vec![3_000];
 
         options.apply_to(&mut descriptor);
 
@@ -123,6 +112,13 @@ mod tests {
                 boundaries: vec![3_000],
             }
         );
+    }
+
+    #[test]
+    fn parse_rejects_boundaries() {
+        assert!(Options::parse("asset:demo,boundaries:!(3000)").is_err());
+        assert!(Options::parse("asset:demo,sb:!(3000)").is_err());
+        assert!(Options::parse("asset:demo,segment_boundaries:!(3000)").is_err());
     }
 
     #[test]

@@ -61,13 +61,12 @@ before parsing the Rison object.
 |---|---|---|---|---|
 | `min_length` | `sml`, `segment_min_length` | integer | `0` | Minimum served segment length in milliseconds. Whole fragments are grouped until this length is reached. |
 | `text_length` | `stl`, `segment_text_length` | integer | `0` | Length of each segment of a subtitle track dyndo packages from a `.vtt`, in milliseconds. Exact, not a minimum. `0` cuts one only at the splice points. |
-| `boundaries` | `sb`, `segment_boundaries` | array of integers | `[]` | Splice points in milliseconds; a served segment never spans one. |
 
 Each of these overrides the matching option in the descriptor's
-[`segment_options`](../asset-json.md#segmentation) block. An option left at zero —
-or an empty boundary list — names nothing and leaves the asset's value standing,
-since a request cannot express the difference between an absent value and a zero
-one.
+[`segment_options`](../asset-json.md#segmentation) block. An option left at zero
+names nothing and leaves the asset's value standing, since a request cannot
+express the difference between an absent value and a zero one. Configure segment
+boundaries only in the descriptor.
 
 ### Output options
 
@@ -85,8 +84,8 @@ One option affects HLS output:
 | `wvtt` | — | boolean | `false` | Point text renditions at packaged `wvtt` segments rather than WebVTT documents. |
 
 The supported shorthand map is therefore `asset` → `a`, `min_length` → `sml`,
-`text_length` → `stl`, `boundaries` → `sb`, `compact` → `c`, `multi_period` →
-`mp`. `wvtt` has no shorthand. The forms are equivalent:
+`text_length` → `stl`, `compact` → `c`, `multi_period` → `mp`. `wvtt` has no
+shorthand. The forms are equivalent:
 
 ```text
 /out/(asset:demo,min_length:6000,compact:!t)/index.mpd

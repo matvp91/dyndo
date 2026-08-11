@@ -11,7 +11,7 @@
 
 - **No second media library.** The original CMAF objects are the media dyndo serves. Segment requests become byte-range reads rather than reads from separately packaged copies.
 - **Metadata can change independently of media.** Languages, roles, rendition order, and subtitle membership live in `asset.json`, so correcting them does not rewrite a large source object.
-- **Delivery variants do not require new files.** A request can filter tracks, regroup fragments, add boundaries, split a DASH presentation into periods, select the HLS subtitle form, or enable thumbnails.
+- **Delivery variants do not require new files.** A request can filter tracks, regroup fragments, split a DASH presentation into periods, select the HLS subtitle form, or enable thumbnails.
 - **Track URLs survive metadata corrections.** IDs derive from source paths, not mutable labels such as language or role.
 - **Storage may remain read-only.** dyndo reads source headers and requested ranges but never writes generated media back beside them.
 - **Local files and object storage use the same model.** OpenDAL supplies the storage boundary, while the descriptor and HTTP routes stay unchanged.
