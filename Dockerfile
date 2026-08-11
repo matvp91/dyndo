@@ -7,7 +7,7 @@ ARG FFMPEG_VERSION=8.0.3
 # ---- FFmpeg stage ----
 FROM debian:trixie-slim AS ffmpeg
 ARG FFMPEG_VERSION
-COPY scripts/configure-ffmpeg.sh /usr/local/bin/configure-dyndo-ffmpeg
+COPY --chmod=755 scripts/configure-ffmpeg.sh /usr/local/bin/configure-dyndo-ffmpeg
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         build-essential \
