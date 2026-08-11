@@ -10,29 +10,20 @@ use rsmpeg::{ffi, swscale::SwsContext};
 
 use crate::segment::Segment;
 use crate::track::Track;
-use crate::track_kind::TrackKind;
 
 /// An error encountered while extracting a video frame.
 #[derive(Debug, thiserror::Error)]
 pub enum FrameExtractorError {
-    #[error("frames can only be extracted from video tracks")]
-    NotVideo,
     #[error("time {0} ms is outside the video track")]
     TimeOutsideTrack(u64),
+    #[error("invalid JPEG frame dimensions")]
+    InvalidDimensions,
     #[error(transparent)]
     Storage(#[from] opendal::Error),
     #[error(transparent)]
     Ffmpeg(#[from] RsmpegError),
-    #[error("frame encoding task failed: {0}")]
-    Task(#[from] tokio::task::JoinError),
-    #[error("the media contains no video stream")]
-    MissingVideoStream,
-    #[error("no video frame could be decoded at the requested time")]
-    MissingFrame,
-    #[error("the FFmpeg build has no Motion JPEG encoder")]
-    MissingJpegEncoder,
-    #[error("the decoded frame cannot be converted to JPEG")]
-    UnsupportedFrame,
+    #[error("could not extract a JPEG frame")]
+    Extraction,
 }
 
 /// Extracts JPEG frames from a video track.
@@ -42,17 +33,9 @@ pub struct FrameExtractor<'a> {
 }
 
 impl<'a> FrameExtractor<'a> {
-    /// Creates a frame grabber for `track`.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`FrameExtractorError::NotVideo`] if `track` is not a video track.
-    pub fn new(op: &'a Operator, track: &'a Track) -> Result<Self, FrameExtractorError> {
-        if !matches!(track.kind(), TrackKind::Video(_)) {
-            return Err(FrameExtractorError::NotVideo);
-        }
-
-        Ok(Self { op, track })
+    /// Creates a frame extractor for `track`.
+    pub fn new(op: &'a Operator, track: &'a Track) -> Self {
+        Self { op, track }
     }
 
     /// Returns the displayed frame at `time`, expressed in milliseconds, as a JPEG scaled to
@@ -74,10 +57,10 @@ impl<'a> FrameExtractor<'a> {
         width: u32,
         height: u32,
     ) -> Result<Bytes, FrameExtractorError> {
-        let width = i32::try_from(width).map_err(|_| FrameExtractorError::UnsupportedFrame)?;
-        let height = i32::try_from(height).map_err(|_| FrameExtractorError::UnsupportedFrame)?;
+        let width = i32::try_from(width).map_err(|_| FrameExtractorError::InvalidDimensions)?;
+        let height = i32::try_from(height).map_err(|_| FrameExtractorError::InvalidDimensions)?;
         if width <= 0 || height <= 0 {
-            return Err(FrameExtractorError::UnsupportedFrame);
+            return Err(FrameExtractorError::InvalidDimensions);
         }
         let segment = self
             .track
@@ -88,7 +71,8 @@ impl<'a> FrameExtractor<'a> {
         let input = self.read_segment(segment).await?;
 
         tokio::task::spawn_blocking(move || encode_frame_as_jpeg(input, time, width, height))
-            .await?
+            .await
+            .map_err(|_| FrameExtractorError::Extraction)?
     }
 
     async fn read_segment(&self, segment: &Segment) -> Result<Vec<u8>, FrameExtractorError> {
@@ -136,7 +120,7 @@ fn encode_frame_as_jpeg(
     let mut format = AVFormatContextInput::from_io_context(AVIOContextContainer::Custom(io))?;
     let (stream_index, decoder) = format
         .find_best_stream(ffi::AVMEDIA_TYPE_VIDEO)?
-        .ok_or(FrameExtractorError::MissingVideoStream)?;
+        .ok_or(FrameExtractorError::Extraction)?;
     let stream = &format.streams()[stream_index];
     let time_base = stream.time_base;
     let mut decoder_context = AVCodecContext::new(&decoder);
@@ -189,7 +173,7 @@ fn decode_frame(
             Err(error) => return Err(error.into()),
         }
     }
-    candidate.ok_or(FrameExtractorError::MissingFrame)
+    candidate.ok_or(FrameExtractorError::Extraction)
 }
 
 fn frame_time(frame: &AVFrame, time_base: AVRational) -> Option<u64> {
@@ -209,13 +193,13 @@ fn encode_jpeg(
     width: i32,
     height: i32,
 ) -> Result<Bytes, FrameExtractorError> {
-    let encoder = AVCodec::find_encoder(ffi::AV_CODEC_ID_MJPEG)
-        .ok_or(FrameExtractorError::MissingJpegEncoder)?;
+    let encoder =
+        AVCodec::find_encoder(ffi::AV_CODEC_ID_MJPEG).ok_or(FrameExtractorError::Extraction)?;
     let pixel_format = encoder
         .pix_fmts()
         .and_then(|formats| formats.first())
         .copied()
-        .ok_or(FrameExtractorError::UnsupportedFrame)?;
+        .ok_or(FrameExtractorError::Extraction)?;
     let mut encoder_context = AVCodecContext::new(&encoder);
     encoder_context.set_bit_rate(decoder.bit_rate);
     encoder_context.set_width(width);
@@ -236,9 +220,9 @@ fn encode_jpeg(
         None,
         None,
     )
-    .ok_or(FrameExtractorError::UnsupportedFrame)?;
-    let image = AVImage::new(pixel_format, width, height, 1)
-        .ok_or(FrameExtractorError::UnsupportedFrame)?;
+    .ok_or(FrameExtractorError::Extraction)?;
+    let image =
+        AVImage::new(pixel_format, width, height, 1).ok_or(FrameExtractorError::Extraction)?;
     let mut converted = AVFrameWithImage::new(image);
     scaler.scale_frame(frame, 0, frame.height, &mut converted)?;
 

@@ -124,7 +124,7 @@ impl<'a> Thumbnail<'a> {
             return Ok(None);
         }
 
-        let extractor = FrameExtractor::new(op, self.source)?;
+        let extractor = FrameExtractor::new(op, self.source);
         let (tile_width, tile_height) = self.tile_dimensions();
         let mut sprite = RgbImage::new(self.width(), self.height);
         let frames = self

@@ -30,7 +30,7 @@ pub(crate) async fn run(op: &Operator, args: ImageArgs) -> Result<(), Box<dyn st
     let TrackKind::Video(video) = track.kind() else {
         return Err("probed track is not a video track".into());
     };
-    let jpeg = FrameExtractor::new(op, &track)?
+    let jpeg = FrameExtractor::new(op, &track)
         .jpeg(args.time, video.width, video.height)
         .await?;
 
