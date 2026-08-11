@@ -60,7 +60,7 @@
                 "target": "schema-output",
                 "vcs:localdir:context": ".",
                 "vcs:localdir:dockerfile": ".",
-                "vcs:revision": "25a0a0687373e8de66433b69b40452cc60d960b4",
+                "vcs:revision": "d2090872cc7540c07a50986721f9b2ef0c382268",
                 "vcs:source": "https://github.com/matvp91/dyndo"
               }
             }
@@ -71,19 +71,19 @@
       "internalParameters": {
         "buildConfig": {
           "digestMapping": {
+            "sha256:0bd9935e2bce7316c9f814f50198d2031bef4009709f23f2d8b8d38b145faf8d": "step7",
             "sha256:1f0ca0a8769e888ce2c3b0f1b9bcbaa79f96e75ac96f02baea743b2d33aac09f": "step0",
             "sha256:2efd0848701597cc4eb7cf8d3994f6ea47202cac6fa1b0e9168801f74cf7403d": "step1",
-            "sha256:4e7231607dda87bf39ab81dcaa969ad04653fde4f11545a7b1dfbef34c4ee753": "step6",
-            "sha256:67b3802cf8b7b47ee5c1af2544406c565c55115a63334b868905e879434aafcb": "step4",
-            "sha256:68d820d71709d42202e41eeb3ce728da81f5965811e42c432aa9dc3f1b3710c6": "step5",
+            "sha256:3df3f1dca2582187b496fc76eebb191d5d5270d92319b30d67e0e9ce2be5c638": "step4",
+            "sha256:77dd9b747c4c6fd5ef96a536c6ff599278b26cd85bdf4bb344e2ffdff123e7f5": "step6",
+            "sha256:7cc9dd9b6b8d18bcc885a8ba6ee3c6ec674cdba954c8c636f5377f6bb2b8ecf2": "step10",
             "sha256:7d699f2486b1280a1540a7c757298a3e6cfdaf0556e0b0399a36a7bd04abe33f": "step2",
-            "sha256:7e65b21e5d84d5323b4254a854576814becc22e98a1aabbe4282f7b7ae41f2b4": "step9",
-            "sha256:9fb85d57edfa8c88a39e4aa1216af7b35c3167346e19a7204ab286e472e7133c": "step12",
+            "sha256:8c63e4c2fa3a330fdf81e6764327aa2104fd61103705cad93f047cb32dbc04b7": "step9",
+            "sha256:940ab4bf4467943cd761555bcb7d71577d5df9ab6b11fa0a4c0be0ece6dd1b0e": "step8",
+            "sha256:9ed0180c35719626f348eb831b2914a537d413484d218d5e971cc0d62f40a3ef": "step12",
             "sha256:a366ad162d239c6aca3215e1a4dcf97d249f745fcc4ef3791f2638100ca18c1e": "step3",
-            "sha256:ad8cfbe83e30788990973a4e144f07b76baf83026c31817df2142f0c7b8d8930": "step11",
-            "sha256:cec595a285dfb5baa179276f7168e36fadd57953f438f4033f84ac98267e0a5a": "step8",
-            "sha256:d385f2fc5c807e8bc2380bded370390172f62b066993b73c90b42c68c6be1e33": "step10",
-            "sha256:e3f727dfdf55986901a41fe716c727099444314c49168ddacb44420001673e06": "step7"
+            "sha256:e771d9b5d34ede1f7de175143c8a3db19f25800d00c7f98d2ed2e2558e2ff177": "step11",
+            "sha256:edc1906888bb89320ecfb23654aa0749133b9f9e0798dc768d4e6d9d2a0499d3": "step5"
           },
           "llbDefinition": [
             {
@@ -193,12 +193,12 @@
                       "args": [
                         "/bin/sh",
                         "-c",
-                        "apt-get update     \u0026\u0026 apt-get install -y --no-install-recommends         build-essential         ca-certificates         curl         nasm         pkg-config         xz-utils     \u0026\u0026 rm -rf /var/lib/apt/lists/*"
+                        "apt-get update     \u0026\u0026 apt-get install -y --no-install-recommends         build-essential         ca-certificates         curl         nasm         pkg-config     \u0026\u0026 rm -rf /var/lib/apt/lists/*"
                       ],
                       "cwd": "/",
                       "env": [
                         "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-                        "FFMPEG_VERSION=7.1.5"
+                        "FFMPEG_VERSION=8.0.3"
                       ],
                       "removeMountStubsRecursive": true
                     },
@@ -256,12 +256,12 @@
                       "args": [
                         "/bin/sh",
                         "-c",
-                        "curl --fail --location --retry 5 --retry-all-errors --retry-delay 2         \"https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.xz\"         --output ffmpeg.tar.xz     \u0026\u0026 tar --extract --file ffmpeg.tar.xz     \u0026\u0026 cd \"ffmpeg-${FFMPEG_VERSION}\"     \u0026\u0026 ./configure         --prefix=/opt/ffmpeg         --disable-static         --enable-shared         --disable-programs         --disable-doc         --disable-debug         --disable-autodetect         --disable-everything         --enable-avcodec         --enable-avdevice         --enable-avfilter         --enable-avformat         --enable-avutil         --enable-swresample         --enable-swscale         --enable-demuxer=mov         --enable-decoder=h264,hevc,av1         --enable-encoder=mjpeg         --enable-parser=h264,hevc,av1     \u0026\u0026 make --jobs \"$(nproc)\"     \u0026\u0026 make install"
+                        "curl --fail --location --retry 5 --retry-all-errors --retry-delay 2         \"https://github.com/FFmpeg/FFmpeg/archive/refs/tags/n${FFMPEG_VERSION}.tar.gz\"         --output ffmpeg.tar.gz     \u0026\u0026 mkdir ffmpeg     \u0026\u0026 tar --extract --file ffmpeg.tar.gz --strip-components=1 --directory ffmpeg     \u0026\u0026 cd ffmpeg     \u0026\u0026 ./configure         --prefix=/opt/ffmpeg         --disable-static         --enable-shared         --disable-programs         --disable-doc         --disable-debug         --disable-autodetect         --disable-everything         --enable-avcodec         --enable-avdevice         --enable-avfilter         --enable-avformat         --enable-avutil         --enable-swresample         --enable-swscale         --enable-demuxer=mov         --enable-decoder=h264,hevc,av1         --enable-encoder=mjpeg         --enable-parser=h264,hevc,av1     \u0026\u0026 make --jobs \"$(nproc)\"     \u0026\u0026 make install"
                       ],
                       "cwd": "/tmp",
                       "env": [
                         "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-                        "FFMPEG_VERSION=7.1.5"
+                        "FFMPEG_VERSION=8.0.3"
                       ],
                       "removeMountStubsRecursive": true
                     },
@@ -468,9 +468,9 @@
         "github_actor_id": "12699796",
         "github_event_name": "push",
         "github_event_payload": {
-          "after": "25a0a0687373e8de66433b69b40452cc60d960b4",
+          "after": "d2090872cc7540c07a50986721f9b2ef0c382268",
           "base_ref": null,
-          "before": "5a98c2047e643a9569aa74e6bdba4b7569b59cb2",
+          "before": "25a0a0687373e8de66433b69b40452cc60d960b4",
           "commits": [
             {
               "author": {
@@ -484,14 +484,14 @@
                 "username": "matvp91"
               },
               "distinct": true,
-              "id": "25a0a0687373e8de66433b69b40452cc60d960b4",
-              "message": "build: streamline FFmpeg CI builds\n\nCo-authored-by: OpenAI Codex \u003cnoreply@openai.com\u003e",
-              "timestamp": "2026-08-11T22:32:03+02:00",
-              "tree_id": "466dbd9a975fb70c5cd01719ee9638c6c66e2beb",
-              "url": "https://github.com/matvp91/dyndo/commit/25a0a0687373e8de66433b69b40452cc60d960b4"
+              "id": "d2090872cc7540c07a50986721f9b2ef0c382268",
+              "message": "build: fetch FFmpeg from GitHub mirror\n\nCo-authored-by: OpenAI Codex \u003cnoreply@openai.com\u003e",
+              "timestamp": "2026-08-11T22:36:52+02:00",
+              "tree_id": "3ed2d7ec90b61a3ca3d2b4db78b4f9ff92b0e1df",
+              "url": "https://github.com/matvp91/dyndo/commit/d2090872cc7540c07a50986721f9b2ef0c382268"
             }
           ],
-          "compare": "https://github.com/matvp91/dyndo/compare/5a98c2047e64...25a0a0687373",
+          "compare": "https://github.com/matvp91/dyndo/compare/25a0a0687373...d2090872cc75",
           "created": false,
           "deleted": false,
           "forced": false,
@@ -507,11 +507,11 @@
               "username": "matvp91"
             },
             "distinct": true,
-            "id": "25a0a0687373e8de66433b69b40452cc60d960b4",
-            "message": "build: streamline FFmpeg CI builds\n\nCo-authored-by: OpenAI Codex \u003cnoreply@openai.com\u003e",
-            "timestamp": "2026-08-11T22:32:03+02:00",
-            "tree_id": "466dbd9a975fb70c5cd01719ee9638c6c66e2beb",
-            "url": "https://github.com/matvp91/dyndo/commit/25a0a0687373e8de66433b69b40452cc60d960b4"
+            "id": "d2090872cc7540c07a50986721f9b2ef0c382268",
+            "message": "build: fetch FFmpeg from GitHub mirror\n\nCo-authored-by: OpenAI Codex \u003cnoreply@openai.com\u003e",
+            "timestamp": "2026-08-11T22:36:52+02:00",
+            "tree_id": "3ed2d7ec90b61a3ca3d2b4db78b4f9ff92b0e1df",
+            "url": "https://github.com/matvp91/dyndo/commit/d2090872cc7540c07a50986721f9b2ef0c382268"
           },
           "pusher": {
             "email": "matvp91@gmail.com",
@@ -609,7 +609,7 @@
             "private": false,
             "pull_request_creation_policy": "all",
             "pulls_url": "https://api.github.com/repos/matvp91/dyndo/pulls{/number}",
-            "pushed_at": 1786480342,
+            "pushed_at": 1786480616,
             "releases_url": "https://api.github.com/repos/matvp91/dyndo/releases{/id}",
             "size": 2028,
             "ssh_url": "git@github.com:matvp91/dyndo.git",
@@ -630,7 +630,7 @@
               "video-streaming"
             ],
             "trees_url": "https://api.github.com/repos/matvp91/dyndo/git/trees{/sha}",
-            "updated_at": "2026-08-11T20:23:09Z",
+            "updated_at": "2026-08-11T20:33:00Z",
             "url": "https://api.github.com/repos/matvp91/dyndo",
             "visibility": "public",
             "watchers": 0,
@@ -669,35 +669,35 @@
         "github_repository_owner": "matvp91",
         "github_repository_owner_id": "12699796",
         "github_run_attempt": "1",
-        "github_run_id": "31533452183",
-        "github_run_number": "151",
+        "github_run_id": "31533833168",
+        "github_run_number": "152",
         "github_runner_arch": "X64",
         "github_runner_environment": "github-hosted",
         "github_runner_image_os": "ubuntu24",
         "github_runner_image_version": "20260720.247.2",
-        "github_runner_name": "GitHub Actions 1000031767",
+        "github_runner_name": "GitHub Actions 1000031775",
         "github_runner_os": "Linux",
-        "github_runner_tracking_id": "github_5132e532-3857-4d72-80ea-acf743085e42",
+        "github_runner_tracking_id": "github_10598818-6ea2-4264-a188-100caf647312",
         "github_server_url": "https://github.com",
         "github_triggering_actor": "matvp91",
         "github_workflow": "Docs",
         "github_workflow_ref": "matvp91/dyndo/.github/workflows/docs.yml@refs/heads/main",
-        "github_workflow_sha": "25a0a0687373e8de66433b69b40452cc60d960b4"
+        "github_workflow_sha": "d2090872cc7540c07a50986721f9b2ef0c382268"
       }
     },
     "runDetails": {
       "builder": {
-        "id": "https://github.com/matvp91/dyndo/actions/runs/31533452183/attempts/1"
+        "id": "https://github.com/matvp91/dyndo/actions/runs/31533833168/attempts/1"
       },
       "metadata": {
-        "invocationId": "od8eej2ca4oithy0bpk2s72t2",
-        "startedOn": "2026-08-11T20:32:48.019011237Z",
-        "finishedOn": "2026-08-11T20:36:01.005536519Z",
+        "invocationId": "vd67l45590udftb7tiyovljhx",
+        "startedOn": "2026-08-11T20:37:55.107103153Z",
+        "finishedOn": "2026-08-11T20:40:34.149079429Z",
         "buildkit_metadata": {
           "vcs": {
             "localdir:context": ".",
             "localdir:dockerfile": ".",
-            "revision": "25a0a0687373e8de66433b69b40452cc60d960b4",
+            "revision": "d2090872cc7540c07a50986721f9b2ef0c382268",
             "source": "https://github.com/matvp91/dyndo"
           },
           "source": {
@@ -929,14 +929,6 @@
                         "end": {
                           "line": 17
                         }
-                      },
-                      {
-                        "start": {
-                          "line": 18
-                        },
-                        "end": {
-                          "line": 18
-                        }
                       }
                     ]
                   }
@@ -948,10 +940,10 @@
                     "ranges": [
                       {
                         "start": {
-                          "line": 19
+                          "line": 18
                         },
                         "end": {
-                          "line": 19
+                          "line": 18
                         }
                       }
                     ]
@@ -962,6 +954,14 @@
                 "locations": [
                   {
                     "ranges": [
+                      {
+                        "start": {
+                          "line": 19
+                        },
+                        "end": {
+                          "line": 19
+                        }
+                      },
                       {
                         "start": {
                           "line": 20
@@ -1220,7 +1220,7 @@
               {
                 "filename": "Dockerfile",
                 "language": "Dockerfile",
-                "data": "IyBzeW50YXg9ZG9ja2VyL2RvY2tlcmZpbGU6MQoKIyBUaGlzIGlzIHRoZSBzaW5nbGUgTGludXggRkZtcGVnIGJ1aWxkIGRlZmluaXRpb24uIEFsbCBMaW51eCBDSSB2ZXJpZmljYXRpb24sCiMgcmVsZWFzZSBhcnRpZmFjdHMsIGFuZCBydW50aW1lIGltYWdlcyBidWlsZCBmcm9tIHRoZXNlIHN0YWdlcy4KQVJHIEZGTVBFR19WRVJTSU9OPTcuMS41CgojIC0tLS0gRkZtcGVnIHN0YWdlIC0tLS0KRlJPTSBkZWJpYW46dHJpeGllLXNsaW0gQVMgZmZtcGVnCkFSRyBGRk1QRUdfVkVSU0lPTgpSVU4gYXB0LWdldCB1cGRhdGUgXAogICAgJiYgYXB0LWdldCBpbnN0YWxsIC15IC0tbm8taW5zdGFsbC1yZWNvbW1lbmRzIFwKICAgICAgICBidWlsZC1lc3NlbnRpYWwgXAogICAgICAgIGNhLWNlcnRpZmljYXRlcyBcCiAgICAgICAgY3VybCBcCiAgICAgICAgbmFzbSBcCiAgICAgICAgcGtnLWNvbmZpZyBcCiAgICAgICAgeHotdXRpbHMgXAogICAgJiYgcm0gLXJmIC92YXIvbGliL2FwdC9saXN0cy8qCldPUktESVIgL3RtcApSVU4gY3VybCAtLWZhaWwgLS1sb2NhdGlvbiAtLXJldHJ5IDUgLS1yZXRyeS1hbGwtZXJyb3JzIC0tcmV0cnktZGVsYXkgMiBcCiAgICAgICAgImh0dHBzOi8vZmZtcGVnLm9yZy9yZWxlYXNlcy9mZm1wZWctJHtGRk1QRUdfVkVSU0lPTn0udGFyLnh6IiBcCiAgICAgICAgLS1vdXRwdXQgZmZtcGVnLnRhci54eiBcCiAgICAmJiB0YXIgLS1leHRyYWN0IC0tZmlsZSBmZm1wZWcudGFyLnh6IFwKICAgICYmIGNkICJmZm1wZWctJHtGRk1QRUdfVkVSU0lPTn0iIFwKICAgICYmIC4vY29uZmlndXJlIFwKICAgICAgICAtLXByZWZpeD0vb3B0L2ZmbXBlZyBcCiAgICAgICAgLS1kaXNhYmxlLXN0YXRpYyBcCiAgICAgICAgLS1lbmFibGUtc2hhcmVkIFwKICAgICAgICAtLWRpc2FibGUtcHJvZ3JhbXMgXAogICAgICAgIC0tZGlzYWJsZS1kb2MgXAogICAgICAgIC0tZGlzYWJsZS1kZWJ1ZyBcCiAgICAgICAgLS1kaXNhYmxlLWF1dG9kZXRlY3QgXAogICAgICAgIC0tZGlzYWJsZS1ldmVyeXRoaW5nIFwKICAgICAgICAtLWVuYWJsZS1hdmNvZGVjIFwKICAgICAgICAtLWVuYWJsZS1hdmRldmljZSBcCiAgICAgICAgLS1lbmFibGUtYXZmaWx0ZXIgXAogICAgICAgIC0tZW5hYmxlLWF2Zm9ybWF0IFwKICAgICAgICAtLWVuYWJsZS1hdnV0aWwgXAogICAgICAgIC0tZW5hYmxlLXN3cmVzYW1wbGUgXAogICAgICAgIC0tZW5hYmxlLXN3c2NhbGUgXAogICAgICAgIC0tZW5hYmxlLWRlbXV4ZXI9bW92IFwKICAgICAgICAtLWVuYWJsZS1kZWNvZGVyPWgyNjQsaGV2YyxhdjEgXAogICAgICAgIC0tZW5hYmxlLWVuY29kZXI9bWpwZWcgXAogICAgICAgIC0tZW5hYmxlLXBhcnNlcj1oMjY0LGhldmMsYXYxIFwKICAgICYmIG1ha2UgLS1qb2JzICIkKG5wcm9jKSIgXAogICAgJiYgbWFrZSBpbnN0YWxsCgojIC0tLS0gYnVpbGQgc3RhZ2UgLS0tLQojIFBpbiB0aGUgZXhhY3QgcnVzdGMgdG8gbWF0Y2ggcnVzdC10b29sY2hhaW4udG9tbCAoRlJPTSBjYW4ndCByZWFkIHRoYXQgZmlsZSwKIyBzbyB0aGlzIGlzIHRoZSBvbmUgZGVsaWJlcmF0ZSBkdXBsaWNhdGUg4oCUIGJ1bXAgYm90aCB0b2dldGhlcikuIFRoZSBEZWJpYW4KIyBjb2RlbmFtZSBpcyBwaW5uZWQgdG9vIChub3QgcGxhaW4gYHJ1c3Q6MS1zbGltYCwgd2hpY2ggdHJhY2tzIERlYmlhbidzCiMgbGF0ZXN0KSBzbyB0aGUgYnVpbGQgZ2xpYmMgbWF0Y2hlcyB0aGUgcnVudGltZSBzdGFnZSBiZWxvdyBhbmQgY2FuJ3QKIyBzaWxlbnRseSBkcmlmdC4KRlJPTSBydXN0OjEuOTcuMC1zbGltLXRyaXhpZSBBUyBidWlsZApSVU4gYXB0LWdldCB1cGRhdGUgXAogICAgJiYgYXB0LWdldCBpbnN0YWxsIC15IC0tbm8taW5zdGFsbC1yZWNvbW1lbmRzIFwKICAgICAgICBsaWJjbGFuZy1kZXYgXAogICAgICAgIHBrZy1jb25maWcgXAogICAgJiYgcm0gLXJmIC92YXIvbGliL2FwdC9saXN0cy8qIFwKICAgICYmIHJ1c3R1cCBjb21wb25lbnQgYWRkIGNsaXBweQpXT1JLRElSIC9zcmMKQ09QWSAtLWZyb209ZmZtcGVnIC9vcHQvZmZtcGVnIC9vcHQvZmZtcGVnCkNPUFkgLiAuCkVOViBQS0dfQ09ORklHX1BBVEg9L29wdC9mZm1wZWcvbGliL3BrZ2NvbmZpZyBcCiAgICBMRF9MSUJSQVJZX1BBVEg9L29wdC9mZm1wZWcvbGliCgojIC0tLS0gdmVyaWZpY2F0aW9uIHN0YWdlIC0tLS0KIyBMaW51eCBDSSBidWlsZHMgdGhpcyB0YXJnZXQsIHNvIGV2ZXJ5IEZGbXBlZy1kZXBlbmRlbnQgY2hlY2sgcnVucyBhZ2FpbnN0IHRoZQojIHNhbWUgY29tcGlsZXIsIGxpYnJhcmllcywgYW5kIGhlYWRlcnMgYXMgdGhlIHNoaXBwZWQgc2VydmVyIGltYWdlLgpGUk9NIGJ1aWxkIEFTIHZlcmlmeQpSVU4gLS1tb3VudD10eXBlPWNhY2hlLGlkPWR5bmRvLWNhcmdvLXJlZ2lzdHJ5LHRhcmdldD0vdXNyL2xvY2FsL2NhcmdvL3JlZ2lzdHJ5IFwKICAgIC0tbW91bnQ9dHlwZT1jYWNoZSxpZD1keW5kby10YXJnZXQsdGFyZ2V0PS9zcmMvdGFyZ2V0IFwKICAgIGNhcmdvIGNsaXBweSAtLWFsbC10YXJnZXRzIC0tIC1EIHdhcm5pbmdzICYmIFwKICAgIGNhcmdvIHRlc3QgJiYgXAogICAgUlVTVERPQ0ZMQUdTPSItRCB3YXJuaW5ncyIgY2FyZ28gZG9jIC0tbm8tZGVwcyAtLXdvcmtzcGFjZQoKIyAtLS0tIHJlbGVhc2UgYXJ0aWZhY3RzIHN0YWdlIC0tLS0KRlJPTSBidWlsZCBBUyBhcnRpZmFjdHMKUlVOIC0tbW91bnQ9dHlwZT1jYWNoZSxpZD1keW5kby1jYXJnby1yZWdpc3RyeSx0YXJnZXQ9L3Vzci9sb2NhbC9jYXJnby9yZWdpc3RyeSBcCiAgICAtLW1vdW50PXR5cGU9Y2FjaGUsaWQ9ZHluZG8tdGFyZ2V0LHRhcmdldD0vc3JjL3RhcmdldCBcCiAgICBjYXJnbyBidWlsZCAtLXJlbGVhc2UgLXAgZHluZG8tY2xpIC1wIGR5bmRvLXNlcnZlciAmJiBcCiAgICBpbnN0YWxsIC0tZGlyZWN0b3J5IC9vdXQgJiYgXAogICAgaW5zdGFsbCAtLW1vZGU9NzU1IHRhcmdldC9yZWxlYXNlL2R5bmRvIC9vdXQvZHluZG8gJiYgXAogICAgaW5zdGFsbCAtLW1vZGU9NzU1IHRhcmdldC9yZWxlYXNlL2R5bmRvLXNlcnZlciAvb3V0L2R5bmRvLXNlcnZlcgoKIyBUaGlzIHRhcmdldCBleHBvcnRzIExpbnV4IHJlbGVhc2UgYmluYXJpZXMgd2l0aCBCdWlsZHgncyB0eXBlPWxvY2FsIG91dHB1dC4KRlJPTSBzY3JhdGNoIEFTIGFydGlmYWN0LW91dHB1dApDT1BZIC0tZnJvbT1hcnRpZmFjdHMgL291dC8gLwoKIyAtLS0tIHNlcnZlciBzdGFnZSAtLS0tCiMgVGhlIHJ1bnRpbWUgaW1hZ2UgZG9lcyBub3QgbmVlZCB0aGUgQ0xJLCBzbyBhdm9pZCBjb21waWxpbmcgaXQgZm9yIGV2ZXJ5CiMgcHVibGlzaGVkIExpbnV4IGFyY2hpdGVjdHVyZS4KRlJPTSBidWlsZCBBUyBzZXJ2ZXIKUlVOIC0tbW91bnQ9dHlwZT1jYWNoZSxpZD1keW5kby1jYXJnby1yZWdpc3RyeSx0YXJnZXQ9L3Vzci9sb2NhbC9jYXJnby9yZWdpc3RyeSBcCiAgICAtLW1vdW50PXR5cGU9Y2FjaGUsaWQ9ZHluZG8tdGFyZ2V0LHRhcmdldD0vc3JjL3RhcmdldCBcCiAgICBjYXJnbyBidWlsZCAtLXJlbGVhc2UgLXAgZHluZG8tc2VydmVyICYmIFwKICAgIGluc3RhbGwgLS1kaXJlY3RvcnkgL291dCAmJiBcCiAgICBpbnN0YWxsIC0tbW9kZT03NTUgdGFyZ2V0L3JlbGVhc2UvZHluZG8tc2VydmVyIC9vdXQvZHluZG8tc2VydmVyCgojIC0tLS0gSlNPTiBTY2hlbWEgc3RhZ2UgLS0tLQpGUk9NIGJ1aWxkIEFTIHNjaGVtYQpSVU4gLS1tb3VudD10eXBlPWNhY2hlLGlkPWR5bmRvLWNhcmdvLXJlZ2lzdHJ5LHRhcmdldD0vdXNyL2xvY2FsL2NhcmdvL3JlZ2lzdHJ5IFwKICAgIC0tbW91bnQ9dHlwZT1jYWNoZSxpZD1keW5kby10YXJnZXQsdGFyZ2V0PS9zcmMvdGFyZ2V0IFwKICAgIGluc3RhbGwgLS1kaXJlY3RvcnkgL291dCAmJiBcCiAgICBjYXJnbyB4dGFzayBhc3NldC1zY2hlbWEgLS1vdXRwdXQgL291dC9zY2hlbWEuanNvbgoKIyBUaGlzIHRhcmdldCBleHBvcnRzIG9ubHkgdGhlIGdlbmVyYXRlZCBzY2hlbWEgdG8gdGhlIFBhZ2VzIHdvcmtmbG93LgpGUk9NIHNjcmF0Y2ggQVMgc2NoZW1hLW91dHB1dApDT1BZIC0tZnJvbT1zY2hlbWEgL291dC9zY2hlbWEuanNvbiAvc2NoZW1hLmpzb24KCiMgLS0tLSBydW50aW1lIHN0YWdlIC0tLS0KIyBTYW1lIERlYmlhbiByZWxlYXNlIGFzIHRoZSBidWlsZCBpbWFnZSwgc28gdGhlIHJ1bnRpbWUgZ2xpYmMgc2F0aXNmaWVzIHRoZQojIGJpbmFyeSdzIEdMSUJDXyogc3ltYm9scyAoYSBib29rd29ybSBydW50aW1lIHZzIGEgdHJpeGllIGJ1aWxkIGZhaWxzIGF0CiMgc3RhcnR1cCB3aXRoIGBHTElCQ18yLjM4IG5vdCBmb3VuZGApLgpGUk9NIGRlYmlhbjp0cml4aWUtc2xpbSBBUyBydW50aW1lCiMgcnVzdGxzIHZlcmlmaWVzIFMzJ3MgVExTIGNlcnRzIGFnYWluc3QgdGhlIHN5c3RlbSB0cnVzdCBzdG9yZTsgZnMtb25seSBydW5zCiMgbmV2ZXIgdG91Y2ggdGhpcy4gTm8gbGlic3NsIGlzIG5lZWRlZCAoVExTIGlzIHB1cmUtUnVzdCBydXN0bHMpLgpSVU4gYXB0LWdldCB1cGRhdGUgXAogICAgJiYgYXB0LWdldCBpbnN0YWxsIC15IC0tbm8taW5zdGFsbC1yZWNvbW1lbmRzIGNhLWNlcnRpZmljYXRlcyBcCiAgICAmJiBybSAtcmYgL3Zhci9saWIvYXB0L2xpc3RzLyoKQ09QWSAtLWZyb209ZmZtcGVnIC9vcHQvZmZtcGVnL2xpYi8gL3Vzci9sb2NhbC9saWIvClJVTiBsZGNvbmZpZwojIFJ1biB1bnByaXZpbGVnZWQuClJVTiB1c2VyYWRkIC0tc3lzdGVtIC0tdWlkIDEwMDAxIGR5bmRvClVTRVIgZHluZG8KQ09QWSAtLWZyb209c2VydmVyIC9vdXQvZHluZG8tc2VydmVyIC91c3IvbG9jYWwvYmluL2R5bmRvLXNlcnZlcgpFWFBPU0UgODA4MApFTlRSWVBPSU5UIFsiZHluZG8tc2VydmVyIl0K",
+                "data": "IyBzeW50YXg9ZG9ja2VyL2RvY2tlcmZpbGU6MQoKIyBUaGlzIGlzIHRoZSBzaW5nbGUgTGludXggRkZtcGVnIGJ1aWxkIGRlZmluaXRpb24uIEFsbCBMaW51eCBDSSB2ZXJpZmljYXRpb24sCiMgcmVsZWFzZSBhcnRpZmFjdHMsIGFuZCBydW50aW1lIGltYWdlcyBidWlsZCBmcm9tIHRoZXNlIHN0YWdlcy4KQVJHIEZGTVBFR19WRVJTSU9OPTguMC4zCgojIC0tLS0gRkZtcGVnIHN0YWdlIC0tLS0KRlJPTSBkZWJpYW46dHJpeGllLXNsaW0gQVMgZmZtcGVnCkFSRyBGRk1QRUdfVkVSU0lPTgpSVU4gYXB0LWdldCB1cGRhdGUgXAogICAgJiYgYXB0LWdldCBpbnN0YWxsIC15IC0tbm8taW5zdGFsbC1yZWNvbW1lbmRzIFwKICAgICAgICBidWlsZC1lc3NlbnRpYWwgXAogICAgICAgIGNhLWNlcnRpZmljYXRlcyBcCiAgICAgICAgY3VybCBcCiAgICAgICAgbmFzbSBcCiAgICAgICAgcGtnLWNvbmZpZyBcCiAgICAmJiBybSAtcmYgL3Zhci9saWIvYXB0L2xpc3RzLyoKV09SS0RJUiAvdG1wClJVTiBjdXJsIC0tZmFpbCAtLWxvY2F0aW9uIC0tcmV0cnkgNSAtLXJldHJ5LWFsbC1lcnJvcnMgLS1yZXRyeS1kZWxheSAyIFwKICAgICAgICAiaHR0cHM6Ly9naXRodWIuY29tL0ZGbXBlZy9GRm1wZWcvYXJjaGl2ZS9yZWZzL3RhZ3MvbiR7RkZNUEVHX1ZFUlNJT059LnRhci5neiIgXAogICAgICAgIC0tb3V0cHV0IGZmbXBlZy50YXIuZ3ogXAogICAgJiYgbWtkaXIgZmZtcGVnIFwKICAgICYmIHRhciAtLWV4dHJhY3QgLS1maWxlIGZmbXBlZy50YXIuZ3ogLS1zdHJpcC1jb21wb25lbnRzPTEgLS1kaXJlY3RvcnkgZmZtcGVnIFwKICAgICYmIGNkIGZmbXBlZyBcCiAgICAmJiAuL2NvbmZpZ3VyZSBcCiAgICAgICAgLS1wcmVmaXg9L29wdC9mZm1wZWcgXAogICAgICAgIC0tZGlzYWJsZS1zdGF0aWMgXAogICAgICAgIC0tZW5hYmxlLXNoYXJlZCBcCiAgICAgICAgLS1kaXNhYmxlLXByb2dyYW1zIFwKICAgICAgICAtLWRpc2FibGUtZG9jIFwKICAgICAgICAtLWRpc2FibGUtZGVidWcgXAogICAgICAgIC0tZGlzYWJsZS1hdXRvZGV0ZWN0IFwKICAgICAgICAtLWRpc2FibGUtZXZlcnl0aGluZyBcCiAgICAgICAgLS1lbmFibGUtYXZjb2RlYyBcCiAgICAgICAgLS1lbmFibGUtYXZkZXZpY2UgXAogICAgICAgIC0tZW5hYmxlLWF2ZmlsdGVyIFwKICAgICAgICAtLWVuYWJsZS1hdmZvcm1hdCBcCiAgICAgICAgLS1lbmFibGUtYXZ1dGlsIFwKICAgICAgICAtLWVuYWJsZS1zd3Jlc2FtcGxlIFwKICAgICAgICAtLWVuYWJsZS1zd3NjYWxlIFwKICAgICAgICAtLWVuYWJsZS1kZW11eGVyPW1vdiBcCiAgICAgICAgLS1lbmFibGUtZGVjb2Rlcj1oMjY0LGhldmMsYXYxIFwKICAgICAgICAtLWVuYWJsZS1lbmNvZGVyPW1qcGVnIFwKICAgICAgICAtLWVuYWJsZS1wYXJzZXI9aDI2NCxoZXZjLGF2MSBcCiAgICAmJiBtYWtlIC0tam9icyAiJChucHJvYykiIFwKICAgICYmIG1ha2UgaW5zdGFsbAoKIyAtLS0tIGJ1aWxkIHN0YWdlIC0tLS0KIyBQaW4gdGhlIGV4YWN0IHJ1c3RjIHRvIG1hdGNoIHJ1c3QtdG9vbGNoYWluLnRvbWwgKEZST00gY2FuJ3QgcmVhZCB0aGF0IGZpbGUsCiMgc28gdGhpcyBpcyB0aGUgb25lIGRlbGliZXJhdGUgZHVwbGljYXRlIOKAlCBidW1wIGJvdGggdG9nZXRoZXIpLiBUaGUgRGViaWFuCiMgY29kZW5hbWUgaXMgcGlubmVkIHRvbyAobm90IHBsYWluIGBydXN0OjEtc2xpbWAsIHdoaWNoIHRyYWNrcyBEZWJpYW4ncwojIGxhdGVzdCkgc28gdGhlIGJ1aWxkIGdsaWJjIG1hdGNoZXMgdGhlIHJ1bnRpbWUgc3RhZ2UgYmVsb3cgYW5kIGNhbid0CiMgc2lsZW50bHkgZHJpZnQuCkZST00gcnVzdDoxLjk3LjAtc2xpbS10cml4aWUgQVMgYnVpbGQKUlVOIGFwdC1nZXQgdXBkYXRlIFwKICAgICYmIGFwdC1nZXQgaW5zdGFsbCAteSAtLW5vLWluc3RhbGwtcmVjb21tZW5kcyBcCiAgICAgICAgbGliY2xhbmctZGV2IFwKICAgICAgICBwa2ctY29uZmlnIFwKICAgICYmIHJtIC1yZiAvdmFyL2xpYi9hcHQvbGlzdHMvKiBcCiAgICAmJiBydXN0dXAgY29tcG9uZW50IGFkZCBjbGlwcHkKV09SS0RJUiAvc3JjCkNPUFkgLS1mcm9tPWZmbXBlZyAvb3B0L2ZmbXBlZyAvb3B0L2ZmbXBlZwpDT1BZIC4gLgpFTlYgUEtHX0NPTkZJR19QQVRIPS9vcHQvZmZtcGVnL2xpYi9wa2djb25maWcgXAogICAgTERfTElCUkFSWV9QQVRIPS9vcHQvZmZtcGVnL2xpYgoKIyAtLS0tIHZlcmlmaWNhdGlvbiBzdGFnZSAtLS0tCiMgTGludXggQ0kgYnVpbGRzIHRoaXMgdGFyZ2V0LCBzbyBldmVyeSBGRm1wZWctZGVwZW5kZW50IGNoZWNrIHJ1bnMgYWdhaW5zdCB0aGUKIyBzYW1lIGNvbXBpbGVyLCBsaWJyYXJpZXMsIGFuZCBoZWFkZXJzIGFzIHRoZSBzaGlwcGVkIHNlcnZlciBpbWFnZS4KRlJPTSBidWlsZCBBUyB2ZXJpZnkKUlVOIC0tbW91bnQ9dHlwZT1jYWNoZSxpZD1keW5kby1jYXJnby1yZWdpc3RyeSx0YXJnZXQ9L3Vzci9sb2NhbC9jYXJnby9yZWdpc3RyeSBcCiAgICAtLW1vdW50PXR5cGU9Y2FjaGUsaWQ9ZHluZG8tdGFyZ2V0LHRhcmdldD0vc3JjL3RhcmdldCBcCiAgICBjYXJnbyBjbGlwcHkgLS1hbGwtdGFyZ2V0cyAtLSAtRCB3YXJuaW5ncyAmJiBcCiAgICBjYXJnbyB0ZXN0ICYmIFwKICAgIFJVU1RET0NGTEFHUz0iLUQgd2FybmluZ3MiIGNhcmdvIGRvYyAtLW5vLWRlcHMgLS13b3Jrc3BhY2UKCiMgLS0tLSByZWxlYXNlIGFydGlmYWN0cyBzdGFnZSAtLS0tCkZST00gYnVpbGQgQVMgYXJ0aWZhY3RzClJVTiAtLW1vdW50PXR5cGU9Y2FjaGUsaWQ9ZHluZG8tY2FyZ28tcmVnaXN0cnksdGFyZ2V0PS91c3IvbG9jYWwvY2FyZ28vcmVnaXN0cnkgXAogICAgLS1tb3VudD10eXBlPWNhY2hlLGlkPWR5bmRvLXRhcmdldCx0YXJnZXQ9L3NyYy90YXJnZXQgXAogICAgY2FyZ28gYnVpbGQgLS1yZWxlYXNlIC1wIGR5bmRvLWNsaSAtcCBkeW5kby1zZXJ2ZXIgJiYgXAogICAgaW5zdGFsbCAtLWRpcmVjdG9yeSAvb3V0ICYmIFwKICAgIGluc3RhbGwgLS1tb2RlPTc1NSB0YXJnZXQvcmVsZWFzZS9keW5kbyAvb3V0L2R5bmRvICYmIFwKICAgIGluc3RhbGwgLS1tb2RlPTc1NSB0YXJnZXQvcmVsZWFzZS9keW5kby1zZXJ2ZXIgL291dC9keW5kby1zZXJ2ZXIKCiMgVGhpcyB0YXJnZXQgZXhwb3J0cyBMaW51eCByZWxlYXNlIGJpbmFyaWVzIHdpdGggQnVpbGR4J3MgdHlwZT1sb2NhbCBvdXRwdXQuCkZST00gc2NyYXRjaCBBUyBhcnRpZmFjdC1vdXRwdXQKQ09QWSAtLWZyb209YXJ0aWZhY3RzIC9vdXQvIC8KCiMgLS0tLSBzZXJ2ZXIgc3RhZ2UgLS0tLQojIFRoZSBydW50aW1lIGltYWdlIGRvZXMgbm90IG5lZWQgdGhlIENMSSwgc28gYXZvaWQgY29tcGlsaW5nIGl0IGZvciBldmVyeQojIHB1Ymxpc2hlZCBMaW51eCBhcmNoaXRlY3R1cmUuCkZST00gYnVpbGQgQVMgc2VydmVyClJVTiAtLW1vdW50PXR5cGU9Y2FjaGUsaWQ9ZHluZG8tY2FyZ28tcmVnaXN0cnksdGFyZ2V0PS91c3IvbG9jYWwvY2FyZ28vcmVnaXN0cnkgXAogICAgLS1tb3VudD10eXBlPWNhY2hlLGlkPWR5bmRvLXRhcmdldCx0YXJnZXQ9L3NyYy90YXJnZXQgXAogICAgY2FyZ28gYnVpbGQgLS1yZWxlYXNlIC1wIGR5bmRvLXNlcnZlciAmJiBcCiAgICBpbnN0YWxsIC0tZGlyZWN0b3J5IC9vdXQgJiYgXAogICAgaW5zdGFsbCAtLW1vZGU9NzU1IHRhcmdldC9yZWxlYXNlL2R5bmRvLXNlcnZlciAvb3V0L2R5bmRvLXNlcnZlcgoKIyAtLS0tIEpTT04gU2NoZW1hIHN0YWdlIC0tLS0KRlJPTSBidWlsZCBBUyBzY2hlbWEKUlVOIC0tbW91bnQ9dHlwZT1jYWNoZSxpZD1keW5kby1jYXJnby1yZWdpc3RyeSx0YXJnZXQ9L3Vzci9sb2NhbC9jYXJnby9yZWdpc3RyeSBcCiAgICAtLW1vdW50PXR5cGU9Y2FjaGUsaWQ9ZHluZG8tdGFyZ2V0LHRhcmdldD0vc3JjL3RhcmdldCBcCiAgICBpbnN0YWxsIC0tZGlyZWN0b3J5IC9vdXQgJiYgXAogICAgY2FyZ28geHRhc2sgYXNzZXQtc2NoZW1hIC0tb3V0cHV0IC9vdXQvc2NoZW1hLmpzb24KCiMgVGhpcyB0YXJnZXQgZXhwb3J0cyBvbmx5IHRoZSBnZW5lcmF0ZWQgc2NoZW1hIHRvIHRoZSBQYWdlcyB3b3JrZmxvdy4KRlJPTSBzY3JhdGNoIEFTIHNjaGVtYS1vdXRwdXQKQ09QWSAtLWZyb209c2NoZW1hIC9vdXQvc2NoZW1hLmpzb24gL3NjaGVtYS5qc29uCgojIC0tLS0gcnVudGltZSBzdGFnZSAtLS0tCiMgU2FtZSBEZWJpYW4gcmVsZWFzZSBhcyB0aGUgYnVpbGQgaW1hZ2UsIHNvIHRoZSBydW50aW1lIGdsaWJjIHNhdGlzZmllcyB0aGUKIyBiaW5hcnkncyBHTElCQ18qIHN5bWJvbHMgKGEgYm9va3dvcm0gcnVudGltZSB2cyBhIHRyaXhpZSBidWlsZCBmYWlscyBhdAojIHN0YXJ0dXAgd2l0aCBgR0xJQkNfMi4zOCBub3QgZm91bmRgKS4KRlJPTSBkZWJpYW46dHJpeGllLXNsaW0gQVMgcnVudGltZQojIHJ1c3RscyB2ZXJpZmllcyBTMydzIFRMUyBjZXJ0cyBhZ2FpbnN0IHRoZSBzeXN0ZW0gdHJ1c3Qgc3RvcmU7IGZzLW9ubHkgcnVucwojIG5ldmVyIHRvdWNoIHRoaXMuIE5vIGxpYnNzbCBpcyBuZWVkZWQgKFRMUyBpcyBwdXJlLVJ1c3QgcnVzdGxzKS4KUlVOIGFwdC1nZXQgdXBkYXRlIFwKICAgICYmIGFwdC1nZXQgaW5zdGFsbCAteSAtLW5vLWluc3RhbGwtcmVjb21tZW5kcyBjYS1jZXJ0aWZpY2F0ZXMgXAogICAgJiYgcm0gLXJmIC92YXIvbGliL2FwdC9saXN0cy8qCkNPUFkgLS1mcm9tPWZmbXBlZyAvb3B0L2ZmbXBlZy9saWIvIC91c3IvbG9jYWwvbGliLwpSVU4gbGRjb25maWcKIyBSdW4gdW5wcml2aWxlZ2VkLgpSVU4gdXNlcmFkZCAtLXN5c3RlbSAtLXVpZCAxMDAwMSBkeW5kbwpVU0VSIGR5bmRvCkNPUFkgLS1mcm9tPXNlcnZlciAvb3V0L2R5bmRvLXNlcnZlciAvdXNyL2xvY2FsL2Jpbi9keW5kby1zZXJ2ZXIKRVhQT1NFIDgwODAKRU5UUllQT0lOVCBbImR5bmRvLXNlcnZlciJdCg==",
                 "llbDefinition": [
                   {
                     "id": "step0",
@@ -1249,14 +1249,23 @@
                   }
                 ],
                 "digestMapping": {
-                  "sha256:54e033cbd322b4ec3ea8e81906a0760f70676641939de4fa7887729e2a6afc30": "step1",
-                  "sha256:c960e3d1354e357877fb5679e39e5f7e1c683bf777b52cd105fae4e85a066e6a": "step0"
+                  "sha256:4163561b8e4d9294343d9e84be216af6ee0ebea5f3c0ce59e5aea9b0222af78a": "step0",
+                  "sha256:7f9b10ffcbed16f08001080b86301c4af194d10606dd4fd182fb08f36783bbbb": "step1"
                 }
               }
             ]
           },
           "layers": {
-            "step0:0": [
+            "step11:0": [
+              [
+                {
+                  "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+                  "digest": "sha256:d8fbe2f17da4df93f5bb96fab2e5e86649f48d9181037e04bc11ff5485560484",
+                  "size": 1409
+                }
+              ]
+            ],
+            "step1:0": [
               [
                 {
                   "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
@@ -1267,6 +1276,35 @@
                   "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
                   "digest": "sha256:0410f18f530500d4aa1d0ee00bd1b27d5d2151b31058b10e24720cd68a08e501",
                   "size": 293313963
+                },
+                {
+                  "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+                  "digest": "sha256:af3243c0e483e08d64955057859a477380f9471b9fa84cd5ac1fc7c81ff094f4",
+                  "size": 135958122
+                }
+              ]
+            ],
+            "step2:0": [
+              [
+                {
+                  "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+                  "digest": "sha256:062e450697faa5f02a3a74eba9864ee4d79bc9cfbd65769fc6cdff2c05c6a053",
+                  "size": 29780905
+                },
+                {
+                  "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+                  "digest": "sha256:0410f18f530500d4aa1d0ee00bd1b27d5d2151b31058b10e24720cd68a08e501",
+                  "size": 293313963
+                },
+                {
+                  "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+                  "digest": "sha256:af3243c0e483e08d64955057859a477380f9471b9fa84cd5ac1fc7c81ff094f4",
+                  "size": 135958122
+                },
+                {
+                  "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+                  "digest": "sha256:378164bf8cd3ab35053aad14bcb3b1ac69e75f29be620c4b891e956dbe0dd221",
+                  "size": 93
                 }
               ]
             ],
