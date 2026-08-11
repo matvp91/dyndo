@@ -3,7 +3,7 @@ use relative_path::{RelativePath, RelativePathBuf};
 use serde::{Deserialize, Serialize};
 
 use super::segment_options::SegmentOptions;
-use super::thumbnail_descriptor::ThumbnailDescriptor;
+use super::thumbnail_track_descriptor::ThumbnailTrackDescriptor;
 use super::track::Track;
 use super::track_descriptor::TrackDescriptor;
 
@@ -16,6 +16,7 @@ pub enum AssetDescriptorError {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AssetDescriptor {
     #[serde(skip)]
     path: RelativePathBuf,
@@ -23,8 +24,6 @@ pub struct AssetDescriptor {
     #[serde(default, skip_serializing_if = "is_default")]
     pub segment_options: SegmentOptions,
     pub tracks: Vec<TrackDescriptor>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub thumbnails: Vec<ThumbnailDescriptor>,
 }
 
 fn is_default<T: Default + PartialEq>(value: &T) -> bool {
@@ -57,33 +56,52 @@ impl AssetDescriptor {
         }
     }
 
-    pub fn track_path(&self, track: &TrackDescriptor) -> RelativePathBuf {
-        self.path
-            .parent()
-            .unwrap_or(RelativePath::new(""))
-            .join(&track.path)
+    pub fn track_path(&self, track: &TrackDescriptor) -> Option<RelativePathBuf> {
+        Some(
+            self.path
+                .parent()
+                .unwrap_or(RelativePath::new(""))
+                .join(track.source_path()?),
+        )
     }
 
     pub fn find_track_by_id(&self, id: &str) -> Option<&TrackDescriptor> {
-        self.tracks.iter().find(|track| track.id == id)
+        self.source_tracks().find(|track| track.id() == id)
     }
 
-    pub fn find_thumbnail_by_id(&self, id: &str) -> Option<&ThumbnailDescriptor> {
-        self.thumbnails.iter().find(|thumbnail| thumbnail.id == id)
+    pub fn find_thumbnail_by_id(&self, id: &str) -> Option<&ThumbnailTrackDescriptor> {
+        self.thumbnail_tracks()
+            .find(|track| track.id() == id)
+            .and_then(TrackDescriptor::thumbnail)
+    }
+
+    pub fn source_tracks(&self) -> impl Iterator<Item = &TrackDescriptor> {
+        self.tracks
+            .iter()
+            .filter(|track| track.source_path().is_some())
+    }
+
+    pub fn thumbnail_tracks(&self) -> impl Iterator<Item = &TrackDescriptor> {
+        self.tracks
+            .iter()
+            .filter(|track| track.thumbnail().is_some())
     }
 
     pub fn find_track_by_path(&mut self, path: &RelativePath) -> Option<&mut TrackDescriptor> {
         let index = self
             .tracks
             .iter()
-            .position(|track| self.track_path(track) == path)?;
+            .position(|track| self.track_path(track).as_deref() == Some(path))?;
 
         self.tracks.get_mut(index)
     }
 
     pub fn add_track(&mut self, track: &Track) -> &mut TrackDescriptor {
         let base = self.path.parent().unwrap_or(RelativePath::new(""));
-        let path = base.relative(track.path());
+        let path = track
+            .source_path()
+            .map(|path| base.relative(path))
+            .unwrap_or_default();
         let index = self.tracks.len();
         self.tracks.push(TrackDescriptor::from_track(track, path));
         &mut self.tracks[index]

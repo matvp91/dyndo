@@ -3,10 +3,10 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use dyndo_core::asset_descriptor::AssetDescriptorError;
-use dyndo_core::image::ThumbnailError;
 use dyndo_core::probe::ProbeError;
 use dyndo_core::reader::TrackReadError;
 use dyndo_core::text::wvtt::WvttParseError;
+use dyndo_core::thumbnail_track::ThumbnailError;
 use dyndo_dash::DashError;
 use dyndo_hls::HlsError;
 

@@ -1,8 +1,7 @@
-use dyndo_core::reader::Reader;
+use dyndo_core::cmaf_track_kind::CmafTrackKind;
 use dyndo_core::segment_options::SegmentOptions;
 use dyndo_core::text::{Cue, Subtitle};
 use dyndo_core::track::Track;
-use dyndo_core::track_kind::TrackKind;
 use opendal::{Operator, services::Memory};
 use relative_path::RelativePath;
 
@@ -14,7 +13,7 @@ fn memory_operator() -> Operator {
 }
 
 #[tokio::test]
-async fn vtt_reader_layer_probes_and_serves_packaged_subtitles() {
+async fn vtt_track_packages_cmaf_on_demand_and_serves_vtt_directly() {
     let operator = memory_operator();
     let path = RelativePath::new("subtitles/en.vtt");
     let options = SegmentOptions {
@@ -24,17 +23,25 @@ async fn vtt_reader_layer_probes_and_serves_packaged_subtitles() {
     };
     operator.write(path.as_str(), VTT).await.unwrap();
 
-    let track = Track::probe(&operator, path, None, &options).await.unwrap();
-    let reader = Reader::new(&operator, &track, &options);
-    let packaged = reader
-        .read_range(0..track.segments().last().unwrap().byte_range().end)
-        .await
-        .unwrap();
-    let subtitle = Subtitle::from_wvtt(&packaged).unwrap();
+    let track = Track::probe(&operator, path, None).await.unwrap();
+    let vtt = track.vtt().unwrap();
+    let packaged = vtt.package(&options).await.unwrap();
+    let end = packaged.cmaf().segments().last().unwrap().byte_range().end;
+    let subtitle = Subtitle::from_wvtt(&packaged.read(0..end).unwrap()).unwrap();
 
-    assert!(matches!(track.kind(), TrackKind::Text(_)));
-    assert_eq!(track.codec().rfc6381(), "wvtt");
-    assert_eq!(track.segments().len(), 4);
+    assert!(matches!(packaged.cmaf().kind(), CmafTrackKind::Text(_)));
+    assert_eq!(packaged.cmaf().codec().rfc6381(), "wvtt");
+    assert_eq!(packaged.cmaf().segments().len(), 4);
+    assert_eq!(
+        vtt.vtt_segment(0, 750).as_deref(),
+        Some("WEBVTT\n\n00:00:00.500 --> 00:00:00.750\nFirst\n")
+    );
+    assert_eq!(
+        vtt.vtt_segment(0, 1_500).as_deref(),
+        Some(
+            "WEBVTT\n\n00:00:00.500 --> 00:00:01.500\nFirst\n\n00:00:01.000 --> 00:00:01.500\nSecond\n"
+        )
+    );
     assert_eq!(
         subtitle.cues,
         vec![
@@ -53,7 +60,7 @@ async fn vtt_reader_layer_probes_and_serves_packaged_subtitles() {
 }
 
 #[tokio::test]
-async fn vtt_reader_layer_reports_an_invalid_subtitle_document() {
+async fn vtt_track_reports_an_invalid_subtitle_document() {
     let operator = memory_operator();
     let path = RelativePath::new("subtitles/invalid.vtt");
     operator
@@ -61,14 +68,7 @@ async fn vtt_reader_layer_reports_an_invalid_subtitle_document() {
         .await
         .unwrap();
 
-    let error = Track::probe(&operator, path, None, &SegmentOptions::default())
-        .await
-        .err()
-        .unwrap();
+    let error = Track::probe(&operator, path, None).await.err().unwrap();
 
-    assert!(
-        error
-            .to_string()
-            .contains("cannot package subtitle document")
-    );
+    assert!(error.to_string().contains("missing WEBVTT signature"));
 }

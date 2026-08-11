@@ -1,6 +1,8 @@
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
+use bytes::Bytes;
+use futures_util::io::Cursor;
 use mp4_atom::{AsyncReadAtom, AsyncReadFrom, Atom, Header as BoxHeader, Moof, Moov, Sidx};
 use opendal::{FuturesAsyncReader, Operator};
 use tokio::io::{AsyncRead, AsyncReadExt, ReadBuf};
@@ -30,6 +32,13 @@ pub struct Boxes {
 
 pub async fn scan(op: &Operator, path: &str) -> Result<Boxes, BoxReaderError> {
     let mut reader = reader(op, path).await?;
+    let boxes = walk(&mut reader).await?;
+    validate(&boxes)?;
+    Ok(boxes)
+}
+
+pub async fn scan_bytes(bytes: Bytes) -> Result<Boxes, BoxReaderError> {
+    let mut reader = CountingReader::new(Cursor::new(bytes).compat());
     let boxes = walk(&mut reader).await?;
     validate(&boxes)?;
     Ok(boxes)

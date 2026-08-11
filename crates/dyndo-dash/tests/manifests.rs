@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
+use dyndo_core::cmaf_track::CmafTrack;
+use dyndo_core::cmaf_track_kind::{AudioKind, CmafTrackKind, TextKind, VideoKind};
 use dyndo_core::codec::{AacCodec, AvcCodec, CodecConfig, WvttCodec};
-use dyndo_core::image::Thumbnail;
 use dyndo_core::segment::{InitSegment, Segment};
 use dyndo_core::segment_options::SegmentOptions;
-use dyndo_core::thumbnail_descriptor::ThumbnailDescriptor;
-use dyndo_core::track::Track;
-use dyndo_core::track_kind::{AudioKind, TextKind, TrackKind, VideoKind};
+use dyndo_core::thumbnail_track::ThumbnailTrack;
+use dyndo_core::thumbnail_track_descriptor::ThumbnailTrackDescriptor;
 use dyndo_dash::{generate_mpd, options::DashOptions};
 use mp4_atom::{Audio, Avc1, Avcc, Mp4a};
 
@@ -38,9 +38,9 @@ fn aac_codec() -> CodecConfig {
     CodecConfig::Aac(AacCodec::new(&codec))
 }
 
-fn track(id: &str, kind: TrackKind, codec: CodecConfig, bytes_per_segment: u64) -> Track {
+fn track(id: &str, kind: CmafTrackKind, codec: CodecConfig, bytes_per_segment: u64) -> CmafTrack {
     let init = Arc::new(InitSegment::new(codec, 1_000, 0, 100));
-    Track::new(
+    CmafTrack::new(
         id.into(),
         format!("{id}.mp4").into(),
         kind,
@@ -52,10 +52,10 @@ fn track(id: &str, kind: TrackKind, codec: CodecConfig, bytes_per_segment: u64) 
     )
 }
 
-fn video_track(id: &str, width: u32, height: u32, bytes_per_segment: u64) -> Track {
+fn video_track(id: &str, width: u32, height: u32, bytes_per_segment: u64) -> CmafTrack {
     track(
         id,
-        TrackKind::Video(VideoKind {
+        CmafTrackKind::Video(VideoKind {
             width,
             height,
             frame_rate: "4/1".into(),
@@ -66,21 +66,21 @@ fn video_track(id: &str, width: u32, height: u32, bytes_per_segment: u64) -> Tra
 }
 
 fn generate(
-    tracks: &[Track],
-    descriptors: &[ThumbnailDescriptor],
+    tracks: &[CmafTrack],
+    descriptors: &[ThumbnailTrackDescriptor],
     segment_options: &SegmentOptions,
     dash_options: &DashOptions,
 ) -> String {
     let thumbnails: Vec<_> = descriptors
         .iter()
-        .filter_map(|descriptor| Thumbnail::new(descriptor, tracks))
+        .filter_map(|descriptor| ThumbnailTrack::new(descriptor, tracks))
         .collect();
     let mpd = generate_mpd(tracks, &thumbnails, segment_options, dash_options).unwrap();
     quick_xml::se::to_string(&mpd).unwrap()
 }
 
-fn thumbnail() -> ThumbnailDescriptor {
-    ThumbnailDescriptor {
+fn thumbnail() -> ThumbnailTrackDescriptor {
+    ThumbnailTrackDescriptor {
         id: "preview".to_string(),
         tile_size: 2,
         width: 16,
@@ -212,7 +212,7 @@ fn generated_grouped_rendition_mpd_matches_the_golden_fixture() {
         video_track("video-high", 32, 32, 200),
         track(
             "audio-en",
-            TrackKind::Audio(AudioKind {
+            CmafTrackKind::Audio(AudioKind {
                 sample_rate: 48_000,
                 channels: 2,
                 language: "en".parse().unwrap(),
@@ -223,7 +223,7 @@ fn generated_grouped_rendition_mpd_matches_the_golden_fixture() {
         ),
         track(
             "text-en",
-            TrackKind::Text(TextKind {
+            CmafTrackKind::Text(TextKind {
                 language: "en".parse().unwrap(),
                 role: None,
             }),

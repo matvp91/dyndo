@@ -12,15 +12,16 @@ You need an `asset.json` containing at least one video track. Create one with
 
 ## Add a thumbnail configuration
 
-Add a `thumbnails` array at the top level of the descriptor. This configuration
-creates 4-by-4 sprites, each 640 pixels wide, with one frame per second:
+Add an image track to the descriptor's `tracks` array. This configuration creates
+4-by-4 sprites, each 640 pixels wide, with one frame per second:
 
 ```json
 {
-  "tracks": [ /* existing tracks */ ],
-  "thumbnails": [
+  "tracks": [
+    /* existing tracks */,
     {
       "id": "preview",
+      "type": "image",
       "tile_size": 4,
       "width": 640,
       "step": 1000
@@ -35,8 +36,8 @@ composite JPEG, not one tile; it must divide evenly by `tile_size`. `step` is
 the interval between frames in milliseconds. This example makes every sprite
 cover 16 seconds of presentation time.
 
-The `id` names this thumbnail configuration in manifest URLs. It is independent
-of every video track ID, so you can add more than one configuration for the
+The `id` names this image track in manifest URLs. It is independent of every
+video track ID, so you can add more than one configuration for the
 same asset.
 
 ## Let dyndo choose the video source
@@ -87,5 +88,5 @@ pixels while retaining every media track:
 
 Filters affect manifests only. A client must use the image URLs emitted by the
 manifest it requested. For the complete descriptor fields and route contract,
-see the [asset.json reference](../reference/asset-json.md#thumbnail-objects)
+see the [asset.json reference](../reference/asset-json.md#image-tracks)
 and [server routes reference](../reference/server/routes.md#thumbnail-sprites).

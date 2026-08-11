@@ -1,9 +1,8 @@
 use std::ops::Range;
 
+use dyndo_core::cmaf_track_kind::CmafTrackKind;
 use dyndo_core::reader::Reader;
-use dyndo_core::segment_options::SegmentOptions;
 use dyndo_core::track::Track;
-use dyndo_core::track_kind::TrackKind;
 use opendal::{Operator, services::Memory};
 use relative_path::RelativePath;
 
@@ -25,18 +24,17 @@ async fn aac_probe_and_read_remains_a_small_secondary_media_smoke_test() {
     let path = RelativePath::new("audio.mp4");
     operator.write(path.as_str(), AUDIO_FIXTURE).await.unwrap();
 
-    let track = Track::probe(&operator, path, None, &SegmentOptions::default())
-        .await
-        .unwrap();
-    let reader = Reader::new(&operator, &track, &SegmentOptions::default());
+    let track = Track::probe(&operator, path, None).await.unwrap();
+    let track = track.native_cmaf().unwrap();
+    let reader = Reader::new(&operator);
     let media = reader
-        .read_range(track.segments()[0].byte_range())
+        .read_range(track, track.segments()[0].byte_range())
         .await
         .unwrap();
 
     assert!(matches!(
         track.kind(),
-        TrackKind::Audio(kind) if (kind.sample_rate, kind.channels) == (8_000, 1)
+        CmafTrackKind::Audio(kind) if (kind.sample_rate, kind.channels) == (8_000, 1)
     ));
     assert_eq!(track.codec().rfc6381(), "mp4a.40.2");
     assert_eq!(

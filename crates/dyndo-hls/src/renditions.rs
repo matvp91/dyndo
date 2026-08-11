@@ -1,8 +1,8 @@
+use dyndo_core::cmaf_track::CmafTrack;
+use dyndo_core::cmaf_track_kind::CmafTrackKind;
 use dyndo_core::role::Role;
 use dyndo_core::segment_options::SegmentOptions;
 use dyndo_core::served_segment::ServedSegment;
-use dyndo_core::track::Track;
-use dyndo_core::track_kind::TrackKind;
 use language_tags::LanguageTag;
 use m3u8_rs::{AlternativeMedia, AlternativeMediaType};
 
@@ -19,7 +19,7 @@ pub(crate) struct Renditions {
 
 impl Renditions {
     pub(crate) fn summarize(
-        tracks: &[Track],
+        tracks: &[CmafTrack],
         segment_options: &SegmentOptions,
         hls_options: &HlsOptions,
     ) -> Self {
@@ -31,17 +31,17 @@ impl Renditions {
 
         for track in tracks {
             let bitrates = match track.kind() {
-                TrackKind::Video(_) => continue,
-                TrackKind::Audio(_) => {
+                CmafTrackKind::Video(_) => continue,
+                CmafTrackKind::Audio(_) => {
                     has_audio = true;
                     &mut audio_bitrates
                 }
-                TrackKind::Text(_) => {
+                CmafTrackKind::Text(_) => {
                     has_subtitles = true;
                     &mut subtitle_bitrates
                 }
             };
-            if hls_options.wvtt || !matches!(track.kind(), TrackKind::Text(_)) {
+            if hls_options.wvtt || !matches!(track.kind(), CmafTrackKind::Text(_)) {
                 push_unique(&mut codecs, track.codec().rfc6381());
             }
             let segments = ServedSegment::group(
@@ -62,7 +62,7 @@ impl Renditions {
         }
     }
 
-    pub(crate) fn codecs_for(&self, track: &Track) -> Vec<String> {
+    pub(crate) fn codecs_for(&self, track: &CmafTrack) -> Vec<String> {
         let mut codecs = Vec::with_capacity(self.codecs.len() + 1);
         push_unique(&mut codecs, track.codec().rfc6381());
         for codec in &self.codecs {
@@ -71,7 +71,7 @@ impl Renditions {
         codecs
     }
 
-    pub(crate) fn media_entries(tracks: &[Track]) -> Vec<AlternativeMedia> {
+    pub(crate) fn media_entries(tracks: &[CmafTrack]) -> Vec<AlternativeMedia> {
         let default_audio_id = default_audio_id(tracks);
         tracks
             .iter()
@@ -81,20 +81,20 @@ impl Renditions {
 }
 
 fn build_media_entry(
-    tracks: &[Track],
-    track: &Track,
+    tracks: &[CmafTrack],
+    track: &CmafTrack,
     default_audio_id: Option<&str>,
 ) -> Option<AlternativeMedia> {
     let (media_type, group_id, language, role, channels) = match track.kind() {
-        TrackKind::Video(_) => return None,
-        TrackKind::Audio(audio) => (
+        CmafTrackKind::Video(_) => return None,
+        CmafTrackKind::Audio(audio) => (
             AlternativeMediaType::Audio,
             "audio",
             &audio.language,
             audio.role,
             Some(audio.channels.to_string()),
         ),
-        TrackKind::Text(text) => (
+        CmafTrackKind::Text(text) => (
             AlternativeMediaType::Subtitles,
             "subtitles",
             &text.language,
@@ -120,21 +120,21 @@ fn build_media_entry(
     })
 }
 
-fn default_audio_id(tracks: &[Track]) -> Option<&str> {
+fn default_audio_id(tracks: &[CmafTrack]) -> Option<&str> {
     tracks
         .iter()
         .find(|track| {
-            matches!(track.kind(), TrackKind::Audio(audio) if audio.role == Some(Role::Main))
+            matches!(track.kind(), CmafTrackKind::Audio(audio) if audio.role == Some(Role::Main))
         })
         .or_else(|| {
             tracks.iter().find(
-                |track| matches!(track.kind(), TrackKind::Audio(audio) if audio.role.is_none()),
+                |track| matches!(track.kind(), CmafTrackKind::Audio(audio) if audio.role.is_none()),
             )
         })
-        .map(Track::id)
+        .map(CmafTrack::id)
 }
 
-fn selection_tuple_is_unique(tracks: &[Track], track: &Track) -> bool {
+fn selection_tuple_is_unique(tracks: &[CmafTrack], track: &CmafTrack) -> bool {
     let Some((is_audio, language, role)) = selection_tuple(track) else {
         return false;
     };
@@ -151,11 +151,11 @@ fn selection_tuple_is_unique(tracks: &[Track], track: &Track) -> bool {
         == 1
 }
 
-fn selection_tuple(track: &Track) -> Option<(bool, &LanguageTag, Option<Role>)> {
+fn selection_tuple(track: &CmafTrack) -> Option<(bool, &LanguageTag, Option<Role>)> {
     match track.kind() {
-        TrackKind::Video(_) => None,
-        TrackKind::Audio(audio) => Some((true, &audio.language, audio.role)),
-        TrackKind::Text(text) => Some((false, &text.language, text.role)),
+        CmafTrackKind::Video(_) => None,
+        CmafTrackKind::Audio(audio) => Some((true, &audio.language, audio.role)),
+        CmafTrackKind::Text(text) => Some((false, &text.language, text.role)),
     }
 }
 

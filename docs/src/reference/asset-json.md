@@ -1,13 +1,14 @@
 # asset.json descriptor
 
-The `asset.json` descriptor is the shared contract between dyndo's CLI and server. [`dyndo index`](./cli/index.md) writes and updates it; [`dyndo image`](./cli/image.md) and the server read it. It is deliberately small: it records **per-track metadata and a source path, and nothing else** — no segment list, no byte offsets, no timescale. Those are re-derived from each source at read time.
+The `asset.json` descriptor is the shared contract between dyndo's CLI and server. [`dyndo index`](./cli/index.md) writes and updates it; [`dyndo image`](./cli/image.md) and the server read it. It is deliberately small: it records **per-track metadata and, for source tracks, a source path** — no segment list, byte offsets, or timescale. Those are re-derived from each source at read time.
 
 The file is pretty-printed JSON and safe to read, diff, and hand-edit.
 
 ## Top-level structure
 
-A descriptor is an object with a `tracks` array, an optional `thumbnails`
-array, and an optional block of segment options:
+A descriptor is an object with a `tracks` array and an optional block of segment
+options. The array contains CMAF media tracks, raw WebVTT tracks, and image
+tracks:
 
 ```json
 {
@@ -15,8 +16,7 @@ array, and an optional block of segment options:
     "min_length": 6000,
     "boundaries": [683640]
   },
-  "tracks": [ /* source track objects */ ],
-  "thumbnails": [ /* optional thumbnail objects */ ]
+  "tracks": [ /* media, VTT, and image track objects */ ]
 }
 ```
 
@@ -25,15 +25,16 @@ group, the default rendition is the first `main`-role track, or the first audio
 track with no role when none is marked `main`. `index` appends tracks in the
 order you pass them.
 
-## Thumbnail objects
+## Image tracks
 
-Thumbnails describe JPEG sprite sheets derived from the source tracks. They have
-no source path or codec: dyndo resolves their source at request time. Each
-thumbnail has a stable `id`:
+Image tracks describe JPEG sprite sheets derived from the source tracks. They
+have no source path or codec: dyndo resolves their source at request time. Each
+image track has a stable `id`:
 
 ```json
 {
   "id": "preview",
+  "type": "image",
   "tile_size": 4,
   "width": 640,
   "step": 1000
@@ -66,10 +67,11 @@ Descriptors use only the field names shown above. Server request options accept
 additional shorthand and legacy spellings; see the
 [server routes reference](server/routes.md#segmentation-options).
 
-## Track object
+## Track objects
 
-Each track is tagged by a `type` discriminator: `"video"`, `"audio"`, or
-`"text"`. All track types share these fields:
+Each track is tagged by a `type` discriminator: `"video"`, `"audio"`,
+`"text"`, `"vtt"`, or `"image"`. CMAF tracks (`video`, `audio`, and `text`)
+share these fields:
 
 | Field | Type | Description |
 |---|---|---|
@@ -78,7 +80,7 @@ Each track is tagged by a `type` discriminator: `"video"`, `"audio"`, or
 | `path` | string | Source file path, relative to the descriptor's directory. |
 | `codec` | string | The track's [RFC 6381](https://datatracker.ietf.org/doc/html/rfc6381) codec string, probed from the source (e.g. `avc1.640028`, `mp4a.40.2`, `wvtt`). Written into the manifests as-is. |
 
-Unknown fields are ignored on read. Type-specific fields follow.
+Unknown fields in a track entry are ignored on read. Type-specific fields follow.
 
 ### Video tracks
 
@@ -124,7 +126,7 @@ Video tracks carry no `language` or `role`.
 }
 ```
 
-### Text tracks
+### Text and VTT tracks
 
 A text track's source is WebVTT in one of two forms: **CMAF `wvtt`** (WebVTT in
 ISO-BMFF), which is probed and served like any other CMAF track, or a **raw
@@ -133,9 +135,10 @@ ISO-BMFF), which is probed and served like any other CMAF track, or a **raw
 > Both forms are served. A raw `.vtt` is parsed and packaged into a `wvtt` track
 > as it is read, so nothing is written beside it and the `.vtt` stays the source
 > of truth; its segments are cut where the asset's splice points and
-> [`text_length`](#segmentation) say. The descriptor format below is the same for
-> both, and `codec` is `wvtt` either way — it records how the track is packaged,
-> not how it is delivered. HLS unpacks a segment back into a WebVTT document
+> [`text_length`](#segmentation) say. CMAF WebVTT tracks use `"type": "text"`
+> and record their `wvtt` codec. Raw WebVTT tracks use `"type": "vtt"` and do
+> not have a codec, because dyndo packages them only for CMAF output. HLS returns
+> raw VTT cues directly and unpacks CMAF `wvtt` segments when needed
 > unless the request asks for `wvtt`; see
 > [Add a subtitle track](../how-to/add-subtitles.md#choose-how-hls-delivers-subtitles).
 
@@ -161,8 +164,7 @@ A CMAF `wvtt` track and a raw `.vtt` track:
 {
   "id": "c9e251a7-4fd1-54f9-abc8-ca86598e1cc5",
   "path": "subtitles_nl.vtt",
-  "codec": "wvtt",
-  "type": "text",
+  "type": "vtt",
   "language": "nld"
 }
 ```

@@ -1,20 +1,20 @@
 use std::collections::HashMap;
 
-use dyndo_core::image::Thumbnail;
+use dyndo_core::cmaf_track::CmafTrack;
+use dyndo_core::cmaf_track_kind::CmafTrackKind;
 use dyndo_core::segment_options::SegmentOptions;
 use dyndo_core::served_segment::ServedSegment;
-use dyndo_core::track::Track;
-use dyndo_core::track_kind::TrackKind;
+use dyndo_core::thumbnail_track::ThumbnailTrack;
 use m3u8_rs::{ExtTag, Map, MediaPlaylist, MediaPlaylistType, MediaSegment};
 
 use crate::options::HlsOptions;
 
 pub(crate) fn build_playlist(
-    track: &Track,
+    track: &CmafTrack,
     segment_options: &SegmentOptions,
     hls_options: &HlsOptions,
 ) -> MediaPlaylist {
-    let plain_vtt = !hls_options.wvtt && matches!(track.kind(), TrackKind::Text(_));
+    let plain_vtt = !hls_options.wvtt && matches!(track.kind(), CmafTrackKind::Text(_));
     let segments = ServedSegment::group(
         track.segments(),
         segment_options.min_length,
@@ -42,7 +42,7 @@ pub(crate) fn build_playlist(
     }
 }
 
-pub(crate) fn build_image_playlist(thumbnail: &Thumbnail<'_>) -> MediaPlaylist {
+pub(crate) fn build_image_playlist(thumbnail: &ThumbnailTrack) -> MediaPlaylist {
     let duration = u64::from(thumbnail.source().duration());
     let sprite_duration = thumbnail.sprite_duration();
     let target_duration = sprite_duration.min(duration).div_ceil(1_000);
@@ -100,7 +100,7 @@ pub(crate) fn build_image_playlist(thumbnail: &Thumbnail<'_>) -> MediaPlaylist {
 }
 
 fn build_segments(
-    track: &Track,
+    track: &CmafTrack,
     segments: &[ServedSegment<'_>],
     plain_vtt: bool,
 ) -> Vec<MediaSegment> {
@@ -112,7 +112,7 @@ fn build_segments(
 }
 
 fn build_segment(
-    track: &Track,
+    track: &CmafTrack,
     segment: &ServedSegment<'_>,
     first: bool,
     plain_vtt: bool,

@@ -73,17 +73,17 @@ track's native timescale values, so tracks with different timescales (video at
 falls — the two manifests and the segment routes always agree.
 
 One source type arrives at its segment index differently: a raw `.vtt` subtitle
-file has no boxes and no `sidx`, so there is nothing to probe. dyndo parses it and
-packages a `wvtt` track as it reads the path, then indexes *that* — the same box
-walk over bytes that never touch storage. Its fragments are cut where the asset's
+file has no boxes and no `sidx`, so there is nothing to probe. When CMAF data is
+needed, dyndo packages a `wvtt` view and indexes *that* — the same box walk over
+bytes that never touch storage. Its fragments are cut where the asset's
 splice points and
 [`text_length`](../reference/asset-json.md#segmentation) say, rather than
 recovered from a file, which is why those cuts are exact instead of snapped.
 
-Serving such a track to HLS runs the same path backwards: the segment is resolved
-from that index as usual, and the cues are read back out of the packaged bytes
-into a WebVTT document. The index is the one both forms are cut from, so the two
-never disagree about where a segment starts.
+Serving such a track to HLS resolves the segment from that index as usual, then
+selects the matching cue range directly from the parsed WebVTT document. The
+same index still defines the cut points for both forms, so they never disagree
+about where a segment starts.
 
 ## Why an 800 MB file parses like an 8 MB one
 

@@ -1,8 +1,8 @@
-use dyndo_core::image::Thumbnail;
+use dyndo_core::cmaf_track::CmafTrack;
+use dyndo_core::cmaf_track_kind::{CmafTrackKind, VideoKind};
 use dyndo_core::segment_options::SegmentOptions;
 use dyndo_core::served_segment::ServedSegment;
-use dyndo_core::track::Track;
-use dyndo_core::track_kind::{TrackKind, VideoKind};
+use dyndo_core::thumbnail_track::ThumbnailTrack;
 use m3u8_rs::{ClosedCaptionGroupId, ExtTag, MasterPlaylist, Resolution, VariantStream};
 
 use crate::HlsError;
@@ -13,8 +13,8 @@ const AUDIO_GROUP_ID: &str = "audio";
 const SUBTITLES_GROUP_ID: &str = "subtitles";
 
 pub(crate) fn build_playlist(
-    tracks: &[Track],
-    thumbnails: &[Thumbnail<'_>],
+    tracks: &[CmafTrack],
+    thumbnails: &[ThumbnailTrack],
     segment_options: &SegmentOptions,
     hls_options: &HlsOptions,
 ) -> Result<MasterPlaylist, HlsError> {
@@ -31,7 +31,7 @@ pub(crate) fn build_playlist(
     })
 }
 
-fn image_streams(thumbnails: &[Thumbnail<'_>]) -> Vec<ExtTag> {
+fn image_streams(thumbnails: &[ThumbnailTrack]) -> Vec<ExtTag> {
     thumbnails
         .iter()
         .map(|thumbnail| {
@@ -49,26 +49,26 @@ fn image_streams(thumbnails: &[Thumbnail<'_>]) -> Vec<ExtTag> {
 }
 
 fn build_variant_streams(
-    tracks: &[Track],
+    tracks: &[CmafTrack],
     segment_options: &SegmentOptions,
     renditions: &Renditions,
 ) -> Result<Vec<VariantStream>, HlsError> {
     tracks
         .iter()
         .filter_map(|track| match track.kind() {
-            TrackKind::Video(video) => Some(build_variant_stream(
+            CmafTrackKind::Video(video) => Some(build_variant_stream(
                 track,
                 video,
                 segment_options,
                 renditions,
             )),
-            TrackKind::Audio(_) | TrackKind::Text(_) => None,
+            CmafTrackKind::Audio(_) | CmafTrackKind::Text(_) => None,
         })
         .collect()
 }
 
 fn build_variant_stream(
-    track: &Track,
+    track: &CmafTrack,
     video: &VideoKind,
     segment_options: &SegmentOptions,
     renditions: &Renditions,
@@ -116,6 +116,6 @@ fn frame_rate(value: &str) -> Result<f64, HlsError> {
     Ok((f64::from(numerator) / f64::from(denominator) * 1000.0).round() / 1000.0)
 }
 
-fn served_segments<'a>(track: &'a Track, options: &SegmentOptions) -> Vec<ServedSegment<'a>> {
+fn served_segments<'a>(track: &'a CmafTrack, options: &SegmentOptions) -> Vec<ServedSegment<'a>> {
     ServedSegment::group(track.segments(), options.min_length, &options.boundaries)
 }

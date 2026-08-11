@@ -1,13 +1,8 @@
-use std::sync::Arc;
-
 use dyndo_core::asset_descriptor::AssetDescriptor;
-use dyndo_core::codec::{CodecConfig, WvttCodec};
-use dyndo_core::segment::InitSegment;
-use dyndo_core::thumbnail_descriptor::ThumbnailDescriptor;
+use dyndo_core::thumbnail_track_descriptor::ThumbnailTrackDescriptor;
 use dyndo_core::track::Track;
-use dyndo_core::track_kind::{TextKind, TrackKind};
 use opendal::{Operator, services::Memory};
-use relative_path::{RelativePath, RelativePathBuf};
+use relative_path::RelativePath;
 
 fn memory_operator() -> Operator {
     Operator::new(Memory::default()).unwrap()
@@ -22,40 +17,57 @@ async fn read_or_new_preserves_the_descriptor_base_when_adding_a_track() {
     .await
     .unwrap();
 
-    let track = Track::new(
-        "text".into(),
-        RelativePathBuf::from("assets/movie/subtitles/en.vtt"),
-        TrackKind::Text(TextKind {
-            language: "en".parse().unwrap(),
-            role: None,
-        }),
-        Arc::new(InitSegment::new(CodecConfig::Wvtt(WvttCodec), 1_000, 0, 0)),
-        Vec::new(),
-    );
+    let operator = memory_operator();
+    operator
+        .write(
+            "assets/movie/subtitles/en.vtt",
+            "WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nHello\n",
+        )
+        .await
+        .unwrap();
+    let track_descriptor = serde_json::from_str(
+        r#"{"id":"text","path":"subtitles/en.vtt","type":"vtt","language":"en"}"#,
+    )
+    .unwrap();
+    let track = Track::probe(
+        &operator,
+        RelativePath::new("assets/movie/subtitles/en.vtt"),
+        Some(&track_descriptor),
+    )
+    .await
+    .unwrap();
     descriptor.add_track(&track);
 
     assert_eq!(
-        descriptor.track_path(descriptor.find_track_by_id("text").unwrap()),
-        RelativePath::new("assets/movie/subtitles/en.vtt")
+        descriptor
+            .track_path(descriptor.find_track_by_id("text").unwrap())
+            .as_deref(),
+        Some(RelativePath::new("assets/movie/subtitles/en.vtt"))
     );
+
+    let value = serde_json::to_value(&descriptor).unwrap();
+    assert_eq!(value["tracks"][0]["type"], "vtt");
+    assert!(value["tracks"][0].get("codec").is_none());
 }
 
 #[tokio::test]
 async fn read_deserializes_an_asset_descriptor_from_storage() {
     let operator = memory_operator();
-    operator.write("assets/asset.json", r#"{"segment_options":{"min_length":1000},"tracks":[{"id":"text","path":"subtitles/en.vtt","codec":"wvtt","type":"text"}],"thumbnails":[{"id":"preview","tile_size":4,"width":640,"step":1000}]}"#).await.unwrap();
+    operator.write("assets/asset.json", r#"{"segment_options":{"min_length":1000},"tracks":[{"id":"text","path":"subtitles/en.vtt","type":"vtt"},{"id":"preview","tile_size":4,"width":640,"step":1000,"type":"image"}]}"#).await.unwrap();
 
     let descriptor = AssetDescriptor::read(&operator, "assets/asset.json")
         .await
         .unwrap();
 
     assert_eq!(
-        descriptor.track_path(descriptor.find_track_by_id("text").unwrap()),
-        RelativePath::new("assets/subtitles/en.vtt")
+        descriptor
+            .track_path(descriptor.find_track_by_id("text").unwrap())
+            .as_deref(),
+        Some(RelativePath::new("assets/subtitles/en.vtt"))
     );
     assert_eq!(
         descriptor.find_thumbnail_by_id("preview"),
-        Some(&ThumbnailDescriptor {
+        Some(&ThumbnailTrackDescriptor {
             id: "preview".to_string(),
             tile_size: 4,
             width: 640,
@@ -70,6 +82,22 @@ async fn read_or_new_propagates_invalid_json() {
     operator.write("asset.json", "not json").await.unwrap();
 
     let result = AssetDescriptor::read_or_new(&operator, RelativePath::new("asset.json")).await;
+
+    assert!(result.is_err());
+}
+
+#[tokio::test]
+async fn read_rejects_the_removed_thumbnails_collection() {
+    let operator = memory_operator();
+    operator
+        .write(
+            "asset.json",
+            r#"{"tracks":[],"thumbnails":[{"id":"preview"}]}"#,
+        )
+        .await
+        .unwrap();
+
+    let result = AssetDescriptor::read(&operator, "asset.json").await;
 
     assert!(result.is_err());
 }

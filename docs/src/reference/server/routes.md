@@ -96,10 +96,9 @@ Unknown keys are rejected on every output route.
 
 ## Filtering descriptor entries
 
-A request can narrow an asset's tracks and thumbnail configurations, so one
-descriptor covers every variation you want to offer — a resolution cap, one
-audio language, or selected thumbnail tracks — instead of one descriptor per
-variation.
+A request can narrow an asset's track entries, so one descriptor covers every
+variation you want to offer — a resolution cap, one audio language, or selected
+image tracks — instead of one descriptor per variation.
 
 | Parameter | Applies to |
 |---|---|
@@ -167,16 +166,16 @@ is stored in the descriptor and `codec` is the descriptor value. Segment-derived
 
 | Attribute | Type | Present on | Description |
 |---|---|---|---|
-| `type` | text | every entry | `video`, `audio`, `text`, or `image` for a thumbnail. |
-| `id` | text | every entry | The track or thumbnail identifier. |
-| `codec` | text | track | The descriptor codec, for example `avc1.640028`. |
+| `type` | text | every entry | `video`, `audio`, `text`, `vtt`, or `image`. |
+| `id` | text | every entry | The track identifier. |
+| `codec` | text | CMAF track | The descriptor codec, for example `avc1.640028`. |
 | `width` | numeric | video, thumbnail | Frame or complete sprite width in pixels. |
 | `height` | numeric | video | Frame height in pixels. |
 | `frame_rate` | text | video | The rate as written, for example `25/1`. |
 | `sample_rate` | numeric | audio | Samples per second. |
 | `channels` | numeric | audio | Channel count. |
-| `language` | text | audio, text | The track's language tag, compared exactly as the descriptor spells it. |
-| `role` | text | audio, text | One of the [track roles](../roles.md). |
+| `language` | text | audio, text, vtt | The track's language tag, compared exactly as the descriptor spells it. |
+| `role` | text | audio, text, vtt | One of the [track roles](../roles.md). |
 | `tile_size` | numeric | thumbnail | Thumbnails per sprite row and column. |
 | `step` | numeric | thumbnail | Milliseconds between adjacent thumbnails. |
 
@@ -300,10 +299,11 @@ segment: the same cut points, the same duration, the same bytes underneath.
 /out/(asset:demo)/text_3b519953-…/0.vtt   → the WebVTT document those bytes hold
 ```
 
-A `.vtt` request resolves the segment exactly as a `.m4s` request does, then reads
-the cues back out of the packaged bytes. The document carries the absolute
-timestamps the source used and no `X-TIMESTAMP-MAP`, since the times are already
-on the presentation's clock.
+A `.vtt` request resolves the segment exactly as a `.m4s` request does. For a
+raw WebVTT source, it selects cues directly from the parsed document; for a CMAF
+`wvtt` source, it reads the cues from the packaged bytes. The document carries
+the absolute timestamps the source used and no `X-TIMESTAMP-MAP`, since the
+times are already on the presentation's clock.
 
 Which one a player asks for is the manifest's business: DASH always references
 `.m4s`, while HLS references `.vtt` unless the request passes
@@ -311,7 +311,8 @@ Which one a player asks for is the manifest's business: DASH always references
 either way, and is simply not referenced by a WebVTT rendition — a WebVTT segment
 needs no initialization.
 
-A `.vtt` response is reconstructed from the packaged initialization and media segment, whether the original source was raw WebVTT or CMAF `wvtt`.
+A `.vtt` response is assembled from raw cues for a WebVTT source, or reconstructed
+from the packaged initialization and media segment for a CMAF `wvtt` source.
 
 ## Segment addressing
 

@@ -64,7 +64,7 @@ The file extension selects how an input is read. Matching is
 | Extension | Format | Becomes |
 |---|---|---|
 | `.mp4` | CMAF — fragmented MP4 | A video, audio, or text (`wvtt`) track, by media handler. |
-| `.vtt` | Raw WebVTT | A text track (see the caveat below). |
+| `.vtt` | Raw WebVTT | A VTT track (see the caveat below). |
 
 Any other extension aborts with `unsupported track format`.
 
@@ -79,10 +79,10 @@ requires:
 - a single `sidx` with a non-zero timescale, no zero-duration references, and
   every reference a media reference starting with a SAP of type 1.
 
-> A raw `.vtt` input is recorded as a text track with codec `wvtt`, which is what
-> it is packaged as when served — dyndo parses and packages it on the way out, so
-> nothing is written beside your `.vtt`. Its language is `und` unless you pass
-> `language=`, because WebVTT declares none of its own.
+> A raw `.vtt` input is recorded as a `vtt` track without a codec. dyndo parses
+> it and creates a `wvtt` view only for CMAF output, so nothing is written beside your
+> `.vtt`. Its language is `und` unless you pass `language=`, because WebVTT
+> declares none of its own.
 
 ## Description
 

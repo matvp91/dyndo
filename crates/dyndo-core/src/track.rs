@@ -1,75 +1,50 @@
-use std::sync::Arc;
+use super::cmaf_track::CmafTrack;
+use super::thumbnail_track::ThumbnailTrack;
+use super::vtt_track::VttTrack;
 
-use relative_path::{RelativePath, RelativePathBuf};
-
-use super::codec::CodecConfig;
-use super::segment::{InitSegment, Segment};
-use super::track_kind::TrackKind;
-
+/// A resolved track that can be served as CMAF, raw WebVTT, or thumbnail sprites.
 #[derive(Clone)]
-pub struct Track {
-    id: String,
-    path: RelativePathBuf,
-    kind: TrackKind,
-    init_segment: Arc<InitSegment>,
-    segments: Vec<Segment>,
+pub enum Track {
+    Cmaf(CmafTrack),
+    Vtt(VttTrack),
+    Thumbnail(ThumbnailTrack),
 }
 
 impl Track {
-    pub fn new(
-        id: String,
-        path: RelativePathBuf,
-        kind: TrackKind,
-        init_segment: Arc<InitSegment>,
-        segments: Vec<Segment>,
-    ) -> Self {
-        Self {
-            id,
-            path,
-            kind,
-            init_segment,
-            segments,
+    pub fn id(&self) -> &str {
+        match self {
+            Self::Cmaf(track) => track.id(),
+            Self::Vtt(track) => track.id(),
+            Self::Thumbnail(track) => track.id(),
         }
     }
 
-    pub fn id(&self) -> &str {
-        &self.id
+    pub fn native_cmaf(&self) -> Option<&CmafTrack> {
+        match self {
+            Self::Cmaf(track) => Some(track),
+            Self::Vtt(_) | Self::Thumbnail(_) => None,
+        }
     }
 
-    pub fn path(&self) -> &RelativePath {
-        &self.path
+    pub fn vtt(&self) -> Option<&VttTrack> {
+        match self {
+            Self::Vtt(track) => Some(track),
+            _ => None,
+        }
     }
 
-    pub fn kind(&self) -> &TrackKind {
-        &self.kind
+    pub fn thumbnail(&self) -> Option<&ThumbnailTrack> {
+        match self {
+            Self::Thumbnail(track) => Some(track),
+            _ => None,
+        }
     }
 
-    pub fn segments(&self) -> &[Segment] {
-        &self.segments
-    }
-
-    pub fn init_segment(&self) -> &InitSegment {
-        &self.init_segment
-    }
-
-    pub fn codec(&self) -> &CodecConfig {
-        self.init_segment().codec()
-    }
-
-    pub fn timescale(&self) -> u32 {
-        self.init_segment().timescale()
-    }
-
-    pub fn unscaled_earliest_presentation_time(&self) -> Option<u64> {
-        self.segments.first().map(Segment::unscaled_start_time)
-    }
-
-    pub fn duration(&self) -> u32 {
-        let Some((first, remaining)) = self.segments.split_first() else {
-            return 0;
-        };
-        let last = remaining.last().unwrap_or(first);
-        let duration = last.end_time().saturating_sub(first.start_time());
-        u32::try_from(duration).unwrap_or(u32::MAX)
+    pub fn source_path(&self) -> Option<&relative_path::RelativePath> {
+        match self {
+            Self::Cmaf(track) => Some(track.path()),
+            Self::Vtt(track) => Some(track.path()),
+            Self::Thumbnail(_) => None,
+        }
     }
 }

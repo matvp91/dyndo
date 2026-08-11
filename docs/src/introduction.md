@@ -100,6 +100,6 @@ Codec parameters are read from the source and emitted as
 | Text  | WebVTT in ISO-BMFF          | `wvtt`         |
 
 Raw WebVTT (`.vtt`) files are also accepted as text-track sources: dyndo parses
-one and packages a `wvtt` track from it as it reads, so the `.vtt` stays the
-source of truth. DASH is served that packaged track, while HLS is served plain
-WebVTT documents — see [Add a subtitle track](./how-to/add-subtitles.md).
+one and creates a temporary `wvtt` view only for CMAF output, so the `.vtt`
+stays the source of truth. DASH is served that packaged track, while HLS is
+served plain WebVTT documents — see [Add a subtitle track](./how-to/add-subtitles.md).

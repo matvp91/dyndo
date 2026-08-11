@@ -1,8 +1,8 @@
+use dyndo_core::cmaf_track::CmafTrack;
+use dyndo_core::cmaf_track_kind::CmafTrackKind;
 use dyndo_core::role::Role;
 use dyndo_core::segment_options::SegmentOptions;
 use dyndo_core::served_segment::ServedSegment;
-use dyndo_core::track::Track;
-use dyndo_core::track_kind::TrackKind;
 
 pub(super) struct AdaptationGroup<'a> {
     key: String,
@@ -10,20 +10,20 @@ pub(super) struct AdaptationGroup<'a> {
     mime_type: &'static str,
     language: Option<String>,
     role: Option<Role>,
-    members: Vec<&'a Track>,
+    members: Vec<&'a CmafTrack>,
 }
 
 impl<'a> AdaptationGroup<'a> {
-    fn new(key: String, track: &'a Track) -> Self {
+    fn new(key: String, track: &'a CmafTrack) -> Self {
         let language = match track.kind() {
-            TrackKind::Video(_) => None,
-            TrackKind::Audio(audio) => Some(audio.language.to_string()),
-            TrackKind::Text(text) => Some(text.language.to_string()),
+            CmafTrackKind::Video(_) => None,
+            CmafTrackKind::Audio(audio) => Some(audio.language.to_string()),
+            CmafTrackKind::Text(text) => Some(text.language.to_string()),
         };
         let role = match track.kind() {
-            TrackKind::Video(_) => None,
-            TrackKind::Audio(audio) => audio.role,
-            TrackKind::Text(text) => text.role,
+            CmafTrackKind::Video(_) => None,
+            CmafTrackKind::Audio(audio) => audio.role,
+            CmafTrackKind::Text(text) => text.role,
         };
 
         Self {
@@ -36,7 +36,7 @@ impl<'a> AdaptationGroup<'a> {
         }
     }
 
-    pub(super) fn group(tracks: &'a [Track]) -> Vec<Self> {
+    pub(super) fn group(tracks: &'a [CmafTrack]) -> Vec<Self> {
         let mut groups: Vec<Self> = Vec::new();
 
         for track in tracks {
@@ -67,7 +67,7 @@ impl<'a> AdaptationGroup<'a> {
         self.role
     }
 
-    pub(super) fn members(&self) -> &[&'a Track] {
+    pub(super) fn members(&self) -> &[&'a CmafTrack] {
         &self.members
     }
 
@@ -87,7 +87,7 @@ impl<'a> AdaptationGroup<'a> {
     }
 }
 
-fn served_segments<'a>(track: &'a Track, options: &SegmentOptions) -> Vec<ServedSegment<'a>> {
+fn served_segments<'a>(track: &'a CmafTrack, options: &SegmentOptions) -> Vec<ServedSegment<'a>> {
     ServedSegment::group(track.segments(), options.min_length, &options.boundaries)
 }
 
@@ -95,14 +95,14 @@ fn segment_times(segment: &ServedSegment<'_>) -> (u64, u64) {
     (segment.unscaled_start_time(), segment.unscaled_end_time())
 }
 
-fn adaptation_set_key(track: &Track) -> String {
+fn adaptation_set_key(track: &CmafTrack) -> String {
     let codec = track.codec().rfc6381();
     let sample_entry = sample_entry(&codec);
     match track.kind() {
-        TrackKind::Video(_) => {
+        CmafTrackKind::Video(_) => {
             format!("video:{sample_entry}:{}", track.timescale())
         }
-        TrackKind::Audio(audio) => format!(
+        CmafTrackKind::Audio(audio) => format!(
             "audio:{sample_entry}:{}:{}:{}:{}:{}",
             track.timescale(),
             audio.language,
@@ -110,7 +110,7 @@ fn adaptation_set_key(track: &Track) -> String {
             audio.sample_rate,
             audio.channels
         ),
-        TrackKind::Text(text) => format!(
+        CmafTrackKind::Text(text) => format!(
             "text:{sample_entry}:{}:{}:{}",
             track.timescale(),
             text.language,

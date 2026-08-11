@@ -5,10 +5,10 @@ use image::imageops::FilterType;
 use image::{ImageFormat, RgbImage, imageops};
 use opendal::Operator;
 
-use super::{FrameExtractor, FrameExtractorError};
-use crate::thumbnail_descriptor::ThumbnailDescriptor;
-use crate::track::Track;
-use crate::track_kind::TrackKind;
+use crate::cmaf_track::CmafTrack;
+use crate::cmaf_track_kind::CmafTrackKind;
+use crate::image::{FrameExtractor, FrameExtractorError};
+use crate::thumbnail_track_descriptor::ThumbnailTrackDescriptor;
 
 const CONCURRENT_FRAME_GRABS: usize = 4;
 const BITS_PER_PIXEL: u64 = 1;
@@ -23,31 +23,36 @@ pub enum ThumbnailError {
 }
 
 /// Generates thumbnail sprites from the most suitable video source.
-pub struct Thumbnail<'a> {
-    descriptor: &'a ThumbnailDescriptor,
-    source: &'a Track,
+#[derive(Clone)]
+pub struct ThumbnailTrack {
+    descriptor: ThumbnailTrackDescriptor,
+    source: CmafTrack,
     height: u32,
 }
 
-impl<'a> Thumbnail<'a> {
+impl ThumbnailTrack {
     /// Creates a thumbnail generator from its configuration and source tracks.
     ///
     /// Selects the smallest video at least as wide as the requested sprite, or
     /// the largest video when every source must be upscaled.
-    pub fn new(descriptor: &'a ThumbnailDescriptor, tracks: &'a [Track]) -> Option<Self> {
+    pub fn new(descriptor: &ThumbnailTrackDescriptor, tracks: &[CmafTrack]) -> Option<Self> {
         let source = select_source(descriptor.width, tracks)?;
         let (_, height) = dimensions(descriptor, source)?;
 
         Some(Self {
-            descriptor,
-            source,
+            descriptor: descriptor.clone(),
+            source: source.clone(),
             height,
         })
     }
 
     /// Returns the video track selected to produce this thumbnail sprite.
-    pub fn source(&self) -> &Track {
-        self.source
+    pub fn source(&self) -> &CmafTrack {
+        &self.source
+    }
+
+    pub fn descriptor(&self) -> &ThumbnailTrackDescriptor {
+        &self.descriptor
     }
 
     /// Returns the thumbnail configuration identifier.
@@ -124,7 +129,7 @@ impl<'a> Thumbnail<'a> {
             return Ok(None);
         }
 
-        let extractor = FrameExtractor::new(op, self.source);
+        let extractor = FrameExtractor::new(op, &self.source);
         let (tile_width, tile_height) = self.tile_dimensions();
         let mut sprite = RgbImage::new(self.width(), self.height);
         let frames = self
@@ -159,7 +164,7 @@ impl<'a> Thumbnail<'a> {
     }
 }
 
-fn select_source(width: u32, tracks: &[Track]) -> Option<&Track> {
+fn select_source(width: u32, tracks: &[CmafTrack]) -> Option<&CmafTrack> {
     tracks
         .iter()
         .filter_map(video_width)
@@ -175,15 +180,15 @@ fn select_source(width: u32, tracks: &[Track]) -> Option<&Track> {
         })
 }
 
-fn video_width(track: &Track) -> Option<(&Track, u32)> {
-    let TrackKind::Video(video) = track.kind() else {
+fn video_width(track: &CmafTrack) -> Option<(&CmafTrack, u32)> {
+    let CmafTrackKind::Video(video) = track.kind() else {
         return None;
     };
     Some((track, video.width))
 }
 
-fn dimensions(descriptor: &ThumbnailDescriptor, source: &Track) -> Option<(u32, u32)> {
-    let TrackKind::Video(video) = source.kind() else {
+fn dimensions(descriptor: &ThumbnailTrackDescriptor, source: &CmafTrack) -> Option<(u32, u32)> {
+    let CmafTrackKind::Video(video) = source.kind() else {
         return None;
     };
     if descriptor.tile_size == 0
@@ -207,17 +212,18 @@ fn dimensions(descriptor: &ThumbnailDescriptor, source: &Track) -> Option<(u32, 
 mod tests {
     use std::sync::Arc;
 
-    use super::{Thumbnail, ThumbnailDescriptor};
+    use super::ThumbnailTrack;
+    use crate::cmaf_track::CmafTrack;
+    use crate::cmaf_track_kind::{CmafTrackKind, VideoKind};
     use crate::codec::{CodecConfig, WvttCodec};
     use crate::segment::InitSegment;
-    use crate::track::Track;
-    use crate::track_kind::{TrackKind, VideoKind};
+    use crate::thumbnail_track_descriptor::ThumbnailTrackDescriptor;
 
-    fn video(id: &str, width: u32, height: u32) -> Track {
-        Track::new(
+    fn video(id: &str, width: u32, height: u32) -> CmafTrack {
+        CmafTrack::new(
             id.to_string(),
             format!("{id}.mp4").into(),
-            TrackKind::Video(VideoKind {
+            CmafTrackKind::Video(VideoKind {
                 width,
                 height,
                 frame_rate: "25/1".to_string(),
@@ -227,8 +233,8 @@ mod tests {
         )
     }
 
-    fn descriptor(width: u32) -> ThumbnailDescriptor {
-        ThumbnailDescriptor {
+    fn descriptor(width: u32) -> ThumbnailTrackDescriptor {
+        ThumbnailTrackDescriptor {
             id: "thumbnail".to_string(),
             tile_size: 4,
             width,
@@ -241,7 +247,7 @@ mod tests {
         let tracks = [video("720", 1_280, 720), video("1080", 1_920, 1_080)];
         let descriptor = descriptor(1_500);
 
-        let thumbnail = Thumbnail::new(&descriptor, &tracks).unwrap();
+        let thumbnail = ThumbnailTrack::new(&descriptor, &tracks).unwrap();
 
         assert_eq!(thumbnail.source().id(), "1080");
     }
@@ -251,7 +257,7 @@ mod tests {
         let tracks = [video("720", 1_280, 720), video("1080", 1_920, 1_080)];
         let descriptor = descriptor(3_840);
 
-        let thumbnail = Thumbnail::new(&descriptor, &tracks).unwrap();
+        let thumbnail = ThumbnailTrack::new(&descriptor, &tracks).unwrap();
 
         assert_eq!(thumbnail.source().id(), "1080");
     }

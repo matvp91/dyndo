@@ -3,43 +3,36 @@ use std::ops::Range;
 use bytes::Bytes;
 use opendal::Operator;
 
-use self::vtt_layer::VttLayer;
-use super::segment_options::SegmentOptions;
-use super::track::Track;
-
-mod vtt_layer;
+use super::cmaf_track::CmafTrack;
 
 #[derive(Debug, thiserror::Error)]
-#[error(transparent)]
-pub struct TrackReadError(#[from] opendal::Error);
-
-pub struct Reader<'a> {
-    op: Operator,
-    track: &'a Track,
+pub enum TrackReadError {
+    #[error(transparent)]
+    Storage(#[from] opendal::Error),
 }
 
-impl<'a> Reader<'a> {
-    pub fn new(op: &Operator, track: &'a Track, options: &SegmentOptions) -> Self {
-        Self {
-            op: Self::op(op, options),
-            track,
-        }
+pub struct Reader {
+    op: Operator,
+}
+
+impl Reader {
+    pub fn new(op: &Operator) -> Self {
+        Self { op: op.clone() }
     }
 
-    pub(crate) fn op(op: &Operator, options: &SegmentOptions) -> Operator {
-        op.clone()
-            .layer(VttLayer::new(&options.boundaries, options.text_length))
-    }
-
-    pub async fn read_initialization(&self) -> Result<Bytes, TrackReadError> {
-        self.read_range(self.track.init_segment().byte_range())
+    pub async fn read_initialization(&self, track: &CmafTrack) -> Result<Bytes, TrackReadError> {
+        self.read_range(track, track.init_segment().byte_range())
             .await
     }
 
-    pub async fn read_range(&self, range: Range<u64>) -> Result<Bytes, TrackReadError> {
+    pub async fn read_range(
+        &self,
+        track: &CmafTrack,
+        range: Range<u64>,
+    ) -> Result<Bytes, TrackReadError> {
         Ok(self
             .op
-            .read_with(self.track.path().as_str())
+            .read_with(track.path().as_str())
             .range(range)
             .await?
             .to_bytes())

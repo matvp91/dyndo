@@ -768,6 +768,7 @@ name = "dyndo-server"
 version = "0.4.0"
 dependencies = [
  "axum",
+ "bytes",
  "dyndo-core",
  "dyndo-dash",
  "dyndo-hls",

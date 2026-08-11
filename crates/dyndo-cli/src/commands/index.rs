@@ -2,7 +2,7 @@ use clap::Args;
 use dyndo_core::asset_descriptor::AssetDescriptor;
 use dyndo_core::role::Role;
 use dyndo_core::track::Track;
-use dyndo_core::track_kind::TrackKind;
+use dyndo_core::track_descriptor::TrackDescriptor;
 use language_tags::LanguageTag;
 use opendal::Operator;
 use relative_path::{RelativePath, RelativePathBuf};
@@ -25,12 +25,12 @@ pub(crate) async fn run(op: &Operator, args: IndexArgs) -> Result<(), Box<dyn st
     for input in args.inputs {
         let path = output_base.join(&input.path);
         if let Some(track) = descriptor.find_track_by_path(&path) {
-            input.apply(&mut track.kind);
+            input.apply(track);
             continue;
         }
 
-        let track = Track::probe(op, &path, None, &descriptor.segment_options).await?;
-        input.apply(&mut descriptor.add_track(&track).kind);
+        let track = Track::probe(op, &path, None).await?;
+        input.apply(descriptor.add_track(&track));
     }
 
     op.write(&args.output, serde_json::to_vec_pretty(&descriptor)?)
@@ -47,11 +47,12 @@ struct TrackInput {
 }
 
 impl TrackInput {
-    fn apply(&self, kind: &mut TrackKind) {
-        let (language, role) = match kind {
-            TrackKind::Audio(audio) => (&mut audio.language, &mut audio.role),
-            TrackKind::Text(text) => (&mut text.language, &mut text.role),
-            TrackKind::Video(_) => return,
+    fn apply(&self, descriptor: &mut TrackDescriptor) {
+        let (language, role) = match descriptor {
+            TrackDescriptor::Audio(audio) => (&mut audio.kind.language, &mut audio.kind.role),
+            TrackDescriptor::Text(text) => (&mut text.kind.language, &mut text.kind.role),
+            TrackDescriptor::Vtt(text) => (&mut text.kind.language, &mut text.kind.role),
+            TrackDescriptor::Video(_) | TrackDescriptor::Image(_) => return,
         };
         if let Some(value) = &self.language {
             language.clone_from(value);

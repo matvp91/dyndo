@@ -9,9 +9,9 @@ mod roles;
 mod thumbnail;
 
 use dash_mpd::MPD;
-use dyndo_core::image::Thumbnail;
+use dyndo_core::cmaf_track::CmafTrack;
 use dyndo_core::segment_options::SegmentOptions;
-use dyndo_core::track::Track;
+use dyndo_core::thumbnail_track::ThumbnailTrack;
 use options::DashOptions;
 
 #[derive(Debug, thiserror::Error)]
@@ -39,8 +39,8 @@ pub enum DashError {
 /// Returns a [`DashError`] when tracks grouped into an AdaptationSet are not
 /// segment-aligned.
 pub fn generate_mpd(
-    tracks: &[Track],
-    thumbnails: &[Thumbnail<'_>],
+    tracks: &[CmafTrack],
+    thumbnails: &[ThumbnailTrack],
     segment_options: &SegmentOptions,
     dash_options: &DashOptions,
 ) -> Result<MPD, DashError> {

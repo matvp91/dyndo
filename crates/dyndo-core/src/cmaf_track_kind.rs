@@ -5,13 +5,13 @@ use super::role::Role;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
-pub enum TrackKind {
+pub enum CmafTrackKind {
     Video(VideoKind),
     Audio(AudioKind),
     Text(TextKind),
 }
 
-impl TrackKind {
+impl CmafTrackKind {
     /// Returns the DASH media content type represented by a track of this kind.
     pub fn content_type(&self) -> &'static str {
         match self {

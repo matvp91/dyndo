@@ -1,4 +1,3 @@
-use dyndo_core::segment_options::SegmentOptions;
 use dyndo_core::track::Track;
 use mp4_atom::{Any, DecodeMaybe, Encode, FourCC, Sidx};
 use opendal::{Operator, services::Memory};
@@ -45,15 +44,10 @@ async fn probe_rejects_a_sidx_with_zero_timescale() {
         .await
         .unwrap();
 
-    let error = Track::probe(
-        &operator,
-        RelativePath::new("video.mp4"),
-        None,
-        &SegmentOptions::default(),
-    )
-    .await
-    .err()
-    .unwrap();
+    let error = Track::probe(&operator, RelativePath::new("video.mp4"), None)
+        .await
+        .err()
+        .unwrap();
 
     assert_eq!(
         error.to_string(),
@@ -72,15 +66,10 @@ async fn probe_rejects_a_sidx_reference_with_zero_duration() {
         .await
         .unwrap();
 
-    let error = Track::probe(
-        &operator,
-        RelativePath::new("video.mp4"),
-        None,
-        &SegmentOptions::default(),
-    )
-    .await
-    .err()
-    .unwrap();
+    let error = Track::probe(&operator, RelativePath::new("video.mp4"), None)
+        .await
+        .err()
+        .unwrap();
 
     assert_eq!(
         error.to_string(),
@@ -99,15 +88,10 @@ async fn probe_rejects_a_sidx_reference_without_a_random_access_point() {
         .await
         .unwrap();
 
-    let error = Track::probe(
-        &operator,
-        RelativePath::new("video.mp4"),
-        None,
-        &SegmentOptions::default(),
-    )
-    .await
-    .err()
-    .unwrap();
+    let error = Track::probe(&operator, RelativePath::new("video.mp4"), None)
+        .await
+        .err()
+        .unwrap();
 
     assert_eq!(error.to_string(), "invalid sidx reference");
 }
@@ -126,15 +110,10 @@ async fn probe_rejects_a_sidx_with_an_overflowing_segment_time() {
         .await
         .unwrap();
 
-    let error = Track::probe(
-        &operator,
-        RelativePath::new("video.mp4"),
-        None,
-        &SegmentOptions::default(),
-    )
-    .await
-    .err()
-    .unwrap();
+    let error = Track::probe(&operator, RelativePath::new("video.mp4"), None)
+        .await
+        .err()
+        .unwrap();
 
     assert_eq!(error.to_string(), "segment time overflows");
 }
@@ -154,15 +133,10 @@ async fn probe_rejects_an_unsupported_track_handler() {
         .await
         .unwrap();
 
-    let error = Track::probe(
-        &operator,
-        RelativePath::new("video.mp4"),
-        None,
-        &SegmentOptions::default(),
-    )
-    .await
-    .err()
-    .unwrap();
+    let error = Track::probe(&operator, RelativePath::new("video.mp4"), None)
+        .await
+        .err()
+        .unwrap();
 
     assert_eq!(error.to_string(), "unsupported track handler");
 }
@@ -182,15 +156,10 @@ async fn probe_rejects_a_video_without_sample_duration() {
         .await
         .unwrap();
 
-    let error = Track::probe(
-        &operator,
-        RelativePath::new("video.mp4"),
-        None,
-        &SegmentOptions::default(),
-    )
-    .await
-    .err()
-    .unwrap();
+    let error = Track::probe(&operator, RelativePath::new("video.mp4"), None)
+        .await
+        .err()
+        .unwrap();
 
     assert_eq!(error.to_string(), "video track has no sample duration");
 }
@@ -203,15 +172,10 @@ async fn probe_rejects_a_truncated_container_without_panicking() {
         .await
         .unwrap();
 
-    let error = Track::probe(
-        &operator,
-        RelativePath::new("video.mp4"),
-        None,
-        &SegmentOptions::default(),
-    )
-    .await
-    .err()
-    .unwrap();
+    let error = Track::probe(&operator, RelativePath::new("video.mp4"), None)
+        .await
+        .err()
+        .unwrap();
 
     assert!(!error.to_string().is_empty());
 }

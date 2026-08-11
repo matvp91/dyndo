@@ -1,10 +1,12 @@
 use language_tags::LanguageTag;
 use mp4_atom::{Codec as Mp4Codec, FourCC};
 
+use super::super::cmaf_track_kind::{
+    AudioKind, CmafTrackKind, TextKind, VideoKind, undetermined_language,
+};
 use super::super::codec::{
     AacCodec, Ac3Codec, Av1Codec, AvcCodec, CodecConfig, Eac3Codec, HevcCodec, WvttCodec,
 };
-use super::super::track_kind::{AudioKind, TextKind, TrackKind, VideoKind, undetermined_language};
 use super::ProbeError;
 use super::box_reader::Boxes;
 
@@ -23,15 +25,15 @@ pub(super) fn build_codec(boxes: &Boxes) -> Result<CodecConfig, ProbeError> {
     }
 }
 
-pub(super) fn build_kind(boxes: &Boxes) -> Result<TrackKind, ProbeError> {
+pub(super) fn build_kind(boxes: &Boxes) -> Result<CmafTrackKind, ProbeError> {
     let handler = boxes.moov.trak[0].mdia.hdlr.handler;
 
     if handler == FourCC::new(b"vide") {
-        build_video_kind(boxes).map(TrackKind::Video)
+        build_video_kind(boxes).map(CmafTrackKind::Video)
     } else if handler == FourCC::new(b"soun") {
-        build_audio_kind(boxes).map(TrackKind::Audio)
+        build_audio_kind(boxes).map(CmafTrackKind::Audio)
     } else if handler == FourCC::new(b"text") {
-        Ok(TrackKind::Text(build_text_kind(boxes)))
+        Ok(CmafTrackKind::Text(build_text_kind(boxes)))
     } else {
         Err(ProbeError::UnsupportedTrackHandler)
     }

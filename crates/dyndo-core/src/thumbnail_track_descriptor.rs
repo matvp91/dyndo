@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 /// The configuration of a thumbnail sprite sheet in an asset descriptor.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ThumbnailDescriptor {
+pub struct ThumbnailTrackDescriptor {
     /// Identifier used to address the thumbnail track.
     pub id: String,
     /// Thumbnails per sprite row and column.

@@ -1,7 +1,5 @@
 use dyndo_core::asset_descriptor::AssetDescriptor;
-use dyndo_core::thumbnail_descriptor::ThumbnailDescriptor;
 use dyndo_core::track_descriptor::TrackDescriptor;
-use dyndo_core::track_kind::TrackKind;
 use serde::{Deserialize, Deserializer, de};
 use winnow::ascii::{digit1, multispace0};
 use winnow::combinator::{
@@ -47,12 +45,9 @@ impl Filter {
     ) -> Result<(), FilterMatchedNothing> {
         descriptor
             .tracks
-            .retain(|track| self.expression.matches(Descriptor::Track(track)));
-        descriptor
-            .thumbnails
-            .retain(|thumbnail| self.expression.matches(Descriptor::Thumbnail(thumbnail)));
+            .retain(|track| self.expression.matches(track));
 
-        if descriptor.tracks.is_empty() && descriptor.thumbnails.is_empty() {
+        if descriptor.tracks.is_empty() {
             Err(FilterMatchedNothing)
         } else {
             Ok(())
@@ -64,12 +59,6 @@ impl Filter {
 #[error("no asset descriptor entry matches the filter")]
 pub(super) struct FilterMatchedNothing;
 
-#[derive(Clone, Copy)]
-enum Descriptor<'a> {
-    Track(&'a TrackDescriptor),
-    Thumbnail(&'a ThumbnailDescriptor),
-}
-
 #[derive(Debug, PartialEq, Eq)]
 enum Expression {
     And(Box<Expression>, Box<Expression>),
@@ -78,7 +67,7 @@ enum Expression {
 }
 
 impl Expression {
-    fn matches(&self, descriptor: Descriptor<'_>) -> bool {
+    fn matches(&self, descriptor: &TrackDescriptor) -> bool {
         match self {
             Self::And(left, right) => left.matches(descriptor) && right.matches(descriptor),
             Self::Or(left, right) => left.matches(descriptor) || right.matches(descriptor),
@@ -95,7 +84,7 @@ struct Comparison {
 }
 
 impl Comparison {
-    fn matches(&self, descriptor: Descriptor<'_>) -> bool {
+    fn matches(&self, descriptor: &TrackDescriptor) -> bool {
         match &self.value {
             Literal::Text(wanted) => self
                 .attribute
@@ -156,54 +145,41 @@ impl Attribute {
         )
     }
 
-    fn text<'a>(self, descriptor: Descriptor<'a>) -> Option<&'a str> {
+    fn text(self, descriptor: &TrackDescriptor) -> Option<&str> {
         match (self, descriptor) {
-            (Self::Type, Descriptor::Track(track)) => Some(track.kind.content_type()),
-            (Self::Type, Descriptor::Thumbnail(_)) => Some("image"),
-            (Self::Id, Descriptor::Track(track)) => Some(&track.id),
-            (Self::Id, Descriptor::Thumbnail(thumbnail)) => Some(&thumbnail.id),
-            (Self::Codec, Descriptor::Track(track)) => Some(&track.codec),
-            (Self::FrameRate, Descriptor::Track(track)) => match &track.kind {
-                TrackKind::Video(video) => Some(&video.frame_rate),
-                _ => None,
-            },
-            (Self::Language, Descriptor::Track(track)) => match &track.kind {
-                TrackKind::Audio(audio) => Some(audio.language.as_str()),
-                TrackKind::Text(text) => Some(text.language.as_str()),
-                TrackKind::Video(_) => None,
-            },
-            (Self::Role, Descriptor::Track(track)) => match &track.kind {
-                TrackKind::Audio(audio) => audio.role.as_ref().map(|role| role.as_str()),
-                TrackKind::Text(text) => text.role.as_ref().map(|role| role.as_str()),
-                TrackKind::Video(_) => None,
-            },
+            (Self::Type, track) => Some(track.content_type()),
+            (Self::Id, track) => Some(track.id()),
+            (Self::Codec, TrackDescriptor::Video(track)) => Some(&track.codec),
+            (Self::Codec, TrackDescriptor::Audio(track)) => Some(&track.codec),
+            (Self::Codec, TrackDescriptor::Text(track)) => Some(&track.codec),
+            (Self::FrameRate, TrackDescriptor::Video(track)) => Some(&track.kind.frame_rate),
+            (Self::Language, TrackDescriptor::Audio(track)) => Some(track.kind.language.as_str()),
+            (Self::Language, TrackDescriptor::Text(track)) => Some(track.kind.language.as_str()),
+            (Self::Language, TrackDescriptor::Vtt(track)) => Some(track.kind.language.as_str()),
+            (Self::Role, TrackDescriptor::Audio(track)) => {
+                track.kind.role.as_ref().map(|role| role.as_str())
+            }
+            (Self::Role, TrackDescriptor::Text(track)) => {
+                track.kind.role.as_ref().map(|role| role.as_str())
+            }
+            (Self::Role, TrackDescriptor::Vtt(track)) => {
+                track.kind.role.as_ref().map(|role| role.as_str())
+            }
             _ => None,
         }
     }
 
-    fn number(self, descriptor: Descriptor<'_>) -> Option<u64> {
+    fn number(self, descriptor: &TrackDescriptor) -> Option<u64> {
         match (self, descriptor) {
-            (Self::Width, Descriptor::Track(track)) => match &track.kind {
-                TrackKind::Video(video) => Some(u64::from(video.width)),
-                _ => None,
-            },
-            (Self::Width, Descriptor::Thumbnail(thumbnail)) => Some(u64::from(thumbnail.width)),
-            (Self::Height, Descriptor::Track(track)) => match &track.kind {
-                TrackKind::Video(video) => Some(u64::from(video.height)),
-                _ => None,
-            },
-            (Self::SampleRate, Descriptor::Track(track)) => match &track.kind {
-                TrackKind::Audio(audio) => Some(u64::from(audio.sample_rate)),
-                _ => None,
-            },
-            (Self::Channels, Descriptor::Track(track)) => match &track.kind {
-                TrackKind::Audio(audio) => Some(u64::from(audio.channels)),
-                _ => None,
-            },
-            (Self::TileSize, Descriptor::Thumbnail(thumbnail)) => {
-                Some(u64::from(thumbnail.tile_size))
+            (Self::Width, TrackDescriptor::Video(track)) => Some(u64::from(track.kind.width)),
+            (Self::Width, TrackDescriptor::Image(track)) => Some(u64::from(track.width)),
+            (Self::Height, TrackDescriptor::Video(track)) => Some(u64::from(track.kind.height)),
+            (Self::SampleRate, TrackDescriptor::Audio(track)) => {
+                Some(u64::from(track.kind.sample_rate))
             }
-            (Self::Step, Descriptor::Thumbnail(thumbnail)) => Some(u64::from(thumbnail.step)),
+            (Self::Channels, TrackDescriptor::Audio(track)) => Some(u64::from(track.kind.channels)),
+            (Self::TileSize, TrackDescriptor::Image(track)) => Some(u64::from(track.tile_size)),
+            (Self::Step, TrackDescriptor::Image(track)) => Some(u64::from(track.step)),
             _ => None,
         }
     }
@@ -353,14 +329,13 @@ mod tests {
                   "sample_rate": 48000,
                   "channels": 2,
                   "language": "eng"
-                }
-              ],
-              "thumbnails": [
+                },
                 {
                   "id": "preview",
                   "tile_size": 4,
                   "width": 640,
-                  "step": 1000
+                  "step": 1000,
+                  "type": "image"
                 }
               ]
             }
@@ -378,7 +353,7 @@ mod tests {
             .apply(&mut asset)
             .unwrap();
 
-        assert_eq!(asset.thumbnails.len(), 1);
+        assert_eq!(asset.thumbnail_tracks().count(), 1);
     }
 
     #[test]
@@ -390,7 +365,7 @@ mod tests {
             .apply(&mut asset)
             .unwrap();
 
-        assert_eq!(asset.tracks[0].id, "audio");
+        assert_eq!(asset.tracks[0].id(), "audio");
     }
 
     #[test]

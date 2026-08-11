@@ -1,8 +1,9 @@
 use dyndo_core::asset_descriptor::AssetDescriptor;
+use dyndo_core::cmaf_track_kind::CmafTrackKind;
 use dyndo_core::probe::probe_tracks;
 use dyndo_core::reader::Reader;
 use dyndo_core::text::Subtitle;
-use dyndo_core::track_kind::TrackKind;
+use dyndo_core::track::Track;
 use opendal::{Operator, services::Memory};
 
 const VIDEO_FIXTURE: &[u8] = include_bytes!("fixtures/three-frame-black-h264.mp4");
@@ -22,7 +23,8 @@ async fn probe_tracks_and_readers_serve_the_video_and_subtitle_tracks_of_one_ass
                 "segment_options":{"text_length":1000},
                 "tracks":[
                     {"id":"video-main","path":"video.mp4","codec":"avc1.42c00a","type":"video","width":16,"height":16,"frame_rate":"4/1"},
-                    {"id":"text-en","path":"subtitles/en.vtt","codec":"wvtt","type":"text","language":"en"}
+                    {"id":"text-en","path":"subtitles/en.vtt","type":"vtt","language":"en"},
+                    {"id":"preview","type":"image","tile_size":4,"width":640,"step":1000}
                 ]
             }"#,
         )
@@ -41,24 +43,41 @@ async fn probe_tracks_and_readers_serve_the_video_and_subtitle_tracks_of_one_ass
         .await
         .unwrap();
     let tracks = probe_tracks(&operator, &asset).await.unwrap();
+    assert_eq!(tracks.len(), 3);
+    assert!(matches!(tracks.last(), Some(Track::Thumbnail(_))));
     let video = tracks
         .iter()
         .find(|track| track.id() == "video-main")
+        .and_then(Track::native_cmaf)
         .unwrap();
-    let subtitles = tracks.iter().find(|track| track.id() == "text-en").unwrap();
-    let video_reader = Reader::new(&operator, video, &asset.segment_options);
-    let text_reader = Reader::new(&operator, subtitles, &asset.segment_options);
-    let video_initialization = video_reader.read_initialization().await.unwrap();
-    let text_media = text_reader
-        .read_range(0..subtitles.segments().last().unwrap().byte_range().end)
+    let subtitles = tracks
+        .iter()
+        .find(|track| track.id() == "text-en")
+        .and_then(Track::vtt)
+        .unwrap();
+    let packaged_subtitles = subtitles.package(&asset.segment_options).await.unwrap();
+    let subtitle_end = packaged_subtitles
+        .cmaf()
+        .segments()
+        .last()
+        .unwrap()
+        .byte_range()
+        .end;
+    let video_initialization = Reader::new(&operator)
+        .read_initialization(video)
         .await
         .unwrap();
 
-    assert!(matches!(video.kind(), TrackKind::Video(_)));
+    assert!(matches!(video.kind(), CmafTrackKind::Video(_)));
     assert_eq!(
         video_initialization.as_ref(),
         &VIDEO_FIXTURE[..video.init_segment().byte_range().end as usize]
     );
-    assert!(matches!(subtitles.kind(), TrackKind::Text(_)));
-    assert_eq!(Subtitle::from_wvtt(&text_media).unwrap().cues.len(), 1);
+    assert_eq!(
+        Subtitle::from_wvtt(&packaged_subtitles.read(0..subtitle_end).unwrap())
+            .unwrap()
+            .cues
+            .len(),
+        1
+    );
 }
