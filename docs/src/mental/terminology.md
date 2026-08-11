@@ -43,4 +43,7 @@ the resulting output as image media where their specifications require it.
 
 A timed-text source can be packaged temporarily into CMAF when a CMAF manifest
 or segment is needed. That package is a runtime representation, not a new
-source track and not a file written beside the asset.
+source track and not a file written beside the asset. Probing resolves a source
+track; packaging converts a raw WebVTT source into its temporary CMAF
+representation. Packaging is one-way: a CMAF source is not unpacked into a
+WebVTT document, so raw WebVTT output is available only from a WebVTT source.

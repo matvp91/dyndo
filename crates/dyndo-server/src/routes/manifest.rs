@@ -4,6 +4,7 @@ use axum::{
 };
 use dyndo_core::asset_descriptor::AssetDescriptor;
 use dyndo_core::cmaf_track::CmafTrack;
+use dyndo_core::cmaf_track_kind::CmafTrackKind;
 use dyndo_core::source_track::SourceTrack;
 use dyndo_core::thumbnail_track::resolve_thumbnail_tracks;
 use dyndo_dash::options::DashOptions;
@@ -43,9 +44,17 @@ pub(super) async fn hls_master(
 ) -> Result<Response, ServerError> {
     let source_tracks = TrackResolver::new(op, source_asset).probe_all().await?;
     let thumbnails = resolve_thumbnail_tracks(asset, &source_tracks);
+    let mut hls_options = *options;
+    hls_options.wvtt |= source_tracks.iter().any(|track| {
+        matches!(track, SourceTrack::Cmaf(track) if matches!(track.kind(), CmafTrackKind::Text(_)))
+    });
     let tracks = filtered_tracks(source_tracks, asset).await?;
-    let playlist =
-        dyndo_hls::generate_master_playlist(&tracks, &thumbnails, &asset.segment_options, options)?;
+    let playlist = dyndo_hls::generate_master_playlist(
+        &tracks,
+        &thumbnails,
+        &asset.segment_options,
+        &hls_options,
+    )?;
     Ok(([(CONTENT_TYPE, HLS_CONTENT_TYPE)], playlist).into_response())
 }
 
@@ -56,8 +65,10 @@ pub(super) async fn hls_media(
     track_id: &str,
 ) -> Result<Response, ServerError> {
     let track = TrackResolver::new(op, asset).resolve(track_id).await?;
+    let mut hls_options = *options;
+    hls_options.wvtt |= track.web_vtt().is_none();
     let playlist =
-        dyndo_hls::generate_media_playlist(track.cmaf(), &asset.segment_options, options)?;
+        dyndo_hls::generate_media_playlist(track.cmaf(), &asset.segment_options, &hls_options)?;
     Ok(([(CONTENT_TYPE, HLS_CONTENT_TYPE)], playlist).into_response())
 }
 
@@ -90,7 +101,7 @@ async fn filtered_tracks(
         }
         match track {
             SourceTrack::Cmaf(track) => resolved.push(track),
-            SourceTrack::Vtt(track) => {
+            SourceTrack::WebVtt(track) => {
                 resolved.push(track.package(&asset.segment_options).await?.into_cmaf())
             }
         }

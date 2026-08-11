@@ -3,7 +3,6 @@ use dyndo_core::cmaf_track_kind::CmafTrackKind;
 use dyndo_core::probe::probe_source_tracks;
 use dyndo_core::reader::Reader;
 use dyndo_core::source_track::SourceTrack;
-use dyndo_core::text::Subtitle;
 use dyndo_core::thumbnail_track::resolve_thumbnail_tracks;
 use opendal::{Operator, services::Memory};
 
@@ -54,18 +53,11 @@ async fn probe_source_tracks_and_readers_serve_the_video_and_subtitle_tracks_of_
     let subtitles = tracks
         .iter()
         .find_map(|track| match track {
-            SourceTrack::Vtt(track) if track.id() == "text-en" => Some(track),
-            SourceTrack::Cmaf(_) | SourceTrack::Vtt(_) => None,
+            SourceTrack::WebVtt(track) if track.id() == "text-en" => Some(track),
+            SourceTrack::Cmaf(_) | SourceTrack::WebVtt(_) => None,
         })
         .unwrap();
     let packaged_subtitles = subtitles.package(&asset.segment_options).await.unwrap();
-    let subtitle_end = packaged_subtitles
-        .cmaf()
-        .segments()
-        .last()
-        .unwrap()
-        .byte_range()
-        .end;
     let video_initialization = Reader::new(&operator)
         .read_initialization(video)
         .await
@@ -76,11 +68,5 @@ async fn probe_source_tracks_and_readers_serve_the_video_and_subtitle_tracks_of_
         video_initialization.as_ref(),
         &VIDEO_FIXTURE[..video.init_segment().byte_range().end as usize]
     );
-    assert_eq!(
-        Subtitle::from_wvtt(&packaged_subtitles.read(0..subtitle_end).unwrap())
-            .unwrap()
-            .cues
-            .len(),
-        1
-    );
+    assert_eq!(packaged_subtitles.cmaf().segments().len(), 1);
 }

@@ -1,16 +1,22 @@
 use mp4_atom::{Encode, Mdat, Mfhd, Moof, Tfdt, Tfhd, Traf, Trun, TrunEntry};
 
-use super::format::Format;
-use super::{PackageError, UnpackageError};
+use super::PackageError;
+use super::packager::Format;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct MediaSegment<S> {
+pub struct MediaSegment<P> {
     base_decode_time: u64,
-    samples: Vec<Sample<S>>,
+    samples: Vec<Sample<P>>,
 }
 
-impl<S> MediaSegment<S> {
-    pub fn new(base_decode_time: u64, samples: Vec<Sample<S>>) -> Self {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Sample<P> {
+    duration: u32,
+    payload: P,
+}
+
+impl<P> MediaSegment<P> {
+    pub fn new(base_decode_time: u64, samples: Vec<Sample<P>>) -> Self {
         Self {
             base_decode_time,
             samples,
@@ -28,11 +34,11 @@ impl<S> MediaSegment<S> {
             .sum()
     }
 
-    pub fn samples(&self) -> &[Sample<S>] {
+    pub fn samples(&self) -> &[Sample<P>] {
         &self.samples
     }
 
-    pub(super) fn serialize<F: Format<Payload = S>>(
+    pub(super) fn serialize<F: Format<Payload = P>>(
         &self,
         format: &F,
         track_id: u32,
@@ -88,46 +94,10 @@ impl<S> MediaSegment<S> {
 
         Ok(bytes)
     }
-
-    pub(super) fn parse<F: Format<Payload = S>>(
-        format: &F,
-        header: &Moof,
-        data: &[u8],
-    ) -> Result<Self, UnpackageError> {
-        let mut base_decode_time = None;
-        let mut samples = Vec::new();
-
-        for traf in &header.traf {
-            let tfdt = traf.tfdt.as_ref().ok_or(UnpackageError::MissingBaseTime)?;
-            base_decode_time.get_or_insert(tfdt.base_media_decode_time);
-            let mut offset = 0usize;
-
-            for entry in traf.trun.iter().flat_map(|trun| &trun.entries) {
-                let duration = entry.duration.ok_or(UnpackageError::MissingSampleTiming)?;
-                let size = entry.size.ok_or(UnpackageError::MissingSampleTiming)?;
-                let end = offset
-                    .checked_add(size as usize)
-                    .ok_or(UnpackageError::SampleOutOfRange)?;
-                let bytes = data
-                    .get(offset..end)
-                    .ok_or(UnpackageError::SampleOutOfRange)?;
-                samples.push(Sample::new(duration, format.read_sample(bytes)?));
-                offset = end;
-            }
-        }
-
-        Ok(Self::new(base_decode_time.unwrap_or(0), samples))
-    }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Sample<S> {
-    duration: u32,
-    payload: S,
-}
-
-impl<S> Sample<S> {
-    pub fn new(duration: u32, payload: S) -> Self {
+impl<P> Sample<P> {
+    pub fn new(duration: u32, payload: P) -> Self {
         Self { duration, payload }
     }
 
@@ -135,7 +105,7 @@ impl<S> Sample<S> {
         self.duration
     }
 
-    pub fn payload(&self) -> &S {
+    pub fn payload(&self) -> &P {
         &self.payload
     }
 }

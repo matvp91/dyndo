@@ -81,7 +81,7 @@ One option affects HLS output:
 
 | Full key | Shorthand | Type | Default | Description |
 |---|---|---|---|---|
-| `wvtt` | — | boolean | `false` | Point text renditions at packaged `wvtt` segments rather than WebVTT documents. |
+| `wvtt` | — | boolean | `false` | Package a raw WebVTT rendition as `wvtt` segments rather than WebVTT documents. CMAF `wvtt` sources always use `wvtt` segments. |
 
 The supported shorthand map is therefore `asset` → `a`, `min_length` → `sml`,
 `text_length` → `stl`, `compact` → `c`, `multi_period` → `mp`. `wvtt` has no
@@ -289,30 +289,29 @@ protocol-specific. See
 [Dynamic packaging without media copies](../../explanation/dynamic-packaging.md)
 for why.
 
-## Two spellings of one text segment
+## Text segment representations
 
-A text segment answers to both extensions at once, and they describe the same
-segment: the same cut points, the same duration, the same bytes underneath.
+A raw WebVTT source has two runtime representations with the same segment
+boundaries and durations.
 
 ```text
 /out/(asset:demo)/text_3b519953-…/0.m4s   → packaged wvtt bytes
 /out/(asset:demo)/text_3b519953-…/0.vtt   → the WebVTT document those bytes hold
 ```
 
-A `.vtt` request resolves the segment exactly as a `.m4s` request does. For a
-raw WebVTT source, it selects cues directly from the parsed document; for a CMAF
-`wvtt` source, it reads the cues from the packaged bytes. The document carries
-the absolute timestamps the source used and no `X-TIMESTAMP-MAP`, since the
-times are already on the presentation's clock.
+A `.vtt` request selects cues directly from the parsed WebVTT source. The
+document carries the absolute timestamps the source used and no
+`X-TIMESTAMP-MAP`, since the times are already on the presentation's clock.
 
 Which one a player asks for is the manifest's business: DASH always references
-`.m4s`, while HLS references `.vtt` unless the request passes
-[`wvtt`](#output-options). `text_<track-id>/init.mp4` stays available for the track
-either way, and is simply not referenced by a WebVTT rendition — a WebVTT segment
-needs no initialization.
+`.m4s`, while HLS references `.vtt` for a raw WebVTT source unless the request
+passes [`wvtt`](#output-options). HLS always references `.m4s` for a CMAF `wvtt`
+source. `text_<track-id>/init.mp4` stays available for the track either way, and
+is simply not referenced by a WebVTT rendition — a WebVTT segment needs no
+initialization.
 
-A `.vtt` response is assembled from raw cues for a WebVTT source, or reconstructed
-from the packaged initialization and media segment for a CMAF `wvtt` source.
+A `.vtt` response is available only for a raw WebVTT source. dyndo does not
+unpackage CMAF `wvtt` media into a WebVTT document.
 
 ## Segment addressing
 

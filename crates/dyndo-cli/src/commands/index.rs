@@ -51,7 +51,7 @@ impl TrackInput {
         let (language, role) = match descriptor {
             TrackDescriptor::Audio(audio) => (&mut audio.kind.language, &mut audio.kind.role),
             TrackDescriptor::Text(text) => (&mut text.kind.language, &mut text.kind.role),
-            TrackDescriptor::Vtt(text) => (&mut text.kind.language, &mut text.kind.role),
+            TrackDescriptor::WebVtt(text) => (&mut text.kind.language, &mut text.kind.role),
             TrackDescriptor::Video(_) | TrackDescriptor::Thumbnail(_) => return,
         };
         if let Some(value) = &self.language {

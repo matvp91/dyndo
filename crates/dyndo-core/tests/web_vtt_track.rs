@@ -1,7 +1,6 @@
 use dyndo_core::cmaf_track_kind::CmafTrackKind;
 use dyndo_core::segment_options::SegmentOptions;
 use dyndo_core::source_track::SourceTrack;
-use dyndo_core::text::{Cue, Subtitle};
 use opendal::{Operator, services::Memory};
 use relative_path::RelativePath;
 
@@ -23,12 +22,10 @@ async fn web_vtt_track_packages_cmaf_on_demand_and_serves_vtt_directly() {
     };
     operator.write(path.as_str(), VTT).await.unwrap();
 
-    let SourceTrack::Vtt(vtt) = SourceTrack::probe(&operator, path, None).await.unwrap() else {
+    let SourceTrack::WebVtt(vtt) = SourceTrack::probe(&operator, path, None).await.unwrap() else {
         panic!("expected a WebVTT source track");
     };
     let packaged = vtt.package(&options).await.unwrap();
-    let end = packaged.cmaf().segments().last().unwrap().byte_range().end;
-    let subtitle = Subtitle::from_wvtt(&packaged.read(0..end).unwrap()).unwrap();
 
     assert!(matches!(packaged.cmaf().kind(), CmafTrackKind::Text(_)));
     assert_eq!(packaged.cmaf().codec().rfc6381(), "wvtt");
@@ -42,21 +39,6 @@ async fn web_vtt_track_packages_cmaf_on_demand_and_serves_vtt_directly() {
         Some(
             "WEBVTT\n\n00:00:00.500 --> 00:00:01.500\nFirst\n\n00:00:01.000 --> 00:00:01.500\nSecond\n"
         )
-    );
-    assert_eq!(
-        subtitle.cues,
-        vec![
-            Cue {
-                start: 500,
-                end: 1_500,
-                text: "First".into(),
-            },
-            Cue {
-                start: 1_000,
-                end: 2_500,
-                text: "Second".into(),
-            },
-        ]
     );
 }
 

@@ -1,10 +1,21 @@
 use bytes::Bytes;
 use relative_path::{RelativePath, RelativePathBuf};
 
-use super::cmaf_track_kind::TextKind;
+use super::cmaf_package::CmafPackage;
+use super::cmaf_track::CmafTrack;
+use super::cmaf_track_kind::{CmafTrackKind, TextKind};
 use super::packaging::PackageError;
+use super::probe::ProbeError;
 use super::segment_options::SegmentOptions;
 use super::text::{Cue, Subtitle};
+
+#[derive(Debug, thiserror::Error)]
+pub enum WebVttPackageError {
+    #[error(transparent)]
+    Package(#[from] PackageError),
+    #[error(transparent)]
+    Cmaf(#[from] ProbeError),
+}
 
 /// A resolved raw WebVTT track.
 #[derive(Clone)]
@@ -48,7 +59,23 @@ impl WebVttTrack {
             .map(Bytes::from)
     }
 
-    /// Returns the raw VTT document for a served segment.
+    /// Packages this source as temporary CMAF media.
+    pub async fn package(
+        &self,
+        options: &SegmentOptions,
+    ) -> Result<CmafPackage, WebVttPackageError> {
+        let bytes = self.package_bytes(options)?;
+        let cmaf = CmafTrack::from_bytes(
+            bytes.clone(),
+            self.path(),
+            self.id().to_string(),
+            CmafTrackKind::Text(self.kind().clone()),
+        )
+        .await?;
+        Ok(CmafPackage::new(cmaf, bytes))
+    }
+
+    /// Returns the raw WebVTT document for a served segment.
     pub fn vtt_segment(&self, start: u64, end: u64) -> Option<String> {
         let start = u32::try_from(start).ok()?;
         let end = u32::try_from(end).ok()?;

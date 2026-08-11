@@ -5,7 +5,7 @@ use super::cmaf_track_descriptor::CmafTrackDescriptor;
 use super::cmaf_track_kind::{AudioKind, CmafTrackKind, TextKind, VideoKind};
 use super::source_track::SourceTrack;
 use super::thumbnail_track_descriptor::ThumbnailTrackDescriptor;
-use super::vtt_track_descriptor::VttTrackDescriptor;
+use super::web_vtt_track_descriptor::WebVttTrackDescriptor;
 
 /// A track configuration in an asset descriptor.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -14,7 +14,8 @@ pub enum TrackDescriptor {
     Video(CmafTrackDescriptor<VideoKind>),
     Audio(CmafTrackDescriptor<AudioKind>),
     Text(CmafTrackDescriptor<TextKind>),
-    Vtt(VttTrackDescriptor),
+    #[serde(rename = "vtt")]
+    WebVtt(WebVttTrackDescriptor),
     Thumbnail(ThumbnailTrackDescriptor),
 }
 
@@ -24,7 +25,7 @@ impl TrackDescriptor {
             Self::Video(track) => &track.id,
             Self::Audio(track) => &track.id,
             Self::Text(track) => &track.id,
-            Self::Vtt(track) => &track.id,
+            Self::WebVtt(track) => &track.id,
             Self::Thumbnail(track) => &track.id,
         }
     }
@@ -34,7 +35,7 @@ impl TrackDescriptor {
             Self::Video(track) => Some(&track.path),
             Self::Audio(track) => Some(&track.path),
             Self::Text(track) => Some(&track.path),
-            Self::Vtt(track) => Some(&track.path),
+            Self::WebVtt(track) => Some(&track.path),
             Self::Thumbnail(_) => None,
         }
     }
@@ -44,7 +45,7 @@ impl TrackDescriptor {
             Self::Video(track) => Some(CmafTrackKind::Video(track.kind.clone())),
             Self::Audio(track) => Some(CmafTrackKind::Audio(track.kind.clone())),
             Self::Text(track) => Some(CmafTrackKind::Text(track.kind.clone())),
-            Self::Vtt(_) | Self::Thumbnail(_) => None,
+            Self::WebVtt(_) | Self::Thumbnail(_) => None,
         }
     }
 
@@ -53,7 +54,7 @@ impl TrackDescriptor {
             Self::Video(_) => "video",
             Self::Audio(_) => "audio",
             Self::Text(_) => "text",
-            Self::Vtt(_) => "vtt",
+            Self::WebVtt(_) => "vtt",
             Self::Thumbnail(_) => "thumbnail",
         }
     }
@@ -67,7 +68,7 @@ impl TrackDescriptor {
 
     pub(super) fn from_source_track(track: &SourceTrack, path: RelativePathBuf) -> Self {
         match track {
-            SourceTrack::Vtt(track) => Self::Vtt(VttTrackDescriptor {
+            SourceTrack::WebVtt(track) => Self::WebVtt(WebVttTrackDescriptor {
                 id: track.id().to_string(),
                 path,
                 kind: track.kind().clone(),

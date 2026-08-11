@@ -155,14 +155,14 @@ impl Attribute {
             (Self::FrameRate, TrackDescriptor::Video(track)) => Some(&track.kind.frame_rate),
             (Self::Language, TrackDescriptor::Audio(track)) => Some(track.kind.language.as_str()),
             (Self::Language, TrackDescriptor::Text(track)) => Some(track.kind.language.as_str()),
-            (Self::Language, TrackDescriptor::Vtt(track)) => Some(track.kind.language.as_str()),
+            (Self::Language, TrackDescriptor::WebVtt(track)) => Some(track.kind.language.as_str()),
             (Self::Role, TrackDescriptor::Audio(track)) => {
                 track.kind.role.as_ref().map(|role| role.as_str())
             }
             (Self::Role, TrackDescriptor::Text(track)) => {
                 track.kind.role.as_ref().map(|role| role.as_str())
             }
-            (Self::Role, TrackDescriptor::Vtt(track)) => {
+            (Self::Role, TrackDescriptor::WebVtt(track)) => {
                 track.kind.role.as_ref().map(|role| role.as_str())
             }
             _ => None,

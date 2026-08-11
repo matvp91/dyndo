@@ -83,8 +83,8 @@ curl "http://localhost:8080/out/(asset:asset,text_length:4000)/index.mpd"
 
 ## Choose how HLS delivers subtitles
 
-By default an HLS text rendition points at WebVTT documents — one `.vtt` per
-segment, no `EXT-X-MAP`, cue timestamps absolute:
+By default an HLS rendition for a raw WebVTT source points at WebVTT documents
+— one `.vtt` per segment, no `EXT-X-MAP`, cue timestamps absolute:
 
 ```text
 #EXTINF:4.000,
@@ -101,9 +101,9 @@ Both forms describe the same segments — the same cut points, the same duration
 so this changes only how each one is delivered, and never how the asset is cut.
 DASH is unaffected either way.
 
-Reach for `wvtt` when a client specifically wants the packaged track. Otherwise
-the default HLS output reads raw WebVTT cues directly and unpacks CMAF `wvtt`
-sources into the same `.vtt` form.
+Reach for `wvtt` when a client specifically wants a raw WebVTT source packaged
+as CMAF. A CMAF `wvtt` source is always delivered as CMAF; dyndo does not
+unpackage it into WebVTT documents.
 
 ## Set the language
 

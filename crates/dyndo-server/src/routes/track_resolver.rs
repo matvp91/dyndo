@@ -25,7 +25,7 @@ pub(super) struct LocatedSegment {
 
 pub(super) enum ResolvedTrack {
     Cmaf(CmafTrack),
-    Vtt {
+    WebVtt {
         source: WebVttTrack,
         packaged: CmafPackage,
     },
@@ -35,20 +35,20 @@ impl ResolvedTrack {
     pub(super) fn cmaf(&self) -> &CmafTrack {
         match self {
             Self::Cmaf(track) => track,
-            Self::Vtt { packaged, .. } => packaged.cmaf(),
+            Self::WebVtt { packaged, .. } => packaged.cmaf(),
         }
     }
 
     pub(super) fn web_vtt(&self) -> Option<&WebVttTrack> {
         match self {
-            Self::Vtt { source, .. } => Some(source),
+            Self::WebVtt { source, .. } => Some(source),
             Self::Cmaf(_) => None,
         }
     }
 
     pub(super) fn packaged(&self) -> Option<&CmafPackage> {
         match self {
-            Self::Vtt { packaged, .. } => Some(packaged),
+            Self::WebVtt { packaged, .. } => Some(packaged),
             Self::Cmaf(_) => None,
         }
     }
@@ -84,9 +84,9 @@ impl<'a> TrackResolver<'a> {
     pub(super) async fn resolve(&self, track_id: &str) -> Result<ResolvedTrack, ServerError> {
         match self.probe(track_id).await? {
             SourceTrack::Cmaf(track) => Ok(ResolvedTrack::Cmaf(track)),
-            SourceTrack::Vtt(source) => {
+            SourceTrack::WebVtt(source) => {
                 let packaged = source.package(&self.asset.segment_options).await?;
-                Ok(ResolvedTrack::Vtt { source, packaged })
+                Ok(ResolvedTrack::WebVtt { source, packaged })
             }
         }
     }

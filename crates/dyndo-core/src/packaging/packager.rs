@@ -1,7 +1,27 @@
-use mp4_atom::{Encode, Sidx};
+use mp4_atom::{
+    BufMut, Codec, Dinf, Dref, Encode, FourCC, Ftyp, Hdlr, Mdhd, Mdia, Minf, Moov, Mvex, Mvhd,
+    Nmhd, SegmentReference, Sidx, Stbl, Stco, Stsd, Styp, Tkhd, Trak, Trex, Url,
+};
 
-use super::format::Format;
-use super::{MediaSegment, PackageError, initialization};
+use super::{MediaSegment, PackageError};
+
+pub(crate) trait Format {
+    type Payload;
+
+    fn file_type(&self) -> Ftyp;
+
+    fn segment_type(&self) -> Styp;
+
+    fn handler(&self) -> FourCC;
+
+    fn sample_entry(&self) -> Codec;
+
+    fn write_sample<B: BufMut>(
+        &self,
+        payload: &Self::Payload,
+        output: &mut B,
+    ) -> mp4_atom::Result<()>;
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Packager<F> {
@@ -10,7 +30,7 @@ pub(crate) struct Packager<F> {
     timescale: u32,
 }
 
-impl<F> Packager<F> {
+impl<F: Format> Packager<F> {
     pub(crate) fn new(format: F, timescale: u32) -> Self {
         Self {
             format,
@@ -24,16 +44,14 @@ impl<F> Packager<F> {
         self
     }
 
-    pub fn track_id(&self) -> u32 {
+    pub(crate) fn track_id(&self) -> u32 {
         self.track_id
     }
 
-    pub fn timescale(&self) -> u32 {
+    pub(crate) fn timescale(&self) -> u32 {
         self.timescale
     }
-}
 
-impl<F: Format> Packager<F> {
     pub(crate) fn package(
         &self,
         segments: &[MediaSegment<F::Payload>],
@@ -67,14 +85,13 @@ impl<F: Format> Packager<F> {
             let bytes = segment.serialize(&self.format, self.track_id, sequence_number)?;
             let size =
                 u32::try_from(bytes.len()).map_err(|_| PackageError::MediaSegmentTooLarge)?;
-            references.push(initialization::reference(size, segment)?);
+            references.push(reference(size, segment)?);
             serialized_segments.push(bytes);
         }
 
         let mut bytes = Vec::new();
         self.format.file_type().encode(&mut bytes)?;
-        initialization::movie(&self.format, self.track_id, self.timescale, duration)
-            .encode(&mut bytes)?;
+        movie(&self.format, self.track_id, self.timescale, duration).encode(&mut bytes)?;
         Sidx {
             reference_id: self.track_id,
             timescale: self.timescale,
@@ -90,5 +107,81 @@ impl<F: Format> Packager<F> {
         }
 
         Ok(bytes)
+    }
+}
+
+fn reference<P>(size: u32, segment: &MediaSegment<P>) -> Result<SegmentReference, PackageError> {
+    Ok(SegmentReference {
+        reference_type: false,
+        reference_size: size,
+        subsegment_duration: u32::try_from(segment.duration())
+            .map_err(|_| PackageError::DurationOverflow)?,
+        starts_with_sap: true,
+        sap_type: 1,
+        sap_delta_time: 0,
+    })
+}
+
+fn movie<F: Format>(format: &F, track_id: u32, timescale: u32, duration: u64) -> Moov {
+    Moov {
+        mvhd: Mvhd {
+            creation_time: 0,
+            modification_time: 0,
+            timescale,
+            duration,
+            rate: 1.into(),
+            volume: 1.into(),
+            matrix: Default::default(),
+            next_track_id: track_id.saturating_add(1),
+        },
+        mvex: Some(Mvex {
+            mehd: None,
+            trex: vec![Trex {
+                track_id,
+                default_sample_description_index: 1,
+                ..Trex::default()
+            }],
+        }),
+        trak: vec![Trak {
+            tkhd: Tkhd {
+                track_id,
+                duration,
+                enabled: true,
+                in_movie: true,
+                ..Tkhd::default()
+            },
+            mdia: Mdia {
+                mdhd: Mdhd {
+                    timescale,
+                    duration,
+                    language: "und".to_string(),
+                    ..Mdhd::default()
+                },
+                hdlr: Hdlr {
+                    handler: format.handler(),
+                    name: "dyndo".to_string(),
+                },
+                minf: Minf {
+                    nmhd: Some(Nmhd {}),
+                    dinf: Dinf {
+                        dref: Dref {
+                            urls: vec![Url {
+                                location: String::new(),
+                            }],
+                        },
+                    },
+                    stbl: Stbl {
+                        stsd: Stsd {
+                            codecs: vec![format.sample_entry()],
+                        },
+                        stco: Some(Stco::default()),
+                        ..Stbl::default()
+                    },
+                    ..Minf::default()
+                },
+            },
+            ..Trak::default()
+        }],
+        ..Moov::default()
     }
 }

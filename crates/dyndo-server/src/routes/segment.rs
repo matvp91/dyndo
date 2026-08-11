@@ -4,7 +4,6 @@ use axum::{
 };
 use dyndo_core::asset_descriptor::AssetDescriptor;
 use dyndo_core::reader::Reader;
-use dyndo_core::text::Subtitle;
 use dyndo_core::thumbnail_track::resolve_thumbnail_tracks;
 use opendal::Operator;
 
@@ -46,27 +45,20 @@ pub(super) async fn text(
 ) -> Result<Response, ServerError> {
     let LocatedSegment {
         track,
-        byte_range,
         start_time,
         end_time,
+        ..
     } = TrackResolver::new(op, asset)
         .locate_segment(track_id, time)
         .await?;
-    if let Some(track) = track.web_vtt() {
-        let text = track
-            .vtt_segment(start_time, end_time)
-            .ok_or_else(|| ServerError::NotFound(format!("segment {time} for track {track_id}")))?;
-        return Ok(([(CONTENT_TYPE, "text/vtt")], text).into_response());
-    }
-    let reader = Reader::new(op);
-    let initialization = reader.read_initialization(track.cmaf()).await?;
-    let segment = reader.read_range(track.cmaf(), byte_range).await?;
-    let mut bytes = Vec::with_capacity(initialization.len() + segment.len());
-    bytes.extend_from_slice(&initialization);
-    bytes.extend_from_slice(&segment);
-    let subtitle = Subtitle::from_wvtt(&bytes)?;
+    let track = track
+        .web_vtt()
+        .ok_or_else(|| ServerError::NotFound(format!("WebVTT source track {track_id}")))?;
+    let text = track
+        .vtt_segment(start_time, end_time)
+        .ok_or_else(|| ServerError::NotFound(format!("segment {time} for track {track_id}")))?;
 
-    Ok(([(CONTENT_TYPE, "text/vtt")], subtitle.to_vtt_text()).into_response())
+    Ok(([(CONTENT_TYPE, "text/vtt")], text).into_response())
 }
 
 async fn read_range(
