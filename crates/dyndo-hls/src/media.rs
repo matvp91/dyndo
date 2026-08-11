@@ -1,22 +1,18 @@
-use std::time::Duration;
+use std::collections::HashMap;
 
 use dyndo_core::segment_options::SegmentOptions;
 use dyndo_core::served_segment::ServedSegment;
 use dyndo_core::track::Track;
 use dyndo_core::track_kind::TrackKind;
-use hls_m3u8::builder::MediaPlaylistBuilder;
-use hls_m3u8::tags::ExtXMap;
-use hls_m3u8::types::PlaylistType;
-use hls_m3u8::{MediaPlaylist, MediaSegment};
+use m3u8_rs::{Map, MediaPlaylist, MediaPlaylistType, MediaSegment};
 
-use crate::HlsError;
 use crate::options::HlsOptions;
 
 pub(crate) fn build_playlist(
     track: &Track,
     segment_options: &SegmentOptions,
     hls_options: &HlsOptions,
-) -> Result<MediaPlaylistBuilder<'static>, HlsError> {
+) -> MediaPlaylist {
     let plain_vtt = !hls_options.wvtt && matches!(track.kind(), TrackKind::Text(_));
     let segments = ServedSegment::group(
         track.segments(),
@@ -28,22 +24,28 @@ pub(crate) fn build_playlist(
         .map(|segment| rounded_duration_seconds(segment.unscaled_duration(), track.timescale()))
         .max()
         .unwrap_or(0);
-    let segments = build_segments(track, &segments, plain_vtt)?;
+    let segments = build_segments(track, &segments, plain_vtt);
 
-    let mut builder = MediaPlaylist::builder();
-    builder
-        .target_duration(Duration::from_secs(target_duration))
-        .playlist_type(PlaylistType::Vod)
-        .has_end_list(true)
-        .segments(segments);
-    Ok(builder)
+    MediaPlaylist {
+        version: (!plain_vtt).then_some(6),
+        target_duration,
+        media_sequence: 0,
+        segments,
+        discontinuity_sequence: 0,
+        end_list: true,
+        playlist_type: Some(MediaPlaylistType::Vod),
+        i_frames_only: false,
+        start: None,
+        independent_segments: false,
+        unknown_tags: Vec::new(),
+    }
 }
 
 fn build_segments(
     track: &Track,
     segments: &[ServedSegment<'_>],
     plain_vtt: bool,
-) -> Result<Vec<MediaSegment<'static>>, HlsError> {
+) -> Vec<MediaSegment> {
     segments
         .iter()
         .enumerate()
@@ -56,33 +58,34 @@ fn build_segment(
     segment: &ServedSegment<'_>,
     first: bool,
     plain_vtt: bool,
-) -> Result<MediaSegment<'static>, HlsError> {
+) -> MediaSegment {
     let extension = if plain_vtt { "vtt" } else { "m4s" };
     let start_time = segment.unscaled_start_time();
-    let mut builder = MediaSegment::builder();
-    builder
-        .duration(media_duration(
-            segment.unscaled_duration(),
-            track.timescale(),
-        ))
-        .uri(format!(
+    MediaSegment {
+        uri: format!(
             "{}/{start_time}.{extension}",
             crate::media_resource_name(track)
-        ));
-    if first && !plain_vtt {
-        builder.map(ExtXMap::new(format!(
-            "{}/init.mp4",
-            crate::media_resource_name(track)
-        )));
+        ),
+        duration: media_duration(segment.unscaled_duration(), track.timescale()),
+        title: None,
+        byte_range: None,
+        discontinuity: false,
+        key: None,
+        map: (first && !plain_vtt).then(|| Map {
+            uri: format!("{}/init.mp4", crate::media_resource_name(track)),
+            byte_range: None,
+            other_attributes: HashMap::new(),
+        }),
+        program_date_time: None,
+        daterange: None,
+        unknown_tags: Vec::new(),
     }
-
-    Ok(builder.build()?)
 }
 
-fn media_duration(unscaled_duration: u64, timescale: u32) -> Duration {
+fn media_duration(unscaled_duration: u64, timescale: u32) -> f32 {
     let duration =
         (u128::from(unscaled_duration) * 1_000 + u128::from(timescale) / 2) / u128::from(timescale);
-    Duration::from_millis(u64::try_from(duration).unwrap_or(u64::MAX))
+    u64::try_from(duration).unwrap_or(u64::MAX) as f32 / 1_000.0
 }
 
 fn rounded_duration_seconds(unscaled_duration: u64, timescale: u32) -> u64 {

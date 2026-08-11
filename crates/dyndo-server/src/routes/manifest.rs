@@ -40,7 +40,7 @@ pub(super) async fn hls_master(
 ) -> Result<Response, ServerError> {
     let tracks = manifest_tracks(op, asset, filter).await?;
     let playlist = dyndo_hls::generate_master_playlist(&tracks, &asset.segment_options, options)?;
-    Ok(([(CONTENT_TYPE, HLS_CONTENT_TYPE)], playlist.to_string()).into_response())
+    Ok(([(CONTENT_TYPE, HLS_CONTENT_TYPE)], playlist).into_response())
 }
 
 async fn manifest_tracks(
@@ -66,7 +66,7 @@ pub(super) async fn hls_media(
 ) -> Result<Response, ServerError> {
     let track = TrackResolver::new(op, asset).probe(track_id).await?;
     let playlist = dyndo_hls::generate_media_playlist(&track, &asset.segment_options, options)?;
-    Ok(([(CONTENT_TYPE, HLS_CONTENT_TYPE)], playlist.to_string()).into_response())
+    Ok(([(CONTENT_TYPE, HLS_CONTENT_TYPE)], playlist).into_response())
 }
 
 pub(super) async fn hls_images(
@@ -76,7 +76,7 @@ pub(super) async fn hls_images(
     track_id: &str,
 ) -> Result<Response, ServerError> {
     let track = TrackResolver::new(op, asset).probe(track_id).await?;
-    let playlist = dyndo_hls::generate_image_playlist(&track, options)
+    let playlist = dyndo_hls::generate_image_playlist(&track, options)?
         .ok_or_else(|| ServerError::NotFound("image playlist".to_string()))?;
     Ok(([(CONTENT_TYPE, HLS_CONTENT_TYPE)], playlist).into_response())
 }

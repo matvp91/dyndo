@@ -1,5 +1,6 @@
 use dyndo_core::track::Track;
 use dyndo_core::track_kind::TrackKind;
+use m3u8_rs::{ExtTag, MediaPlaylist, MediaPlaylistType, MediaSegment};
 
 use crate::options::HlsOptions;
 
@@ -56,43 +57,76 @@ impl ImageLayout {
     }
 }
 
-pub(crate) fn stream_inf(track: &Track, options: &HlsOptions) -> Option<String> {
+pub(crate) fn stream_inf(track: &Track, options: &HlsOptions) -> Option<ExtTag> {
     let layout = ImageLayout::new(track, options)?;
     let (width, height) = layout.tile_dimensions();
 
-    Some(format!(
-        "#EXT-X-IMAGE-STREAM-INF:BANDWIDTH={},CODECS=\"jpeg\",RESOLUTION={width}x{height},URI=\"{}.m3u8\"",
-        layout.bandwidth(),
-        crate::image_resource_name(track),
-    ))
+    Some(ExtTag {
+        tag: "X-IMAGE-STREAM-INF".to_string(),
+        rest: Some(format!(
+            "BANDWIDTH={},CODECS=\"jpeg\",RESOLUTION={width}x{height},URI=\"{}.m3u8\"",
+            layout.bandwidth(),
+            crate::image_resource_name(track),
+        )),
+    })
 }
 
-pub(crate) fn build_playlist(track: &Track, options: &HlsOptions) -> Option<String> {
+pub(crate) fn build_playlist(track: &Track, options: &HlsOptions) -> Option<MediaPlaylist> {
     let layout = ImageLayout::new(track, options)?;
     let duration = u64::from(track.duration());
     let sprite_duration = layout.sprite_duration();
     let target_duration = sprite_duration.min(duration).div_ceil(1_000);
     let (width, height) = layout.tile_dimensions();
-    let mut playlist = format!(
-        "#EXTM3U\n#EXT-X-VERSION:6\n#EXT-X-TARGETDURATION:{target_duration}\n#EXT-X-PLAYLIST-TYPE:VOD\n#EXT-X-IMAGES-ONLY\n"
-    );
+    let segments = (0..duration)
+        .step_by(usize::try_from(sprite_duration).unwrap_or(usize::MAX))
+        .enumerate()
+        .map(|(index, start)| {
+            let remaining = duration - start;
+            let image_duration = remaining.min(sprite_duration);
+            let mut unknown_tags = Vec::with_capacity(2);
+            if index == 0 {
+                unknown_tags.push(ExtTag {
+                    tag: "X-IMAGES-ONLY".to_string(),
+                    rest: None,
+                });
+            }
+            unknown_tags.push(ExtTag {
+                tag: "X-TILES".to_string(),
+                rest: Some(format!(
+                    "RESOLUTION={width}x{height},LAYOUT={}x{},DURATION={}",
+                    layout.tile_size,
+                    layout.tile_size,
+                    seconds(u64::from(layout.step)),
+                )),
+            });
+            MediaSegment {
+                uri: format!("{}/{}.jpg", crate::media_resource_name(track), start),
+                duration: image_duration as f32 / 1_000.0,
+                title: None,
+                byte_range: None,
+                discontinuity: false,
+                key: None,
+                map: None,
+                program_date_time: None,
+                daterange: None,
+                unknown_tags,
+            }
+        })
+        .collect();
 
-    for start in (0..duration).step_by(usize::try_from(sprite_duration).unwrap_or(usize::MAX)) {
-        let remaining = duration - start;
-        let image_duration = remaining.min(sprite_duration);
-        playlist.push_str(&format!(
-            "#EXT-X-TILES:RESOLUTION={width}x{height},LAYOUT={}x{},DURATION={}\n#EXTINF:{},\n{}/{}.jpg\n",
-            layout.tile_size,
-            layout.tile_size,
-            seconds(u64::from(layout.step)),
-            seconds(image_duration),
-            crate::media_resource_name(track),
-            start,
-        ));
-    }
-    playlist.push_str("#EXT-X-ENDLIST\n");
-
-    Some(playlist)
+    Some(MediaPlaylist {
+        version: Some(6),
+        target_duration,
+        media_sequence: 0,
+        segments,
+        discontinuity_sequence: 0,
+        end_list: true,
+        playlist_type: Some(MediaPlaylistType::Vod),
+        i_frames_only: false,
+        start: None,
+        independent_segments: false,
+        unknown_tags: Vec::new(),
+    })
 }
 
 fn seconds(milliseconds: u64) -> String {

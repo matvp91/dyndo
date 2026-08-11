@@ -93,16 +93,10 @@ fn rendition_tracks() -> Vec<Track> {
 
 fn generate(tracks: &[Track], hls_options: &HlsOptions) -> (String, Vec<String>) {
     let segment_options = SegmentOptions::default();
-    let master = generate_master_playlist(tracks, &segment_options, hls_options)
-        .unwrap()
-        .to_string();
+    let master = generate_master_playlist(tracks, &segment_options, hls_options).unwrap();
     let media = tracks
         .iter()
-        .map(|track| {
-            generate_media_playlist(track, &segment_options, hls_options)
-                .unwrap()
-                .to_string()
-        })
+        .map(|track| generate_media_playlist(track, &segment_options, hls_options).unwrap())
         .collect();
     (master, media)
 }
@@ -174,10 +168,10 @@ fn generated_image_playlists_advertise_existing_thumbnail_sprites() {
         thumbnail_step: 1_000,
         ..HlsOptions::default()
     };
-    let master = generate_master_playlist(&tracks, &SegmentOptions::default(), &options)
+    let master = generate_master_playlist(&tracks, &SegmentOptions::default(), &options).unwrap();
+    let images = generate_image_playlist(&tracks[0], &options)
         .unwrap()
-        .to_string();
-    let images = generate_image_playlist(&tracks[0], &options).unwrap();
+        .unwrap();
 
     assert!(master.contains(&format!(
         "#EXT-X-IMAGE-STREAM-INF:BANDWIDTH=64,CODECS=\"jpeg\",RESOLUTION=8x8,URI=\"image_{}.m3u8\"",
@@ -192,7 +186,7 @@ fn generated_image_playlists_advertise_existing_thumbnail_sprites() {
             "#EXT-X-PLAYLIST-TYPE:VOD\n",
             "#EXT-X-IMAGES-ONLY\n",
             "#EXT-X-TILES:RESOLUTION=8x8,LAYOUT=2x2,DURATION=1.000\n",
-            "#EXTINF:2.000,\n",
+            "#EXTINF:2,\n",
             "video_video-main/0.jpg\n",
             "#EXT-X-ENDLIST\n",
         )
@@ -210,11 +204,12 @@ fn generated_image_playlist_shortens_the_final_sprite() {
             ..HlsOptions::default()
         },
     )
+    .unwrap()
     .unwrap();
 
     assert!(playlist.contains(concat!(
         "#EXT-X-TILES:RESOLUTION=8x8,LAYOUT=2x2,DURATION=0.400\n",
-        "#EXTINF:0.400,\n",
+        "#EXTINF:0.4,\n",
         "video_video-main/1600.jpg\n",
     )));
 }

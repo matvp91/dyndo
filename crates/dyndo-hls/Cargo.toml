@@ -9,7 +9,7 @@ workspace = true
 
 [dependencies]
 dyndo-core = { path = "../dyndo-core" }
-hls_m3u8 = "0.7"
+m3u8-rs = "6.0.1"
 isolang = "2.4.0"
 language-tags = "0.3.2"
 thiserror = "2"
