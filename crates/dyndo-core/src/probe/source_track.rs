@@ -16,23 +16,22 @@ impl SourceTrack {
         path: &RelativePath,
         descriptor: Option<&TrackDescriptor>,
     ) -> Result<Self, ProbeError> {
-        if matches!(descriptor, Some(TrackDescriptor::Thumbnail(_))) {
-            return Err(ProbeError::NotSourceTrack);
-        }
-
-        let id = descriptor
-            .map(TrackDescriptor::id)
-            .map(str::to_owned)
-            .unwrap_or_else(|| source_id(path));
-
         match descriptor {
             Some(TrackDescriptor::WebVtt(descriptor)) => {
-                WebVttTrack::probe(op, path, id, descriptor.kind.clone())
+                WebVttTrack::probe(op, path, descriptor.id.clone(), descriptor.kind.clone())
                     .await
                     .map(TimedTextTrack::WebVtt)
                     .map(Self::TimedText)
             }
-            descriptor => {
+            Some(TrackDescriptor::Thumbnail(_)) => Err(ProbeError::NotSourceTrack),
+            Some(descriptor) => {
+                let kind = descriptor.cmaf_kind().ok_or(ProbeError::NotSourceTrack)?;
+                CmafTrack::probe(op, path, descriptor.id().to_string(), Some(kind))
+                    .await
+                    .map(Self::Cmaf)
+            }
+            None => {
+                let id = source_id(path);
                 if path.as_str().ends_with(".vtt") {
                     let kind = TextKind {
                         language: undetermined_language(),
@@ -43,10 +42,7 @@ impl SourceTrack {
                         .map(TimedTextTrack::WebVtt)
                         .map(Self::TimedText);
                 }
-                let kind = descriptor
-                    .map(|descriptor| descriptor.cmaf_kind().ok_or(ProbeError::NotSourceTrack))
-                    .transpose()?;
-                CmafTrack::probe(op, path, id, kind).await.map(Self::Cmaf)
+                CmafTrack::probe(op, path, id, None).await.map(Self::Cmaf)
             }
         }
     }

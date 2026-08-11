@@ -50,7 +50,7 @@ impl TrackDescriptor {
         }
     }
 
-    pub fn content_type(&self) -> &'static str {
+    pub fn asset_type(&self) -> &'static str {
         match self {
             Self::Video(_) => "video",
             Self::Audio(_) => "audio",

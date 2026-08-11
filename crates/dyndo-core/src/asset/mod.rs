@@ -70,11 +70,11 @@ impl AssetDescriptor {
         )
     }
 
-    pub fn find_track_by_id(&self, id: &str) -> Option<&TrackDescriptor> {
+    pub fn find_source_track_by_id(&self, id: &str) -> Option<&TrackDescriptor> {
         self.source_tracks().find(|track| track.id() == id)
     }
 
-    pub fn find_thumbnail_by_id(&self, id: &str) -> Option<&ThumbnailTrackDescriptor> {
+    pub fn find_thumbnail_track_by_id(&self, id: &str) -> Option<&ThumbnailTrackDescriptor> {
         self.thumbnail_tracks()
             .find(|track| track.id() == id)
             .and_then(TrackDescriptor::thumbnail)

@@ -66,7 +66,7 @@ impl<'a> TrackResolver<'a> {
     pub(super) async fn probe(&self, track_id: &str) -> Result<SourceTrack, ServerError> {
         let descriptor = self
             .asset
-            .find_track_by_id(track_id)
+            .find_source_track_by_id(track_id)
             .ok_or_else(|| ServerError::NotFound(format!("track {track_id}")))?;
         let path = self
             .asset

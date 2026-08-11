@@ -147,7 +147,7 @@ impl Attribute {
 
     fn text(self, descriptor: &TrackDescriptor) -> Option<&str> {
         match (self, descriptor) {
-            (Self::Type, track) => Some(track.content_type()),
+            (Self::Type, track) => Some(track.asset_type()),
             (Self::Id, track) => Some(track.id()),
             (Self::Codec, TrackDescriptor::Video(track)) => Some(&track.codec),
             (Self::Codec, TrackDescriptor::Audio(track)) => Some(&track.codec),

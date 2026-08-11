@@ -28,6 +28,31 @@ The runtime model keeps those levels separate: `SourceTrack` is either a
 `Imsc1` when supported. CMAF's `Text` kind remains the container-level media
 category, independent of the timed-text document format.
 
+## Descriptors and discovery
+
+An **asset descriptor** is persisted configuration. Its track entry names the
+source form, gives it a stable identifier, and supplies metadata that is not
+necessarily present in the source file.
+
+When a descriptor is present, its type is authoritative: a `vtt` descriptor is
+resolved as raw WebVTT, and a `video`, `audio`, or `text` descriptor is resolved
+as CMAF. The file name does not override that decision.
+
+**Discovery** is the descriptor-less operation used when indexing a new source.
+It determines the source form from the input: `.vtt` is discovered as raw
+WebVTT; other supported inputs are discovered as CMAF. Discovery creates the
+stable source identifier that is then recorded in the descriptor.
+
+The word **type** has two deliberate meanings in the system:
+
+- An asset descriptor type is the source or derived form written in
+  `asset.json`: `video`, `audio`, `text`, `vtt`, or `thumbnail`.
+- A CMAF media kind is the container category of a CMAF track: `video`,
+  `audio`, or `text`.
+
+For example, `vtt` is a timed-text document format, while CMAF `text` is the
+container category used when that document is packaged as `wvtt`.
+
 ## Derived tracks
 
 A **derived track** is created from source tracks when it is requested. It has
@@ -52,3 +77,12 @@ source track and not a file written beside the asset. Probing resolves a source
 track; packaging converts a raw WebVTT source into its temporary CMAF
 representation. Packaging is one-way: a CMAF source is not unpacked into a
 WebVTT document, so raw WebVTT output is available only from a WebVTT source.
+
+The complete resolution flow is therefore:
+
+```text
+asset descriptor
+  → source track
+  → temporary CMAF package, when a CMAF representation is required
+  → manifest or segment representation requested by the client
+```

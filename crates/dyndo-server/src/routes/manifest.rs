@@ -80,7 +80,7 @@ pub(super) async fn hls_images(
     thumbnail_id: &str,
 ) -> Result<Response, ServerError> {
     let descriptor = asset
-        .find_thumbnail_by_id(thumbnail_id)
+        .find_thumbnail_track_by_id(thumbnail_id)
         .ok_or_else(|| ServerError::NotFound(format!("thumbnail {thumbnail_id}")))?;
     let source_tracks = TrackResolver::new(op, source_asset).probe_all().await?;
     let thumbnail = resolve_thumbnail_tracks(asset, &source_tracks)
@@ -97,7 +97,7 @@ async fn filtered_tracks(
 ) -> Result<Vec<CmafTrack>, ServerError> {
     let mut resolved = Vec::new();
     for track in tracks {
-        if asset.find_track_by_id(track.id()).is_none() {
+        if asset.find_source_track_by_id(track.id()).is_none() {
             continue;
         }
         match track {

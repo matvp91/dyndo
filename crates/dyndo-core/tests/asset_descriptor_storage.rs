@@ -40,7 +40,7 @@ async fn read_or_new_preserves_the_descriptor_base_when_adding_a_track() {
 
     assert_eq!(
         descriptor
-            .track_path(descriptor.find_track_by_id("text").unwrap())
+            .track_path(descriptor.find_source_track_by_id("text").unwrap())
             .as_deref(),
         Some(RelativePath::new("assets/movie/subtitles/en.vtt"))
     );
@@ -61,12 +61,12 @@ async fn read_deserializes_an_asset_descriptor_from_storage() {
 
     assert_eq!(
         descriptor
-            .track_path(descriptor.find_track_by_id("text").unwrap())
+            .track_path(descriptor.find_source_track_by_id("text").unwrap())
             .as_deref(),
         Some(RelativePath::new("assets/subtitles/en.vtt"))
     );
     assert_eq!(
-        descriptor.find_thumbnail_by_id("preview"),
+        descriptor.find_thumbnail_track_by_id("preview"),
         Some(&ThumbnailTrackDescriptor {
             id: "preview".to_string(),
             tile_size: 4,
