@@ -1,6 +1,6 @@
 # Extract a video frame
 
-Use `dyndo image` to save a full-resolution JPEG from the first video track in an asset descriptor.
+Use `dyndo image` to save a full-resolution JPEG from the highest-resolution video track in an asset descriptor.
 
 ## Extract the frame
 
