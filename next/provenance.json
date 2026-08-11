@@ -1,0 +1,1291 @@
+{
+  "_type": "https://in-toto.io/Statement/v1",
+  "predicateType": "https://slsa.dev/provenance/v1",
+  "subject": [
+    {
+      "name": "schema.json",
+      "digest": {
+        "sha256": "19a13af11a2378936ae1d72be66e4e2af205264b9d5b4cadef10bc8291c00a3b"
+      }
+    }
+  ],
+  "predicate": {
+    "buildDefinition": {
+      "buildType": "https://github.com/moby/buildkit/blob/master/docs/attestations/slsa-definitions.md",
+      "resolvedDependencies": [
+        {
+          "uri": "pkg:docker/docker/dockerfile@1",
+          "digest": {
+            "sha256": "87999aa3d42bdc6bea60565083ee17e86d1f3339802f543c0d03998580f9cb89"
+          }
+        },
+        {
+          "uri": "pkg:docker/debian@trixie-slim?platform=linux%2Famd64",
+          "digest": {
+            "sha256": "3a39a0592364683e6bab97937b72cad5a8fa6dcbbee90edb3bb48c7f8e94f258"
+          }
+        },
+        {
+          "uri": "pkg:docker/rust@1.97.0-slim-trixie?platform=linux%2Famd64",
+          "digest": {
+            "sha256": "686a437ead83701e8f871e66e838c3ec55f46b5fc235b025756396ac823bdc51"
+          }
+        }
+      ],
+      "externalParameters": {
+        "configSource": {
+          "path": "Dockerfile"
+        },
+        "request": {
+          "frontend": "gateway.v0",
+          "args": {
+            "cmdline": "docker/dockerfile:1",
+            "source": "docker/dockerfile:1",
+            "target": "schema-output"
+          },
+          "locals": [
+            {
+              "name": "context"
+            },
+            {
+              "name": "dockerfile"
+            }
+          ],
+          "root": {
+            "configSource": {
+              "path": "Dockerfile"
+            },
+            "request": {
+              "args": {
+                "target": "schema-output",
+                "vcs:localdir:context": ".",
+                "vcs:localdir:dockerfile": ".",
+                "vcs:revision": "25a0a0687373e8de66433b69b40452cc60d960b4",
+                "vcs:source": "https://github.com/matvp91/dyndo"
+              }
+            }
+          },
+          "compatibilityVersion": 30
+        }
+      },
+      "internalParameters": {
+        "buildConfig": {
+          "digestMapping": {
+            "sha256:1f0ca0a8769e888ce2c3b0f1b9bcbaa79f96e75ac96f02baea743b2d33aac09f": "step0",
+            "sha256:2efd0848701597cc4eb7cf8d3994f6ea47202cac6fa1b0e9168801f74cf7403d": "step1",
+            "sha256:4e7231607dda87bf39ab81dcaa969ad04653fde4f11545a7b1dfbef34c4ee753": "step6",
+            "sha256:67b3802cf8b7b47ee5c1af2544406c565c55115a63334b868905e879434aafcb": "step4",
+            "sha256:68d820d71709d42202e41eeb3ce728da81f5965811e42c432aa9dc3f1b3710c6": "step5",
+            "sha256:7d699f2486b1280a1540a7c757298a3e6cfdaf0556e0b0399a36a7bd04abe33f": "step2",
+            "sha256:7e65b21e5d84d5323b4254a854576814becc22e98a1aabbe4282f7b7ae41f2b4": "step9",
+            "sha256:9fb85d57edfa8c88a39e4aa1216af7b35c3167346e19a7204ab286e472e7133c": "step12",
+            "sha256:a366ad162d239c6aca3215e1a4dcf97d249f745fcc4ef3791f2638100ca18c1e": "step3",
+            "sha256:ad8cfbe83e30788990973a4e144f07b76baf83026c31817df2142f0c7b8d8930": "step11",
+            "sha256:cec595a285dfb5baa179276f7168e36fadd57953f438f4033f84ac98267e0a5a": "step8",
+            "sha256:d385f2fc5c807e8bc2380bded370390172f62b066993b73c90b42c68c6be1e33": "step10",
+            "sha256:e3f727dfdf55986901a41fe716c727099444314c49168ddacb44420001673e06": "step7"
+          },
+          "llbDefinition": [
+            {
+              "id": "step0",
+              "op": {
+                "Op": {
+                  "source": {
+                    "identifier": "docker-image://docker.io/library/rust:1.97.0-slim-trixie@sha256:686a437ead83701e8f871e66e838c3ec55f46b5fc235b025756396ac823bdc51"
+                  }
+                },
+                "constraints": {},
+                "platform": {
+                  "Architecture": "amd64",
+                  "OS": "linux"
+                }
+              }
+            },
+            {
+              "id": "step1",
+              "inputs": [
+                "step0:0"
+              ],
+              "op": {
+                "Op": {
+                  "exec": {
+                    "meta": {
+                      "args": [
+                        "/bin/sh",
+                        "-c",
+                        "apt-get update     \u0026\u0026 apt-get install -y --no-install-recommends         libclang-dev         pkg-config     \u0026\u0026 rm -rf /var/lib/apt/lists/*     \u0026\u0026 rustup component add clippy"
+                      ],
+                      "cwd": "/",
+                      "env": [
+                        "PATH=/usr/local/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                        "RUSTUP_HOME=/usr/local/rustup",
+                        "CARGO_HOME=/usr/local/cargo",
+                        "RUST_VERSION=1.97.0"
+                      ],
+                      "removeMountStubsRecursive": true
+                    },
+                    "mounts": [
+                      {
+                        "dest": "/"
+                      }
+                    ]
+                  }
+                },
+                "constraints": {},
+                "platform": {
+                  "Architecture": "amd64",
+                  "OS": "linux"
+                }
+              }
+            },
+            {
+              "id": "step2",
+              "inputs": [
+                "step1:0"
+              ],
+              "op": {
+                "Op": {
+                  "file": {
+                    "actions": [
+                      {
+                        "Action": {
+                          "mkdir": {
+                            "makeParents": true,
+                            "mode": 493,
+                            "path": "/src",
+                            "timestamp": -1
+                          }
+                        },
+                        "input": 0,
+                        "output": 0,
+                        "secondaryInput": -1
+                      }
+                    ]
+                  }
+                },
+                "constraints": {}
+              }
+            },
+            {
+              "id": "step3",
+              "op": {
+                "Op": {
+                  "source": {
+                    "identifier": "docker-image://docker.io/library/debian:trixie-slim@sha256:3a39a0592364683e6bab97937b72cad5a8fa6dcbbee90edb3bb48c7f8e94f258"
+                  }
+                },
+                "constraints": {},
+                "platform": {
+                  "Architecture": "amd64",
+                  "OS": "linux"
+                }
+              }
+            },
+            {
+              "id": "step4",
+              "inputs": [
+                "step3:0"
+              ],
+              "op": {
+                "Op": {
+                  "exec": {
+                    "meta": {
+                      "args": [
+                        "/bin/sh",
+                        "-c",
+                        "apt-get update     \u0026\u0026 apt-get install -y --no-install-recommends         build-essential         ca-certificates         curl         nasm         pkg-config         xz-utils     \u0026\u0026 rm -rf /var/lib/apt/lists/*"
+                      ],
+                      "cwd": "/",
+                      "env": [
+                        "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                        "FFMPEG_VERSION=7.1.5"
+                      ],
+                      "removeMountStubsRecursive": true
+                    },
+                    "mounts": [
+                      {
+                        "dest": "/"
+                      }
+                    ]
+                  }
+                },
+                "constraints": {},
+                "platform": {
+                  "Architecture": "amd64",
+                  "OS": "linux"
+                }
+              }
+            },
+            {
+              "id": "step5",
+              "inputs": [
+                "step4:0"
+              ],
+              "op": {
+                "Op": {
+                  "file": {
+                    "actions": [
+                      {
+                        "Action": {
+                          "mkdir": {
+                            "makeParents": true,
+                            "mode": 493,
+                            "path": "/tmp",
+                            "timestamp": -1
+                          }
+                        },
+                        "input": 0,
+                        "output": 0,
+                        "secondaryInput": -1
+                      }
+                    ]
+                  }
+                },
+                "constraints": {}
+              }
+            },
+            {
+              "id": "step6",
+              "inputs": [
+                "step5:0"
+              ],
+              "op": {
+                "Op": {
+                  "exec": {
+                    "meta": {
+                      "args": [
+                        "/bin/sh",
+                        "-c",
+                        "curl --fail --location --retry 5 --retry-all-errors --retry-delay 2         \"https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.xz\"         --output ffmpeg.tar.xz     \u0026\u0026 tar --extract --file ffmpeg.tar.xz     \u0026\u0026 cd \"ffmpeg-${FFMPEG_VERSION}\"     \u0026\u0026 ./configure         --prefix=/opt/ffmpeg         --disable-static         --enable-shared         --disable-programs         --disable-doc         --disable-debug         --disable-autodetect         --disable-everything         --enable-avcodec         --enable-avdevice         --enable-avfilter         --enable-avformat         --enable-avutil         --enable-swresample         --enable-swscale         --enable-demuxer=mov         --enable-decoder=h264,hevc,av1         --enable-encoder=mjpeg         --enable-parser=h264,hevc,av1     \u0026\u0026 make --jobs \"$(nproc)\"     \u0026\u0026 make install"
+                      ],
+                      "cwd": "/tmp",
+                      "env": [
+                        "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                        "FFMPEG_VERSION=7.1.5"
+                      ],
+                      "removeMountStubsRecursive": true
+                    },
+                    "mounts": [
+                      {
+                        "dest": "/"
+                      }
+                    ]
+                  }
+                },
+                "constraints": {},
+                "platform": {
+                  "Architecture": "amd64",
+                  "OS": "linux"
+                }
+              }
+            },
+            {
+              "id": "step7",
+              "inputs": [
+                "step2:0",
+                "step6:0"
+              ],
+              "op": {
+                "Op": {
+                  "file": {
+                    "actions": [
+                      {
+                        "Action": {
+                          "copy": {
+                            "allowEmptyWildcard": true,
+                            "allowWildcard": true,
+                            "createDestPath": true,
+                            "dest": "/opt/ffmpeg",
+                            "dirCopyContents": true,
+                            "followSymlink": true,
+                            "mode": -1,
+                            "src": "/opt/ffmpeg",
+                            "timestamp": -1
+                          }
+                        },
+                        "input": 0,
+                        "output": 0,
+                        "secondaryInput": 1
+                      }
+                    ]
+                  }
+                },
+                "constraints": {}
+              }
+            },
+            {
+              "id": "step8",
+              "op": {
+                "Op": {
+                  "source": {
+                    "attrs": {
+                      "local.excludepatterns": "[\"target\",\".git\",\".github\",\"docs\",\"assets\",\"tests\",\".wrangler\",\".claude\",\".agents\",\".superpowers\",\".DS_Store\"]",
+                      "local.sharedkeyhint": "context"
+                    },
+                    "identifier": "local://context"
+                  }
+                },
+                "constraints": {}
+              }
+            },
+            {
+              "id": "step9",
+              "inputs": [
+                "step7:0",
+                "step8:0"
+              ],
+              "op": {
+                "Op": {
+                  "file": {
+                    "actions": [
+                      {
+                        "Action": {
+                          "copy": {
+                            "allowEmptyWildcard": true,
+                            "allowWildcard": true,
+                            "createDestPath": true,
+                            "dest": "/src/",
+                            "dirCopyContents": true,
+                            "followSymlink": true,
+                            "mode": -1,
+                            "src": "/",
+                            "timestamp": -1
+                          }
+                        },
+                        "input": 0,
+                        "output": 0,
+                        "secondaryInput": 1
+                      }
+                    ]
+                  }
+                },
+                "constraints": {}
+              }
+            },
+            {
+              "id": "step10",
+              "inputs": [
+                "step9:0"
+              ],
+              "op": {
+                "Op": {
+                  "exec": {
+                    "meta": {
+                      "args": [
+                        "/bin/sh",
+                        "-c",
+                        "install --directory /out \u0026\u0026     cargo xtask asset-schema --output /out/schema.json"
+                      ],
+                      "cwd": "/src",
+                      "env": [
+                        "PATH=/usr/local/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                        "RUSTUP_HOME=/usr/local/rustup",
+                        "CARGO_HOME=/usr/local/cargo",
+                        "RUST_VERSION=1.97.0",
+                        "PKG_CONFIG_PATH=/opt/ffmpeg/lib/pkgconfig",
+                        "LD_LIBRARY_PATH=/opt/ffmpeg/lib"
+                      ],
+                      "removeMountStubsRecursive": true
+                    },
+                    "mounts": [
+                      {
+                        "dest": "/"
+                      },
+                      {
+                        "cacheOpt": {
+                          "ID": "/dyndo-target"
+                        },
+                        "dest": "/src/target",
+                        "input": -1,
+                        "mountType": 3,
+                        "output": -1
+                      },
+                      {
+                        "cacheOpt": {
+                          "ID": "/dyndo-cargo-registry"
+                        },
+                        "dest": "/usr/local/cargo/registry",
+                        "input": -1,
+                        "mountType": 3,
+                        "output": -1
+                      }
+                    ]
+                  }
+                },
+                "constraints": {},
+                "platform": {
+                  "Architecture": "amd64",
+                  "OS": "linux"
+                }
+              }
+            },
+            {
+              "id": "step11",
+              "inputs": [
+                "step10:0"
+              ],
+              "op": {
+                "Op": {
+                  "file": {
+                    "actions": [
+                      {
+                        "Action": {
+                          "copy": {
+                            "allowEmptyWildcard": true,
+                            "allowWildcard": true,
+                            "createDestPath": true,
+                            "dest": "/schema.json",
+                            "dirCopyContents": true,
+                            "followSymlink": true,
+                            "mode": -1,
+                            "src": "/out/schema.json",
+                            "timestamp": -1
+                          }
+                        },
+                        "input": -1,
+                        "output": 0,
+                        "secondaryInput": 0
+                      }
+                    ]
+                  }
+                },
+                "constraints": {}
+              }
+            },
+            {
+              "id": "step12",
+              "inputs": [
+                "step11:0"
+              ],
+              "op": {
+                "Op": {}
+              }
+            }
+          ]
+        },
+        "builderPlatform": "linux/amd64",
+        "github_actor": "matvp91",
+        "github_actor_id": "12699796",
+        "github_event_name": "push",
+        "github_event_payload": {
+          "after": "25a0a0687373e8de66433b69b40452cc60d960b4",
+          "base_ref": null,
+          "before": "5a98c2047e643a9569aa74e6bdba4b7569b59cb2",
+          "commits": [
+            {
+              "author": {
+                "email": "matvp91@gmail.com",
+                "name": "Matthias Van Parijs",
+                "username": "matvp91"
+              },
+              "committer": {
+                "email": "matvp91@gmail.com",
+                "name": "Matthias Van Parijs",
+                "username": "matvp91"
+              },
+              "distinct": true,
+              "id": "25a0a0687373e8de66433b69b40452cc60d960b4",
+              "message": "build: streamline FFmpeg CI builds\n\nCo-authored-by: OpenAI Codex \u003cnoreply@openai.com\u003e",
+              "timestamp": "2026-08-11T22:32:03+02:00",
+              "tree_id": "466dbd9a975fb70c5cd01719ee9638c6c66e2beb",
+              "url": "https://github.com/matvp91/dyndo/commit/25a0a0687373e8de66433b69b40452cc60d960b4"
+            }
+          ],
+          "compare": "https://github.com/matvp91/dyndo/compare/5a98c2047e64...25a0a0687373",
+          "created": false,
+          "deleted": false,
+          "forced": false,
+          "head_commit": {
+            "author": {
+              "email": "matvp91@gmail.com",
+              "name": "Matthias Van Parijs",
+              "username": "matvp91"
+            },
+            "committer": {
+              "email": "matvp91@gmail.com",
+              "name": "Matthias Van Parijs",
+              "username": "matvp91"
+            },
+            "distinct": true,
+            "id": "25a0a0687373e8de66433b69b40452cc60d960b4",
+            "message": "build: streamline FFmpeg CI builds\n\nCo-authored-by: OpenAI Codex \u003cnoreply@openai.com\u003e",
+            "timestamp": "2026-08-11T22:32:03+02:00",
+            "tree_id": "466dbd9a975fb70c5cd01719ee9638c6c66e2beb",
+            "url": "https://github.com/matvp91/dyndo/commit/25a0a0687373e8de66433b69b40452cc60d960b4"
+          },
+          "pusher": {
+            "email": "matvp91@gmail.com",
+            "name": "matvp91"
+          },
+          "ref": "refs/heads/main",
+          "repository": {
+            "allow_forking": true,
+            "archive_url": "https://api.github.com/repos/matvp91/dyndo/{archive_format}{/ref}",
+            "archived": false,
+            "assignees_url": "https://api.github.com/repos/matvp91/dyndo/assignees{/user}",
+            "blobs_url": "https://api.github.com/repos/matvp91/dyndo/git/blobs{/sha}",
+            "branches_url": "https://api.github.com/repos/matvp91/dyndo/branches{/branch}",
+            "clone_url": "https://github.com/matvp91/dyndo.git",
+            "collaborators_url": "https://api.github.com/repos/matvp91/dyndo/collaborators{/collaborator}",
+            "comments_url": "https://api.github.com/repos/matvp91/dyndo/comments{/number}",
+            "commits_url": "https://api.github.com/repos/matvp91/dyndo/commits{/sha}",
+            "compare_url": "https://api.github.com/repos/matvp91/dyndo/compare/{base}...{head}",
+            "contents_url": "https://api.github.com/repos/matvp91/dyndo/contents/{+path}",
+            "contributors_url": "https://api.github.com/repos/matvp91/dyndo/contributors",
+            "created_at": 1783599221,
+            "default_branch": "main",
+            "deployments_url": "https://api.github.com/repos/matvp91/dyndo/deployments",
+            "description": "Dyndo turns your existing CMAF files into an adaptive-streaming service without repackaging or duplicating a single byte of media.",
+            "disabled": false,
+            "downloads_url": "https://api.github.com/repos/matvp91/dyndo/downloads",
+            "events_url": "https://api.github.com/repos/matvp91/dyndo/events",
+            "fork": false,
+            "forks": 0,
+            "forks_count": 0,
+            "forks_url": "https://api.github.com/repos/matvp91/dyndo/forks",
+            "full_name": "matvp91/dyndo",
+            "git_commits_url": "https://api.github.com/repos/matvp91/dyndo/git/commits{/sha}",
+            "git_refs_url": "https://api.github.com/repos/matvp91/dyndo/git/refs{/sha}",
+            "git_tags_url": "https://api.github.com/repos/matvp91/dyndo/git/tags{/sha}",
+            "git_url": "git://github.com/matvp91/dyndo.git",
+            "has_discussions": false,
+            "has_downloads": true,
+            "has_issues": true,
+            "has_pages": true,
+            "has_projects": true,
+            "has_pull_requests": true,
+            "has_wiki": false,
+            "homepage": "https://matvp91.github.io/dyndo/",
+            "hooks_url": "https://api.github.com/repos/matvp91/dyndo/hooks",
+            "html_url": "https://github.com/matvp91/dyndo",
+            "id": 1295185517,
+            "is_template": false,
+            "issue_comment_url": "https://api.github.com/repos/matvp91/dyndo/issues/comments{/number}",
+            "issue_events_url": "https://api.github.com/repos/matvp91/dyndo/issues/events{/number}",
+            "issues_url": "https://api.github.com/repos/matvp91/dyndo/issues{/number}",
+            "keys_url": "https://api.github.com/repos/matvp91/dyndo/keys{/key_id}",
+            "labels_url": "https://api.github.com/repos/matvp91/dyndo/labels{/name}",
+            "language": "Rust",
+            "languages_url": "https://api.github.com/repos/matvp91/dyndo/languages",
+            "license": {
+              "key": "gpl-3.0",
+              "name": "GNU General Public License v3.0",
+              "node_id": "MDc6TGljZW5zZTk=",
+              "spdx_id": "GPL-3.0",
+              "url": "https://api.github.com/licenses/gpl-3.0"
+            },
+            "master_branch": "main",
+            "merges_url": "https://api.github.com/repos/matvp91/dyndo/merges",
+            "milestones_url": "https://api.github.com/repos/matvp91/dyndo/milestones{/number}",
+            "mirror_url": null,
+            "name": "dyndo",
+            "node_id": "R_kgDOTTL2bQ",
+            "notifications_url": "https://api.github.com/repos/matvp91/dyndo/notifications{?since,all,participating}",
+            "open_issues": 2,
+            "open_issues_count": 2,
+            "owner": {
+              "avatar_url": "https://avatars.githubusercontent.com/u/12699796?v=4",
+              "email": "matvp91@gmail.com",
+              "events_url": "https://api.github.com/users/matvp91/events{/privacy}",
+              "followers_url": "https://api.github.com/users/matvp91/followers",
+              "following_url": "https://api.github.com/users/matvp91/following{/other_user}",
+              "gists_url": "https://api.github.com/users/matvp91/gists{/gist_id}",
+              "gravatar_id": "",
+              "html_url": "https://github.com/matvp91",
+              "id": 12699796,
+              "login": "matvp91",
+              "name": "matvp91",
+              "node_id": "MDQ6VXNlcjEyNjk5Nzk2",
+              "organizations_url": "https://api.github.com/users/matvp91/orgs",
+              "received_events_url": "https://api.github.com/users/matvp91/received_events",
+              "repos_url": "https://api.github.com/users/matvp91/repos",
+              "site_admin": false,
+              "starred_url": "https://api.github.com/users/matvp91/starred{/owner}{/repo}",
+              "subscriptions_url": "https://api.github.com/users/matvp91/subscriptions",
+              "type": "User",
+              "url": "https://api.github.com/users/matvp91",
+              "user_view_type": "public"
+            },
+            "private": false,
+            "pull_request_creation_policy": "all",
+            "pulls_url": "https://api.github.com/repos/matvp91/dyndo/pulls{/number}",
+            "pushed_at": 1786480342,
+            "releases_url": "https://api.github.com/repos/matvp91/dyndo/releases{/id}",
+            "size": 2028,
+            "ssh_url": "git@github.com:matvp91/dyndo.git",
+            "stargazers": 0,
+            "stargazers_count": 0,
+            "stargazers_url": "https://api.github.com/repos/matvp91/dyndo/stargazers",
+            "statuses_url": "https://api.github.com/repos/matvp91/dyndo/statuses/{sha}",
+            "subscribers_url": "https://api.github.com/repos/matvp91/dyndo/subscribers",
+            "subscription_url": "https://api.github.com/repos/matvp91/dyndo/subscription",
+            "svn_url": "https://github.com/matvp91/dyndo",
+            "tags_url": "https://api.github.com/repos/matvp91/dyndo/tags",
+            "teams_url": "https://api.github.com/repos/matvp91/dyndo/teams",
+            "topics": [
+              "streaming",
+              "streaming-video",
+              "video",
+              "video-processing",
+              "video-streaming"
+            ],
+            "trees_url": "https://api.github.com/repos/matvp91/dyndo/git/trees{/sha}",
+            "updated_at": "2026-08-11T20:23:09Z",
+            "url": "https://api.github.com/repos/matvp91/dyndo",
+            "visibility": "public",
+            "watchers": 0,
+            "watchers_count": 0,
+            "web_commit_signoff_required": false
+          },
+          "sender": {
+            "avatar_url": "https://avatars.githubusercontent.com/u/12699796?v=4",
+            "events_url": "https://api.github.com/users/matvp91/events{/privacy}",
+            "followers_url": "https://api.github.com/users/matvp91/followers",
+            "following_url": "https://api.github.com/users/matvp91/following{/other_user}",
+            "gists_url": "https://api.github.com/users/matvp91/gists{/gist_id}",
+            "gravatar_id": "",
+            "html_url": "https://github.com/matvp91",
+            "id": 12699796,
+            "login": "matvp91",
+            "node_id": "MDQ6VXNlcjEyNjk5Nzk2",
+            "organizations_url": "https://api.github.com/users/matvp91/orgs",
+            "received_events_url": "https://api.github.com/users/matvp91/received_events",
+            "repos_url": "https://api.github.com/users/matvp91/repos",
+            "site_admin": false,
+            "starred_url": "https://api.github.com/users/matvp91/starred{/owner}{/repo}",
+            "subscriptions_url": "https://api.github.com/users/matvp91/subscriptions",
+            "type": "User",
+            "url": "https://api.github.com/users/matvp91",
+            "user_view_type": "public"
+          }
+        },
+        "github_job": "publish",
+        "github_ref": "refs/heads/main",
+        "github_ref_name": "main",
+        "github_ref_protected": "false",
+        "github_ref_type": "branch",
+        "github_repository": "matvp91/dyndo",
+        "github_repository_id": "1295185517",
+        "github_repository_owner": "matvp91",
+        "github_repository_owner_id": "12699796",
+        "github_run_attempt": "1",
+        "github_run_id": "31533452183",
+        "github_run_number": "151",
+        "github_runner_arch": "X64",
+        "github_runner_environment": "github-hosted",
+        "github_runner_image_os": "ubuntu24",
+        "github_runner_image_version": "20260720.247.2",
+        "github_runner_name": "GitHub Actions 1000031767",
+        "github_runner_os": "Linux",
+        "github_runner_tracking_id": "github_5132e532-3857-4d72-80ea-acf743085e42",
+        "github_server_url": "https://github.com",
+        "github_triggering_actor": "matvp91",
+        "github_workflow": "Docs",
+        "github_workflow_ref": "matvp91/dyndo/.github/workflows/docs.yml@refs/heads/main",
+        "github_workflow_sha": "25a0a0687373e8de66433b69b40452cc60d960b4"
+      }
+    },
+    "runDetails": {
+      "builder": {
+        "id": "https://github.com/matvp91/dyndo/actions/runs/31533452183/attempts/1"
+      },
+      "metadata": {
+        "invocationId": "od8eej2ca4oithy0bpk2s72t2",
+        "startedOn": "2026-08-11T20:32:48.019011237Z",
+        "finishedOn": "2026-08-11T20:36:01.005536519Z",
+        "buildkit_metadata": {
+          "vcs": {
+            "localdir:context": ".",
+            "localdir:dockerfile": ".",
+            "revision": "25a0a0687373e8de66433b69b40452cc60d960b4",
+            "source": "https://github.com/matvp91/dyndo"
+          },
+          "source": {
+            "locations": {
+              "step0": {
+                "locations": [
+                  {
+                    "ranges": [
+                      {
+                        "start": {
+                          "line": 54
+                        },
+                        "end": {
+                          "line": 54
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              "step1": {
+                "locations": [
+                  {
+                    "ranges": [
+                      {
+                        "start": {
+                          "line": 55
+                        },
+                        "end": {
+                          "line": 55
+                        }
+                      },
+                      {
+                        "start": {
+                          "line": 56
+                        },
+                        "end": {
+                          "line": 56
+                        }
+                      },
+                      {
+                        "start": {
+                          "line": 57
+                        },
+                        "end": {
+                          "line": 57
+                        }
+                      },
+                      {
+                        "start": {
+                          "line": 58
+                        },
+                        "end": {
+                          "line": 58
+                        }
+                      },
+                      {
+                        "start": {
+                          "line": 59
+                        },
+                        "end": {
+                          "line": 59
+                        }
+                      },
+                      {
+                        "start": {
+                          "line": 60
+                        },
+                        "end": {
+                          "line": 60
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              "step10": {
+                "locations": [
+                  {
+                    "ranges": [
+                      {
+                        "start": {
+                          "line": 102
+                        },
+                        "end": {
+                          "line": 102
+                        }
+                      },
+                      {
+                        "start": {
+                          "line": 103
+                        },
+                        "end": {
+                          "line": 103
+                        }
+                      },
+                      {
+                        "start": {
+                          "line": 104
+                        },
+                        "end": {
+                          "line": 104
+                        }
+                      },
+                      {
+                        "start": {
+                          "line": 105
+                        },
+                        "end": {
+                          "line": 105
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              "step11": {
+                "locations": [
+                  {
+                    "ranges": [
+                      {
+                        "start": {
+                          "line": 109
+                        },
+                        "end": {
+                          "line": 109
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              "step2": {
+                "locations": [
+                  {
+                    "ranges": [
+                      {
+                        "start": {
+                          "line": 61
+                        },
+                        "end": {
+                          "line": 61
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              "step3": {
+                "locations": [
+                  {
+                    "ranges": [
+                      {
+                        "start": {
+                          "line": 8
+                        },
+                        "end": {
+                          "line": 8
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              "step4": {
+                "locations": [
+                  {
+                    "ranges": [
+                      {
+                        "start": {
+                          "line": 10
+                        },
+                        "end": {
+                          "line": 10
+                        }
+                      },
+                      {
+                        "start": {
+                          "line": 11
+                        },
+                        "end": {
+                          "line": 11
+                        }
+                      },
+                      {
+                        "start": {
+                          "line": 12
+                        },
+                        "end": {
+                          "line": 12
+                        }
+                      },
+                      {
+                        "start": {
+                          "line": 13
+                        },
+                        "end": {
+                          "line": 13
+                        }
+                      },
+                      {
+                        "start": {
+                          "line": 14
+                        },
+                        "end": {
+                          "line": 14
+                        }
+                      },
+                      {
+                        "start": {
+                          "line": 15
+                        },
+                        "end": {
+                          "line": 15
+                        }
+                      },
+                      {
+                        "start": {
+                          "line": 16
+                        },
+                        "end": {
+                          "line": 16
+                        }
+                      },
+                      {
+                        "start": {
+                          "line": 17
+                        },
+                        "end": {
+                          "line": 17
+                        }
+                      },
+                      {
+                        "start": {
+                          "line": 18
+                        },
+                        "end": {
+                          "line": 18
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              "step5": {
+                "locations": [
+                  {
+                    "ranges": [
+                      {
+                        "start": {
+                          "line": 19
+                        },
+                        "end": {
+                          "line": 19
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              "step6": {
+                "locations": [
+                  {
+                    "ranges": [
+                      {
+                        "start": {
+                          "line": 20
+                        },
+                        "end": {
+                          "line": 20
+                        }
+                      },
+                      {
+                        "start": {
+                          "line": 21
+                        },
+                        "end": {
+                          "line": 21
+                        }
+                      },
+                      {
+                        "start": {
+                          "line": 22
+                        },
+                        "end": {
+                          "line": 22
+                        }
+                      },
+                      {
+                        "start": {
+                          "line": 23
+                        },
+                        "end": {
+                          "line": 23
+                        }
+                      },
+                      {
+                        "start": {
+                          "line": 24
+                        },
+                        "end": {
+                          "line": 24
+                        }
+                      },
+                      {
+                        "start": {
+                          "line": 25
+                        },
+                        "end": {
+                          "line": 25
+                        }
+                      },
+                      {
+                        "start": {
+                          "line": 26
+                        },
+                        "end": {
+                          "line": 26
+                        }
+                      },
+                      {
+                        "start": {
+                          "line": 27
+                        },
+                        "end": {
+                          "line": 27
+                        }
+                      },
+                      {
+                        "start": {
+                          "line": 28
+                        },
+                        "end": {
+                          "line": 28
+                        }
+                      },
+                      {
+                        "start": {
+                          "line": 29
+                        },
+                        "end": {
+                          "line": 29
+                        }
+                      },
+                      {
+                        "start": {
+                          "line": 30
+                        },
+                        "end": {
+                          "line": 30
+                        }
+                      },
+                      {
+                        "start": {
+                          "line": 31
+                        },
+                        "end": {
+                          "line": 31
+                        }
+                      },
+                      {
+                        "start": {
+                          "line": 32
+                        },
+                        "end": {
+                          "line": 32
+                        }
+                      },
+                      {
+                        "start": {
+                          "line": 33
+                        },
+                        "end": {
+                          "line": 33
+                        }
+                      },
+                      {
+                        "start": {
+                          "line": 34
+                        },
+                        "end": {
+                          "line": 34
+                        }
+                      },
+                      {
+                        "start": {
+                          "line": 35
+                        },
+                        "end": {
+                          "line": 35
+                        }
+                      },
+                      {
+                        "start": {
+                          "line": 36
+                        },
+                        "end": {
+                          "line": 36
+                        }
+                      },
+                      {
+                        "start": {
+                          "line": 37
+                        },
+                        "end": {
+                          "line": 37
+                        }
+                      },
+                      {
+                        "start": {
+                          "line": 38
+                        },
+                        "end": {
+                          "line": 38
+                        }
+                      },
+                      {
+                        "start": {
+                          "line": 39
+                        },
+                        "end": {
+                          "line": 39
+                        }
+                      },
+                      {
+                        "start": {
+                          "line": 40
+                        },
+                        "end": {
+                          "line": 40
+                        }
+                      },
+                      {
+                        "start": {
+                          "line": 41
+                        },
+                        "end": {
+                          "line": 41
+                        }
+                      },
+                      {
+                        "start": {
+                          "line": 42
+                        },
+                        "end": {
+                          "line": 42
+                        }
+                      },
+                      {
+                        "start": {
+                          "line": 43
+                        },
+                        "end": {
+                          "line": 43
+                        }
+                      },
+                      {
+                        "start": {
+                          "line": 44
+                        },
+                        "end": {
+                          "line": 44
+                        }
+                      },
+                      {
+                        "start": {
+                          "line": 45
+                        },
+                        "end": {
+                          "line": 45
+                        }
+                      },
+                      {
+                        "start": {
+                          "line": 46
+                        },
+                        "end": {
+                          "line": 46
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              "step7": {
+                "locations": [
+                  {
+                    "ranges": [
+                      {
+                        "start": {
+                          "line": 62
+                        },
+                        "end": {
+                          "line": 62
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              "step8": {},
+              "step9": {
+                "locations": [
+                  {
+                    "ranges": [
+                      {
+                        "start": {
+                          "line": 63
+                        },
+                        "end": {
+                          "line": 63
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            "infos": [
+              {
+                "filename": "Dockerfile",
+                "language": "Dockerfile",
+                "data": "IyBzeW50YXg9ZG9ja2VyL2RvY2tlcmZpbGU6MQoKIyBUaGlzIGlzIHRoZSBzaW5nbGUgTGludXggRkZtcGVnIGJ1aWxkIGRlZmluaXRpb24uIEFsbCBMaW51eCBDSSB2ZXJpZmljYXRpb24sCiMgcmVsZWFzZSBhcnRpZmFjdHMsIGFuZCBydW50aW1lIGltYWdlcyBidWlsZCBmcm9tIHRoZXNlIHN0YWdlcy4KQVJHIEZGTVBFR19WRVJTSU9OPTcuMS41CgojIC0tLS0gRkZtcGVnIHN0YWdlIC0tLS0KRlJPTSBkZWJpYW46dHJpeGllLXNsaW0gQVMgZmZtcGVnCkFSRyBGRk1QRUdfVkVSU0lPTgpSVU4gYXB0LWdldCB1cGRhdGUgXAogICAgJiYgYXB0LWdldCBpbnN0YWxsIC15IC0tbm8taW5zdGFsbC1yZWNvbW1lbmRzIFwKICAgICAgICBidWlsZC1lc3NlbnRpYWwgXAogICAgICAgIGNhLWNlcnRpZmljYXRlcyBcCiAgICAgICAgY3VybCBcCiAgICAgICAgbmFzbSBcCiAgICAgICAgcGtnLWNvbmZpZyBcCiAgICAgICAgeHotdXRpbHMgXAogICAgJiYgcm0gLXJmIC92YXIvbGliL2FwdC9saXN0cy8qCldPUktESVIgL3RtcApSVU4gY3VybCAtLWZhaWwgLS1sb2NhdGlvbiAtLXJldHJ5IDUgLS1yZXRyeS1hbGwtZXJyb3JzIC0tcmV0cnktZGVsYXkgMiBcCiAgICAgICAgImh0dHBzOi8vZmZtcGVnLm9yZy9yZWxlYXNlcy9mZm1wZWctJHtGRk1QRUdfVkVSU0lPTn0udGFyLnh6IiBcCiAgICAgICAgLS1vdXRwdXQgZmZtcGVnLnRhci54eiBcCiAgICAmJiB0YXIgLS1leHRyYWN0IC0tZmlsZSBmZm1wZWcudGFyLnh6IFwKICAgICYmIGNkICJmZm1wZWctJHtGRk1QRUdfVkVSU0lPTn0iIFwKICAgICYmIC4vY29uZmlndXJlIFwKICAgICAgICAtLXByZWZpeD0vb3B0L2ZmbXBlZyBcCiAgICAgICAgLS1kaXNhYmxlLXN0YXRpYyBcCiAgICAgICAgLS1lbmFibGUtc2hhcmVkIFwKICAgICAgICAtLWRpc2FibGUtcHJvZ3JhbXMgXAogICAgICAgIC0tZGlzYWJsZS1kb2MgXAogICAgICAgIC0tZGlzYWJsZS1kZWJ1ZyBcCiAgICAgICAgLS1kaXNhYmxlLWF1dG9kZXRlY3QgXAogICAgICAgIC0tZGlzYWJsZS1ldmVyeXRoaW5nIFwKICAgICAgICAtLWVuYWJsZS1hdmNvZGVjIFwKICAgICAgICAtLWVuYWJsZS1hdmRldmljZSBcCiAgICAgICAgLS1lbmFibGUtYXZmaWx0ZXIgXAogICAgICAgIC0tZW5hYmxlLWF2Zm9ybWF0IFwKICAgICAgICAtLWVuYWJsZS1hdnV0aWwgXAogICAgICAgIC0tZW5hYmxlLXN3cmVzYW1wbGUgXAogICAgICAgIC0tZW5hYmxlLXN3c2NhbGUgXAogICAgICAgIC0tZW5hYmxlLWRlbXV4ZXI9bW92IFwKICAgICAgICAtLWVuYWJsZS1kZWNvZGVyPWgyNjQsaGV2YyxhdjEgXAogICAgICAgIC0tZW5hYmxlLWVuY29kZXI9bWpwZWcgXAogICAgICAgIC0tZW5hYmxlLXBhcnNlcj1oMjY0LGhldmMsYXYxIFwKICAgICYmIG1ha2UgLS1qb2JzICIkKG5wcm9jKSIgXAogICAgJiYgbWFrZSBpbnN0YWxsCgojIC0tLS0gYnVpbGQgc3RhZ2UgLS0tLQojIFBpbiB0aGUgZXhhY3QgcnVzdGMgdG8gbWF0Y2ggcnVzdC10b29sY2hhaW4udG9tbCAoRlJPTSBjYW4ndCByZWFkIHRoYXQgZmlsZSwKIyBzbyB0aGlzIGlzIHRoZSBvbmUgZGVsaWJlcmF0ZSBkdXBsaWNhdGUg4oCUIGJ1bXAgYm90aCB0b2dldGhlcikuIFRoZSBEZWJpYW4KIyBjb2RlbmFtZSBpcyBwaW5uZWQgdG9vIChub3QgcGxhaW4gYHJ1c3Q6MS1zbGltYCwgd2hpY2ggdHJhY2tzIERlYmlhbidzCiMgbGF0ZXN0KSBzbyB0aGUgYnVpbGQgZ2xpYmMgbWF0Y2hlcyB0aGUgcnVudGltZSBzdGFnZSBiZWxvdyBhbmQgY2FuJ3QKIyBzaWxlbnRseSBkcmlmdC4KRlJPTSBydXN0OjEuOTcuMC1zbGltLXRyaXhpZSBBUyBidWlsZApSVU4gYXB0LWdldCB1cGRhdGUgXAogICAgJiYgYXB0LWdldCBpbnN0YWxsIC15IC0tbm8taW5zdGFsbC1yZWNvbW1lbmRzIFwKICAgICAgICBsaWJjbGFuZy1kZXYgXAogICAgICAgIHBrZy1jb25maWcgXAogICAgJiYgcm0gLXJmIC92YXIvbGliL2FwdC9saXN0cy8qIFwKICAgICYmIHJ1c3R1cCBjb21wb25lbnQgYWRkIGNsaXBweQpXT1JLRElSIC9zcmMKQ09QWSAtLWZyb209ZmZtcGVnIC9vcHQvZmZtcGVnIC9vcHQvZmZtcGVnCkNPUFkgLiAuCkVOViBQS0dfQ09ORklHX1BBVEg9L29wdC9mZm1wZWcvbGliL3BrZ2NvbmZpZyBcCiAgICBMRF9MSUJSQVJZX1BBVEg9L29wdC9mZm1wZWcvbGliCgojIC0tLS0gdmVyaWZpY2F0aW9uIHN0YWdlIC0tLS0KIyBMaW51eCBDSSBidWlsZHMgdGhpcyB0YXJnZXQsIHNvIGV2ZXJ5IEZGbXBlZy1kZXBlbmRlbnQgY2hlY2sgcnVucyBhZ2FpbnN0IHRoZQojIHNhbWUgY29tcGlsZXIsIGxpYnJhcmllcywgYW5kIGhlYWRlcnMgYXMgdGhlIHNoaXBwZWQgc2VydmVyIGltYWdlLgpGUk9NIGJ1aWxkIEFTIHZlcmlmeQpSVU4gLS1tb3VudD10eXBlPWNhY2hlLGlkPWR5bmRvLWNhcmdvLXJlZ2lzdHJ5LHRhcmdldD0vdXNyL2xvY2FsL2NhcmdvL3JlZ2lzdHJ5IFwKICAgIC0tbW91bnQ9dHlwZT1jYWNoZSxpZD1keW5kby10YXJnZXQsdGFyZ2V0PS9zcmMvdGFyZ2V0IFwKICAgIGNhcmdvIGNsaXBweSAtLWFsbC10YXJnZXRzIC0tIC1EIHdhcm5pbmdzICYmIFwKICAgIGNhcmdvIHRlc3QgJiYgXAogICAgUlVTVERPQ0ZMQUdTPSItRCB3YXJuaW5ncyIgY2FyZ28gZG9jIC0tbm8tZGVwcyAtLXdvcmtzcGFjZQoKIyAtLS0tIHJlbGVhc2UgYXJ0aWZhY3RzIHN0YWdlIC0tLS0KRlJPTSBidWlsZCBBUyBhcnRpZmFjdHMKUlVOIC0tbW91bnQ9dHlwZT1jYWNoZSxpZD1keW5kby1jYXJnby1yZWdpc3RyeSx0YXJnZXQ9L3Vzci9sb2NhbC9jYXJnby9yZWdpc3RyeSBcCiAgICAtLW1vdW50PXR5cGU9Y2FjaGUsaWQ9ZHluZG8tdGFyZ2V0LHRhcmdldD0vc3JjL3RhcmdldCBcCiAgICBjYXJnbyBidWlsZCAtLXJlbGVhc2UgLXAgZHluZG8tY2xpIC1wIGR5bmRvLXNlcnZlciAmJiBcCiAgICBpbnN0YWxsIC0tZGlyZWN0b3J5IC9vdXQgJiYgXAogICAgaW5zdGFsbCAtLW1vZGU9NzU1IHRhcmdldC9yZWxlYXNlL2R5bmRvIC9vdXQvZHluZG8gJiYgXAogICAgaW5zdGFsbCAtLW1vZGU9NzU1IHRhcmdldC9yZWxlYXNlL2R5bmRvLXNlcnZlciAvb3V0L2R5bmRvLXNlcnZlcgoKIyBUaGlzIHRhcmdldCBleHBvcnRzIExpbnV4IHJlbGVhc2UgYmluYXJpZXMgd2l0aCBCdWlsZHgncyB0eXBlPWxvY2FsIG91dHB1dC4KRlJPTSBzY3JhdGNoIEFTIGFydGlmYWN0LW91dHB1dApDT1BZIC0tZnJvbT1hcnRpZmFjdHMgL291dC8gLwoKIyAtLS0tIHNlcnZlciBzdGFnZSAtLS0tCiMgVGhlIHJ1bnRpbWUgaW1hZ2UgZG9lcyBub3QgbmVlZCB0aGUgQ0xJLCBzbyBhdm9pZCBjb21waWxpbmcgaXQgZm9yIGV2ZXJ5CiMgcHVibGlzaGVkIExpbnV4IGFyY2hpdGVjdHVyZS4KRlJPTSBidWlsZCBBUyBzZXJ2ZXIKUlVOIC0tbW91bnQ9dHlwZT1jYWNoZSxpZD1keW5kby1jYXJnby1yZWdpc3RyeSx0YXJnZXQ9L3Vzci9sb2NhbC9jYXJnby9yZWdpc3RyeSBcCiAgICAtLW1vdW50PXR5cGU9Y2FjaGUsaWQ9ZHluZG8tdGFyZ2V0LHRhcmdldD0vc3JjL3RhcmdldCBcCiAgICBjYXJnbyBidWlsZCAtLXJlbGVhc2UgLXAgZHluZG8tc2VydmVyICYmIFwKICAgIGluc3RhbGwgLS1kaXJlY3RvcnkgL291dCAmJiBcCiAgICBpbnN0YWxsIC0tbW9kZT03NTUgdGFyZ2V0L3JlbGVhc2UvZHluZG8tc2VydmVyIC9vdXQvZHluZG8tc2VydmVyCgojIC0tLS0gSlNPTiBTY2hlbWEgc3RhZ2UgLS0tLQpGUk9NIGJ1aWxkIEFTIHNjaGVtYQpSVU4gLS1tb3VudD10eXBlPWNhY2hlLGlkPWR5bmRvLWNhcmdvLXJlZ2lzdHJ5LHRhcmdldD0vdXNyL2xvY2FsL2NhcmdvL3JlZ2lzdHJ5IFwKICAgIC0tbW91bnQ9dHlwZT1jYWNoZSxpZD1keW5kby10YXJnZXQsdGFyZ2V0PS9zcmMvdGFyZ2V0IFwKICAgIGluc3RhbGwgLS1kaXJlY3RvcnkgL291dCAmJiBcCiAgICBjYXJnbyB4dGFzayBhc3NldC1zY2hlbWEgLS1vdXRwdXQgL291dC9zY2hlbWEuanNvbgoKIyBUaGlzIHRhcmdldCBleHBvcnRzIG9ubHkgdGhlIGdlbmVyYXRlZCBzY2hlbWEgdG8gdGhlIFBhZ2VzIHdvcmtmbG93LgpGUk9NIHNjcmF0Y2ggQVMgc2NoZW1hLW91dHB1dApDT1BZIC0tZnJvbT1zY2hlbWEgL291dC9zY2hlbWEuanNvbiAvc2NoZW1hLmpzb24KCiMgLS0tLSBydW50aW1lIHN0YWdlIC0tLS0KIyBTYW1lIERlYmlhbiByZWxlYXNlIGFzIHRoZSBidWlsZCBpbWFnZSwgc28gdGhlIHJ1bnRpbWUgZ2xpYmMgc2F0aXNmaWVzIHRoZQojIGJpbmFyeSdzIEdMSUJDXyogc3ltYm9scyAoYSBib29rd29ybSBydW50aW1lIHZzIGEgdHJpeGllIGJ1aWxkIGZhaWxzIGF0CiMgc3RhcnR1cCB3aXRoIGBHTElCQ18yLjM4IG5vdCBmb3VuZGApLgpGUk9NIGRlYmlhbjp0cml4aWUtc2xpbSBBUyBydW50aW1lCiMgcnVzdGxzIHZlcmlmaWVzIFMzJ3MgVExTIGNlcnRzIGFnYWluc3QgdGhlIHN5c3RlbSB0cnVzdCBzdG9yZTsgZnMtb25seSBydW5zCiMgbmV2ZXIgdG91Y2ggdGhpcy4gTm8gbGlic3NsIGlzIG5lZWRlZCAoVExTIGlzIHB1cmUtUnVzdCBydXN0bHMpLgpSVU4gYXB0LWdldCB1cGRhdGUgXAogICAgJiYgYXB0LWdldCBpbnN0YWxsIC15IC0tbm8taW5zdGFsbC1yZWNvbW1lbmRzIGNhLWNlcnRpZmljYXRlcyBcCiAgICAmJiBybSAtcmYgL3Zhci9saWIvYXB0L2xpc3RzLyoKQ09QWSAtLWZyb209ZmZtcGVnIC9vcHQvZmZtcGVnL2xpYi8gL3Vzci9sb2NhbC9saWIvClJVTiBsZGNvbmZpZwojIFJ1biB1bnByaXZpbGVnZWQuClJVTiB1c2VyYWRkIC0tc3lzdGVtIC0tdWlkIDEwMDAxIGR5bmRvClVTRVIgZHluZG8KQ09QWSAtLWZyb209c2VydmVyIC9vdXQvZHluZG8tc2VydmVyIC91c3IvbG9jYWwvYmluL2R5bmRvLXNlcnZlcgpFWFBPU0UgODA4MApFTlRSWVBPSU5UIFsiZHluZG8tc2VydmVyIl0K",
+                "llbDefinition": [
+                  {
+                    "id": "step0",
+                    "op": {
+                      "Op": {
+                        "source": {
+                          "identifier": "local://dockerfile",
+                          "attrs": {
+                            "local.differ": "none",
+                            "local.followpaths": "[\"Dockerfile\",\"Dockerfile.dockerignore\",\"dockerfile\"]",
+                            "local.sharedkeyhint": "dockerfile"
+                          }
+                        }
+                      },
+                      "constraints": {}
+                    }
+                  },
+                  {
+                    "id": "step1",
+                    "op": {
+                      "Op": {}
+                    },
+                    "inputs": [
+                      "step0:0"
+                    ]
+                  }
+                ],
+                "digestMapping": {
+                  "sha256:54e033cbd322b4ec3ea8e81906a0760f70676641939de4fa7887729e2a6afc30": "step1",
+                  "sha256:c960e3d1354e357877fb5679e39e5f7e1c683bf777b52cd105fae4e85a066e6a": "step0"
+                }
+              }
+            ]
+          },
+          "layers": {
+            "step0:0": [
+              [
+                {
+                  "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+                  "digest": "sha256:062e450697faa5f02a3a74eba9864ee4d79bc9cfbd65769fc6cdff2c05c6a053",
+                  "size": 29780905
+                },
+                {
+                  "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+                  "digest": "sha256:0410f18f530500d4aa1d0ee00bd1b27d5d2151b31058b10e24720cd68a08e501",
+                  "size": 293313963
+                }
+              ]
+            ],
+            "step3:0": [
+              [
+                {
+                  "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+                  "digest": "sha256:26c307b5e35a59ce911f5fde5b9458120ec8734e831ea2da5649a9ad14abfd3d",
+                  "size": 29780765
+                }
+              ]
+            ]
+          }
+        },
+        "buildkit_completeness": {
+          "request": true,
+          "resolvedDependencies": false
+        }
+      }
+    }
+  }
+}
