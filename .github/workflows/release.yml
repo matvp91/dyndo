@@ -39,6 +39,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+      - uses: ./.github/actions/setup-ffmpeg
       # Installs the exact toolchain pinned in rust-toolchain.toml
       # (components rustfmt+clippy come from that file too).
       - name: Install pinned toolchain
