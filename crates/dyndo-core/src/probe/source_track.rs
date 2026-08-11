@@ -16,18 +16,24 @@ impl SourceTrack {
         path: &RelativePath,
         descriptor: Option<&TrackDescriptor>,
     ) -> Result<Self, ProbeError> {
+        if matches!(descriptor, Some(TrackDescriptor::Thumbnail(_))) {
+            return Err(ProbeError::NotSourceTrack);
+        }
+
+        let id = descriptor
+            .map(TrackDescriptor::id)
+            .map(str::to_owned)
+            .unwrap_or_else(|| source_id(path));
+
         match descriptor {
             Some(TrackDescriptor::WebVtt(descriptor)) => {
-                WebVttTrack::probe(op, path, descriptor.id.clone(), descriptor.kind.clone())
+                WebVttTrack::probe(op, path, id, descriptor.kind.clone())
                     .await
                     .map(TimedTextTrack::WebVtt)
                     .map(Self::TimedText)
             }
-            Some(TrackDescriptor::Thumbnail(_)) => Err(ProbeError::NotSourceTrack),
             descriptor => {
                 if path.as_str().ends_with(".vtt") {
-                    let id =
-                        Uuid::new_v5(&Uuid::NAMESPACE_URL, path.as_str().as_bytes()).to_string();
                     let kind = TextKind {
                         language: undetermined_language(),
                         role: None,
@@ -37,16 +43,15 @@ impl SourceTrack {
                         .map(TimedTextTrack::WebVtt)
                         .map(Self::TimedText);
                 }
-                let identity = descriptor
-                    .map(|descriptor| {
-                        descriptor
-                            .cmaf_kind()
-                            .map(|kind| (descriptor.id().to_string(), kind))
-                            .ok_or(ProbeError::NotSourceTrack)
-                    })
+                let kind = descriptor
+                    .map(|descriptor| descriptor.cmaf_kind().ok_or(ProbeError::NotSourceTrack))
                     .transpose()?;
-                CmafTrack::probe(op, path, identity).await.map(Self::Cmaf)
+                CmafTrack::probe(op, path, id, kind).await.map(Self::Cmaf)
             }
         }
     }
+}
+
+fn source_id(path: &RelativePath) -> String {
+    Uuid::new_v5(&Uuid::NAMESPACE_URL, path.as_str().as_bytes()).to_string()
 }
