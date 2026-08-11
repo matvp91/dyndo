@@ -1,13 +1,13 @@
 use std::ops::Range;
 
-use dyndo_core::asset_descriptor::AssetDescriptor;
-use dyndo_core::cmaf_package::CmafPackage;
-use dyndo_core::cmaf_track::CmafTrack;
+use dyndo_core::asset::AssetDescriptor;
 use dyndo_core::probe::probe_source_tracks;
 use dyndo_core::served_segment::ServedSegment;
-use dyndo_core::source_track::SourceTrack;
-use dyndo_core::timed_text_track::TimedTextTrack;
-use dyndo_core::web_vtt_track::WebVttTrack;
+use dyndo_core::track::SourceTrack;
+use dyndo_core::track::cmaf::CmafTrack;
+use dyndo_core::track::cmaf::package::CmafPackage;
+use dyndo_core::track::timed_text::TimedTextTrack;
+use dyndo_core::track::timed_text::web_vtt::WebVttTrack;
 use opendal::Operator;
 
 use crate::error::ServerError;

@@ -2,11 +2,11 @@ use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use dyndo_core::asset_descriptor::AssetDescriptorError;
+use dyndo_core::asset::AssetDescriptorError;
 use dyndo_core::probe::ProbeError;
 use dyndo_core::reader::TrackReadError;
-use dyndo_core::thumbnail_track::ThumbnailError;
-use dyndo_core::web_vtt_track::WebVttPackageError;
+use dyndo_core::track::thumbnail::ThumbnailError;
+use dyndo_core::track::timed_text::web_vtt::WebVttPackageError;
 use dyndo_dash::DashError;
 use dyndo_hls::HlsError;
 

@@ -1,7 +1,7 @@
 use dash_mpd::{
     AdaptationSet, EssentialProperty, Representation, S, SegmentTemplate, SegmentTimeline,
 };
-use dyndo_core::thumbnail_track::ThumbnailTrack;
+use dyndo_core::track::thumbnail::ThumbnailTrack;
 
 const TIMESCALE: u64 = 1_000;
 const CONTENT_TYPE: &str = "image";

@@ -8,8 +8,8 @@ use rsmpeg::avutil::{AVFrame, AVFrameWithImage, AVImage, AVMem, AVRational};
 use rsmpeg::error::RsmpegError;
 use rsmpeg::{ffi, swscale::SwsContext};
 
-use crate::cmaf_track::CmafTrack;
 use crate::segment::Segment;
+use crate::track::cmaf::CmafTrack;
 
 /// An error encountered while extracting a video frame.
 #[derive(Debug, thiserror::Error)]

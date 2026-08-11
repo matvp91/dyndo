@@ -2,9 +2,12 @@ use std::sync::Arc;
 
 use relative_path::{RelativePath, RelativePathBuf};
 
-use super::cmaf_track_kind::CmafTrackKind;
-use super::codec::CodecConfig;
-use super::segment::{InitSegment, Segment};
+use self::kind::CmafTrackKind;
+use crate::codec::CodecConfig;
+use crate::segment::{InitSegment, Segment};
+
+pub mod kind;
+pub mod package;
 
 #[derive(Clone)]
 pub struct CmafTrack {

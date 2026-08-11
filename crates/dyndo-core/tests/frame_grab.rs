@@ -1,5 +1,5 @@
 use dyndo_core::image::FrameExtractor;
-use dyndo_core::source_track::SourceTrack;
+use dyndo_core::track::SourceTrack;
 use image::{GenericImageView, ImageFormat, RgbImage};
 use opendal::{Operator, services::Memory};
 use relative_path::RelativePath;

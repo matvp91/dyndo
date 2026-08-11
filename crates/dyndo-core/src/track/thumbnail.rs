@@ -5,12 +5,12 @@ use image::imageops::FilterType;
 use image::{ImageFormat, RgbImage, imageops};
 use opendal::Operator;
 
-use crate::asset_descriptor::AssetDescriptor;
-use crate::cmaf_track::CmafTrack;
-use crate::cmaf_track_kind::CmafTrackKind;
+use crate::asset::AssetDescriptor;
+use crate::asset::thumbnail::ThumbnailTrackDescriptor;
 use crate::image::{FrameExtractor, FrameExtractorError};
-use crate::source_track::SourceTrack;
-use crate::thumbnail_track_descriptor::ThumbnailTrackDescriptor;
+use crate::track::SourceTrack;
+use crate::track::cmaf::CmafTrack;
+use crate::track::cmaf::kind::CmafTrackKind;
 
 const CONCURRENT_FRAME_GRABS: usize = 4;
 const BITS_PER_PIXEL: u64 = 1;
@@ -240,11 +240,11 @@ mod tests {
     use std::sync::Arc;
 
     use super::ThumbnailTrack;
-    use crate::cmaf_track::CmafTrack;
-    use crate::cmaf_track_kind::{CmafTrackKind, VideoKind};
+    use crate::asset::thumbnail::ThumbnailTrackDescriptor;
     use crate::codec::{CodecConfig, WvttCodec};
     use crate::segment::InitSegment;
-    use crate::thumbnail_track_descriptor::ThumbnailTrackDescriptor;
+    use crate::track::cmaf::CmafTrack;
+    use crate::track::cmaf::kind::{CmafTrackKind, VideoKind};
 
     fn video(id: &str, width: u32, height: u32) -> CmafTrack {
         CmafTrack::new(

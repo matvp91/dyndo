@@ -1,8 +1,8 @@
 use clap::Args;
-use dyndo_core::asset_descriptor::AssetDescriptor;
+use dyndo_core::asset::AssetDescriptor;
+use dyndo_core::asset::track::TrackDescriptor;
 use dyndo_core::role::Role;
-use dyndo_core::source_track::SourceTrack;
-use dyndo_core::track_descriptor::TrackDescriptor;
+use dyndo_core::track::SourceTrack;
 use language_tags::LanguageTag;
 use opendal::Operator;
 use relative_path::{RelativePath, RelativePathBuf};

@@ -1,8 +1,8 @@
 use std::ops::Range;
 
-use dyndo_core::cmaf_track_kind::CmafTrackKind;
 use dyndo_core::reader::Reader;
-use dyndo_core::source_track::SourceTrack;
+use dyndo_core::track::SourceTrack;
+use dyndo_core::track::cmaf::kind::CmafTrackKind;
 use opendal::{Operator, services::Memory};
 use relative_path::RelativePath;
 

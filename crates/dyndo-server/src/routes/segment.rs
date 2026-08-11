@@ -2,9 +2,9 @@ use axum::{
     http::header::CONTENT_TYPE,
     response::{IntoResponse, Response},
 };
-use dyndo_core::asset_descriptor::AssetDescriptor;
+use dyndo_core::asset::AssetDescriptor;
 use dyndo_core::reader::Reader;
-use dyndo_core::thumbnail_track::resolve_thumbnail_tracks;
+use dyndo_core::track::thumbnail::resolve_thumbnail_tracks;
 use opendal::Operator;
 
 use super::track_resolver::{LocatedSegment, ResolvedTrack, TrackResolver};

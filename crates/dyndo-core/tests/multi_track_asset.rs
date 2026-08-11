@@ -1,10 +1,10 @@
-use dyndo_core::asset_descriptor::AssetDescriptor;
-use dyndo_core::cmaf_track_kind::CmafTrackKind;
+use dyndo_core::asset::AssetDescriptor;
 use dyndo_core::probe::probe_source_tracks;
 use dyndo_core::reader::Reader;
-use dyndo_core::source_track::SourceTrack;
-use dyndo_core::thumbnail_track::resolve_thumbnail_tracks;
-use dyndo_core::timed_text_track::TimedTextTrack;
+use dyndo_core::track::SourceTrack;
+use dyndo_core::track::cmaf::kind::CmafTrackKind;
+use dyndo_core::track::thumbnail::resolve_thumbnail_tracks;
+use dyndo_core::track::timed_text::TimedTextTrack;
 use opendal::{Operator, services::Memory};
 
 const VIDEO_FIXTURE: &[u8] = include_bytes!("fixtures/three-frame-black-h264.mp4");

@@ -1,7 +1,7 @@
 use relative_path::RelativePathBuf;
 use serde::{Deserialize, Serialize};
 
-use super::cmaf_track_kind::TextKind;
+use crate::track::cmaf::kind::TextKind;
 
 /// A raw WebVTT source track configuration.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

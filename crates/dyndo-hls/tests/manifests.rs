@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
-use dyndo_core::cmaf_track::CmafTrack;
-use dyndo_core::cmaf_track_kind::{AudioKind, CmafTrackKind, TextKind, VideoKind};
+use dyndo_core::asset::thumbnail::ThumbnailTrackDescriptor;
 use dyndo_core::codec::{AacCodec, AvcCodec, CodecConfig, WvttCodec};
 use dyndo_core::segment::{InitSegment, Segment};
 use dyndo_core::segment_options::SegmentOptions;
-use dyndo_core::thumbnail_track::ThumbnailTrack;
-use dyndo_core::thumbnail_track_descriptor::ThumbnailTrackDescriptor;
+use dyndo_core::track::cmaf::CmafTrack;
+use dyndo_core::track::cmaf::kind::{AudioKind, CmafTrackKind, TextKind, VideoKind};
+use dyndo_core::track::thumbnail::ThumbnailTrack;
 use dyndo_hls::{
     generate_image_playlist, generate_master_playlist, generate_media_playlist, options::HlsOptions,
 };

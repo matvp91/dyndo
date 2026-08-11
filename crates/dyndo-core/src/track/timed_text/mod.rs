@@ -1,6 +1,8 @@
 use relative_path::RelativePath;
 
-use super::web_vtt_track::WebVttTrack;
+use self::web_vtt::WebVttTrack;
+
+pub mod web_vtt;
 
 /// A source track represented by timed-text documents.
 #[derive(Clone)]

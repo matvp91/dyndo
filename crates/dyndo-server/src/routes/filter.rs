@@ -1,5 +1,5 @@
-use dyndo_core::asset_descriptor::AssetDescriptor;
-use dyndo_core::track_descriptor::TrackDescriptor;
+use dyndo_core::asset::AssetDescriptor;
+use dyndo_core::asset::track::TrackDescriptor;
 use serde::{Deserialize, Deserializer, de};
 use winnow::ascii::{digit1, multispace0};
 use winnow::combinator::{
@@ -303,7 +303,7 @@ fn parse_literal(numeric: bool, input: &mut &str) -> ModalResult<Literal> {
 
 #[cfg(test)]
 mod tests {
-    use dyndo_core::asset_descriptor::AssetDescriptor;
+    use dyndo_core::asset::AssetDescriptor;
 
     use super::Filter;
 

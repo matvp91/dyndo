@@ -2,9 +2,9 @@ use opendal::Operator;
 use relative_path::RelativePath;
 
 use super::ProbeError;
-use crate::cmaf_track_kind::TextKind;
 use crate::text::Subtitle;
-use crate::web_vtt_track::WebVttTrack;
+use crate::track::cmaf::kind::TextKind;
+use crate::track::timed_text::web_vtt::WebVttTrack;
 
 impl WebVttTrack {
     pub(super) async fn probe(

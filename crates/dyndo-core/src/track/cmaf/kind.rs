@@ -1,7 +1,7 @@
 use language_tags::LanguageTag;
 use serde::{Deserialize, Serialize};
 
-use super::role::Role;
+use crate::role::Role;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
@@ -56,6 +56,6 @@ pub struct TextKind {
     pub role: Option<Role>,
 }
 
-pub(super) fn undetermined_language() -> LanguageTag {
+pub(crate) fn undetermined_language() -> LanguageTag {
     "und".parse().expect("und is a well-formed language tag")
 }

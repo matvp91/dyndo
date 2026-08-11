@@ -1,7 +1,7 @@
-use dyndo_core::cmaf_track_kind::CmafTrackKind;
 use dyndo_core::segment_options::SegmentOptions;
-use dyndo_core::source_track::SourceTrack;
-use dyndo_core::timed_text_track::TimedTextTrack;
+use dyndo_core::track::SourceTrack;
+use dyndo_core::track::cmaf::kind::CmafTrackKind;
+use dyndo_core::track::timed_text::TimedTextTrack;
 use opendal::{Operator, services::Memory};
 use relative_path::RelativePath;
 

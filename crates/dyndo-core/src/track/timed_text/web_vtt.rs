@@ -1,13 +1,13 @@
 use bytes::Bytes;
 use relative_path::{RelativePath, RelativePathBuf};
 
-use super::cmaf_package::CmafPackage;
-use super::cmaf_track::CmafTrack;
-use super::cmaf_track_kind::{CmafTrackKind, TextKind};
-use super::packaging::PackageError;
-use super::probe::ProbeError;
-use super::segment_options::SegmentOptions;
-use super::text::{Cue, Subtitle};
+use crate::packaging::PackageError;
+use crate::probe::ProbeError;
+use crate::segment_options::SegmentOptions;
+use crate::text::{Cue, Subtitle};
+use crate::track::cmaf::CmafTrack;
+use crate::track::cmaf::kind::{CmafTrackKind, TextKind};
+use crate::track::cmaf::package::CmafPackage;
 
 #[derive(Debug, thiserror::Error)]
 pub enum WebVttPackageError {

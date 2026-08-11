@@ -1,8 +1,8 @@
-use dyndo_core::cmaf_track::CmafTrack;
-use dyndo_core::cmaf_track_kind::CmafTrackKind;
 use dyndo_core::role::Role;
 use dyndo_core::segment_options::SegmentOptions;
 use dyndo_core::served_segment::ServedSegment;
+use dyndo_core::track::cmaf::CmafTrack;
+use dyndo_core::track::cmaf::kind::CmafTrackKind;
 
 pub(super) struct AdaptationGroup<'a> {
     key: String,

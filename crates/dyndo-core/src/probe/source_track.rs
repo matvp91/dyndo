@@ -3,12 +3,12 @@ use relative_path::RelativePath;
 use uuid::Uuid;
 
 use super::ProbeError;
-use crate::cmaf_track::CmafTrack;
-use crate::cmaf_track_kind::{TextKind, undetermined_language};
-use crate::source_track::SourceTrack;
-use crate::timed_text_track::TimedTextTrack;
-use crate::track_descriptor::TrackDescriptor;
-use crate::web_vtt_track::WebVttTrack;
+use crate::asset::track::TrackDescriptor;
+use crate::track::SourceTrack;
+use crate::track::cmaf::CmafTrack;
+use crate::track::cmaf::kind::{TextKind, undetermined_language};
+use crate::track::timed_text::TimedTextTrack;
+use crate::track::timed_text::web_vtt::WebVttTrack;
 
 impl SourceTrack {
     pub async fn probe(

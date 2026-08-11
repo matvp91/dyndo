@@ -1,12 +1,12 @@
 use relative_path::RelativePathBuf;
 use serde::{Deserialize, Serialize};
 
-use super::cmaf_track_descriptor::CmafTrackDescriptor;
-use super::cmaf_track_kind::{AudioKind, CmafTrackKind, TextKind, VideoKind};
-use super::source_track::SourceTrack;
-use super::thumbnail_track_descriptor::ThumbnailTrackDescriptor;
-use super::timed_text_track::TimedTextTrack;
-use super::web_vtt_track_descriptor::WebVttTrackDescriptor;
+use super::cmaf::CmafTrackDescriptor;
+use super::thumbnail::ThumbnailTrackDescriptor;
+use super::timed_text::WebVttTrackDescriptor;
+use crate::track::SourceTrack;
+use crate::track::cmaf::kind::{AudioKind, CmafTrackKind, TextKind, VideoKind};
+use crate::track::timed_text::TimedTextTrack;
 
 /// A track configuration in an asset descriptor.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

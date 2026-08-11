@@ -7,8 +7,8 @@ use super::ProbeError;
 use super::box_reader;
 use super::metadata::{build_codec, build_kind};
 use super::segment_index::{build_init_segment, build_segments};
-use crate::cmaf_track::CmafTrack;
-use crate::cmaf_track_kind::CmafTrackKind;
+use crate::track::cmaf::CmafTrack;
+use crate::track::cmaf::kind::CmafTrackKind;
 
 impl CmafTrack {
     pub(super) async fn probe(

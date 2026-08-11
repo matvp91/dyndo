@@ -2,7 +2,7 @@ use std::ops::Range;
 
 use bytes::Bytes;
 
-use super::cmaf_track::CmafTrack;
+use super::CmafTrack;
 
 /// A temporary in-memory CMAF representation of a source track.
 pub struct CmafPackage {

@@ -11,7 +11,7 @@ use axum::{
     response::Response,
     routing::get,
 };
-use dyndo_core::asset_descriptor::{AssetDescriptor, AssetDescriptorError};
+use dyndo_core::asset::{AssetDescriptor, AssetDescriptorError};
 use opendal::Operator;
 use serde::Deserialize;
 use tower_http::cors::{Any, CorsLayer};

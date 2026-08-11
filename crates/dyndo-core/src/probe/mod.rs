@@ -2,8 +2,8 @@ use ::opendal::Operator;
 use futures_util::future::try_join_all;
 
 use self::box_reader::BoxReaderError;
-use super::asset_descriptor::AssetDescriptor;
-use super::source_track::SourceTrack;
+use super::asset::AssetDescriptor;
+use super::track::SourceTrack;
 
 mod box_reader;
 mod cmaf_track;

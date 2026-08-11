@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
-use dyndo_core::cmaf_track::CmafTrack;
-use dyndo_core::cmaf_track_kind::CmafTrackKind;
 use dyndo_core::segment_options::SegmentOptions;
 use dyndo_core::served_segment::ServedSegment;
-use dyndo_core::thumbnail_track::ThumbnailTrack;
+use dyndo_core::track::cmaf::CmafTrack;
+use dyndo_core::track::cmaf::kind::CmafTrackKind;
+use dyndo_core::track::thumbnail::ThumbnailTrack;
 use m3u8_rs::{ExtTag, Map, MediaPlaylist, MediaPlaylistType, MediaSegment};
 
 use crate::options::HlsOptions;

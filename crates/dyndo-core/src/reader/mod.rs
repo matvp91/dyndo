@@ -3,7 +3,7 @@ use std::ops::Range;
 use bytes::Bytes;
 use opendal::Operator;
 
-use super::cmaf_track::CmafTrack;
+use super::track::cmaf::CmafTrack;
 
 #[derive(Debug, thiserror::Error)]
 pub enum TrackReadError {

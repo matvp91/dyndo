@@ -2,10 +2,15 @@ use opendal::Operator;
 use relative_path::{RelativePath, RelativePathBuf};
 use serde::{Deserialize, Serialize};
 
-use super::segment_options::SegmentOptions;
-use super::source_track::SourceTrack;
-use super::thumbnail_track_descriptor::ThumbnailTrackDescriptor;
-use super::track_descriptor::TrackDescriptor;
+use self::thumbnail::ThumbnailTrackDescriptor;
+use self::track::TrackDescriptor;
+use crate::segment_options::SegmentOptions;
+use crate::track::SourceTrack;
+
+pub mod cmaf;
+pub mod thumbnail;
+pub mod timed_text;
+pub mod track;
 
 #[derive(Debug, thiserror::Error)]
 pub enum AssetDescriptorError {

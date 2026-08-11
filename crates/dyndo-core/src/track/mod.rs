@@ -1,7 +1,11 @@
 use relative_path::RelativePath;
 
-use super::cmaf_track::CmafTrack;
-use super::timed_text_track::TimedTextTrack;
+use self::cmaf::CmafTrack;
+use self::timed_text::TimedTextTrack;
+
+pub mod cmaf;
+pub mod thumbnail;
+pub mod timed_text;
 
 /// A track backed by an asset source.
 #[derive(Clone)]

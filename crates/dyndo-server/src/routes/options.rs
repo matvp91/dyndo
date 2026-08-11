@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use dyndo_core::asset_descriptor::AssetDescriptor;
+use dyndo_core::asset::AssetDescriptor;
 use serde::Deserialize;
 
 use crate::error::ServerError;
@@ -62,7 +62,7 @@ impl Options {
 
 #[cfg(test)]
 mod tests {
-    use dyndo_core::asset_descriptor::AssetDescriptor;
+    use dyndo_core::asset::AssetDescriptor;
     use dyndo_core::segment_options::SegmentOptions;
 
     use super::Options;

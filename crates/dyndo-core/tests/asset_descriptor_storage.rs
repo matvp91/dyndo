@@ -1,6 +1,6 @@
-use dyndo_core::asset_descriptor::AssetDescriptor;
-use dyndo_core::source_track::SourceTrack;
-use dyndo_core::thumbnail_track_descriptor::ThumbnailTrackDescriptor;
+use dyndo_core::asset::AssetDescriptor;
+use dyndo_core::asset::thumbnail::ThumbnailTrackDescriptor;
+use dyndo_core::track::SourceTrack;
 use opendal::{Operator, services::Memory};
 use relative_path::RelativePath;
 
