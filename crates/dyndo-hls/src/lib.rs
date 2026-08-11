@@ -1,6 +1,5 @@
 //! HLS playlist generation for dyndo assets.
 
-mod image;
 mod master;
 mod media;
 pub mod options;
@@ -55,7 +54,7 @@ pub fn generate_media_playlist(
 
 /// Generates the image media playlist for one thumbnail track.
 pub fn generate_image_playlist(thumbnail: &Thumbnail<'_>) -> Result<String, HlsError> {
-    let playlist = image::build_playlist(thumbnail);
+    let playlist = media::build_image_playlist(thumbnail);
     serialize(|output| playlist.write_to(output))
 }
 

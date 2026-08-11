@@ -32,7 +32,20 @@ pub(crate) fn build_playlist(
 }
 
 fn image_streams(thumbnails: &[Thumbnail<'_>]) -> Vec<ExtTag> {
-    thumbnails.iter().map(crate::image::stream_inf).collect()
+    thumbnails
+        .iter()
+        .map(|thumbnail| {
+            let (width, height) = thumbnail.tile_dimensions();
+            ExtTag {
+                tag: "X-IMAGE-STREAM-INF".to_string(),
+                rest: Some(format!(
+                    "BANDWIDTH={},CODECS=\"jpeg\",RESOLUTION={width}x{height},URI=\"{}.m3u8\"",
+                    thumbnail.bandwidth(),
+                    crate::image_resource_name(thumbnail),
+                )),
+            }
+        })
+        .collect()
 }
 
 fn build_variant_streams(
