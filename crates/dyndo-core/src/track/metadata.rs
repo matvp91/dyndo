@@ -1,29 +1,32 @@
 use language_tags::LanguageTag;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::role::Role;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct VideoMetadata {
     pub width: u32,
     pub height: u32,
     pub frame_rate: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct AudioMetadata {
     pub sample_rate: u32,
     pub channels: u16,
     #[serde(default = "undetermined_language")]
+    #[schemars(with = "String")]
     pub language: LanguageTag,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub role: Option<Role>,
 }
 
 /// Language and presentation metadata shared by text representations.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct TextMetadata {
     #[serde(default = "undetermined_language")]
+    #[schemars(with = "String")]
     pub language: LanguageTag,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub role: Option<Role>,

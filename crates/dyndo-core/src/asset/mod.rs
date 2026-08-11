@@ -1,5 +1,6 @@
 use opendal::Operator;
 use relative_path::{RelativePath, RelativePathBuf};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::segment_options::SegmentOptions;
@@ -9,6 +10,13 @@ use crate::track::{ResolvedTrack, SourceTrack, Track};
 mod resolve;
 
 pub use resolve::{AssetResolveError, ResolvedAsset};
+
+/// The versioned JSON Schema used by descriptors written by this build.
+pub const ASSET_SCHEMA_URL: &str = concat!(
+    "https://matvp91.github.io/dyndo/",
+    env!("CARGO_PKG_VERSION"),
+    "/schema.json"
+);
 
 #[derive(Debug, thiserror::Error)]
 pub enum AssetError {
@@ -20,15 +28,34 @@ pub enum AssetError {
     MissingSourcePath,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Asset {
+    /// JSON Schema used to validate this descriptor.
+    #[serde(rename = "$schema", default = "asset_schema_url")]
+    schema: String,
     #[serde(skip)]
+    #[schemars(skip)]
     path: RelativePathBuf,
     /// How the asset asks to be segmented, for requests that do not say.
     #[serde(default, skip_serializing_if = "is_default")]
     pub segment_options: SegmentOptions,
     pub tracks: Vec<Track>,
+}
+
+impl Default for Asset {
+    fn default() -> Self {
+        Self {
+            schema: asset_schema_url(),
+            path: RelativePathBuf::default(),
+            segment_options: SegmentOptions::default(),
+            tracks: Vec::new(),
+        }
+    }
+}
+
+fn asset_schema_url() -> String {
+    ASSET_SCHEMA_URL.to_owned()
 }
 
 fn is_default<T: Default + PartialEq>(value: &T) -> bool {

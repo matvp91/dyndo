@@ -1,5 +1,6 @@
 use opendal::Operator;
 use relative_path::{RelativePath, RelativePathBuf};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::metadata::TextMetadata;
@@ -10,10 +11,11 @@ mod web_vtt;
 pub use web_vtt::WebVttPackageError;
 
 /// A timed-text track stored in an asset.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct TimedTextTrack {
     pub id: String,
     /// Path relative to the asset file.
+    #[schemars(with = "String")]
     pub(super) path: RelativePathBuf,
     #[serde(flatten)]
     pub format: TimedTextFormat,
@@ -41,7 +43,7 @@ impl TimedTextTrack {
 }
 
 /// The document format carried by a timed-text source track.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum TimedTextFormat {
     WebVtt(TextMetadata),

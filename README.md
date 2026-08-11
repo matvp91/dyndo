@@ -44,7 +44,7 @@ Full documentation lives at **<https://matvp91.github.io/dyndo/>**:
   — storage-efficient dynamic packaging, the thin-pointer design, and
   bounded-memory parsing.
 
-## 🚀 Install
+## Install
 
 ```bash
 curl -fsSL https://matvp91.github.io/dyndo/install.sh | bash
@@ -141,7 +141,9 @@ the version pinned as `MDBOOK_VERSION` in
 [`.github/workflows/docs.yml`](.github/workflows/docs.yml)
 (`cargo install mdbook --version <that version>`) so local output matches what
 CI publishes. The guide's sources live in [`docs/`](docs/) and are published to
-GitHub Pages by the same workflow.
+GitHub Pages by the same workflow: [`/next/`](https://matvp91.github.io/dyndo/next/)
+tracks `main`, while each release remains available at
+`https://matvp91.github.io/dyndo/<version>/`.
 
 Tests run against small, committed header-only CMAF fixtures in the
 [`dyndo-core`](crates/dyndo-core/tests/fixtures),
@@ -149,21 +151,3 @@ Tests run against small, committed header-only CMAF fixtures in the
 [`dyndo-hls`](crates/dyndo-hls/tests/fixtures) crates — just enough of each file
 (`ftyp` + `moov` + `sidx` + first `moof`) to exercise parsing end to end without
 shipping gigabytes of media.
-
-## Releasing
-
-Releases are cut locally and published by CI:
-
-```bash
-./scripts/release.sh          # prompts for the next version, e.g. 0.4.0
-```
-
-The script bumps the workspace version (inherited by all five crates), commits
-`release: <version>`, tags `v<version>`, and pushes. Pushing the tag triggers
-[`.github/workflows/release.yml`](.github/workflows/release.yml), which verifies
-the tag matches `Cargo.toml`, re-runs the CI gate, builds `dyndo` and
-`dyndo-server` for Linux and macOS, and publishes a GitHub Release with the
-binaries and a `dyndo-v<version>-SHA256SUMS.txt` checksums file. The same tag
-push also builds and publishes a multi-arch (`linux/amd64` + `linux/arm64`)
-`dyndo-server` image to Docker Hub, tagged `:<version>`, `:<major>.<minor>`, and
-`:latest`.

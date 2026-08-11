@@ -1,4 +1,4 @@
-use dyndo_core::asset::Asset;
+use dyndo_core::asset::{ASSET_SCHEMA_URL, Asset};
 use dyndo_core::track::SourceTrack;
 use dyndo_core::track::Track;
 use dyndo_core::track::thumbnail::ThumbnailTrack;
@@ -16,6 +16,21 @@ fn thumbnail_track_serializes_its_type_from_the_track_variant() {
     let value = serde_json::to_value(track).unwrap();
 
     assert_eq!(value["type"], "thumbnail");
+}
+
+#[test]
+fn asset_serialization_includes_the_versioned_schema_url() {
+    let serialized = serde_json::to_value(Asset::default()).unwrap();
+
+    assert_eq!(serialized["$schema"], ASSET_SCHEMA_URL);
+}
+
+#[test]
+fn legacy_assets_default_to_the_current_schema_url() {
+    let asset: Asset = serde_json::from_str(r#"{"tracks":[]}"#).unwrap();
+    let serialized = serde_json::to_value(asset).unwrap();
+
+    assert_eq!(serialized["$schema"], ASSET_SCHEMA_URL);
 }
 
 #[tokio::test]

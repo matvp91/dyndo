@@ -4,6 +4,7 @@ use image::codecs::jpeg::JpegEncoder;
 use image::imageops::FilterType;
 use image::{ImageFormat, RgbImage, imageops};
 use opendal::Operator;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::image::{FrameExtractor, FrameExtractorError};
@@ -13,7 +14,7 @@ const CONCURRENT_FRAME_GRABS: usize = 4;
 const BITS_PER_PIXEL: u64 = 1;
 
 /// A thumbnail track generated from source video when requested.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct ThumbnailTrack {
     pub id: String,
     pub tile_size: u32,

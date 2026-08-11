@@ -3,7 +3,9 @@ name: Docs
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
+  workflow_dispatch:
 
 # Least privilege by default; the deploy job needs Pages + OIDC.
 permissions:
@@ -33,22 +35,97 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
       - name: Build book
         run: mdbook build docs
-      # Serve the installer from the site root:
-      #   curl -fsSL https://matvp91.github.io/dyndo/install.sh | bash
-      - name: Add install script to site
-        run: cp scripts/install.sh docs/book/install.sh
-      # Only the main-branch build feeds a Pages deploy.
+      - name: Upload book
+        uses: actions/upload-artifact@v7
+        with:
+          name: book
+          path: docs/book/.
+
+  # The Pages archive preserves every release under /<version>/ and serves
+  # in-progress main documentation from /next/. Pull requests only build it.
+  publish:
+    name: publish archive
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v8
+        with:
+          name: book
+          path: docs/book
+      - name: Install pinned toolchain
+        run: rustup toolchain install && rustup show active-toolchain
+      - name: Determine destination
+        id: version
+        run: |
+          if [[ "$GITHUB_REF_TYPE" == tag ]]; then
+            version="${GITHUB_REF_NAME#v}"
+          else
+            version=next
+          fi
+          echo "value=$version" >> "$GITHUB_OUTPUT"
+      - name: Generate the asset schema
+        if: steps.version.outputs.value != 'next'
+        run: cargo xtask asset-schema --output docs/book/schema.json
+      - name: Check out or create the Pages archive
+        env:
+          ARCHIVE: ${{ runner.temp }}/pages
+        run: |
+          if git ls-remote --exit-code --heads origin gh-pages; then
+            git clone --depth 1 --branch gh-pages "$(git remote get-url origin)" "$ARCHIVE"
+          else
+            git init "$ARCHIVE"
+            git -C "$ARCHIVE" checkout --orphan gh-pages
+            git -C "$ARCHIVE" remote add origin "$(git remote get-url origin)"
+          fi
+      - name: Update the Pages archive
+        env:
+          ARCHIVE: ${{ runner.temp }}/pages
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          if [[ "$VERSION" != next ]]; then
+            if [[ -e "$ARCHIVE/$VERSION/schema.json" ]]; then
+              diff --brief -r docs/book "$ARCHIVE/$VERSION"
+            else
+              mkdir -p "$ARCHIVE/$VERSION"
+              rsync -a --delete docs/book/ "$ARCHIVE/$VERSION/"
+            fi
+            cp scripts/install.sh "$ARCHIVE/install.sh"
+            printf '<!doctype html><meta http-equiv="refresh" content="0; url=./%s/">\n' "$VERSION" > "$ARCHIVE/index.html"
+          else
+            mkdir -p "$ARCHIVE/$VERSION"
+            rsync -a --delete docs/book/ "$ARCHIVE/$VERSION/"
+            if [[ ! -e "$ARCHIVE/index.html" ]]; then
+              cp scripts/install.sh "$ARCHIVE/install.sh"
+              printf '<!doctype html><meta http-equiv="refresh" content="0; url=./next/">\n' > "$ARCHIVE/index.html"
+            fi
+          fi
+          touch "$ARCHIVE/.nojekyll"
+      - name: Commit the Pages archive
+        env:
+          ARCHIVE: ${{ runner.temp }}/pages
+        run: |
+          git -C "$ARCHIVE" config user.name github-actions[bot]
+          git -C "$ARCHIVE" config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git -C "$ARCHIVE" add --all
+          git -C "$ARCHIVE" diff --cached --quiet || git -C "$ARCHIVE" commit -m "docs: publish ${{ steps.version.outputs.value }}"
+          git -C "$ARCHIVE" push origin gh-pages
       - name: Upload Pages artifact
-        if: github.ref == 'refs/heads/main'
         uses: actions/upload-pages-artifact@v5
         with:
-          path: docs/book
+          path: ${{ runner.temp }}/pages
 
-  # Publish to GitHub Pages from main only; PRs stop after build.
+  # Deploy the complete archive, not just the current build, so tag deploys
+  # never replace previously published release documentation.
   deploy:
     name: deploy
-    if: github.ref == 'refs/heads/main'
-    needs: build
+    if: github.event_name != 'pull_request'
+    needs: publish
     runs-on: ubuntu-latest
     permissions:
       pages: write

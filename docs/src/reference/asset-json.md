@@ -2,7 +2,10 @@
 
 The `asset.json` descriptor is the shared contract between dyndo's CLI and server. [`dyndo index`](./cli/index.md) writes and updates it; [`dyndo image`](./cli/image.md) and the server read it. It is deliberately small: it records **per-track metadata and, for source tracks, a source path** — no segment list, byte offsets, or timescale. Those are re-derived from each source at read time.
 
-The file is pretty-printed JSON and safe to read, diff, and hand-edit.
+The file is pretty-printed JSON and safe to read, diff, and hand-edit. Each
+descriptor written by dyndo carries a `$schema` URL. It points to the immutable
+JSON Schema for the dyndo release that wrote the file, at
+`https://matvp91.github.io/dyndo/<version>/schema.json`.
 
 ## Top-level structure
 
@@ -12,6 +15,7 @@ derived thumbnail tracks:
 
 ```json
 {
+  "$schema": "https://matvp91.github.io/dyndo/0.5.1/schema.json",
   "segment_options": {
     "min_length": 6000,
     "boundaries": [683640]

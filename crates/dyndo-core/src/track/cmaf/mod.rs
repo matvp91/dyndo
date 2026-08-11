@@ -5,6 +5,7 @@ use bytes::Bytes;
 use language_tags::LanguageTag;
 use opendal::Operator;
 use relative_path::{RelativePath, RelativePathBuf};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::codec::CodecConfig;
@@ -21,17 +22,18 @@ pub use segments::{InitSegment, Segment};
 pub use served::ServedSegment;
 
 /// A CMAF track stored in an asset.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct CmafTrack {
     pub id: String,
     /// Path relative to the asset file.
+    #[schemars(with = "String")]
     pub(super) path: RelativePathBuf,
     pub codec: String,
     #[serde(flatten)]
     pub kind: CmafKind,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum CmafKind {
     Video(VideoMetadata),

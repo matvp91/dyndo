@@ -1,6 +1,7 @@
 use language_tags::LanguageTag;
 use opendal::Operator;
 use relative_path::{RelativePath, RelativePathBuf};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::cmaf::{CmafKind, CmafTrack};
@@ -10,7 +11,7 @@ use super::timed_text::TimedTextTrack;
 use crate::role::Role;
 
 /// A track backed by a file stored with an asset.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum SourceTrack {
     Cmaf(CmafTrack),

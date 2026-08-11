@@ -1,3 +1,4 @@
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use self::thumbnail::ThumbnailTrack;
@@ -13,7 +14,7 @@ pub use resolved::{CmafRepresentationError, ResolvedTrack, TrackResolveError};
 pub use source::SourceTrack;
 
 /// A track stored in an asset.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum Track {
     Thumbnail(ThumbnailTrack),
