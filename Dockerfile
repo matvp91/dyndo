@@ -17,7 +17,7 @@ RUN apt-get update \
         xz-utils \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /tmp
-RUN curl --fail --location --retry 3 \
+RUN curl --fail --location --retry 5 --retry-all-errors --retry-delay 2 \
         "https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.xz" \
         --output ffmpeg.tar.xz \
     && tar --extract --file ffmpeg.tar.xz \
