@@ -2,7 +2,7 @@ use dyndo_core::role::Role;
 use dyndo_core::segment_options::SegmentOptions;
 use dyndo_core::served_segment::ServedSegment;
 use dyndo_core::track::cmaf::CmafTrack;
-use dyndo_core::track::cmaf::kind::CmafTrackKind;
+use dyndo_core::track::kind::CmafTrackKind;
 use language_tags::LanguageTag;
 use m3u8_rs::{AlternativeMedia, AlternativeMediaType};
 

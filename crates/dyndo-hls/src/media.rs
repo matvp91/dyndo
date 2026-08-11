@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use dyndo_core::segment_options::SegmentOptions;
 use dyndo_core::served_segment::ServedSegment;
 use dyndo_core::track::cmaf::CmafTrack;
-use dyndo_core::track::cmaf::kind::CmafTrackKind;
-use dyndo_core::track::thumbnail::ThumbnailTrack;
+use dyndo_core::track::kind::CmafTrackKind;
+use dyndo_core::track::synthetic::SyntheticTrack;
 use m3u8_rs::{ExtTag, Map, MediaPlaylist, MediaPlaylistType, MediaSegment};
 
 use crate::options::HlsOptions;
@@ -42,7 +42,7 @@ pub(crate) fn build_playlist(
     }
 }
 
-pub(crate) fn build_image_playlist(thumbnail: &ThumbnailTrack) -> MediaPlaylist {
+pub(crate) fn build_image_playlist(thumbnail: &SyntheticTrack) -> MediaPlaylist {
     let duration = u64::from(thumbnail.source().duration());
     let sprite_duration = thumbnail.sprite_duration();
     let target_duration = sprite_duration.min(duration).div_ceil(1_000);

@@ -1,6 +1,7 @@
 use dyndo_core::asset::AssetDescriptor;
-use dyndo_core::asset::thumbnail::ThumbnailTrackDescriptor;
+use dyndo_core::asset::synthetic::SyntheticTrackDescriptor;
 use dyndo_core::track::SourceTrack;
+use dyndo_core::track::kind::ThumbnailKind;
 use opendal::{Operator, services::Memory};
 use relative_path::RelativePath;
 
@@ -67,11 +68,13 @@ async fn read_deserializes_an_asset_descriptor_from_storage() {
     );
     assert_eq!(
         descriptor.find_thumbnail_track_by_id("preview"),
-        Some(&ThumbnailTrackDescriptor {
+        Some(&SyntheticTrackDescriptor {
             id: "preview".to_string(),
-            tile_size: 4,
-            width: 640,
-            step: 1_000,
+            kind: ThumbnailKind {
+                tile_size: 4,
+                width: 640,
+                step: 1_000,
+            },
         })
     );
 }

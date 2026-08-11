@@ -1,25 +1,43 @@
-use relative_path::RelativePath;
+use relative_path::{RelativePath, RelativePathBuf};
 
-use self::web_vtt::WebVttTrack;
+use crate::text::Subtitle;
+use crate::track::kind::TimedTextKind;
 
 pub mod web_vtt;
 
 /// A source track represented by timed-text documents.
 #[derive(Clone)]
-pub enum TimedTextTrack {
-    WebVtt(WebVttTrack),
+pub struct TimedTextTrack {
+    id: String,
+    path: RelativePathBuf,
+    kind: TimedTextKind,
+    subtitle: Subtitle,
 }
 
 impl TimedTextTrack {
-    pub fn id(&self) -> &str {
-        match self {
-            Self::WebVtt(track) => track.id(),
+    pub(crate) fn new(
+        id: String,
+        path: RelativePathBuf,
+        kind: TimedTextKind,
+        subtitle: Subtitle,
+    ) -> Self {
+        Self {
+            id,
+            path,
+            kind,
+            subtitle,
         }
     }
 
-    pub fn source_path(&self) -> &RelativePath {
-        match self {
-            Self::WebVtt(track) => track.path(),
-        }
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    pub fn path(&self) -> &RelativePath {
+        &self.path
+    }
+
+    pub fn kind(&self) -> &TimedTextKind {
+        &self.kind
     }
 }

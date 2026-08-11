@@ -2,7 +2,7 @@ use clap::Args;
 use dyndo_core::asset::AssetDescriptor;
 use dyndo_core::image::FrameExtractor;
 use dyndo_core::track::SourceTrack;
-use dyndo_core::track::cmaf::kind::CmafTrackKind;
+use dyndo_core::track::kind::CmafTrackKind;
 use opendal::Operator;
 
 #[derive(Args)]

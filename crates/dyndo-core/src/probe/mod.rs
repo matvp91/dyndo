@@ -10,7 +10,7 @@ mod cmaf_track;
 mod metadata;
 mod segment_index;
 mod source_track;
-mod web_vtt_track;
+mod web_vtt;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ProbeError {

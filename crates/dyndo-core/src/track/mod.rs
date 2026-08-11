@@ -4,7 +4,8 @@ use self::cmaf::CmafTrack;
 use self::timed_text::TimedTextTrack;
 
 pub mod cmaf;
-pub mod thumbnail;
+pub mod kind;
+pub mod synthetic;
 pub mod timed_text;
 
 /// A track backed by an asset source.
@@ -32,7 +33,7 @@ impl SourceTrack {
     pub fn source_path(&self) -> &RelativePath {
         match self {
             Self::Cmaf(track) => track.path(),
-            Self::TimedText(track) => track.source_path(),
+            Self::TimedText(track) => track.path(),
         }
     }
 }

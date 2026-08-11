@@ -5,9 +5,8 @@ use axum::{
 use dyndo_core::asset::AssetDescriptor;
 use dyndo_core::track::SourceTrack;
 use dyndo_core::track::cmaf::CmafTrack;
-use dyndo_core::track::cmaf::kind::CmafTrackKind;
-use dyndo_core::track::thumbnail::resolve_thumbnail_tracks;
-use dyndo_core::track::timed_text::TimedTextTrack;
+use dyndo_core::track::kind::CmafTrackKind;
+use dyndo_core::track::synthetic::resolve_synthetic_tracks;
 use dyndo_dash::options::DashOptions;
 use dyndo_hls::options::HlsOptions;
 use opendal::Operator;
@@ -26,7 +25,7 @@ pub(super) async fn dash(
     options: &DashOptions,
 ) -> Result<Response, ServerError> {
     let source_tracks = TrackResolver::new(op, source_asset).probe_all().await?;
-    let thumbnails = resolve_thumbnail_tracks(asset, &source_tracks);
+    let thumbnails = resolve_synthetic_tracks(asset, &source_tracks);
     let tracks = filtered_tracks(source_tracks, asset).await?;
     let mpd = dyndo_dash::generate_mpd(&tracks, &thumbnails, &asset.segment_options, options)?;
     let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
@@ -44,7 +43,7 @@ pub(super) async fn hls_master(
     options: &HlsOptions,
 ) -> Result<Response, ServerError> {
     let source_tracks = TrackResolver::new(op, source_asset).probe_all().await?;
-    let thumbnails = resolve_thumbnail_tracks(asset, &source_tracks);
+    let thumbnails = resolve_synthetic_tracks(asset, &source_tracks);
     let mut hls_options = *options;
     hls_options.wvtt |= source_tracks.iter().any(|track| {
         matches!(track, SourceTrack::Cmaf(track) if matches!(track.kind(), CmafTrackKind::Text(_)))
@@ -67,7 +66,7 @@ pub(super) async fn hls_media(
 ) -> Result<Response, ServerError> {
     let track = TrackResolver::new(op, asset).resolve(track_id).await?;
     let mut hls_options = *options;
-    hls_options.wvtt |= track.web_vtt().is_none();
+    hls_options.wvtt |= !track.is_web_vtt();
     let playlist =
         dyndo_hls::generate_media_playlist(track.cmaf(), &asset.segment_options, &hls_options)?;
     Ok(([(CONTENT_TYPE, HLS_CONTENT_TYPE)], playlist).into_response())
@@ -83,7 +82,7 @@ pub(super) async fn hls_images(
         .find_thumbnail_track_by_id(thumbnail_id)
         .ok_or_else(|| ServerError::NotFound(format!("thumbnail {thumbnail_id}")))?;
     let source_tracks = TrackResolver::new(op, source_asset).probe_all().await?;
-    let thumbnail = resolve_thumbnail_tracks(asset, &source_tracks)
+    let thumbnail = resolve_synthetic_tracks(asset, &source_tracks)
         .into_iter()
         .find(|track| track.id() == descriptor.id)
         .ok_or_else(|| ServerError::NotFound("thumbnail".to_string()))?;
@@ -102,9 +101,12 @@ async fn filtered_tracks(
         }
         match track {
             SourceTrack::Cmaf(track) => resolved.push(track),
-            SourceTrack::TimedText(TimedTextTrack::WebVtt(track)) => {
-                resolved.push(track.package(&asset.segment_options).await?.into_cmaf())
-            }
+            SourceTrack::TimedText(track) => resolved.push(
+                track
+                    .package_wvtt(&asset.segment_options)
+                    .await?
+                    .into_cmaf(),
+            ),
         }
     }
     Ok(resolved)

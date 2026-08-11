@@ -11,6 +11,32 @@ pub enum CmafTrackKind {
     Text(TextKind),
 }
 
+/// The document format carried by a timed-text source track.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TimedTextKind {
+    WebVtt(TextKind),
+}
+
+impl TimedTextKind {
+    /// Returns the text metadata shared by all timed-text formats.
+    pub fn text(&self) -> &TextKind {
+        match self {
+            Self::WebVtt(kind) => kind,
+        }
+    }
+
+    /// Returns whether this source is a WebVTT document.
+    pub fn is_web_vtt(&self) -> bool {
+        matches!(self, Self::WebVtt(_))
+    }
+}
+
+/// The output type of a synthetic track.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SyntheticTrackKind {
+    Thumbnail(ThumbnailKind),
+}
+
 impl CmafTrackKind {
     /// Returns the DASH media content type represented by a track of this kind.
     pub fn content_type(&self) -> &'static str {
@@ -54,6 +80,17 @@ pub struct TextKind {
     pub language: LanguageTag,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub role: Option<Role>,
+}
+
+/// The configuration of a thumbnail sprite sheet.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ThumbnailKind {
+    /// Thumbnails per sprite row and column.
+    pub tile_size: u32,
+    /// Width of the complete sprite image, in pixels.
+    pub width: u32,
+    /// Milliseconds between adjacent thumbnails.
+    pub step: u32,
 }
 
 pub(crate) fn undetermined_language() -> LanguageTag {

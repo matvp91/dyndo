@@ -7,8 +7,8 @@ use dash_mpd::{
 use dyndo_core::segment_options::SegmentOptions;
 use dyndo_core::served_segment::ServedSegment;
 use dyndo_core::track::cmaf::CmafTrack;
-use dyndo_core::track::cmaf::kind::CmafTrackKind;
-use dyndo_core::track::thumbnail::ThumbnailTrack;
+use dyndo_core::track::kind::CmafTrackKind;
+use dyndo_core::track::synthetic::SyntheticTrack;
 
 use crate::DashError;
 use crate::adaptation_group::AdaptationGroup;
@@ -23,7 +23,7 @@ const MEDIA_TEMPLATE: &str = "$RepresentationID$/$Time$.m4s";
 
 pub(crate) fn build_mpd(
     tracks: &[CmafTrack],
-    thumbnails: &[ThumbnailTrack],
+    thumbnails: &[SyntheticTrack],
     segment_options: &SegmentOptions,
 ) -> Result<MPD, DashError> {
     let presentation_duration = presentation_duration(tracks);

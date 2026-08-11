@@ -2,11 +2,10 @@ use std::sync::Arc;
 
 use relative_path::{RelativePath, RelativePathBuf};
 
-use self::kind::CmafTrackKind;
+use super::kind::CmafTrackKind;
 use crate::codec::CodecConfig;
 use crate::segment::{InitSegment, Segment};
 
-pub mod kind;
 pub mod package;
 
 #[derive(Clone)]

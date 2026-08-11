@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
-use dyndo_core::asset::thumbnail::ThumbnailTrackDescriptor;
+use dyndo_core::asset::synthetic::SyntheticTrackDescriptor;
 use dyndo_core::codec::{AacCodec, AvcCodec, CodecConfig, WvttCodec};
 use dyndo_core::segment::{InitSegment, Segment};
 use dyndo_core::segment_options::SegmentOptions;
 use dyndo_core::track::cmaf::CmafTrack;
-use dyndo_core::track::cmaf::kind::{AudioKind, CmafTrackKind, TextKind, VideoKind};
-use dyndo_core::track::thumbnail::ThumbnailTrack;
+use dyndo_core::track::kind::{AudioKind, CmafTrackKind, TextKind, ThumbnailKind, VideoKind};
+use dyndo_core::track::synthetic::SyntheticTrack;
 use dyndo_dash::{generate_mpd, options::DashOptions};
 use mp4_atom::{Audio, Avc1, Avcc, Mp4a};
 
@@ -67,24 +67,26 @@ fn video_track(id: &str, width: u32, height: u32, bytes_per_segment: u64) -> Cma
 
 fn generate(
     tracks: &[CmafTrack],
-    descriptors: &[ThumbnailTrackDescriptor],
+    descriptors: &[SyntheticTrackDescriptor<ThumbnailKind>],
     segment_options: &SegmentOptions,
     dash_options: &DashOptions,
 ) -> String {
     let thumbnails: Vec<_> = descriptors
         .iter()
-        .filter_map(|descriptor| ThumbnailTrack::new(descriptor, tracks))
+        .filter_map(|descriptor| SyntheticTrack::thumbnail(descriptor, tracks))
         .collect();
     let mpd = generate_mpd(tracks, &thumbnails, segment_options, dash_options).unwrap();
     quick_xml::se::to_string(&mpd).unwrap()
 }
 
-fn thumbnail() -> ThumbnailTrackDescriptor {
-    ThumbnailTrackDescriptor {
+fn thumbnail() -> SyntheticTrackDescriptor<ThumbnailKind> {
+    SyntheticTrackDescriptor {
         id: "preview".to_string(),
-        tile_size: 2,
-        width: 16,
-        step: 1_000,
+        kind: ThumbnailKind {
+            tile_size: 2,
+            width: 16,
+            step: 1_000,
+        },
     }
 }
 

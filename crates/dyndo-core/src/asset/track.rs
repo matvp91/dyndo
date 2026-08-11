@@ -2,11 +2,12 @@ use relative_path::RelativePathBuf;
 use serde::{Deserialize, Serialize};
 
 use super::cmaf::CmafTrackDescriptor;
-use super::thumbnail::ThumbnailTrackDescriptor;
-use super::timed_text::WebVttTrackDescriptor;
+use super::synthetic::SyntheticTrackDescriptor;
+use super::timed_text::TimedTextTrackDescriptor;
 use crate::track::SourceTrack;
-use crate::track::cmaf::kind::{AudioKind, CmafTrackKind, TextKind, VideoKind};
-use crate::track::timed_text::TimedTextTrack;
+use crate::track::kind::{
+    AudioKind, CmafTrackKind, TextKind, ThumbnailKind, TimedTextKind, VideoKind,
+};
 
 /// A track configuration in an asset descriptor.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -16,8 +17,8 @@ pub enum TrackDescriptor {
     Audio(CmafTrackDescriptor<AudioKind>),
     Text(CmafTrackDescriptor<TextKind>),
     #[serde(rename = "vtt")]
-    WebVtt(WebVttTrackDescriptor),
-    Thumbnail(ThumbnailTrackDescriptor),
+    WebVtt(TimedTextTrackDescriptor),
+    Thumbnail(SyntheticTrackDescriptor<ThumbnailKind>),
 }
 
 impl TrackDescriptor {
@@ -60,7 +61,7 @@ impl TrackDescriptor {
         }
     }
 
-    pub fn thumbnail(&self) -> Option<&ThumbnailTrackDescriptor> {
+    pub fn thumbnail(&self) -> Option<&SyntheticTrackDescriptor<ThumbnailKind>> {
         match self {
             Self::Thumbnail(track) => Some(track),
             _ => None,
@@ -69,13 +70,13 @@ impl TrackDescriptor {
 
     pub(super) fn from_source_track(track: &SourceTrack, path: RelativePathBuf) -> Self {
         match track {
-            SourceTrack::TimedText(TimedTextTrack::WebVtt(track)) => {
-                Self::WebVtt(WebVttTrackDescriptor {
+            SourceTrack::TimedText(track) => match track.kind() {
+                TimedTextKind::WebVtt(kind) => Self::WebVtt(TimedTextTrackDescriptor {
                     id: track.id().to_string(),
                     path,
-                    kind: track.kind().clone(),
-                })
-            }
+                    kind: kind.clone(),
+                }),
+            },
             SourceTrack::Cmaf(track) => {
                 let id = track.id().to_string();
                 let codec = track.codec().rfc6381();

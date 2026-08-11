@@ -2,13 +2,14 @@ use opendal::Operator;
 use relative_path::{RelativePath, RelativePathBuf};
 use serde::{Deserialize, Serialize};
 
-use self::thumbnail::ThumbnailTrackDescriptor;
+use self::synthetic::SyntheticTrackDescriptor;
 use self::track::TrackDescriptor;
 use crate::segment_options::SegmentOptions;
 use crate::track::SourceTrack;
+use crate::track::kind::ThumbnailKind;
 
 pub mod cmaf;
-pub mod thumbnail;
+pub mod synthetic;
 pub mod timed_text;
 pub mod track;
 
@@ -74,7 +75,10 @@ impl AssetDescriptor {
         self.source_tracks().find(|track| track.id() == id)
     }
 
-    pub fn find_thumbnail_track_by_id(&self, id: &str) -> Option<&ThumbnailTrackDescriptor> {
+    pub fn find_thumbnail_track_by_id(
+        &self,
+        id: &str,
+    ) -> Option<&SyntheticTrackDescriptor<ThumbnailKind>> {
         self.thumbnail_tracks()
             .find(|track| track.id() == id)
             .and_then(TrackDescriptor::thumbnail)

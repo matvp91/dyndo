@@ -5,8 +5,8 @@ use axum::{
 use dyndo_core::asset::AssetDescriptorError;
 use dyndo_core::probe::ProbeError;
 use dyndo_core::reader::TrackReadError;
-use dyndo_core::track::thumbnail::ThumbnailError;
-use dyndo_core::track::timed_text::web_vtt::WebVttPackageError;
+use dyndo_core::track::synthetic::SyntheticTrackError;
+use dyndo_core::track::timed_text::web_vtt::TimedTextPackageError;
 use dyndo_dash::DashError;
 use dyndo_hls::HlsError;
 
@@ -21,11 +21,11 @@ pub enum ServerError {
     #[error(transparent)]
     Probe(#[from] ProbeError),
     #[error(transparent)]
-    WebVttPackage(#[from] WebVttPackageError),
+    TimedTextPackage(#[from] TimedTextPackageError),
     #[error(transparent)]
     TrackRead(#[from] TrackReadError),
     #[error(transparent)]
-    Thumbnail(#[from] ThumbnailError),
+    SyntheticTrack(#[from] SyntheticTrackError),
     #[error(transparent)]
     Dash(#[from] DashError),
     #[error(transparent)]
@@ -48,9 +48,9 @@ impl ServerError {
             Self::NotFound(_) => StatusCode::NOT_FOUND,
             Self::AssetDescriptor(_)
             | Self::Probe(_)
-            | Self::WebVttPackage(_)
+            | Self::TimedTextPackage(_)
             | Self::TrackRead(_)
-            | Self::Thumbnail(_)
+            | Self::SyntheticTrack(_)
             | Self::Dash(_)
             | Self::Hls(_)
             | Self::Serialization(_) => StatusCode::INTERNAL_SERVER_ERROR,

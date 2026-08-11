@@ -6,60 +6,62 @@ use image::{ImageFormat, RgbImage, imageops};
 use opendal::Operator;
 
 use crate::asset::AssetDescriptor;
-use crate::asset::thumbnail::ThumbnailTrackDescriptor;
+use crate::asset::synthetic::SyntheticTrackDescriptor;
 use crate::image::{FrameExtractor, FrameExtractorError};
 use crate::track::SourceTrack;
 use crate::track::cmaf::CmafTrack;
-use crate::track::cmaf::kind::CmafTrackKind;
+use crate::track::kind::{CmafTrackKind, SyntheticTrackKind, ThumbnailKind};
 
 const CONCURRENT_FRAME_GRABS: usize = 4;
 const BITS_PER_PIXEL: u64 = 1;
 
-/// Resolves every thumbnail configuration that has a suitable video source.
-pub fn resolve_thumbnail_tracks(
+/// Resolves every synthetic configuration that has a suitable source.
+pub fn resolve_synthetic_tracks(
     asset: &AssetDescriptor,
     sources: &[SourceTrack],
-) -> Vec<ThumbnailTrack> {
+) -> Vec<SyntheticTrack> {
     asset
         .thumbnail_tracks()
         .filter_map(|track| track.thumbnail())
         .filter_map(|descriptor| {
-            ThumbnailTrack::new(descriptor, sources.iter().filter_map(SourceTrack::cmaf))
+            SyntheticTrack::thumbnail(descriptor, sources.iter().filter_map(SourceTrack::cmaf))
         })
         .collect()
 }
 
-/// An error encountered while generating a video thumbnail sprite.
+/// An error encountered while generating synthetic media.
 #[derive(Debug, thiserror::Error)]
-pub enum ThumbnailError {
+pub enum SyntheticTrackError {
     #[error(transparent)]
     FrameExtractor(#[from] FrameExtractorError),
     #[error(transparent)]
     Image(#[from] image::ImageError),
 }
 
-/// Generates thumbnail sprites from the most suitable video source.
+/// A resolved synthetic track.
 #[derive(Clone)]
-pub struct ThumbnailTrack {
-    descriptor: ThumbnailTrackDescriptor,
+pub struct SyntheticTrack {
+    id: String,
+    kind: SyntheticTrackKind,
     source: CmafTrack,
     height: u32,
 }
 
-impl ThumbnailTrack {
-    /// Creates a thumbnail generator from its configuration and source tracks.
+impl SyntheticTrack {
+    /// Creates a thumbnail track from its configuration and source tracks.
     ///
     /// Selects the smallest video at least as wide as the requested sprite, or
     /// the largest video when every source must be upscaled.
-    pub fn new<'a>(
-        descriptor: &ThumbnailTrackDescriptor,
+    pub fn thumbnail<'a>(
+        descriptor: &SyntheticTrackDescriptor<ThumbnailKind>,
         tracks: impl IntoIterator<Item = &'a CmafTrack>,
     ) -> Option<Self> {
-        let source = select_source(descriptor.width, tracks)?;
-        let (_, height) = dimensions(descriptor, source)?;
+        let source = select_source(descriptor.kind.width, tracks)?;
+        let (_, height) = dimensions(&descriptor.kind, source)?;
 
         Some(Self {
-            descriptor: descriptor.clone(),
+            id: descriptor.id.clone(),
+            kind: SyntheticTrackKind::Thumbnail(descriptor.kind.clone()),
             source: source.clone(),
             height,
         })
@@ -70,28 +72,29 @@ impl ThumbnailTrack {
         &self.source
     }
 
-    pub fn descriptor(&self) -> &ThumbnailTrackDescriptor {
-        &self.descriptor
+    /// Returns the synthetic track identifier.
+    pub fn id(&self) -> &str {
+        &self.id
     }
 
-    /// Returns the thumbnail configuration identifier.
-    pub fn id(&self) -> &str {
-        &self.descriptor.id
+    /// Returns the resolved synthetic output kind.
+    pub fn kind(&self) -> &SyntheticTrackKind {
+        &self.kind
     }
 
     /// Returns the number of tiles in each sprite row and column.
     pub fn tile_size(&self) -> u32 {
-        self.descriptor.tile_size
+        self.thumbnail_kind().tile_size
     }
 
     /// Returns the interval between adjacent thumbnail frames, in milliseconds.
     pub fn step(&self) -> u32 {
-        self.descriptor.step
+        self.thumbnail_kind().step
     }
 
     /// Returns the width of the complete thumbnail sprite.
     pub fn width(&self) -> u32 {
-        self.descriptor.width
+        self.thumbnail_kind().width
     }
 
     /// Returns the height of the complete thumbnail sprite.
@@ -102,16 +105,16 @@ impl ThumbnailTrack {
     /// Returns the dimensions of one thumbnail tile.
     pub fn tile_dimensions(&self) -> (u32, u32) {
         (
-            self.width() / self.descriptor.tile_size,
-            self.height / self.descriptor.tile_size,
+            self.width() / self.thumbnail_kind().tile_size,
+            self.height / self.thumbnail_kind().tile_size,
         )
     }
 
     /// Returns the duration covered by one thumbnail sprite, in milliseconds.
     pub fn sprite_duration(&self) -> u64 {
-        u64::from(self.descriptor.tile_size)
-            .saturating_mul(u64::from(self.descriptor.tile_size))
-            .saturating_mul(u64::from(self.descriptor.step))
+        u64::from(self.thumbnail_kind().tile_size)
+            .saturating_mul(u64::from(self.thumbnail_kind().tile_size))
+            .saturating_mul(u64::from(self.thumbnail_kind().step))
     }
 
     /// Returns the estimated bandwidth of the JPEG sprite representation.
@@ -133,7 +136,11 @@ impl ThumbnailTrack {
     /// # Errors
     ///
     /// Returns an error when a frame cannot be read, decoded, composed, or encoded.
-    pub async fn jpeg(&self, op: &Operator, time: u64) -> Result<Option<Bytes>, ThumbnailError> {
+    pub async fn jpeg(
+        &self,
+        op: &Operator,
+        time: u64,
+    ) -> Result<Option<Bytes>, SyntheticTrackError> {
         let (Some(first), Some(last)) = (
             self.source.segments().first(),
             self.source.segments().last(),
@@ -160,8 +167,8 @@ impl ThumbnailTrack {
             let tile = image::load_from_memory_with_format(&jpeg, ImageFormat::Jpeg)?
                 .resize_exact(tile_width, tile_height, FilterType::Triangle)
                 .to_rgb8();
-            let column = index % u64::from(self.descriptor.tile_size);
-            let row = index / u64::from(self.descriptor.tile_size);
+            let column = index % u64::from(self.thumbnail_kind().tile_size);
+            let row = index / u64::from(self.thumbnail_kind().tile_size);
             imageops::replace(
                 &mut sprite,
                 &tile,
@@ -177,9 +184,15 @@ impl ThumbnailTrack {
     }
 
     fn frame_times(&self, start: u64, end: u64) -> impl Iterator<Item = u64> {
-        let step = u64::from(self.descriptor.step);
-        (0..u64::from(self.descriptor.tile_size).pow(2))
+        let step = u64::from(self.thumbnail_kind().step);
+        (0..u64::from(self.thumbnail_kind().tile_size).pow(2))
             .map_while(move |index| start.checked_add(index * step).filter(|time| *time < end))
+    }
+
+    fn thumbnail_kind(&self) -> &ThumbnailKind {
+        match &self.kind {
+            SyntheticTrackKind::Thumbnail(kind) => kind,
+        }
     }
 }
 
@@ -214,37 +227,33 @@ fn video_width(track: &CmafTrack) -> Option<(&CmafTrack, u32)> {
     Some((track, video.width))
 }
 
-fn dimensions(descriptor: &ThumbnailTrackDescriptor, source: &CmafTrack) -> Option<(u32, u32)> {
+fn dimensions(kind: &ThumbnailKind, source: &CmafTrack) -> Option<(u32, u32)> {
     let CmafTrackKind::Video(video) = source.kind() else {
         return None;
     };
-    if descriptor.tile_size == 0
-        || descriptor.width == 0
-        || descriptor.step == 0
-        || video.width == 0
-    {
+    if kind.tile_size == 0 || kind.width == 0 || kind.step == 0 || video.width == 0 {
         return None;
     }
-    if !descriptor.width.is_multiple_of(descriptor.tile_size) {
+    if !kind.width.is_multiple_of(kind.tile_size) {
         return None;
     }
-    let height = u64::from(descriptor.width).saturating_mul(u64::from(video.height))
-        / u64::from(video.width);
-    let height = height - height % u64::from(descriptor.tile_size);
+    let height =
+        u64::from(kind.width).saturating_mul(u64::from(video.height)) / u64::from(video.width);
+    let height = height - height % u64::from(kind.tile_size);
     let height = u32::try_from(height).ok()?;
-    (height != 0).then_some((descriptor.width, height))
+    (height != 0).then_some((kind.width, height))
 }
 
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
 
-    use super::ThumbnailTrack;
-    use crate::asset::thumbnail::ThumbnailTrackDescriptor;
+    use super::SyntheticTrack;
+    use crate::asset::synthetic::SyntheticTrackDescriptor;
     use crate::codec::{CodecConfig, WvttCodec};
     use crate::segment::InitSegment;
     use crate::track::cmaf::CmafTrack;
-    use crate::track::cmaf::kind::{CmafTrackKind, VideoKind};
+    use crate::track::kind::{CmafTrackKind, SyntheticTrackKind, ThumbnailKind, VideoKind};
 
     fn video(id: &str, width: u32, height: u32) -> CmafTrack {
         CmafTrack::new(
@@ -260,32 +269,43 @@ mod tests {
         )
     }
 
-    fn descriptor(width: u32) -> ThumbnailTrackDescriptor {
-        ThumbnailTrackDescriptor {
+    fn descriptor(width: u32) -> SyntheticTrackDescriptor<ThumbnailKind> {
+        SyntheticTrackDescriptor {
             id: "thumbnail".to_string(),
-            tile_size: 4,
-            width,
-            step: 1_000,
+            kind: ThumbnailKind {
+                tile_size: 4,
+                width,
+                step: 1_000,
+            },
         }
     }
 
     #[test]
-    fn new_selects_the_smallest_video_that_meets_the_sprite_width() {
+    fn thumbnail_selects_the_smallest_video_that_meets_the_sprite_width() {
         let tracks = [video("720", 1_280, 720), video("1080", 1_920, 1_080)];
         let descriptor = descriptor(1_500);
 
-        let thumbnail = ThumbnailTrack::new(&descriptor, &tracks).unwrap();
+        let thumbnail = SyntheticTrack::thumbnail(&descriptor, &tracks).unwrap();
 
         assert_eq!(thumbnail.source().id(), "1080");
     }
 
     #[test]
-    fn new_uses_the_largest_video_when_all_sources_are_too_small() {
+    fn thumbnail_uses_the_largest_video_when_all_sources_are_too_small() {
         let tracks = [video("720", 1_280, 720), video("1080", 1_920, 1_080)];
         let descriptor = descriptor(3_840);
 
-        let thumbnail = ThumbnailTrack::new(&descriptor, &tracks).unwrap();
+        let thumbnail = SyntheticTrack::thumbnail(&descriptor, &tracks).unwrap();
 
         assert_eq!(thumbnail.source().id(), "1080");
+    }
+
+    #[test]
+    fn thumbnail_preserves_its_resolved_kind() {
+        let descriptor = descriptor(640);
+        let track = video("720", 1_280, 720);
+        let thumbnail = SyntheticTrack::thumbnail(&descriptor, [&track]).unwrap();
+
+        assert!(matches!(thumbnail.kind(), SyntheticTrackKind::Thumbnail(_)));
     }
 }

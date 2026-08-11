@@ -4,7 +4,7 @@ use axum::{
 };
 use dyndo_core::asset::AssetDescriptor;
 use dyndo_core::reader::Reader;
-use dyndo_core::track::thumbnail::resolve_thumbnail_tracks;
+use dyndo_core::track::synthetic::resolve_synthetic_tracks;
 use opendal::Operator;
 
 use super::track_resolver::{LocatedSegment, ResolvedTrack, TrackResolver};
@@ -51,11 +51,8 @@ pub(super) async fn text(
     } = TrackResolver::new(op, asset)
         .locate_segment(track_id, time)
         .await?;
-    let track = track
-        .web_vtt()
-        .ok_or_else(|| ServerError::NotFound(format!("WebVTT source track {track_id}")))?;
     let text = track
-        .vtt_segment(start_time, end_time)
+        .web_vtt_segment(start_time, end_time)
         .ok_or_else(|| ServerError::NotFound(format!("segment {time} for track {track_id}")))?;
 
     Ok(([(CONTENT_TYPE, "text/vtt")], text).into_response())
@@ -85,7 +82,7 @@ pub(super) async fn thumbnail(
         .find_thumbnail_track_by_id(thumbnail_id)
         .ok_or_else(|| ServerError::NotFound(format!("thumbnail {thumbnail_id}")))?;
     let source_tracks = TrackResolver::new(op, asset).probe_all().await?;
-    let thumbnail = resolve_thumbnail_tracks(asset, &source_tracks)
+    let thumbnail = resolve_synthetic_tracks(asset, &source_tracks)
         .into_iter()
         .find(|track| track.id() == descriptor.id);
     let Some(thumbnail) = thumbnail else {

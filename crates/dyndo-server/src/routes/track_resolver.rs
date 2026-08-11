@@ -7,7 +7,6 @@ use dyndo_core::track::SourceTrack;
 use dyndo_core::track::cmaf::CmafTrack;
 use dyndo_core::track::cmaf::package::CmafPackage;
 use dyndo_core::track::timed_text::TimedTextTrack;
-use dyndo_core::track::timed_text::web_vtt::WebVttTrack;
 use opendal::Operator;
 
 use crate::error::ServerError;
@@ -40,12 +39,16 @@ impl ResolvedTrack {
         }
     }
 
-    pub(super) fn web_vtt(&self) -> Option<&WebVttTrack> {
+    pub(super) fn is_web_vtt(&self) -> bool {
         match self {
-            Self::TimedText {
-                source: TimedTextTrack::WebVtt(track),
-                ..
-            } => Some(track),
+            Self::TimedText { source, .. } => source.kind().is_web_vtt(),
+            Self::Cmaf(_) => false,
+        }
+    }
+
+    pub(super) fn web_vtt_segment(&self, start: u64, end: u64) -> Option<String> {
+        match self {
+            Self::TimedText { source, .. } => source.web_vtt_segment(start, end),
             Self::Cmaf(_) => None,
         }
     }
@@ -89,11 +92,7 @@ impl<'a> TrackResolver<'a> {
         match self.probe(track_id).await? {
             SourceTrack::Cmaf(track) => Ok(ResolvedTrack::Cmaf(track)),
             SourceTrack::TimedText(source) => {
-                let packaged = match &source {
-                    TimedTextTrack::WebVtt(track) => {
-                        track.package(&self.asset.segment_options).await?
-                    }
-                };
+                let packaged = source.package_wvtt(&self.asset.segment_options).await?;
                 Ok(ResolvedTrack::TimedText { source, packaged })
             }
         }

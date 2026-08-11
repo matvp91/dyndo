@@ -2,9 +2,8 @@ use dyndo_core::asset::AssetDescriptor;
 use dyndo_core::probe::probe_source_tracks;
 use dyndo_core::reader::Reader;
 use dyndo_core::track::SourceTrack;
-use dyndo_core::track::cmaf::kind::CmafTrackKind;
-use dyndo_core::track::thumbnail::resolve_thumbnail_tracks;
-use dyndo_core::track::timed_text::TimedTextTrack;
+use dyndo_core::track::kind::{CmafTrackKind, TimedTextKind};
+use dyndo_core::track::synthetic::resolve_synthetic_tracks;
 use opendal::{Operator, services::Memory};
 
 const VIDEO_FIXTURE: &[u8] = include_bytes!("fixtures/three-frame-black-h264.mp4");
@@ -45,7 +44,7 @@ async fn probe_source_tracks_and_readers_serve_the_video_and_subtitle_tracks_of_
         .unwrap();
     let tracks = probe_source_tracks(&operator, &asset).await.unwrap();
     assert_eq!(tracks.len(), 2);
-    assert_eq!(resolve_thumbnail_tracks(&asset, &tracks).len(), 1);
+    assert_eq!(resolve_synthetic_tracks(&asset, &tracks).len(), 1);
     let video = tracks
         .iter()
         .find(|track| track.id() == "video-main")
@@ -54,13 +53,18 @@ async fn probe_source_tracks_and_readers_serve_the_video_and_subtitle_tracks_of_
     let subtitles = tracks
         .iter()
         .find_map(|track| match track {
-            SourceTrack::TimedText(TimedTextTrack::WebVtt(track)) if track.id() == "text-en" => {
+            SourceTrack::TimedText(track)
+                if track.id() == "text-en" && matches!(track.kind(), TimedTextKind::WebVtt(_)) =>
+            {
                 Some(track)
             }
             SourceTrack::Cmaf(_) | SourceTrack::TimedText(_) => None,
         })
         .unwrap();
-    let packaged_subtitles = subtitles.package(&asset.segment_options).await.unwrap();
+    let packaged_subtitles = subtitles
+        .package_wvtt(&asset.segment_options)
+        .await
+        .unwrap();
     let video_initialization = Reader::new(&operator)
         .read_initialization(video)
         .await

@@ -11,7 +11,7 @@ mod thumbnail;
 use dash_mpd::MPD;
 use dyndo_core::segment_options::SegmentOptions;
 use dyndo_core::track::cmaf::CmafTrack;
-use dyndo_core::track::thumbnail::ThumbnailTrack;
+use dyndo_core::track::synthetic::SyntheticTrack;
 use options::DashOptions;
 
 #[derive(Debug, thiserror::Error)]
@@ -40,7 +40,7 @@ pub enum DashError {
 /// segment-aligned.
 pub fn generate_mpd(
     tracks: &[CmafTrack],
-    thumbnails: &[ThumbnailTrack],
+    thumbnails: &[SyntheticTrack],
     segment_options: &SegmentOptions,
     dash_options: &DashOptions,
 ) -> Result<MPD, DashError> {

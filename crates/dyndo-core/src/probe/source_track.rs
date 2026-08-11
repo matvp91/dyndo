@@ -6,9 +6,8 @@ use super::ProbeError;
 use crate::asset::track::TrackDescriptor;
 use crate::track::SourceTrack;
 use crate::track::cmaf::CmafTrack;
-use crate::track::cmaf::kind::{TextKind, undetermined_language};
+use crate::track::kind::{TextKind, undetermined_language};
 use crate::track::timed_text::TimedTextTrack;
-use crate::track::timed_text::web_vtt::WebVttTrack;
 
 impl SourceTrack {
     pub async fn probe(
@@ -17,12 +16,14 @@ impl SourceTrack {
         descriptor: Option<&TrackDescriptor>,
     ) -> Result<Self, ProbeError> {
         match descriptor {
-            Some(TrackDescriptor::WebVtt(descriptor)) => {
-                WebVttTrack::probe(op, path, descriptor.id.clone(), descriptor.kind.clone())
-                    .await
-                    .map(TimedTextTrack::WebVtt)
-                    .map(Self::TimedText)
-            }
+            Some(TrackDescriptor::WebVtt(descriptor)) => TimedTextTrack::probe_web_vtt(
+                op,
+                path,
+                descriptor.id.clone(),
+                descriptor.kind.clone(),
+            )
+            .await
+            .map(Self::TimedText),
             Some(TrackDescriptor::Thumbnail(_)) => Err(ProbeError::NotSourceTrack),
             Some(descriptor) => {
                 let kind = descriptor.cmaf_kind().ok_or(ProbeError::NotSourceTrack)?;
@@ -37,9 +38,8 @@ impl SourceTrack {
                         language: undetermined_language(),
                         role: None,
                     };
-                    return WebVttTrack::probe(op, path, id, kind)
+                    return TimedTextTrack::probe_web_vtt(op, path, id, kind)
                         .await
-                        .map(TimedTextTrack::WebVtt)
                         .map(Self::TimedText);
                 }
                 CmafTrack::probe(op, path, id, None).await.map(Self::Cmaf)

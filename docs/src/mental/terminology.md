@@ -11,7 +11,7 @@ Asset
 │   └── timed text
 │       ├── WebVTT
 │       └── IMSC1
-└── derived tracks
+└── synthetic tracks
     └── thumbnail track
         └── thumbnail sprites (images)
 ```
@@ -24,9 +24,11 @@ WebVTT is supported today and IMSC1 belongs to the same category when it is
 added. A source track has a path and can be probed.
 
 The runtime model keeps those levels separate: `SourceTrack` is either a
-`CmafTrack` or a `TimedTextTrack`; the latter is `WebVtt` today and will gain
-`Imsc1` when supported. CMAF's `Text` kind remains the container-level media
-category, independent of the timed-text document format.
+`CmafTrack` or a `TimedTextTrack`. Each resolved source track carries its own
+kind: `CmafTrackKind` is `Video`, `Audio`, or `Text`; `TimedTextKind` is
+`WebVtt` today and can gain `Imsc1` when supported. CMAF's `Text` kind remains
+the container-level media category, independent of the timed-text document
+format.
 
 ## Descriptors and discovery
 
@@ -45,7 +47,7 @@ stable source identifier that is then recorded in the descriptor.
 
 The word **type** has two deliberate meanings in the system:
 
-- An asset descriptor type is the source or derived form written in
+- An asset descriptor type is the source or synthetic form written in
   `asset.json`: `video`, `audio`, `text`, `vtt`, or `thumbnail`.
 - A CMAF media kind is the container category of a CMAF track: `video`,
   `audio`, or `text`.
@@ -53,11 +55,14 @@ The word **type** has two deliberate meanings in the system:
 For example, `vtt` is a timed-text document format, while CMAF `text` is the
 container category used when that document is packaged as `wvtt`.
 
-## Derived tracks
+## Synthetic tracks
 
-A **derived track** is created from source tracks when it is requested. It has
-no independent source path. A thumbnail track is derived from a suitable video
-source by sampling frames along its timeline.
+A **synthetic track** is derived from source tracks when requested and has no
+independent source path. Its descriptor is a
+`SyntheticTrackDescriptor`, which carries its identifier and kind but no source
+location. Resolution creates a `SyntheticTrack` with a `SyntheticTrackKind`;
+today that kind is `Thumbnail`. A thumbnail track is derived from a suitable
+video source by sampling frames along its timeline.
 
 ## Thumbnails and images
 

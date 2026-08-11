@@ -1,8 +1,8 @@
 use dyndo_core::segment_options::SegmentOptions;
 use dyndo_core::served_segment::ServedSegment;
 use dyndo_core::track::cmaf::CmafTrack;
-use dyndo_core::track::cmaf::kind::{CmafTrackKind, VideoKind};
-use dyndo_core::track::thumbnail::ThumbnailTrack;
+use dyndo_core::track::kind::{CmafTrackKind, VideoKind};
+use dyndo_core::track::synthetic::SyntheticTrack;
 use m3u8_rs::{ClosedCaptionGroupId, ExtTag, MasterPlaylist, Resolution, VariantStream};
 
 use crate::HlsError;
@@ -14,7 +14,7 @@ const SUBTITLES_GROUP_ID: &str = "subtitles";
 
 pub(crate) fn build_playlist(
     tracks: &[CmafTrack],
-    thumbnails: &[ThumbnailTrack],
+    thumbnails: &[SyntheticTrack],
     segment_options: &SegmentOptions,
     hls_options: &HlsOptions,
 ) -> Result<MasterPlaylist, HlsError> {
@@ -31,7 +31,7 @@ pub(crate) fn build_playlist(
     })
 }
 
-fn image_streams(thumbnails: &[ThumbnailTrack]) -> Vec<ExtTag> {
+fn image_streams(thumbnails: &[SyntheticTrack]) -> Vec<ExtTag> {
     thumbnails
         .iter()
         .map(|thumbnail| {

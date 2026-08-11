@@ -1,8 +1,7 @@
 use dyndo_core::asset::track::TrackDescriptor;
 use dyndo_core::segment_options::SegmentOptions;
 use dyndo_core::track::SourceTrack;
-use dyndo_core::track::cmaf::kind::CmafTrackKind;
-use dyndo_core::track::timed_text::TimedTextTrack;
+use dyndo_core::track::kind::{CmafTrackKind, TimedTextKind};
 use opendal::{Operator, services::Memory};
 use relative_path::RelativePath;
 
@@ -24,22 +23,22 @@ async fn web_vtt_track_packages_cmaf_on_demand_and_serves_vtt_directly() {
     };
     operator.write(path.as_str(), VTT).await.unwrap();
 
-    let SourceTrack::TimedText(TimedTextTrack::WebVtt(vtt)) =
-        SourceTrack::probe(&operator, path, None).await.unwrap()
+    let SourceTrack::TimedText(vtt) = SourceTrack::probe(&operator, path, None).await.unwrap()
     else {
         panic!("expected a WebVTT source track");
     };
-    let packaged = vtt.package(&options).await.unwrap();
+    assert!(matches!(vtt.kind(), TimedTextKind::WebVtt(_)));
+    let packaged = vtt.package_wvtt(&options).await.unwrap();
 
     assert!(matches!(packaged.cmaf().kind(), CmafTrackKind::Text(_)));
     assert_eq!(packaged.cmaf().codec().rfc6381(), "wvtt");
     assert_eq!(packaged.cmaf().segments().len(), 4);
     assert_eq!(
-        vtt.vtt_segment(0, 750).as_deref(),
+        vtt.web_vtt_segment(0, 750).as_deref(),
         Some("WEBVTT\n\n00:00:00.500 --> 00:00:00.750\nFirst\n")
     );
     assert_eq!(
-        vtt.vtt_segment(0, 1_500).as_deref(),
+        vtt.web_vtt_segment(0, 1_500).as_deref(),
         Some(
             "WEBVTT\n\n00:00:00.500 --> 00:00:01.500\nFirst\n\n00:00:01.000 --> 00:00:01.500\nSecond\n"
         )

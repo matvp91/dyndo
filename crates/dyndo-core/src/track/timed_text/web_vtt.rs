@@ -1,58 +1,23 @@
 use bytes::Bytes;
-use relative_path::{RelativePath, RelativePathBuf};
 
 use crate::packaging::PackageError;
 use crate::probe::ProbeError;
 use crate::segment_options::SegmentOptions;
 use crate::text::{Cue, Subtitle};
 use crate::track::cmaf::CmafTrack;
-use crate::track::cmaf::kind::{CmafTrackKind, TextKind};
 use crate::track::cmaf::package::CmafPackage;
+use crate::track::kind::CmafTrackKind;
+use crate::track::timed_text::TimedTextTrack;
 
 #[derive(Debug, thiserror::Error)]
-pub enum WebVttPackageError {
+pub enum TimedTextPackageError {
     #[error(transparent)]
     Package(#[from] PackageError),
     #[error(transparent)]
     Cmaf(#[from] ProbeError),
 }
 
-/// A resolved raw WebVTT track.
-#[derive(Clone)]
-pub struct WebVttTrack {
-    id: String,
-    path: RelativePathBuf,
-    kind: TextKind,
-    subtitle: Subtitle,
-}
-
-impl WebVttTrack {
-    pub(crate) fn new(
-        id: String,
-        path: RelativePathBuf,
-        kind: TextKind,
-        subtitle: Subtitle,
-    ) -> Self {
-        Self {
-            id,
-            path,
-            kind,
-            subtitle,
-        }
-    }
-
-    pub fn id(&self) -> &str {
-        &self.id
-    }
-
-    pub fn path(&self) -> &RelativePath {
-        &self.path
-    }
-
-    pub fn kind(&self) -> &TextKind {
-        &self.kind
-    }
-
+impl TimedTextTrack {
     pub(crate) fn package_bytes(&self, options: &SegmentOptions) -> Result<Bytes, PackageError> {
         self.subtitle
             .to_wvtt(options.text_length, &options.boundaries)
@@ -60,23 +25,26 @@ impl WebVttTrack {
     }
 
     /// Packages this source as temporary CMAF media.
-    pub async fn package(
+    pub async fn package_wvtt(
         &self,
         options: &SegmentOptions,
-    ) -> Result<CmafPackage, WebVttPackageError> {
+    ) -> Result<CmafPackage, TimedTextPackageError> {
         let bytes = self.package_bytes(options)?;
         let cmaf = CmafTrack::from_bytes(
             bytes.clone(),
             self.path(),
             self.id().to_string(),
-            CmafTrackKind::Text(self.kind().clone()),
+            CmafTrackKind::Text(self.kind().text().clone()),
         )
         .await?;
         Ok(CmafPackage::new(cmaf, bytes))
     }
 
     /// Returns the raw WebVTT document for a served segment.
-    pub fn vtt_segment(&self, start: u64, end: u64) -> Option<String> {
+    pub fn web_vtt_segment(&self, start: u64, end: u64) -> Option<String> {
+        if !self.kind().is_web_vtt() {
+            return None;
+        }
         let start = u32::try_from(start).ok()?;
         let end = u32::try_from(end).ok()?;
         if start >= end {
