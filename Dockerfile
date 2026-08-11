@@ -2,7 +2,7 @@
 
 # This is the single Linux FFmpeg build definition. All Linux CI verification,
 # release artifacts, and runtime images build from these stages.
-ARG FFMPEG_VERSION=7.1.5
+ARG FFMPEG_VERSION=8.0.3
 
 # ---- FFmpeg stage ----
 FROM debian:trixie-slim AS ffmpeg
@@ -14,14 +14,14 @@ RUN apt-get update \
         curl \
         nasm \
         pkg-config \
-        xz-utils \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /tmp
 RUN curl --fail --location --retry 5 --retry-all-errors --retry-delay 2 \
-        "https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.xz" \
-        --output ffmpeg.tar.xz \
-    && tar --extract --file ffmpeg.tar.xz \
-    && cd "ffmpeg-${FFMPEG_VERSION}" \
+        "https://github.com/FFmpeg/FFmpeg/archive/refs/tags/n${FFMPEG_VERSION}.tar.gz" \
+        --output ffmpeg.tar.gz \
+    && mkdir ffmpeg \
+    && tar --extract --file ffmpeg.tar.gz --strip-components=1 --directory ffmpeg \
+    && cd ffmpeg \
     && ./configure \
         --prefix=/opt/ffmpeg \
         --disable-static \
