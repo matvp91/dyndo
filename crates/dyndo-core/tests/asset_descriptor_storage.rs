@@ -1,6 +1,6 @@
 use dyndo_core::asset_descriptor::AssetDescriptor;
+use dyndo_core::source_track::SourceTrack;
 use dyndo_core::thumbnail_track_descriptor::ThumbnailTrackDescriptor;
-use dyndo_core::track::Track;
 use opendal::{Operator, services::Memory};
 use relative_path::RelativePath;
 
@@ -29,14 +29,14 @@ async fn read_or_new_preserves_the_descriptor_base_when_adding_a_track() {
         r#"{"id":"text","path":"subtitles/en.vtt","type":"vtt","language":"en"}"#,
     )
     .unwrap();
-    let track = Track::probe(
+    let track = SourceTrack::probe(
         &operator,
         RelativePath::new("assets/movie/subtitles/en.vtt"),
         Some(&track_descriptor),
     )
     .await
     .unwrap();
-    descriptor.add_track(&track);
+    descriptor.add_source_track(&track);
 
     assert_eq!(
         descriptor
@@ -53,7 +53,7 @@ async fn read_or_new_preserves_the_descriptor_base_when_adding_a_track() {
 #[tokio::test]
 async fn read_deserializes_an_asset_descriptor_from_storage() {
     let operator = memory_operator();
-    operator.write("assets/asset.json", r#"{"segment_options":{"min_length":1000},"tracks":[{"id":"text","path":"subtitles/en.vtt","type":"vtt"},{"id":"preview","tile_size":4,"width":640,"step":1000,"type":"image"}]}"#).await.unwrap();
+    operator.write("assets/asset.json", r#"{"segment_options":{"min_length":1000},"tracks":[{"id":"text","path":"subtitles/en.vtt","type":"vtt"},{"id":"preview","tile_size":4,"width":640,"step":1000,"type":"thumbnail"}]}"#).await.unwrap();
 
     let descriptor = AssetDescriptor::read(&operator, "assets/asset.json")
         .await
@@ -93,6 +93,22 @@ async fn read_rejects_the_removed_thumbnails_collection() {
         .write(
             "asset.json",
             r#"{"tracks":[],"thumbnails":[{"id":"preview"}]}"#,
+        )
+        .await
+        .unwrap();
+
+    let result = AssetDescriptor::read(&operator, "asset.json").await;
+
+    assert!(result.is_err());
+}
+
+#[tokio::test]
+async fn read_rejects_the_removed_image_track_type() {
+    let operator = memory_operator();
+    operator
+        .write(
+            "asset.json",
+            r#"{"tracks":[{"id":"preview","type":"image","tile_size":4,"width":640,"step":1000}]}"#,
         )
         .await
         .unwrap();

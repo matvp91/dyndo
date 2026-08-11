@@ -5,13 +5,29 @@ use image::imageops::FilterType;
 use image::{ImageFormat, RgbImage, imageops};
 use opendal::Operator;
 
+use crate::asset_descriptor::AssetDescriptor;
 use crate::cmaf_track::CmafTrack;
 use crate::cmaf_track_kind::CmafTrackKind;
 use crate::image::{FrameExtractor, FrameExtractorError};
+use crate::source_track::SourceTrack;
 use crate::thumbnail_track_descriptor::ThumbnailTrackDescriptor;
 
 const CONCURRENT_FRAME_GRABS: usize = 4;
 const BITS_PER_PIXEL: u64 = 1;
+
+/// Resolves every thumbnail configuration that has a suitable video source.
+pub fn resolve_thumbnail_tracks(
+    asset: &AssetDescriptor,
+    sources: &[SourceTrack],
+) -> Vec<ThumbnailTrack> {
+    asset
+        .thumbnail_tracks()
+        .filter_map(|track| track.thumbnail())
+        .filter_map(|descriptor| {
+            ThumbnailTrack::new(descriptor, sources.iter().filter_map(SourceTrack::cmaf))
+        })
+        .collect()
+}
 
 /// An error encountered while generating a video thumbnail sprite.
 #[derive(Debug, thiserror::Error)]
@@ -35,7 +51,10 @@ impl ThumbnailTrack {
     ///
     /// Selects the smallest video at least as wide as the requested sprite, or
     /// the largest video when every source must be upscaled.
-    pub fn new(descriptor: &ThumbnailTrackDescriptor, tracks: &[CmafTrack]) -> Option<Self> {
+    pub fn new<'a>(
+        descriptor: &ThumbnailTrackDescriptor,
+        tracks: impl IntoIterator<Item = &'a CmafTrack>,
+    ) -> Option<Self> {
         let source = select_source(descriptor.width, tracks)?;
         let (_, height) = dimensions(descriptor, source)?;
 
@@ -164,20 +183,28 @@ impl ThumbnailTrack {
     }
 }
 
-fn select_source(width: u32, tracks: &[CmafTrack]) -> Option<&CmafTrack> {
-    tracks
-        .iter()
-        .filter_map(video_width)
-        .filter(|(_, video_width)| *video_width >= width)
-        .min_by_key(|(_, video_width)| *video_width)
-        .map(|(track, _)| track)
-        .or_else(|| {
-            tracks
-                .iter()
-                .filter_map(video_width)
-                .max_by_key(|(_, video_width)| *video_width)
-                .map(|(track, _)| track)
-        })
+fn select_source<'a>(
+    width: u32,
+    tracks: impl IntoIterator<Item = &'a CmafTrack>,
+) -> Option<&'a CmafTrack> {
+    let mut smallest_suitable = None;
+    let mut largest = None;
+
+    for track in tracks {
+        let Some((track, video_width)) = video_width(track) else {
+            continue;
+        };
+        if largest.is_none_or(|(_, largest_width)| video_width > largest_width) {
+            largest = Some((track, video_width));
+        }
+        if video_width >= width
+            && smallest_suitable.is_none_or(|(_, smallest_width)| video_width < smallest_width)
+        {
+            smallest_suitable = Some((track, video_width));
+        }
+    }
+
+    smallest_suitable.or(largest).map(|(track, _)| track)
 }
 
 fn video_width(track: &CmafTrack) -> Option<(&CmafTrack, u32)> {

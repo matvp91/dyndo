@@ -1,7 +1,7 @@
 use dyndo_core::cmaf_track_kind::CmafTrackKind;
 use dyndo_core::segment_options::SegmentOptions;
+use dyndo_core::source_track::SourceTrack;
 use dyndo_core::text::{Cue, Subtitle};
-use dyndo_core::track::Track;
 use opendal::{Operator, services::Memory};
 use relative_path::RelativePath;
 
@@ -23,8 +23,9 @@ async fn vtt_track_packages_cmaf_on_demand_and_serves_vtt_directly() {
     };
     operator.write(path.as_str(), VTT).await.unwrap();
 
-    let track = Track::probe(&operator, path, None).await.unwrap();
-    let vtt = track.vtt().unwrap();
+    let SourceTrack::Vtt(vtt) = SourceTrack::probe(&operator, path, None).await.unwrap() else {
+        panic!("expected a WebVTT source track");
+    };
     let packaged = vtt.package(&options).await.unwrap();
     let end = packaged.cmaf().segments().last().unwrap().byte_range().end;
     let subtitle = Subtitle::from_wvtt(&packaged.read(0..end).unwrap()).unwrap();
@@ -68,7 +69,10 @@ async fn vtt_track_reports_an_invalid_subtitle_document() {
         .await
         .unwrap();
 
-    let error = Track::probe(&operator, path, None).await.err().unwrap();
+    let error = SourceTrack::probe(&operator, path, None)
+        .await
+        .err()
+        .unwrap();
 
     assert!(error.to_string().contains("missing WEBVTT signature"));
 }

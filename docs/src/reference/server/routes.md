@@ -98,7 +98,7 @@ Unknown keys are rejected on every output route.
 
 A request can narrow an asset's track entries, so one descriptor covers every
 variation you want to offer — a resolution cap, one audio language, or selected
-image tracks — instead of one descriptor per variation.
+thumbnail tracks — instead of one descriptor per variation.
 
 | Parameter | Applies to |
 |---|---|
@@ -208,7 +208,7 @@ attribute every track carries:
 | Everything but the audio | `type!=audio` |
 | Video up to 720 plus subtitles, no audio | `type!=audio&&(type!=video\|\|height<=720)` |
 | Dutch audio only, video untouched | `type!=audio\|\|language==nld` |
-| Keep only image thumbnails at least 640 pixels wide | `type!=image\|\|width>=640` |
+| Keep only thumbnails at least 640 pixels wide | `type!=thumbnail\|\|width>=640` |
 
 Mind `&&` against `||` here: `type!=video&&height<=720` requires *both*, so it
 drops the audio it was meant to spare. Use `||` to spare, `&&` to narrow.

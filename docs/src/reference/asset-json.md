@@ -7,8 +7,8 @@ The file is pretty-printed JSON and safe to read, diff, and hand-edit.
 ## Top-level structure
 
 A descriptor is an object with a `tracks` array and an optional block of segment
-options. The array contains CMAF media tracks, raw WebVTT tracks, and image
-tracks:
+options. The array contains CMAF source tracks, raw WebVTT source tracks, and
+derived thumbnail tracks:
 
 ```json
 {
@@ -16,7 +16,7 @@ tracks:
     "min_length": 6000,
     "boundaries": [683640]
   },
-  "tracks": [ /* media, VTT, and image track objects */ ]
+  "tracks": [ /* CMAF, VTT, and thumbnail track objects */ ]
 }
 ```
 
@@ -25,16 +25,16 @@ group, the default rendition is the first `main`-role track, or the first audio
 track with no role when none is marked `main`. `index` appends tracks in the
 order you pass them.
 
-## Image tracks
+## Thumbnail tracks
 
-Image tracks describe JPEG sprite sheets derived from the source tracks. They
-have no source path or codec: dyndo resolves their source at request time. Each
-image track has a stable `id`:
+Thumbnail tracks describe JPEG sprite sheets derived from the source tracks.
+They have no source path or codec: dyndo resolves their source at request time.
+Each thumbnail track has a stable `id`:
 
 ```json
 {
   "id": "preview",
-  "type": "image",
+  "type": "thumbnail",
   "tile_size": 4,
   "width": 640,
   "step": 1000
@@ -70,7 +70,7 @@ additional shorthand and legacy spellings; see the
 ## Track objects
 
 Each track is tagged by a `type` discriminator: `"video"`, `"audio"`,
-`"text"`, `"vtt"`, or `"image"`. CMAF tracks (`video`, `audio`, and `text`)
+`"text"`, `"vtt"`, or `"thumbnail"`. CMAF tracks (`video`, `audio`, and `text`)
 share these fields:
 
 | Field | Type | Description |

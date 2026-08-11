@@ -3,8 +3,8 @@ use relative_path::{RelativePath, RelativePathBuf};
 use serde::{Deserialize, Serialize};
 
 use super::segment_options::SegmentOptions;
+use super::source_track::SourceTrack;
 use super::thumbnail_track_descriptor::ThumbnailTrackDescriptor;
-use super::track::Track;
 use super::track_descriptor::TrackDescriptor;
 
 #[derive(Debug, thiserror::Error)]
@@ -96,14 +96,12 @@ impl AssetDescriptor {
         self.tracks.get_mut(index)
     }
 
-    pub fn add_track(&mut self, track: &Track) -> &mut TrackDescriptor {
+    pub fn add_source_track(&mut self, track: &SourceTrack) -> &mut TrackDescriptor {
         let base = self.path.parent().unwrap_or(RelativePath::new(""));
-        let path = track
-            .source_path()
-            .map(|path| base.relative(path))
-            .unwrap_or_default();
+        let path = base.relative(track.source_path());
         let index = self.tracks.len();
-        self.tracks.push(TrackDescriptor::from_track(track, path));
+        self.tracks
+            .push(TrackDescriptor::from_source_track(track, path));
         &mut self.tracks[index]
     }
 }

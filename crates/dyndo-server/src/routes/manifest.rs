@@ -4,8 +4,8 @@ use axum::{
 };
 use dyndo_core::asset_descriptor::AssetDescriptor;
 use dyndo_core::cmaf_track::CmafTrack;
-use dyndo_core::thumbnail_track::ThumbnailTrack;
-use dyndo_core::track::Track;
+use dyndo_core::source_track::SourceTrack;
+use dyndo_core::thumbnail_track::resolve_thumbnail_tracks;
 use dyndo_dash::options::DashOptions;
 use dyndo_hls::options::HlsOptions;
 use opendal::Operator;
@@ -24,7 +24,7 @@ pub(super) async fn dash(
     options: &DashOptions,
 ) -> Result<Response, ServerError> {
     let source_tracks = TrackResolver::new(op, source_asset).probe_all().await?;
-    let thumbnails = thumbnails(asset, &source_tracks);
+    let thumbnails = resolve_thumbnail_tracks(asset, &source_tracks);
     let tracks = filtered_tracks(source_tracks, asset).await?;
     let mpd = dyndo_dash::generate_mpd(&tracks, &thumbnails, &asset.segment_options, options)?;
     let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
@@ -42,7 +42,7 @@ pub(super) async fn hls_master(
     options: &HlsOptions,
 ) -> Result<Response, ServerError> {
     let source_tracks = TrackResolver::new(op, source_asset).probe_all().await?;
-    let thumbnails = thumbnails(asset, &source_tracks);
+    let thumbnails = resolve_thumbnail_tracks(asset, &source_tracks);
     let tracks = filtered_tracks(source_tracks, asset).await?;
     let playlist =
         dyndo_hls::generate_master_playlist(&tracks, &thumbnails, &asset.segment_options, options)?;
@@ -70,30 +70,17 @@ pub(super) async fn hls_images(
     let descriptor = asset
         .find_thumbnail_by_id(thumbnail_id)
         .ok_or_else(|| ServerError::NotFound(format!("thumbnail {thumbnail_id}")))?;
-    let thumbnail = TrackResolver::new(op, source_asset)
-        .probe_all()
-        .await?
+    let source_tracks = TrackResolver::new(op, source_asset).probe_all().await?;
+    let thumbnail = resolve_thumbnail_tracks(asset, &source_tracks)
         .into_iter()
-        .find_map(|track| match track {
-            Track::Thumbnail(track) if track.id() == descriptor.id => Some(track),
-            _ => None,
-        })
+        .find(|track| track.id() == descriptor.id)
         .ok_or_else(|| ServerError::NotFound("thumbnail".to_string()))?;
     let playlist = dyndo_hls::generate_image_playlist(&thumbnail)?;
     Ok(([(CONTENT_TYPE, HLS_CONTENT_TYPE)], playlist).into_response())
 }
 
-fn thumbnails(asset: &AssetDescriptor, tracks: &[Track]) -> Vec<ThumbnailTrack> {
-    tracks
-        .iter()
-        .filter_map(Track::thumbnail)
-        .filter(|track| asset.find_thumbnail_by_id(track.id()).is_some())
-        .cloned()
-        .collect()
-}
-
 async fn filtered_tracks(
-    tracks: Vec<Track>,
+    tracks: Vec<SourceTrack>,
     asset: &AssetDescriptor,
 ) -> Result<Vec<CmafTrack>, ServerError> {
     let mut resolved = Vec::new();
@@ -102,11 +89,10 @@ async fn filtered_tracks(
             continue;
         }
         match track {
-            Track::Cmaf(track) => resolved.push(track),
-            Track::Vtt(track) => {
+            SourceTrack::Cmaf(track) => resolved.push(track),
+            SourceTrack::Vtt(track) => {
                 resolved.push(track.package(&asset.segment_options).await?.into_cmaf())
             }
-            Track::Thumbnail(_) => {}
         }
     }
     Ok(resolved)

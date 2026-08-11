@@ -5,7 +5,7 @@ use axum::{
 use dyndo_core::asset_descriptor::AssetDescriptor;
 use dyndo_core::reader::Reader;
 use dyndo_core::text::Subtitle;
-use dyndo_core::track::Track;
+use dyndo_core::thumbnail_track::resolve_thumbnail_tracks;
 use opendal::Operator;
 
 use super::track_resolver::{LocatedSegment, ResolvedTrack, TrackResolver};
@@ -52,7 +52,7 @@ pub(super) async fn text(
     } = TrackResolver::new(op, asset)
         .locate_segment(track_id, time)
         .await?;
-    if let Some(track) = track.vtt() {
+    if let Some(track) = track.web_vtt() {
         let text = track
             .vtt_segment(start_time, end_time)
             .ok_or_else(|| ServerError::NotFound(format!("segment {time} for track {track_id}")))?;
@@ -92,14 +92,10 @@ pub(super) async fn thumbnail(
     let descriptor = asset
         .find_thumbnail_by_id(thumbnail_id)
         .ok_or_else(|| ServerError::NotFound(format!("thumbnail {thumbnail_id}")))?;
-    let thumbnail = TrackResolver::new(op, asset)
-        .probe_all()
-        .await?
+    let source_tracks = TrackResolver::new(op, asset).probe_all().await?;
+    let thumbnail = resolve_thumbnail_tracks(asset, &source_tracks)
         .into_iter()
-        .find_map(|track| match track {
-            Track::Thumbnail(track) if track.id() == descriptor.id => Some(track),
-            _ => None,
-        });
+        .find(|track| track.id() == descriptor.id);
     let Some(thumbnail) = thumbnail else {
         return Err(ServerError::NotFound("thumbnail".to_string()));
     };

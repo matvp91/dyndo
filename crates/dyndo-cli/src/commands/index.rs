@@ -1,7 +1,7 @@
 use clap::Args;
 use dyndo_core::asset_descriptor::AssetDescriptor;
 use dyndo_core::role::Role;
-use dyndo_core::track::Track;
+use dyndo_core::source_track::SourceTrack;
 use dyndo_core::track_descriptor::TrackDescriptor;
 use language_tags::LanguageTag;
 use opendal::Operator;
@@ -29,8 +29,8 @@ pub(crate) async fn run(op: &Operator, args: IndexArgs) -> Result<(), Box<dyn st
             continue;
         }
 
-        let track = Track::probe(op, &path, None).await?;
-        input.apply(descriptor.add_track(&track));
+        let track = SourceTrack::probe(op, &path, None).await?;
+        input.apply(descriptor.add_source_track(&track));
     }
 
     op.write(&args.output, serde_json::to_vec_pretty(&descriptor)?)
@@ -52,7 +52,7 @@ impl TrackInput {
             TrackDescriptor::Audio(audio) => (&mut audio.kind.language, &mut audio.kind.role),
             TrackDescriptor::Text(text) => (&mut text.kind.language, &mut text.kind.role),
             TrackDescriptor::Vtt(text) => (&mut text.kind.language, &mut text.kind.role),
-            TrackDescriptor::Video(_) | TrackDescriptor::Image(_) => return,
+            TrackDescriptor::Video(_) | TrackDescriptor::Thumbnail(_) => return,
         };
         if let Some(value) = &self.language {
             language.clone_from(value);

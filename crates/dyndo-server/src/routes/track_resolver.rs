@@ -1,11 +1,12 @@
 use std::ops::Range;
 
 use dyndo_core::asset_descriptor::AssetDescriptor;
+use dyndo_core::cmaf_package::CmafPackage;
 use dyndo_core::cmaf_track::CmafTrack;
-use dyndo_core::probe::probe_tracks;
+use dyndo_core::probe::probe_source_tracks;
 use dyndo_core::served_segment::ServedSegment;
-use dyndo_core::track::Track;
-use dyndo_core::vtt_track::{PackagedVttTrack, VttTrack};
+use dyndo_core::source_track::SourceTrack;
+use dyndo_core::vtt_track::VttTrack;
 use opendal::Operator;
 
 use crate::error::ServerError;
@@ -26,7 +27,7 @@ pub(super) enum ResolvedTrack {
     Cmaf(CmafTrack),
     Vtt {
         source: VttTrack,
-        packaged: PackagedVttTrack,
+        packaged: CmafPackage,
     },
 }
 
@@ -38,14 +39,14 @@ impl ResolvedTrack {
         }
     }
 
-    pub(super) fn vtt(&self) -> Option<&VttTrack> {
+    pub(super) fn web_vtt(&self) -> Option<&VttTrack> {
         match self {
             Self::Vtt { source, .. } => Some(source),
             Self::Cmaf(_) => None,
         }
     }
 
-    pub(super) fn packaged(&self) -> Option<&PackagedVttTrack> {
+    pub(super) fn packaged(&self) -> Option<&CmafPackage> {
         match self {
             Self::Vtt { packaged, .. } => Some(packaged),
             Self::Cmaf(_) => None,
@@ -58,7 +59,7 @@ impl<'a> TrackResolver<'a> {
         Self { operator, asset }
     }
 
-    pub(super) async fn probe(&self, track_id: &str) -> Result<Track, ServerError> {
+    pub(super) async fn probe(&self, track_id: &str) -> Result<SourceTrack, ServerError> {
         let descriptor = self
             .asset
             .find_track_by_id(track_id)
@@ -69,25 +70,24 @@ impl<'a> TrackResolver<'a> {
             .ok_or_else(|| ServerError::NotFound(format!("track {track_id}")));
         let path = path?;
 
-        Track::probe(self.operator, &path, Some(descriptor))
+        SourceTrack::probe(self.operator, &path, Some(descriptor))
             .await
             .map_err(Into::into)
     }
 
-    pub(super) async fn probe_all(&self) -> Result<Vec<Track>, ServerError> {
-        probe_tracks(self.operator, self.asset)
+    pub(super) async fn probe_all(&self) -> Result<Vec<SourceTrack>, ServerError> {
+        probe_source_tracks(self.operator, self.asset)
             .await
             .map_err(Into::into)
     }
 
     pub(super) async fn resolve(&self, track_id: &str) -> Result<ResolvedTrack, ServerError> {
         match self.probe(track_id).await? {
-            Track::Cmaf(track) => Ok(ResolvedTrack::Cmaf(track)),
-            Track::Vtt(source) => {
+            SourceTrack::Cmaf(track) => Ok(ResolvedTrack::Cmaf(track)),
+            SourceTrack::Vtt(source) => {
                 let packaged = source.package(&self.asset.segment_options).await?;
                 Ok(ResolvedTrack::Vtt { source, packaged })
             }
-            Track::Thumbnail(_) => Err(ServerError::NotFound(format!("track {track_id}"))),
         }
     }
 

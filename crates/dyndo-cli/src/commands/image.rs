@@ -2,7 +2,7 @@ use clap::Args;
 use dyndo_core::asset_descriptor::AssetDescriptor;
 use dyndo_core::cmaf_track_kind::CmafTrackKind;
 use dyndo_core::image::FrameExtractor;
-use dyndo_core::track::Track;
+use dyndo_core::source_track::SourceTrack;
 use opendal::Operator;
 
 #[derive(Args)]
@@ -27,8 +27,8 @@ pub(crate) async fn run(op: &Operator, args: ImageArgs) -> Result<(), Box<dyn st
     let path = asset
         .track_path(descriptor)
         .ok_or("video track has no source path")?;
-    let track = Track::probe(op, &path, Some(descriptor)).await?;
-    let cmaf = track.native_cmaf().ok_or("video track is not CMAF")?;
+    let track = SourceTrack::probe(op, &path, Some(descriptor)).await?;
+    let cmaf = track.cmaf().ok_or("video track is not CMAF")?;
     let CmafTrackKind::Video(video) = cmaf.kind() else {
         return Err("probed track is not a video track".into());
     };

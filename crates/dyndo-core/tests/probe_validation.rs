@@ -1,4 +1,4 @@
-use dyndo_core::track::Track;
+use dyndo_core::source_track::SourceTrack;
 use mp4_atom::{Any, DecodeMaybe, Encode, FourCC, Sidx};
 use opendal::{Operator, services::Memory};
 use relative_path::RelativePath;
@@ -44,7 +44,7 @@ async fn probe_rejects_a_sidx_with_zero_timescale() {
         .await
         .unwrap();
 
-    let error = Track::probe(&operator, RelativePath::new("video.mp4"), None)
+    let error = SourceTrack::probe(&operator, RelativePath::new("video.mp4"), None)
         .await
         .err()
         .unwrap();
@@ -66,7 +66,7 @@ async fn probe_rejects_a_sidx_reference_with_zero_duration() {
         .await
         .unwrap();
 
-    let error = Track::probe(&operator, RelativePath::new("video.mp4"), None)
+    let error = SourceTrack::probe(&operator, RelativePath::new("video.mp4"), None)
         .await
         .err()
         .unwrap();
@@ -88,7 +88,7 @@ async fn probe_rejects_a_sidx_reference_without_a_random_access_point() {
         .await
         .unwrap();
 
-    let error = Track::probe(&operator, RelativePath::new("video.mp4"), None)
+    let error = SourceTrack::probe(&operator, RelativePath::new("video.mp4"), None)
         .await
         .err()
         .unwrap();
@@ -110,7 +110,7 @@ async fn probe_rejects_a_sidx_with_an_overflowing_segment_time() {
         .await
         .unwrap();
 
-    let error = Track::probe(&operator, RelativePath::new("video.mp4"), None)
+    let error = SourceTrack::probe(&operator, RelativePath::new("video.mp4"), None)
         .await
         .err()
         .unwrap();
@@ -133,7 +133,7 @@ async fn probe_rejects_an_unsupported_track_handler() {
         .await
         .unwrap();
 
-    let error = Track::probe(&operator, RelativePath::new("video.mp4"), None)
+    let error = SourceTrack::probe(&operator, RelativePath::new("video.mp4"), None)
         .await
         .err()
         .unwrap();
@@ -156,7 +156,7 @@ async fn probe_rejects_a_video_without_sample_duration() {
         .await
         .unwrap();
 
-    let error = Track::probe(&operator, RelativePath::new("video.mp4"), None)
+    let error = SourceTrack::probe(&operator, RelativePath::new("video.mp4"), None)
         .await
         .err()
         .unwrap();
@@ -172,7 +172,7 @@ async fn probe_rejects_a_truncated_container_without_panicking() {
         .await
         .unwrap();
 
-    let error = Track::probe(&operator, RelativePath::new("video.mp4"), None)
+    let error = SourceTrack::probe(&operator, RelativePath::new("video.mp4"), None)
         .await
         .err()
         .unwrap();

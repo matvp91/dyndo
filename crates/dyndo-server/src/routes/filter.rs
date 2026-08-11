@@ -172,14 +172,14 @@ impl Attribute {
     fn number(self, descriptor: &TrackDescriptor) -> Option<u64> {
         match (self, descriptor) {
             (Self::Width, TrackDescriptor::Video(track)) => Some(u64::from(track.kind.width)),
-            (Self::Width, TrackDescriptor::Image(track)) => Some(u64::from(track.width)),
+            (Self::Width, TrackDescriptor::Thumbnail(track)) => Some(u64::from(track.width)),
             (Self::Height, TrackDescriptor::Video(track)) => Some(u64::from(track.kind.height)),
             (Self::SampleRate, TrackDescriptor::Audio(track)) => {
                 Some(u64::from(track.kind.sample_rate))
             }
             (Self::Channels, TrackDescriptor::Audio(track)) => Some(u64::from(track.kind.channels)),
-            (Self::TileSize, TrackDescriptor::Image(track)) => Some(u64::from(track.tile_size)),
-            (Self::Step, TrackDescriptor::Image(track)) => Some(u64::from(track.step)),
+            (Self::TileSize, TrackDescriptor::Thumbnail(track)) => Some(u64::from(track.tile_size)),
+            (Self::Step, TrackDescriptor::Thumbnail(track)) => Some(u64::from(track.step)),
             _ => None,
         }
     }
@@ -335,7 +335,7 @@ mod tests {
                   "tile_size": 4,
                   "width": 640,
                   "step": 1000,
-                  "type": "image"
+                  "type": "thumbnail"
                 }
               ]
             }
@@ -348,7 +348,7 @@ mod tests {
     fn apply_keeps_matching_thumbnail_descriptors() {
         let mut asset = asset();
 
-        Filter::parse("type==image&&width>=640")
+        Filter::parse("type==thumbnail&&width>=640")
             .unwrap()
             .apply(&mut asset)
             .unwrap();

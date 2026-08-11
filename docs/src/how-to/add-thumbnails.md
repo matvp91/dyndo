@@ -12,7 +12,7 @@ You need an `asset.json` containing at least one video track. Create one with
 
 ## Add a thumbnail configuration
 
-Add an image track to the descriptor's `tracks` array. This configuration creates
+Add a thumbnail track to the descriptor's `tracks` array. This configuration creates
 4-by-4 sprites, each 640 pixels wide, with one frame per second:
 
 ```json
@@ -21,7 +21,7 @@ Add an image track to the descriptor's `tracks` array. This configuration create
     /* existing tracks */,
     {
       "id": "preview",
-      "type": "image",
+      "type": "thumbnail",
       "tile_size": 4,
       "width": 640,
       "step": 1000
@@ -36,7 +36,7 @@ composite JPEG, not one tile; it must divide evenly by `tile_size`. `step` is
 the interval between frames in milliseconds. This example makes every sprite
 cover 16 seconds of presentation time.
 
-The `id` names this image track in manifest URLs. It is independent of every
+The `id` names this thumbnail track in manifest URLs. It is independent of every
 video track ID, so you can add more than one configuration for the
 same asset.
 
@@ -76,17 +76,17 @@ Use the manifest `filter` parameter to choose the configurations a particular
 client sees. For example, this excludes all thumbnails:
 
 ```text
-/out/(asset:asset)/master.m3u8?filter=type!=image
+/out/(asset:asset)/master.m3u8?filter=type!=thumbnail
 ```
 
 This keeps only thumbnail configurations whose composite width is at least 640
 pixels while retaining every media track:
 
 ```text
-/out/(asset:asset)/master.m3u8?filter=type!=image%7C%7Cwidth>=640
+/out/(asset:asset)/master.m3u8?filter=type!=thumbnail%7C%7Cwidth>=640
 ```
 
 Filters affect manifests only. A client must use the image URLs emitted by the
 manifest it requested. For the complete descriptor fields and route contract,
-see the [asset.json reference](../reference/asset-json.md#image-tracks)
+see the [asset.json reference](../reference/asset-json.md#thumbnail-tracks)
 and [server routes reference](../reference/server/routes.md#thumbnail-sprites).

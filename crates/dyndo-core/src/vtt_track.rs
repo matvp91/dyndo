@@ -1,9 +1,6 @@
-use std::ops::Range;
-
 use bytes::Bytes;
 use relative_path::{RelativePath, RelativePathBuf};
 
-use super::cmaf_track::CmafTrack;
 use super::cmaf_track_kind::TextKind;
 use super::packaging::PackageError;
 use super::segment_options::SegmentOptions;
@@ -71,31 +68,5 @@ impl VttTrack {
             .collect();
 
         Some(Subtitle { cues }.to_vtt_text())
-    }
-}
-
-/// The temporary CMAF representation of a raw VTT track.
-pub struct PackagedVttTrack {
-    cmaf: CmafTrack,
-    bytes: Bytes,
-}
-
-impl PackagedVttTrack {
-    pub(crate) fn new(cmaf: CmafTrack, bytes: Bytes) -> Self {
-        Self { cmaf, bytes }
-    }
-
-    pub fn cmaf(&self) -> &CmafTrack {
-        &self.cmaf
-    }
-
-    pub fn into_cmaf(self) -> CmafTrack {
-        self.cmaf
-    }
-
-    pub fn read(&self, range: Range<u64>) -> Option<Bytes> {
-        let start = usize::try_from(range.start).ok()?;
-        let end = usize::try_from(range.end).ok()?;
-        (start <= end && end <= self.bytes.len()).then(|| self.bytes.slice(start..end))
     }
 }

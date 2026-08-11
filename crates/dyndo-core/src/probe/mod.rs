@@ -8,14 +8,14 @@ use self::box_reader::BoxReaderError;
 use self::metadata::{build_codec, build_kind};
 use self::segment_index::{build_init_segment, build_segments};
 use super::asset_descriptor::AssetDescriptor;
+use super::cmaf_package::CmafPackage;
 use super::cmaf_track::CmafTrack;
 use super::cmaf_track_kind::{CmafTrackKind, TextKind, undetermined_language};
 use super::segment_options::SegmentOptions;
+use super::source_track::SourceTrack;
 use super::text::Subtitle;
-use super::thumbnail_track::ThumbnailTrack;
-use super::track::Track;
 use super::track_descriptor::TrackDescriptor;
-use super::vtt_track::{PackagedVttTrack, VttTrack};
+use super::vtt_track::VttTrack;
 
 mod box_reader;
 mod metadata;
@@ -108,7 +108,7 @@ impl VttTrack {
     }
 
     /// Builds the temporary CMAF representation required by a CMAF operation.
-    pub async fn package(&self, options: &SegmentOptions) -> Result<PackagedVttTrack, ProbeError> {
+    pub async fn package(&self, options: &SegmentOptions) -> Result<CmafPackage, ProbeError> {
         let bytes = self.package_bytes(options)?;
         let cmaf = CmafTrack::from_bytes(
             bytes.clone(),
@@ -117,11 +117,11 @@ impl VttTrack {
             CmafTrackKind::Text(self.kind().clone()),
         )
         .await?;
-        Ok(PackagedVttTrack::new(cmaf, bytes))
+        Ok(CmafPackage::new(cmaf, bytes))
     }
 }
 
-impl Track {
+impl SourceTrack {
     pub async fn probe(
         op: &Operator,
         path: &RelativePath,
@@ -133,7 +133,7 @@ impl Track {
                     .await
                     .map(Self::Vtt)
             }
-            Some(TrackDescriptor::Image(_)) => Err(ProbeError::NotSourceTrack),
+            Some(TrackDescriptor::Thumbnail(_)) => Err(ProbeError::NotSourceTrack),
             descriptor => {
                 if path.as_str().ends_with(".vtt") {
                     let id =
@@ -158,25 +158,14 @@ impl Track {
     }
 }
 
-pub async fn probe_tracks(
+pub async fn probe_source_tracks(
     op: &Operator,
     asset: &AssetDescriptor,
-) -> Result<Vec<Track>, ProbeError> {
+) -> Result<Vec<SourceTrack>, ProbeError> {
     let probes = asset.source_tracks().filter_map(|descriptor| {
         let path = asset.track_path(descriptor)?;
-        Some(async move { Track::probe(op, &path, Some(descriptor)).await })
+        Some(async move { SourceTrack::probe(op, &path, Some(descriptor)).await })
     });
 
-    let mut tracks = try_join_all(probes).await?;
-    let cmaf_tracks: Vec<_> = tracks
-        .iter()
-        .filter_map(|track| track.native_cmaf().cloned())
-        .collect();
-    let thumbnails = asset
-        .thumbnail_tracks()
-        .filter_map(TrackDescriptor::thumbnail)
-        .filter_map(|descriptor| ThumbnailTrack::new(descriptor, &cmaf_tracks))
-        .map(Track::Thumbnail);
-    tracks.extend(thumbnails);
-    Ok(tracks)
+    try_join_all(probes).await
 }

@@ -35,3 +35,7 @@
 - [The thin-pointer approach](./explanation/thin-pointer.md)
 - [Reading a source: headers and the segment index](./explanation/segment-index.md)
 - [Dynamic packaging without media copies](./explanation/dynamic-packaging.md)
+
+# Mental model
+
+- [Terminology](./mental/terminology.md)
