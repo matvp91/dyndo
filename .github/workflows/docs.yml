@@ -81,13 +81,14 @@ jobs:
       - name: Check out or create the Pages archive
         env:
           ARCHIVE: ${{ runner.temp }}/pages
+          ARCHIVE_REPOSITORY: https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git
         run: |
-          if git ls-remote --exit-code --heads origin gh-pages; then
-            git clone --depth 1 --branch gh-pages "$(git remote get-url origin)" "$ARCHIVE"
+          if git ls-remote --exit-code --heads "$ARCHIVE_REPOSITORY" gh-pages; then
+            git clone --depth 1 --branch gh-pages "$ARCHIVE_REPOSITORY" "$ARCHIVE"
           else
             git init "$ARCHIVE"
             git -C "$ARCHIVE" checkout --orphan gh-pages
-            git -C "$ARCHIVE" remote add origin "$(git remote get-url origin)"
+            git -C "$ARCHIVE" remote add origin "$ARCHIVE_REPOSITORY"
           fi
       - name: Update the Pages archive
         env:
