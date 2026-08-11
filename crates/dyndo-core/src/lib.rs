@@ -19,6 +19,7 @@ pub mod text;
 pub mod thumbnail_track;
 pub mod thumbnail_track_descriptor;
 pub mod time;
+pub mod timed_text_track;
 pub mod track_descriptor;
 pub mod web_vtt_track;
 pub mod web_vtt_track_descriptor;

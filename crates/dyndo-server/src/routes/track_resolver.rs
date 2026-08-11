@@ -6,6 +6,7 @@ use dyndo_core::cmaf_track::CmafTrack;
 use dyndo_core::probe::probe_source_tracks;
 use dyndo_core::served_segment::ServedSegment;
 use dyndo_core::source_track::SourceTrack;
+use dyndo_core::timed_text_track::TimedTextTrack;
 use dyndo_core::web_vtt_track::WebVttTrack;
 use opendal::Operator;
 
@@ -25,8 +26,8 @@ pub(super) struct LocatedSegment {
 
 pub(super) enum ResolvedTrack {
     Cmaf(CmafTrack),
-    WebVtt {
-        source: WebVttTrack,
+    TimedText {
+        source: TimedTextTrack,
         packaged: CmafPackage,
     },
 }
@@ -35,20 +36,23 @@ impl ResolvedTrack {
     pub(super) fn cmaf(&self) -> &CmafTrack {
         match self {
             Self::Cmaf(track) => track,
-            Self::WebVtt { packaged, .. } => packaged.cmaf(),
+            Self::TimedText { packaged, .. } => packaged.cmaf(),
         }
     }
 
     pub(super) fn web_vtt(&self) -> Option<&WebVttTrack> {
         match self {
-            Self::WebVtt { source, .. } => Some(source),
+            Self::TimedText {
+                source: TimedTextTrack::WebVtt(track),
+                ..
+            } => Some(track),
             Self::Cmaf(_) => None,
         }
     }
 
     pub(super) fn packaged(&self) -> Option<&CmafPackage> {
         match self {
-            Self::WebVtt { packaged, .. } => Some(packaged),
+            Self::TimedText { packaged, .. } => Some(packaged),
             Self::Cmaf(_) => None,
         }
     }
@@ -84,9 +88,13 @@ impl<'a> TrackResolver<'a> {
     pub(super) async fn resolve(&self, track_id: &str) -> Result<ResolvedTrack, ServerError> {
         match self.probe(track_id).await? {
             SourceTrack::Cmaf(track) => Ok(ResolvedTrack::Cmaf(track)),
-            SourceTrack::WebVtt(source) => {
-                let packaged = source.package(&self.asset.segment_options).await?;
-                Ok(ResolvedTrack::WebVtt { source, packaged })
+            SourceTrack::TimedText(source) => {
+                let packaged = match &source {
+                    TimedTextTrack::WebVtt(track) => {
+                        track.package(&self.asset.segment_options).await?
+                    }
+                };
+                Ok(ResolvedTrack::TimedText { source, packaged })
             }
         }
     }

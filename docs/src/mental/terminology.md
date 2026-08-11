@@ -23,6 +23,11 @@ already fragmented ISO-BMFF media. Timed-text tracks are subtitle documents;
 WebVTT is supported today and IMSC1 belongs to the same category when it is
 added. A source track has a path and can be probed.
 
+The runtime model keeps those levels separate: `SourceTrack` is either a
+`CmafTrack` or a `TimedTextTrack`; the latter is `WebVtt` today and will gain
+`Imsc1` when supported. CMAF's `Text` kind remains the container-level media
+category, independent of the timed-text document format.
+
 ## Derived tracks
 
 A **derived track** is created from source tracks when it is requested. It has

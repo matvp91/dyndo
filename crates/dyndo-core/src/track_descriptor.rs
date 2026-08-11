@@ -5,6 +5,7 @@ use super::cmaf_track_descriptor::CmafTrackDescriptor;
 use super::cmaf_track_kind::{AudioKind, CmafTrackKind, TextKind, VideoKind};
 use super::source_track::SourceTrack;
 use super::thumbnail_track_descriptor::ThumbnailTrackDescriptor;
+use super::timed_text_track::TimedTextTrack;
 use super::web_vtt_track_descriptor::WebVttTrackDescriptor;
 
 /// A track configuration in an asset descriptor.
@@ -68,11 +69,13 @@ impl TrackDescriptor {
 
     pub(super) fn from_source_track(track: &SourceTrack, path: RelativePathBuf) -> Self {
         match track {
-            SourceTrack::WebVtt(track) => Self::WebVtt(WebVttTrackDescriptor {
-                id: track.id().to_string(),
-                path,
-                kind: track.kind().clone(),
-            }),
+            SourceTrack::TimedText(TimedTextTrack::WebVtt(track)) => {
+                Self::WebVtt(WebVttTrackDescriptor {
+                    id: track.id().to_string(),
+                    path,
+                    kind: track.kind().clone(),
+                })
+            }
             SourceTrack::Cmaf(track) => {
                 let id = track.id().to_string();
                 let codec = track.codec().rfc6381();

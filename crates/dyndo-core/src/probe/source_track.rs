@@ -6,6 +6,7 @@ use super::ProbeError;
 use crate::cmaf_track::CmafTrack;
 use crate::cmaf_track_kind::{TextKind, undetermined_language};
 use crate::source_track::SourceTrack;
+use crate::timed_text_track::TimedTextTrack;
 use crate::track_descriptor::TrackDescriptor;
 use crate::web_vtt_track::WebVttTrack;
 
@@ -19,7 +20,8 @@ impl SourceTrack {
             Some(TrackDescriptor::WebVtt(descriptor)) => {
                 WebVttTrack::probe(op, path, descriptor.id.clone(), descriptor.kind.clone())
                     .await
-                    .map(Self::WebVtt)
+                    .map(TimedTextTrack::WebVtt)
+                    .map(Self::TimedText)
             }
             Some(TrackDescriptor::Thumbnail(_)) => Err(ProbeError::NotSourceTrack),
             descriptor => {
@@ -32,7 +34,8 @@ impl SourceTrack {
                     };
                     return WebVttTrack::probe(op, path, id, kind)
                         .await
-                        .map(Self::WebVtt);
+                        .map(TimedTextTrack::WebVtt)
+                        .map(Self::TimedText);
                 }
                 let identity = descriptor
                     .map(|descriptor| {

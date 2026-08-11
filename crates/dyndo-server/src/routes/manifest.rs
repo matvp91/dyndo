@@ -7,6 +7,7 @@ use dyndo_core::cmaf_track::CmafTrack;
 use dyndo_core::cmaf_track_kind::CmafTrackKind;
 use dyndo_core::source_track::SourceTrack;
 use dyndo_core::thumbnail_track::resolve_thumbnail_tracks;
+use dyndo_core::timed_text_track::TimedTextTrack;
 use dyndo_dash::options::DashOptions;
 use dyndo_hls::options::HlsOptions;
 use opendal::Operator;
@@ -101,7 +102,7 @@ async fn filtered_tracks(
         }
         match track {
             SourceTrack::Cmaf(track) => resolved.push(track),
-            SourceTrack::WebVtt(track) => {
+            SourceTrack::TimedText(TimedTextTrack::WebVtt(track)) => {
                 resolved.push(track.package(&asset.segment_options).await?.into_cmaf())
             }
         }

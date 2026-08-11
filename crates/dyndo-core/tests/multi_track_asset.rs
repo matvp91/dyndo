@@ -4,6 +4,7 @@ use dyndo_core::probe::probe_source_tracks;
 use dyndo_core::reader::Reader;
 use dyndo_core::source_track::SourceTrack;
 use dyndo_core::thumbnail_track::resolve_thumbnail_tracks;
+use dyndo_core::timed_text_track::TimedTextTrack;
 use opendal::{Operator, services::Memory};
 
 const VIDEO_FIXTURE: &[u8] = include_bytes!("fixtures/three-frame-black-h264.mp4");
@@ -53,8 +54,10 @@ async fn probe_source_tracks_and_readers_serve_the_video_and_subtitle_tracks_of_
     let subtitles = tracks
         .iter()
         .find_map(|track| match track {
-            SourceTrack::WebVtt(track) if track.id() == "text-en" => Some(track),
-            SourceTrack::Cmaf(_) | SourceTrack::WebVtt(_) => None,
+            SourceTrack::TimedText(TimedTextTrack::WebVtt(track)) if track.id() == "text-en" => {
+                Some(track)
+            }
+            SourceTrack::Cmaf(_) | SourceTrack::TimedText(_) => None,
         })
         .unwrap();
     let packaged_subtitles = subtitles.package(&asset.segment_options).await.unwrap();
