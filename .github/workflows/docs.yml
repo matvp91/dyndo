@@ -58,8 +58,6 @@ jobs:
         with:
           name: book
           path: docs/book
-      - name: Install pinned toolchain
-        run: rustup toolchain install && rustup show active-toolchain
       - name: Determine destination
         id: version
         run: |
@@ -69,9 +67,17 @@ jobs:
             version=next
           fi
           echo "value=$version" >> "$GITHUB_OUTPUT"
-      - name: Generate the asset schema
+      - uses: docker/setup-buildx-action@v3
         if: steps.version.outputs.value != 'next'
-        run: cargo xtask asset-schema --output docs/book/schema.json
+      - name: Generate the asset schema in Docker
+        if: steps.version.outputs.value != 'next'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: schema-output
+          outputs: type=local,dest=docs/book
+          cache-from: type=gha,scope=dyndo-linux
+          cache-to: type=gha,mode=max,scope=dyndo-linux
       - name: Check out or create the Pages archive
         env:
           ARCHIVE: ${{ runner.temp }}/pages

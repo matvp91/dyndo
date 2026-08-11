@@ -28,29 +28,19 @@ jobs:
           components: rustfmt
       - run: make fmt-check
 
-  clippy:
-    name: clippy
+  verify:
+    name: verify (Linux)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: ./.github/actions/setup-ffmpeg
-      # Installs the exact toolchain pinned in rust-toolchain.toml
-      # (components rustfmt+clippy come from that file too).
-      - name: Install pinned toolchain
-        run: rustup toolchain install && rustup show active-toolchain
-      - uses: Swatinem/rust-cache@v2
-      - run: make lint
-
-  test:
-    name: test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - uses: ./.github/actions/setup-ffmpeg
-      - name: Install pinned toolchain
-        run: rustup toolchain install && rustup show active-toolchain
-      - uses: Swatinem/rust-cache@v2
-      - run: make test
+      - uses: docker/setup-buildx-action@v3
+      - name: Run Linux verification in Docker
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: verify
+          cache-from: type=gha,scope=dyndo-linux
+          cache-to: type=gha,mode=max,scope=dyndo-linux
 
   fixture-budget:
     name: fixture budget
@@ -65,24 +55,16 @@ jobs:
             exit 1
           }
 
-  doc:
-    name: doc
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - uses: ./.github/actions/setup-ffmpeg
-      - name: Install pinned toolchain
-        run: rustup toolchain install && rustup show active-toolchain
-      - uses: Swatinem/rust-cache@v2
-      - run: make doc
-
   build:
-    name: build (release)
+    name: build (Linux runtime image)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: ./.github/actions/setup-ffmpeg
-      - name: Install pinned toolchain
-        run: rustup toolchain install && rustup show active-toolchain
-      - uses: Swatinem/rust-cache@v2
-      - run: make build
+      - uses: docker/setup-buildx-action@v3
+      - name: Build Linux runtime image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: runtime
+          cache-from: type=gha,scope=dyndo-linux
+          cache-to: type=gha,mode=max,scope=dyndo-linux

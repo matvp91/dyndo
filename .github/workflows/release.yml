@@ -34,27 +34,26 @@ jobs:
           echo "version=${cargo_version}" >> "$GITHUB_OUTPUT"
 
   checks:
-    name: checks (fmt/clippy/test/doc)
+    name: checks (fmt + Linux verify)
     needs: verify
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: ./.github/actions/setup-ffmpeg
-      # Installs the exact toolchain pinned in rust-toolchain.toml
-      # (components rustfmt+clippy come from that file too).
-      - name: Install pinned toolchain
-        run: rustup toolchain install && rustup show active-toolchain
       # Pinned nightly for rustfmt (rustfmt.toml uses group_imports); keep in
       # sync with the Makefile NIGHTLY variable and ci.yml.
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: nightly-2026-07-09
           components: rustfmt
-      - uses: Swatinem/rust-cache@v2
       - run: make fmt-check
-      - run: make lint
-      - run: make test
-      - run: make doc
+      - uses: docker/setup-buildx-action@v3
+      - name: Run Linux verification in Docker
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: verify
+          cache-from: type=gha,scope=dyndo-linux
+          cache-to: type=gha,mode=max,scope=dyndo-linux
 
   build:
     name: build ${{ matrix.target }}
@@ -72,23 +71,41 @@ jobs:
             target: x86_64-apple-darwin
     steps:
       - uses: actions/checkout@v5
-      # Installs the pinned toolchain from rust-toolchain.toml, then adds the
-      # cross-compile target for this matrix leg.
+      - uses: docker/setup-buildx-action@v3
+        if: runner.os == 'Linux'
+      - name: Build Linux release binaries in Docker
+        if: runner.os == 'Linux'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: artifact-output
+          outputs: type=local,dest=dist-bin
+          cache-from: type=gha,scope=dyndo-linux
+          cache-to: type=gha,mode=max,scope=dyndo-linux
+      # macOS binaries must be compiled on a macOS runner; Docker only owns the
+      # Linux build environment.
       - name: Install pinned toolchain
+        if: runner.os == 'macOS'
         run: |
           rustup toolchain install
           rustup target add ${{ matrix.target }}
           rustup show active-toolchain
       - uses: Swatinem/rust-cache@v2
+        if: runner.os == 'macOS'
         with:
           key: ${{ matrix.target }}
       - name: Build binaries
+        if: runner.os == 'macOS'
         run: cargo build --release -p dyndo-cli -p dyndo-server --target ${{ matrix.target }}
       - name: Package tarballs
         run: |
           version="${{ needs.verify.outputs.version }}"
           target="${{ matrix.target }}"
-          bindir="target/${target}/release"
+          if [[ "$RUNNER_OS" == Linux ]]; then
+            bindir=dist-bin
+          else
+            bindir="target/${target}/release"
+          fi
           mkdir -p dist
           for bin in dyndo dyndo-server; do
             stage="$(mktemp -d)"
@@ -156,9 +173,12 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
+          target: runtime
           platforms: ${{ matrix.platform }}
           provenance: false
           outputs: type=image,name=${{ secrets.DOCKERHUB_USERNAME }}/dyndo-server,push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=dyndo-runtime-${{ matrix.platform }}
+          cache-to: type=gha,mode=max,scope=dyndo-runtime-${{ matrix.platform }}
       - name: Export digest
         run: |
           mkdir -p "${{ runner.temp }}/digests"
