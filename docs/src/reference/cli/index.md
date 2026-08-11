@@ -1,7 +1,7 @@
 # dyndo index
 
 Build or update an `asset.json` descriptor from one or more track descriptors.
-Each input becomes one track. New tracks are probed from their file; tracks
+Each input becomes one track. New tracks are discovered from their file; tracks
 already in the descriptor keep their metadata as-is, with only explicit
 overrides applied.
 
@@ -25,9 +25,9 @@ Each input is a comma-separated descriptor whose **first field is the file
 path**; the remaining fields are `key=value` overrides:
 
 - `language` — a BCP 47 language tag, such as `en`, `eng`, or `pt-BR`; overrides
-  the language probed from the file. Applied to audio and text tracks. Malformed
+  the language discovered from the file. Applied to audio and text tracks. Malformed
   tags are rejected.
-- `role` — the track's purpose; never probed, so this is the only way to set it
+- `role` — the track's purpose; never discovered from media, so this is the only way to set it
   apart from editing the JSON. Applied to audio and text tracks. One of `main`,
   `alternate`, `commentary`, `dub`, `description`,
   `enhanced-audio-intelligibility`, `subtitle`, `caption`, `forced-subtitle`.
@@ -64,7 +64,7 @@ The file extension selects how an input is read. Matching is
 | Extension | Format | Becomes |
 |---|---|---|
 | `.mp4` | CMAF — fragmented MP4 | A video, audio, or text (`wvtt`) track, by media handler. |
-| `.vtt` | Raw WebVTT | A text track (see the caveat below). |
+| `.vtt` | Raw WebVTT | A VTT track (see the caveat below). |
 
 Any other extension aborts with `unsupported track format`.
 
@@ -79,10 +79,10 @@ requires:
 - a single `sidx` with a non-zero timescale, no zero-duration references, and
   every reference a media reference starting with a SAP of type 1.
 
-> A raw `.vtt` input is recorded as a text track with codec `wvtt`, which is what
-> it is packaged as when served — dyndo parses and packages it on the way out, so
-> nothing is written beside your `.vtt`. Its language is `und` unless you pass
-> `language=`, because WebVTT declares none of its own.
+> A raw `.vtt` input is recorded as a `webvtt` track without a codec. dyndo parses
+> it and creates a `wvtt` view only for CMAF output, so nothing is written beside your
+> `.vtt`. Its language is `und` unless you pass `language=`, because WebVTT
+> declares none of its own.
 
 ## Description
 
@@ -90,12 +90,12 @@ For each input, `index` decides between two cases by looking up the input's
 resolved path in the existing descriptor (when `--output` already exists, it is
 loaded first):
 
-- **New path** — the file is probed: its header region is read, the track kind
+- **New path** — the file is discovered: its header region is read, the track kind
   is determined from its media handler, codec and per-type metadata are
   extracted, any `language`/`role` overrides are applied, and a track entry is
   appended with an id derived from the path.
 - **Known path** — the descriptor's stored metadata is kept **as-is**; the file
-  is not re-probed, so hand-edits to the JSON survive a re-index. Explicit
+  is not rediscovered, so hand-edits to the JSON survive a re-index. Explicit
   `language=`/`role=` overrides are the only mutation, and the `id` never
   changes.
 

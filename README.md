@@ -14,7 +14,7 @@
 - **Store media once.** Segment requests are byte-range reads from the original CMAF objects, not files copied into a second packaging layout.
 - **Change presentation metadata without rewriting media.** Correct a language, assign a role, change rendition order, or add a subtitle by editing or rebuilding a small descriptor.
 - **Keep URLs stable while metadata evolves.** Track IDs derive from source paths rather than mutable labels such as language and role.
-- **Create delivery variants at request time.** Filters, segment lengths, boundaries, DASH periods, HLS subtitle form, and thumbnail settings can vary without producing another media library.
+- **Create delivery variants at request time.** Filters, segment lengths, DASH periods, and HLS subtitle form can vary without producing another media library.
 - **Keep sources immutable.** The server only reads headers and requested byte ranges, which suits read-only filesystems and object storage.
 - **Keep indexing and delivery aligned.** The CLI writes the same compact descriptor that the server reads, so presentation metadata has one source of truth.
 - **Scale parsing with metadata, not file size.** dyndo derives its index from bounded header reads instead of scanning or loading complete media objects.

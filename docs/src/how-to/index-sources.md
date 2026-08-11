@@ -54,8 +54,8 @@ dyndo index \
   -o asset.json
 ```
 
-`language` overrides the code probed from the file; `role` is never probed, so
-this is the only way to set it apart from editing the JSON. The nine valid role
+`language` overrides the code discovered from the file; `role` is never read
+from media, so this is the only way to set it apart from editing the JSON. The nine valid role
 values are `main`, `alternate`, `commentary`, `dub`, `description`,
 `enhanced-audio-intelligibility`, `subtitle`, `caption`, and `forced-subtitle`.
 
@@ -75,9 +75,9 @@ defaults to, what it auto-selects, and the accessibility signalling — see
 Running `index` against an `asset.json` that already exists **merges** into it
 rather than overwriting, keyed by each input's source path:
 
-- a **new path** is probed from its file and appended;
+- a **new path** is discovered from its file and appended;
 - a path **already in the descriptor** keeps its entry exactly as it stands —
-  the file's metadata is not re-probed, so anything you've hand-edited in the
+  the file's metadata is not rediscovered, so anything you've hand-edited in the
   JSON survives. The only thing a re-index changes is what you explicitly ask
   for with `language=`/`role=` overrides.
 
@@ -136,7 +136,7 @@ hand-edit:
 {
   "tracks": [
     {
-      "id": "video_6b745be5-2791-5d95-8ce5-8f8bde29e2fe",
+      "id": "6b745be5-2791-5d95-8ce5-8f8bde29e2fe",
       "path": "video_1080.mp4",
       "codec": "avc1.640028",
       "type": "video",

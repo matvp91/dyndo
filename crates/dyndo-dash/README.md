@@ -1,7 +1,7 @@
 # dyndo-dash
 
 DASH manifest generation for [`dyndo`](../../README.md): it turns an
-`asset.json` descriptor and its probed tracks into a static MPD. It knows about
+`asset.json` descriptor and its resolved tracks into a static MPD. It knows about
 DASH and nothing else — reading CMAF and modelling the descriptor belong to
 [`dyndo-core`](../dyndo-core/README.md), and
 [`dash-mpd`](https://crates.io/crates/dash-mpd) supplies the XML model.

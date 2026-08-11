@@ -1,5 +1,4 @@
-use dyndo_core::segment_options::SegmentOptions;
-use dyndo_core::track::Track;
+use dyndo_core::track::ResolvedTrack;
 use mp4_atom::{Any, DecodeMaybe, Encode, FourCC, Sidx};
 use opendal::{Operator, services::Memory};
 use relative_path::RelativePath;
@@ -38,22 +37,17 @@ fn rewrite_fixture(mut transform: impl FnMut(&mut Any)) -> Vec<u8> {
 }
 
 #[tokio::test]
-async fn probe_rejects_a_sidx_with_zero_timescale() {
+async fn resolution_rejects_a_sidx_with_zero_timescale() {
     let operator = memory_operator();
     operator
         .write("video.mp4", rewrite_sidx(|sidx| sidx.timescale = 0))
         .await
         .unwrap();
 
-    let error = Track::probe(
-        &operator,
-        RelativePath::new("video.mp4"),
-        None,
-        &SegmentOptions::default(),
-    )
-    .await
-    .err()
-    .unwrap();
+    let error = ResolvedTrack::discover(&operator, RelativePath::new("video.mp4"))
+        .await
+        .err()
+        .unwrap();
 
     assert_eq!(
         error.to_string(),
@@ -62,7 +56,7 @@ async fn probe_rejects_a_sidx_with_zero_timescale() {
 }
 
 #[tokio::test]
-async fn probe_rejects_a_sidx_reference_with_zero_duration() {
+async fn resolution_rejects_a_sidx_reference_with_zero_duration() {
     let operator = memory_operator();
     operator
         .write(
@@ -72,15 +66,10 @@ async fn probe_rejects_a_sidx_reference_with_zero_duration() {
         .await
         .unwrap();
 
-    let error = Track::probe(
-        &operator,
-        RelativePath::new("video.mp4"),
-        None,
-        &SegmentOptions::default(),
-    )
-    .await
-    .err()
-    .unwrap();
+    let error = ResolvedTrack::discover(&operator, RelativePath::new("video.mp4"))
+        .await
+        .err()
+        .unwrap();
 
     assert_eq!(
         error.to_string(),
@@ -89,7 +78,7 @@ async fn probe_rejects_a_sidx_reference_with_zero_duration() {
 }
 
 #[tokio::test]
-async fn probe_rejects_a_sidx_reference_without_a_random_access_point() {
+async fn resolution_rejects_a_sidx_reference_without_a_random_access_point() {
     let operator = memory_operator();
     operator
         .write(
@@ -99,21 +88,16 @@ async fn probe_rejects_a_sidx_reference_without_a_random_access_point() {
         .await
         .unwrap();
 
-    let error = Track::probe(
-        &operator,
-        RelativePath::new("video.mp4"),
-        None,
-        &SegmentOptions::default(),
-    )
-    .await
-    .err()
-    .unwrap();
+    let error = ResolvedTrack::discover(&operator, RelativePath::new("video.mp4"))
+        .await
+        .err()
+        .unwrap();
 
     assert_eq!(error.to_string(), "invalid sidx reference");
 }
 
 #[tokio::test]
-async fn probe_rejects_a_sidx_with_an_overflowing_segment_time() {
+async fn resolution_rejects_a_sidx_with_an_overflowing_segment_time() {
     let operator = memory_operator();
     operator
         .write(
@@ -126,21 +110,16 @@ async fn probe_rejects_a_sidx_with_an_overflowing_segment_time() {
         .await
         .unwrap();
 
-    let error = Track::probe(
-        &operator,
-        RelativePath::new("video.mp4"),
-        None,
-        &SegmentOptions::default(),
-    )
-    .await
-    .err()
-    .unwrap();
+    let error = ResolvedTrack::discover(&operator, RelativePath::new("video.mp4"))
+        .await
+        .err()
+        .unwrap();
 
     assert_eq!(error.to_string(), "segment time overflows");
 }
 
 #[tokio::test]
-async fn probe_rejects_an_unsupported_track_handler() {
+async fn resolution_rejects_an_unsupported_track_handler() {
     let operator = memory_operator();
     operator
         .write(
@@ -154,21 +133,16 @@ async fn probe_rejects_an_unsupported_track_handler() {
         .await
         .unwrap();
 
-    let error = Track::probe(
-        &operator,
-        RelativePath::new("video.mp4"),
-        None,
-        &SegmentOptions::default(),
-    )
-    .await
-    .err()
-    .unwrap();
+    let error = ResolvedTrack::discover(&operator, RelativePath::new("video.mp4"))
+        .await
+        .err()
+        .unwrap();
 
     assert_eq!(error.to_string(), "unsupported track handler");
 }
 
 #[tokio::test]
-async fn probe_rejects_a_video_without_sample_duration() {
+async fn resolution_rejects_a_video_without_sample_duration() {
     let operator = memory_operator();
     operator
         .write(
@@ -182,36 +156,26 @@ async fn probe_rejects_a_video_without_sample_duration() {
         .await
         .unwrap();
 
-    let error = Track::probe(
-        &operator,
-        RelativePath::new("video.mp4"),
-        None,
-        &SegmentOptions::default(),
-    )
-    .await
-    .err()
-    .unwrap();
+    let error = ResolvedTrack::discover(&operator, RelativePath::new("video.mp4"))
+        .await
+        .err()
+        .unwrap();
 
     assert_eq!(error.to_string(), "video track has no sample duration");
 }
 
 #[tokio::test]
-async fn probe_rejects_a_truncated_container_without_panicking() {
+async fn resolution_rejects_a_truncated_container_without_panicking() {
     let operator = memory_operator();
     operator
         .write("video.mp4", &VIDEO_FIXTURE[..VIDEO_FIXTURE.len() / 2])
         .await
         .unwrap();
 
-    let error = Track::probe(
-        &operator,
-        RelativePath::new("video.mp4"),
-        None,
-        &SegmentOptions::default(),
-    )
-    .await
-    .err()
-    .unwrap();
+    let error = ResolvedTrack::discover(&operator, RelativePath::new("video.mp4"))
+        .await
+        .err()
+        .unwrap();
 
     assert!(!error.to_string().is_empty());
 }

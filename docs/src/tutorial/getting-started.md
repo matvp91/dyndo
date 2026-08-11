@@ -100,7 +100,7 @@ cat assets/asset.json
 {
   "tracks": [
     {
-      "id": "video_0a252792-21d4-505e-86eb-b7f0d5ec1f8f",
+      "id": "0a252792-21d4-505e-86eb-b7f0d5ec1f8f",
       "path": "video.mp4",
       "codec": "avc1.64001f",
       "type": "video",
@@ -109,7 +109,7 @@ cat assets/asset.json
       "frame_rate": "25/1"
     },
     {
-      "id": "audio_39a70a1c-e177-5a37-aab0-661b18a593ae",
+      "id": "39a70a1c-e177-5a37-aab0-661b18a593ae",
       "path": "audio.mp4",
       "codec": "mp4a.40.2",
       "type": "audio",

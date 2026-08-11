@@ -2,7 +2,6 @@ pub(crate) mod filter;
 mod manifest;
 mod options;
 mod segment;
-mod track_resolver;
 
 use axum::{
     Router,
@@ -11,7 +10,8 @@ use axum::{
     response::Response,
     routing::get,
 };
-use dyndo_core::asset_descriptor::{AssetDescriptor, AssetDescriptorError};
+use dyndo_core::asset::{Asset, AssetError, ResolvedAsset};
+use dyndo_core::track::ResolvedTrack;
 use opendal::Operator;
 use serde::Deserialize;
 use tower_http::cors::{Any, CorsLayer};
@@ -27,8 +27,8 @@ struct ManifestQuery {
     filter: Option<Filter>,
 }
 
-async fn load_asset(op: &Operator, options: &Options) -> Result<AssetDescriptor, ServerError> {
-    let mut asset = AssetDescriptor::read(op, &format!("{}.json", options.asset()))
+async fn load_asset(op: &Operator, options: &Options) -> Result<Asset, ServerError> {
+    let mut asset = Asset::read(op, &format!("{}.json", options.asset()))
         .await
         .map_err(|error| asset_error(options.asset(), error))?;
     options.apply_to(&mut asset);
@@ -36,9 +36,9 @@ async fn load_asset(op: &Operator, options: &Options) -> Result<AssetDescriptor,
     Ok(asset)
 }
 
-fn asset_error(asset: &str, error: AssetDescriptorError) -> ServerError {
+fn asset_error(asset: &str, error: AssetError) -> ServerError {
     match &error {
-        AssetDescriptorError::Storage(error) if error.kind() == opendal::ErrorKind::NotFound => {
+        AssetError::Storage(error) if error.kind() == opendal::ErrorKind::NotFound => {
             ServerError::NotFound(format!("asset {asset}"))
         }
         _ => error.into(),
@@ -71,19 +71,56 @@ async fn manifest(
 
     match resource {
         ("index", "mpd") => {
+            let resolved = resolve_asset(&op, &asset, query.filter.as_ref()).await?;
             let dash_options = options.dash_options();
-            manifest::dash(&op, &asset, &dash_options, query.filter.as_ref()).await
+            manifest::dash(&resolved, &dash_options).await
         }
         ("master", "m3u8") => {
+            let resolved = resolve_asset(&op, &asset, query.filter.as_ref()).await?;
             let hls_options = options.hls_options();
-            manifest::hls_master(&op, &asset, &hls_options, query.filter.as_ref()).await
+            manifest::hls_master(&resolved, &hls_options).await
         }
-        (track_id, "m3u8") => {
+        (resource, "m3u8") => {
             let hls_options = options.hls_options();
-            manifest::hls_media(&op, &asset, &hls_options, track_id).await
+            let track = resolve_track(&op, &asset, resource, query.filter.as_ref()).await?;
+            if track.thumbnail().is_some() {
+                manifest::hls_images(&track).await
+            } else {
+                manifest::hls_media(&track, &asset.segment_options, &hls_options).await
+            }
         }
         _ => Err(not_found()),
     }
+}
+
+async fn resolve_asset(
+    op: &Operator,
+    asset: &Asset,
+    filter: Option<&Filter>,
+) -> Result<ResolvedAsset, ServerError> {
+    let mut resolved = asset.resolve(op).await?;
+    if let Some(filter) = filter {
+        filter
+            .apply(&mut resolved)
+            .map_err(|error| ServerError::NotFound(error.to_string()))?;
+    }
+    Ok(resolved)
+}
+
+pub(in crate::routes) async fn resolve_track(
+    op: &Operator,
+    asset: &Asset,
+    id: &str,
+    filter: Option<&Filter>,
+) -> Result<ResolvedTrack, ServerError> {
+    let track = asset
+        .resolve_track(op, id)
+        .await?
+        .ok_or_else(|| ServerError::NotFound(format!("track {id}")))?;
+    if filter.is_some_and(|filter| !filter.matches(&track)) {
+        return Err(ServerError::NotFound(format!("track {id}")));
+    }
+    Ok(track)
 }
 
 async fn track_file(
@@ -91,16 +128,16 @@ async fn track_file(
     Path((encoded_options, track_id, file)): Path<(String, String, String)>,
 ) -> Result<Response, ServerError> {
     let not_found = || ServerError::NotFound(file.clone());
-    let file_name = file.rsplit_once('.').ok_or_else(not_found)?;
+    let (file_name, extension) = file.rsplit_once('.').ok_or_else(not_found)?;
     let options = Options::parse(&encoded_options)?;
     let asset = load_asset(&op, &options).await?;
 
-    match file_name {
+    match (file_name, extension) {
         ("init", "mp4") => segment::initialization(&op, &asset, &track_id).await,
         (time, "m4s") => segment::media(&op, &asset, &track_id, segment_time(time, &file)?).await,
         (time, "vtt") => segment::text(&op, &asset, &track_id, segment_time(time, &file)?).await,
         (time, "jpg") => {
-            segment::thumbnail(&op, &asset, &options, &track_id, segment_time(time, &file)?).await
+            segment::thumbnail(&op, &asset, &track_id, segment_time(time, &file)?).await
         }
         _ => Err(not_found()),
     }

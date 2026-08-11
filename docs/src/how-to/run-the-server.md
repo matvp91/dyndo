@@ -61,7 +61,7 @@ http://localhost:8080/out/(asset:asset,min_length:6000,compact:!t)/index.mpd
 http://localhost:8080/out/(a:asset,sml:6000,c:!t)/index.mpd
 ```
 
-`asset`/`a` selects the descriptor and `min_length`/`sml` controls shared segmentation. DASH adds `compact`/`c`, `multi_period`/`mp`, and the thumbnail settings `thumbnail_tile_size`/`tts` and `thumbnail_step`/`ts`; HLS adds `wvtt`.
+`asset`/`a` selects the descriptor and `min_length`/`sml` controls shared segmentation. DASH adds `compact`/`c` and `multi_period`/`mp`; HLS adds `wvtt`. Thumbnail settings belong in the asset descriptor.
 
 Parentheses are shell metacharacters, so quote these URLs when passing them to
 `curl` or a player from a shell. See the

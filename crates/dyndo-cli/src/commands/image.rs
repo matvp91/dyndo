@@ -1,13 +1,12 @@
 use clap::Args;
-use dyndo_core::asset_descriptor::AssetDescriptor;
-use dyndo_core::image::FrameGrab;
-use dyndo_core::track::Track;
-use dyndo_core::track_kind::TrackKind;
+use dyndo_core::asset::Asset;
+use dyndo_core::image::FrameExtractor;
+use dyndo_core::track::cmaf::CmafKind;
 use opendal::Operator;
 
 #[derive(Args)]
 pub(crate) struct ImageArgs {
-    /// Asset descriptor path.
+    /// Asset path.
     #[arg(short, long = "input")]
     input: String,
     /// Frame time in milliseconds.
@@ -19,18 +18,18 @@ pub(crate) struct ImageArgs {
 }
 
 pub(crate) async fn run(op: &Operator, args: ImageArgs) -> Result<(), Box<dyn std::error::Error>> {
-    let asset = AssetDescriptor::read(op, &args.input).await?;
-    let descriptor = asset
-        .tracks
-        .iter()
-        .find(|track| matches!(track.kind, TrackKind::Video(_)))
+    let asset = Asset::read(op, &args.input).await?;
+    let source = asset
+        .source_tracks()
+        .find(|track| matches!(track.cmaf_kind(), Some(CmafKind::Video(_))))
         .ok_or("asset has no video track")?;
-    let path = asset.track_path(descriptor);
-    let track = Track::probe(op, &path, Some(descriptor), &asset.segment_options).await?;
-    let TrackKind::Video(video) = track.kind() else {
-        return Err("probed track is not a video track".into());
+    let path = asset.track_path(source);
+    let track = source.resolve(op, &path).await?;
+    let cmaf = track.cmaf().ok_or("video track is not CMAF")?;
+    let CmafKind::Video(video) = cmaf.kind() else {
+        return Err("resolved track is not a video track".into());
     };
-    let jpeg = FrameGrab::new(op, &track)?
+    let jpeg = FrameExtractor::new(op, cmaf)
         .jpeg(args.time, video.width, video.height)
         .await?;
 

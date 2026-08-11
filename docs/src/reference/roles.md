@@ -1,6 +1,6 @@
 # Track roles
 
-A track's **role** is its author-declared purpose. It is never probed from the
+A track's **role** is its author-declared purpose. It is never discovered from the
 media, and is stored in the descriptor's
 [`role` field](./asset-json.md#track-object). This page is the exact reference
 for the role vocabulary and how each role is rendered into DASH and HLS.

@@ -1,8 +1,5 @@
 use dyndo_core::role::Role;
-use dyndo_core::segment_options::SegmentOptions;
-use dyndo_core::served_segment::ServedSegment;
-use dyndo_core::track::Track;
-use dyndo_core::track_kind::TrackKind;
+use dyndo_core::track::cmaf::{CmafKind, ResolvedCmafTrack};
 
 pub(super) struct AdaptationGroup<'a> {
     key: String,
@@ -10,21 +7,13 @@ pub(super) struct AdaptationGroup<'a> {
     mime_type: &'static str,
     language: Option<String>,
     role: Option<Role>,
-    members: Vec<&'a Track>,
+    members: Vec<&'a ResolvedCmafTrack>,
 }
 
 impl<'a> AdaptationGroup<'a> {
-    fn new(key: String, track: &'a Track) -> Self {
-        let language = match track.kind() {
-            TrackKind::Video(_) => None,
-            TrackKind::Audio(audio) => Some(audio.language.to_string()),
-            TrackKind::Text(text) => Some(text.language.to_string()),
-        };
-        let role = match track.kind() {
-            TrackKind::Video(_) => None,
-            TrackKind::Audio(audio) => audio.role,
-            TrackKind::Text(text) => text.role,
-        };
+    fn new(key: String, track: &'a ResolvedCmafTrack) -> Self {
+        let language = track.kind().language().map(ToString::to_string);
+        let role = track.kind().role();
 
         Self {
             key,
@@ -36,7 +25,7 @@ impl<'a> AdaptationGroup<'a> {
         }
     }
 
-    pub(super) fn group(tracks: &'a [Track]) -> Vec<Self> {
+    pub(super) fn group(tracks: &'a [ResolvedCmafTrack]) -> Vec<Self> {
         let mut groups: Vec<Self> = Vec::new();
 
         for track in tracks {
@@ -67,42 +56,19 @@ impl<'a> AdaptationGroup<'a> {
         self.role
     }
 
-    pub(super) fn members(&self) -> &[&'a Track] {
+    pub(super) fn members(&self) -> &[&'a ResolvedCmafTrack] {
         &self.members
     }
-
-    // Matching start and end times ensure one timeline can represent every member.
-    pub(super) fn is_segment_aligned(&self, options: &SegmentOptions) -> bool {
-        let Some(reference) = self.members.first() else {
-            return true;
-        };
-        let reference_segments = served_segments(reference, options);
-
-        self.members.iter().skip(1).all(|candidate| {
-            served_segments(candidate, options)
-                .iter()
-                .map(segment_times)
-                .eq(reference_segments.iter().map(segment_times))
-        })
-    }
 }
 
-fn served_segments<'a>(track: &'a Track, options: &SegmentOptions) -> Vec<ServedSegment<'a>> {
-    ServedSegment::group(track.segments(), options.min_length, &options.boundaries)
-}
-
-fn segment_times(segment: &ServedSegment<'_>) -> (u64, u64) {
-    (segment.unscaled_start_time(), segment.unscaled_end_time())
-}
-
-fn adaptation_set_key(track: &Track) -> String {
+fn adaptation_set_key(track: &ResolvedCmafTrack) -> String {
     let codec = track.codec().rfc6381();
     let sample_entry = sample_entry(&codec);
     match track.kind() {
-        TrackKind::Video(_) => {
+        CmafKind::Video(_) => {
             format!("video:{sample_entry}:{}", track.timescale())
         }
-        TrackKind::Audio(audio) => format!(
+        CmafKind::Audio(audio) => format!(
             "audio:{sample_entry}:{}:{}:{}:{}:{}",
             track.timescale(),
             audio.language,
@@ -110,7 +76,7 @@ fn adaptation_set_key(track: &Track) -> String {
             audio.sample_rate,
             audio.channels
         ),
-        TrackKind::Text(text) => format!(
+        CmafKind::Text(text) => format!(
             "text:{sample_entry}:{}:{}:{}",
             track.timescale(),
             text.language,

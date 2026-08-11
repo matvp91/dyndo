@@ -1,18 +1,17 @@
 use clap::Args;
-use dyndo_core::asset_descriptor::AssetDescriptor;
+use dyndo_core::asset::Asset;
 use dyndo_core::role::Role;
-use dyndo_core::track::Track;
-use dyndo_core::track_kind::TrackKind;
+use dyndo_core::track::ResolvedTrack;
 use language_tags::LanguageTag;
 use opendal::Operator;
 use relative_path::{RelativePath, RelativePathBuf};
 
 #[derive(Args)]
 pub(crate) struct IndexArgs {
-    /// Track descriptor(s): `<path>[,language=..][,role=..]`, one per track.
+    /// Tracks: `<path>[,language=..][,role=..]`, one per track.
     #[arg(required = true, value_parser = parse_track_input)]
     inputs: Vec<TrackInput>,
-    /// Output descriptor path.
+    /// Output asset path.
     #[arg(short, long = "output", default_value = "asset.json")]
     output: String,
 }
@@ -20,22 +19,21 @@ pub(crate) struct IndexArgs {
 pub(crate) async fn run(op: &Operator, args: IndexArgs) -> Result<(), Box<dyn std::error::Error>> {
     let output_path = RelativePathBuf::from(args.output.as_str());
     let output_base = output_path.parent().unwrap_or(RelativePath::new(""));
-    let mut descriptor = AssetDescriptor::read_or_new(op, &output_path).await?;
+    let mut asset = Asset::read_or_new(op, &output_path).await?;
 
     for input in args.inputs {
         let path = output_base.join(&input.path);
-        if let Some(track) = descriptor.find_track_by_path(&path) {
-            input.apply(&mut track.kind);
+        if let Some(track) = asset.find_source_track_by_path(&path) {
+            input.apply(track);
             continue;
         }
 
-        let track = Track::probe(op, &path, None, &descriptor.segment_options).await?;
-        input.apply(&mut descriptor.add_track(&track).kind);
+        let track = ResolvedTrack::discover(op, &path).await?;
+        input.apply(asset.add_source_track(&track)?);
     }
 
-    op.write(&args.output, serde_json::to_vec_pretty(&descriptor)?)
-        .await?;
-    println!("wrote {} ({} tracks)", args.output, descriptor.tracks.len());
+    asset.write(op).await?;
+    println!("wrote {} ({} tracks)", args.output, asset.tracks.len());
     Ok(())
 }
 
@@ -47,11 +45,9 @@ struct TrackInput {
 }
 
 impl TrackInput {
-    fn apply(&self, kind: &mut TrackKind) {
-        let (language, role) = match kind {
-            TrackKind::Audio(audio) => (&mut audio.language, &mut audio.role),
-            TrackKind::Text(text) => (&mut text.language, &mut text.role),
-            TrackKind::Video(_) => return,
+    fn apply(&self, track: &mut dyndo_core::track::SourceTrack) {
+        let Some((language, role)) = track.language_and_role_mut() else {
+            return;
         };
         if let Some(value) = &self.language {
             language.clone_from(value);

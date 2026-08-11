@@ -5,13 +5,10 @@ use dash_mpd::{
     SegmentTimeline,
 };
 use dyndo_core::segment_options::SegmentOptions;
-use dyndo_core::served_segment::ServedSegment;
-use dyndo_core::track::Track;
-use dyndo_core::track_kind::TrackKind;
+use dyndo_core::track::cmaf::{CmafKind, ResolvedCmafTrack, ServedSegment};
+use dyndo_core::track::thumbnail::ResolvedThumbnailTrack;
 
-use crate::DashError;
 use crate::adaptation_group::AdaptationGroup;
-use crate::options::DashOptions;
 use crate::roles;
 
 const DASH_PROFILE: &str = "urn:mpeg:dash:profile:isoff-live:2011";
@@ -22,28 +19,22 @@ const INITIALIZATION_TEMPLATE: &str = "$RepresentationID$/init.mp4";
 const MEDIA_TEMPLATE: &str = "$RepresentationID$/$Time$.m4s";
 
 pub(crate) fn build_mpd(
-    tracks: &[Track],
+    tracks: &[ResolvedCmafTrack],
+    thumbnails: &[ResolvedThumbnailTrack],
     segment_options: &SegmentOptions,
-    dash_options: &DashOptions,
-) -> Result<MPD, DashError> {
+) -> MPD {
     let presentation_duration = presentation_duration(tracks);
     let groups = AdaptationGroup::group(tracks);
-    ensure_segment_alignment(&groups, segment_options)?;
     let mut adaptations: Vec<AdaptationSet> = groups
         .iter()
         .enumerate()
         .filter_map(|(id, group)| build_adaptation_set(id, group, segment_options))
         .collect();
-    let id = groups.len();
-    if let Some(adaptation_set) = crate::thumbnail::build_adaptation_set(
-        id,
-        tracks,
+    adaptations.extend(crate::thumbnail::build_adaptation_sets(
+        groups.len(),
+        thumbnails,
         presentation_duration,
-        dash_options.thumbnail_tile_size,
-        dash_options.thumbnail_step,
-    ) {
-        adaptations.push(adaptation_set);
-    }
+    ));
     let periods = (!adaptations.is_empty()).then_some(Period {
         id: Some("0".to_string()),
         start: Some(Duration::ZERO),
@@ -52,7 +43,7 @@ pub(crate) fn build_mpd(
         ..Default::default()
     });
 
-    Ok(MPD {
+    MPD {
         xmlns: Some(DASH_XMLNS.to_string()),
         mpdtype: Some("static".to_string()),
         profiles: Some(DASH_PROFILE.to_string()),
@@ -63,20 +54,6 @@ pub(crate) fn build_mpd(
         mediaPresentationDuration: Some(Duration::from_millis(u64::from(presentation_duration))),
         periods: periods.into_iter().collect(),
         ..Default::default()
-    })
-}
-
-fn ensure_segment_alignment(
-    groups: &[AdaptationGroup<'_>],
-    segment_options: &SegmentOptions,
-) -> Result<(), DashError> {
-    if groups
-        .iter()
-        .all(|group| group.is_segment_aligned(segment_options))
-    {
-        Ok(())
-    } else {
-        Err(DashError::SegmentAlignment)
     }
 }
 
@@ -99,7 +76,6 @@ fn build_adaptation_set(
         contentType: Some(group.content_type().to_string()),
         mimeType: Some(group.mime_type().to_string()),
         lang: group.language().map(str::to_string),
-        segmentAlignment: Some(true),
         startWithSAP: Some(1),
         Role: roles::roles(group.content_type(), group.role()),
         Accessibility: roles::accessibility(group.content_type(), group.role()),
@@ -108,8 +84,11 @@ fn build_adaptation_set(
     })
 }
 
-fn build_representation(track: &Track, segment_options: &SegmentOptions) -> Option<Representation> {
-    let segments = served_segments(track, segment_options);
+fn build_representation(
+    track: &ResolvedCmafTrack,
+    segment_options: &SegmentOptions,
+) -> Option<Representation> {
+    let segments = track.served_segments(segment_options);
     if segments.is_empty() {
         return None;
     }
@@ -123,17 +102,17 @@ fn build_representation(track: &Track, segment_options: &SegmentOptions) -> Opti
     };
 
     match track.kind() {
-        TrackKind::Video(video) => {
+        CmafKind::Video(video) => {
             representation.width = Some(u64::from(video.width));
             representation.height = Some(u64::from(video.height));
             representation.frameRate = Some(video.frame_rate.clone());
         }
-        TrackKind::Audio(audio) => {
+        CmafKind::Audio(audio) => {
             representation.audioSamplingRate = Some(audio.sample_rate.to_string());
             representation.AudioChannelConfiguration =
                 vec![build_audio_channel_configuration(audio.channels)];
         }
-        TrackKind::Text(_) => {}
+        CmafKind::Text(_) => {}
     }
 
     Some(representation)
@@ -147,7 +126,10 @@ fn build_audio_channel_configuration(channels: u16) -> AudioChannelConfiguration
     }
 }
 
-fn build_segment_template(track: &Track, segments: &[ServedSegment<'_>]) -> SegmentTemplate {
+fn build_segment_template(
+    track: &ResolvedCmafTrack,
+    segments: &[ServedSegment<'_>],
+) -> SegmentTemplate {
     SegmentTemplate {
         timescale: Some(u64::from(track.timescale())),
         presentationTimeOffset: track.unscaled_earliest_presentation_time(),
@@ -184,30 +166,29 @@ fn build_segment_timeline(segments: &[ServedSegment<'_>]) -> SegmentTimeline {
     SegmentTimeline { segments: entries }
 }
 
-fn served_segments<'a>(track: &'a Track, options: &SegmentOptions) -> Vec<ServedSegment<'a>> {
-    ServedSegment::group(track.segments(), options.min_length, &options.boundaries)
-}
-
-fn presentation_duration(tracks: &[Track]) -> u32 {
-    maximum_duration(tracks, |kind| matches!(kind, TrackKind::Video(_))).unwrap_or_else(|| {
-        maximum_duration(tracks, |kind| matches!(kind, TrackKind::Audio(_))).unwrap_or(0)
+fn presentation_duration(tracks: &[ResolvedCmafTrack]) -> u32 {
+    maximum_duration(tracks, |kind| matches!(kind, CmafKind::Video(_))).unwrap_or_else(|| {
+        maximum_duration(tracks, |kind| matches!(kind, CmafKind::Audio(_))).unwrap_or(0)
     })
 }
 
-fn maximum_duration(tracks: &[Track], include: impl Fn(&TrackKind) -> bool) -> Option<u32> {
+fn maximum_duration(
+    tracks: &[ResolvedCmafTrack],
+    include: impl Fn(&CmafKind) -> bool,
+) -> Option<u32> {
     tracks
         .iter()
         .filter(|track| include(track.kind()))
-        .map(Track::duration)
+        .map(ResolvedCmafTrack::duration)
         .max()
 }
 
-fn max_segment_duration(tracks: &[Track], options: &SegmentOptions) -> u32 {
+fn max_segment_duration(tracks: &[ResolvedCmafTrack], options: &SegmentOptions) -> u32 {
     tracks
         .iter()
-        .filter(|track| matches!(track.kind(), TrackKind::Video(_) | TrackKind::Audio(_)))
+        .filter(|track| matches!(track.kind(), CmafKind::Video(_) | CmafKind::Audio(_)))
         .flat_map(|track| {
-            served_segments(track, options).into_iter().map(|segment| {
+            track.served_segments(options).into_iter().map(|segment| {
                 let duration = u128::from(segment.unscaled_duration()) * 1_000;
                 let duration = duration.div_ceil(u128::from(track.timescale()));
                 u32::try_from(duration).unwrap_or(u32::MAX)

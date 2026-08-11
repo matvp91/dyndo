@@ -2,69 +2,46 @@ use axum::{
     http::header::CONTENT_TYPE,
     response::{IntoResponse, Response},
 };
-use dyndo_core::asset_descriptor::AssetDescriptor;
-use dyndo_core::track::Track;
+use dyndo_core::asset::ResolvedAsset;
+use dyndo_core::segment_options::SegmentOptions;
+use dyndo_core::track::ResolvedTrack;
 use dyndo_dash::options::DashOptions;
 use dyndo_hls::options::HlsOptions;
-use opendal::Operator;
-use serde::Serialize;
 
-use super::filter::Filter;
-use super::track_resolver::TrackResolver;
 use crate::error::ServerError;
 
 const DASH_CONTENT_TYPE: &str = "application/dash+xml";
 const HLS_CONTENT_TYPE: &str = "application/vnd.apple.mpegurl";
 
 pub(super) async fn dash(
-    op: &Operator,
-    asset: &AssetDescriptor,
+    asset: &ResolvedAsset,
     options: &DashOptions,
-    filter: Option<&Filter>,
 ) -> Result<Response, ServerError> {
-    let tracks = manifest_tracks(op, asset, filter).await?;
-    let mpd = dyndo_dash::generate_mpd(&tracks, &asset.segment_options, options)?;
-    let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
-    let mut serializer = quick_xml::se::Serializer::new(&mut xml);
-    serializer.indent(' ', 2);
-    mpd.serialize(serializer)
-        .map_err(|error| ServerError::Serialization(error.to_string()))?;
+    let xml = dyndo_dash::generate_mpd(asset, options).await?;
     Ok(([(CONTENT_TYPE, DASH_CONTENT_TYPE)], xml).into_response())
 }
 
 pub(super) async fn hls_master(
-    op: &Operator,
-    asset: &AssetDescriptor,
+    asset: &ResolvedAsset,
     options: &HlsOptions,
-    filter: Option<&Filter>,
 ) -> Result<Response, ServerError> {
-    let tracks = manifest_tracks(op, asset, filter).await?;
-    let playlist = dyndo_hls::generate_master_playlist(&tracks, &asset.segment_options, options)?;
-    Ok(([(CONTENT_TYPE, HLS_CONTENT_TYPE)], playlist.to_string()).into_response())
-}
-
-async fn manifest_tracks(
-    op: &Operator,
-    asset: &AssetDescriptor,
-    filter: Option<&Filter>,
-) -> Result<Vec<Track>, ServerError> {
-    let tracks = TrackResolver::new(op, asset).probe_all().await?;
-
-    match filter {
-        Some(filter) => filter
-            .narrow(tracks, &asset.segment_options)
-            .map_err(|error| ServerError::NotFound(error.to_string())),
-        None => Ok(tracks),
-    }
+    let playlist = dyndo_hls::generate_master_playlist(asset, options).await?;
+    Ok(([(CONTENT_TYPE, HLS_CONTENT_TYPE)], playlist).into_response())
 }
 
 pub(super) async fn hls_media(
-    op: &Operator,
-    asset: &AssetDescriptor,
+    track: &ResolvedTrack,
+    segment_options: &SegmentOptions,
     options: &HlsOptions,
-    track_id: &str,
 ) -> Result<Response, ServerError> {
-    let track = TrackResolver::new(op, asset).probe(track_id).await?;
-    let playlist = dyndo_hls::generate_media_playlist(&track, &asset.segment_options, options)?;
-    Ok(([(CONTENT_TYPE, HLS_CONTENT_TYPE)], playlist.to_string()).into_response())
+    let playlist = dyndo_hls::generate_media_playlist(track, segment_options, options).await?;
+    Ok(([(CONTENT_TYPE, HLS_CONTENT_TYPE)], playlist).into_response())
+}
+
+pub(super) async fn hls_images(track: &ResolvedTrack) -> Result<Response, ServerError> {
+    let thumbnail = track
+        .thumbnail()
+        .ok_or_else(|| ServerError::NotFound(format!("thumbnail {}", track.id())))?;
+    let playlist = dyndo_hls::generate_image_playlist(thumbnail)?;
+    Ok(([(CONTENT_TYPE, HLS_CONTENT_TYPE)], playlist).into_response())
 }

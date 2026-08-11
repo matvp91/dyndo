@@ -1,8 +1,10 @@
 use std::ops::Range;
 use std::sync::Arc;
 
-use super::codec::CodecConfig;
-use super::time::Time;
+use super::CmafError;
+use super::boxes::Boxes;
+use crate::codec::CodecConfig;
+use crate::time::Time;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Segment {
@@ -84,4 +86,47 @@ impl InitSegment {
     pub fn byte_range(&self) -> Range<u64> {
         self.start_byte..self.end_byte
     }
+}
+
+pub(super) fn build_init_segment(boxes: &Boxes, codec: CodecConfig) -> Arc<InitSegment> {
+    Arc::new(InitSegment::new(
+        codec,
+        boxes.sidx.timescale,
+        0,
+        boxes.moov_end,
+    ))
+}
+
+pub(super) fn build_segments(
+    boxes: &Boxes,
+    init_segment: &Arc<InitSegment>,
+) -> Result<Vec<Segment>, CmafError> {
+    let mut start_byte = boxes
+        .sidx_end
+        .checked_add(boxes.sidx.first_offset)
+        .ok_or(CmafError::SegmentOffsetOverflow)?;
+    let mut unscaled_start_time = boxes.sidx.earliest_presentation_time;
+    let mut segments = Vec::with_capacity(boxes.sidx.references.len());
+
+    for reference in &boxes.sidx.references {
+        let end_byte = start_byte
+            .checked_add(u64::from(reference.reference_size))
+            .ok_or(CmafError::SegmentRangeOverflow)?;
+        let unscaled_end_time = unscaled_start_time
+            .checked_add(u64::from(reference.subsegment_duration))
+            .ok_or(CmafError::SegmentTimeOverflow)?;
+
+        segments.push(Segment::new(
+            Arc::clone(init_segment),
+            unscaled_start_time,
+            unscaled_end_time,
+            start_byte,
+            end_byte,
+        ));
+
+        start_byte = end_byte;
+        unscaled_start_time = unscaled_end_time;
+    }
+
+    Ok(segments)
 }

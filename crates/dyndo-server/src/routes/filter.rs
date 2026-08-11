@@ -1,9 +1,7 @@
 use std::borrow::Cow;
 
-use dyndo_core::segment_options::SegmentOptions;
-use dyndo_core::served_segment::ServedSegment;
-use dyndo_core::track::Track;
-use dyndo_core::track_kind::TrackKind;
+use dyndo_core::asset::ResolvedAsset;
+use dyndo_core::track::ResolvedTrack;
 use serde::{Deserialize, Deserializer, de};
 use winnow::ascii::{digit1, multispace0};
 use winnow::combinator::{
@@ -43,30 +41,23 @@ impl Filter {
             })
     }
 
-    fn matches(&self, track: &Track, options: &SegmentOptions) -> bool {
-        self.expression.matches(track, options)
-    }
+    pub(super) fn apply(&self, asset: &mut ResolvedAsset) -> Result<(), FilterMatchedNothing> {
+        asset.retain_tracks(|track| self.matches(track));
 
-    pub(super) fn narrow(
-        &self,
-        tracks: Vec<Track>,
-        options: &SegmentOptions,
-    ) -> Result<Vec<Track>, FilterMatchedNothing> {
-        let tracks: Vec<_> = tracks
-            .into_iter()
-            .filter(|track| self.matches(track, options))
-            .collect();
-
-        if tracks.is_empty() {
+        if asset.tracks().is_empty() {
             Err(FilterMatchedNothing)
         } else {
-            Ok(tracks)
+            Ok(())
         }
+    }
+
+    pub(super) fn matches(&self, track: &ResolvedTrack) -> bool {
+        self.expression.matches(track)
     }
 }
 
 #[derive(Debug, thiserror::Error)]
-#[error("no track matches the filter")]
+#[error("no asset track matches the filter")]
 pub(super) struct FilterMatchedNothing;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -77,11 +68,11 @@ enum Expression {
 }
 
 impl Expression {
-    fn matches(&self, track: &Track, options: &SegmentOptions) -> bool {
+    fn matches(&self, track: &ResolvedTrack) -> bool {
         match self {
-            Self::And(left, right) => left.matches(track, options) && right.matches(track, options),
-            Self::Or(left, right) => left.matches(track, options) || right.matches(track, options),
-            Self::Comparison(comparison) => comparison.matches(track, options),
+            Self::And(left, right) => left.matches(track) && right.matches(track),
+            Self::Or(left, right) => left.matches(track) || right.matches(track),
+            Self::Comparison(comparison) => comparison.matches(track),
         }
     }
 }
@@ -94,7 +85,7 @@ struct Comparison {
 }
 
 impl Comparison {
-    fn matches(&self, track: &Track, options: &SegmentOptions) -> bool {
+    fn matches(&self, track: &ResolvedTrack) -> bool {
         match &self.value {
             Literal::Text(wanted) => self
                 .attribute
@@ -102,7 +93,7 @@ impl Comparison {
                 .is_some_and(|actual| self.operator.holds(actual.as_ref(), wanted.as_str())),
             Literal::Number(wanted) => self
                 .attribute
-                .number(track, options)
+                .number(track)
                 .is_some_and(|actual| self.operator.holds(&actual, wanted)),
         }
     }
@@ -116,13 +107,12 @@ enum Attribute {
     FrameRate,
     Language,
     Role,
-    Bitrate,
-    AverageBitrate,
-    Duration,
     Width,
     Height,
     SampleRate,
     Channels,
+    TileSize,
+    Step,
 }
 
 impl Attribute {
@@ -134,13 +124,12 @@ impl Attribute {
             "frame_rate" => Some(Self::FrameRate),
             "language" => Some(Self::Language),
             "role" => Some(Self::Role),
-            "bitrate" => Some(Self::Bitrate),
-            "avg_bitrate" => Some(Self::AverageBitrate),
-            "duration" => Some(Self::Duration),
             "width" => Some(Self::Width),
             "height" => Some(Self::Height),
             "sample_rate" => Some(Self::SampleRate),
             "channels" => Some(Self::Channels),
+            "tile_size" => Some(Self::TileSize),
+            "step" => Some(Self::Step),
             _ => None,
         }
     }
@@ -148,73 +137,58 @@ impl Attribute {
     fn is_numeric(self) -> bool {
         matches!(
             self,
-            Self::Bitrate
-                | Self::AverageBitrate
-                | Self::Duration
-                | Self::Width
+            Self::Width
                 | Self::Height
                 | Self::SampleRate
                 | Self::Channels
+                | Self::TileSize
+                | Self::Step
         )
     }
 
-    fn text<'a>(self, track: &'a Track) -> Option<Cow<'a, str>> {
+    fn text(self, track: &ResolvedTrack) -> Option<Cow<'_, str>> {
         match self {
-            Self::Type => Some(Cow::Borrowed(track.kind().content_type())),
+            Self::Type => Some(Cow::Borrowed(track.asset_type())),
             Self::Id => Some(Cow::Borrowed(track.id())),
-            Self::Codec => Some(Cow::Owned(track.codec().rfc6381())),
-            Self::FrameRate => match track.kind() {
-                TrackKind::Video(video) => Some(Cow::Borrowed(&video.frame_rate)),
-                _ => None,
-            },
-            Self::Language => match track.kind() {
-                TrackKind::Audio(audio) => Some(Cow::Borrowed(audio.language.as_str())),
-                TrackKind::Text(text) => Some(Cow::Borrowed(text.language.as_str())),
-                TrackKind::Video(_) => None,
-            },
-            Self::Role => match track.kind() {
-                TrackKind::Audio(audio) => audio.role.map(|role| Cow::Borrowed(role.as_str())),
-                TrackKind::Text(text) => text.role.map(|role| Cow::Borrowed(role.as_str())),
-                TrackKind::Video(_) => None,
-            },
-            _ => None,
+            Self::Codec => track.codec().map(Cow::Owned),
+            Self::FrameRate => track
+                .video_metadata()
+                .map(|kind| Cow::Borrowed(kind.frame_rate.as_str())),
+            Self::Language => track
+                .language()
+                .map(|language| Cow::Borrowed(language.as_str())),
+            Self::Role => track.role().map(|role| Cow::Borrowed(role.as_str())),
+            Self::Width
+            | Self::Height
+            | Self::SampleRate
+            | Self::Channels
+            | Self::TileSize
+            | Self::Step => None,
         }
     }
 
-    fn number(self, track: &Track, options: &SegmentOptions) -> Option<u64> {
+    fn number(self, track: &ResolvedTrack) -> Option<u64> {
+        let thumbnail = track.thumbnail();
         match self {
-            Self::Bitrate => {
-                let segments = served_segments(track, options);
-                Some(ServedSegment::maximum_bitrate(&segments))
+            Self::Width => track
+                .video_metadata()
+                .map(|kind| u64::from(kind.width))
+                .or_else(|| thumbnail.map(|track| u64::from(track.width()))),
+            Self::Height => track
+                .video_metadata()
+                .map(|kind| u64::from(kind.height))
+                .or_else(|| thumbnail.map(|track| u64::from(track.height()))),
+            Self::SampleRate => track
+                .audio_metadata()
+                .map(|kind| u64::from(kind.sample_rate)),
+            Self::Channels => track.audio_metadata().map(|kind| u64::from(kind.channels)),
+            Self::TileSize => thumbnail.map(|track| u64::from(track.tile_size())),
+            Self::Step => thumbnail.map(|track| u64::from(track.step())),
+            Self::Type | Self::Id | Self::Codec | Self::FrameRate | Self::Language | Self::Role => {
+                None
             }
-            Self::AverageBitrate => {
-                let segments = served_segments(track, options);
-                Some(ServedSegment::average_bitrate(&segments))
-            }
-            Self::Duration => Some(u64::from(track.duration())),
-            Self::Width => match track.kind() {
-                TrackKind::Video(video) => Some(u64::from(video.width)),
-                _ => None,
-            },
-            Self::Height => match track.kind() {
-                TrackKind::Video(video) => Some(u64::from(video.height)),
-                _ => None,
-            },
-            Self::SampleRate => match track.kind() {
-                TrackKind::Audio(audio) => Some(u64::from(audio.sample_rate)),
-                _ => None,
-            },
-            Self::Channels => match track.kind() {
-                TrackKind::Audio(audio) => Some(u64::from(audio.channels)),
-                _ => None,
-            },
-            _ => None,
         }
     }
-}
-
-fn served_segments<'a>(track: &'a Track, options: &SegmentOptions) -> Vec<ServedSegment<'a>> {
-    ServedSegment::group(track.segments(), options.min_length, &options.boundaries)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -330,5 +304,101 @@ fn parse_literal(numeric: bool, input: &mut &str) -> ModalResult<Literal> {
         )
         .map(|value: &str| Literal::Text(value.to_string()))
         .parse_next(input)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use dyndo_core::asset::ResolvedAsset;
+    use dyndo_core::codec::{CodecConfig, WvttCodec};
+    use dyndo_core::segment_options::SegmentOptions;
+    use dyndo_core::track::ResolvedTrack;
+    use dyndo_core::track::cmaf::{CmafKind, InitSegment, ResolvedCmafTrack};
+    use dyndo_core::track::metadata::{AudioMetadata, VideoMetadata};
+    use dyndo_core::track::thumbnail::ThumbnailTrack;
+
+    use super::Filter;
+
+    fn cmaf(id: &str, kind: CmafKind) -> ResolvedCmafTrack {
+        ResolvedCmafTrack::new(
+            id.to_string(),
+            format!("{id}.mp4").into(),
+            kind,
+            Arc::new(InitSegment::new(CodecConfig::Wvtt(WvttCodec), 1_000, 0, 0)),
+            Vec::new(),
+        )
+    }
+
+    fn asset() -> ResolvedAsset {
+        let video = cmaf(
+            "video",
+            CmafKind::Video(VideoMetadata {
+                width: 1_920,
+                height: 1_080,
+                frame_rate: "25/1".to_string(),
+            }),
+        );
+        let audio = cmaf(
+            "audio",
+            CmafKind::Audio(AudioMetadata {
+                sample_rate: 48_000,
+                channels: 2,
+                language: "eng".parse().unwrap(),
+                role: None,
+            }),
+        );
+        let thumbnail = ThumbnailTrack::new("preview".to_string(), 4, 640, 1_000)
+            .resolve([&video])
+            .unwrap();
+        ResolvedAsset::new(
+            SegmentOptions::default(),
+            vec![
+                ResolvedTrack::Cmaf(video),
+                ResolvedTrack::Cmaf(audio),
+                ResolvedTrack::Thumbnail(thumbnail),
+            ],
+        )
+    }
+
+    #[test]
+    fn apply_keeps_matching_thumbnail_tracks() {
+        let mut asset = asset();
+
+        Filter::parse("type==thumbnail&&width>=640")
+            .unwrap()
+            .apply(&mut asset)
+            .unwrap();
+
+        assert_eq!(asset.thumbnails().count(), 1);
+    }
+
+    #[test]
+    fn apply_uses_resolved_track_fields() {
+        let mut asset = asset();
+
+        Filter::parse("codec==wvtt&&type==audio")
+            .unwrap()
+            .apply(&mut asset)
+            .unwrap();
+
+        assert_eq!(asset.tracks()[0].id(), "audio");
+    }
+
+    #[test]
+    fn apply_returns_an_error_when_no_track_matches() {
+        let mut asset = asset();
+
+        let result = Filter::parse("type==text").unwrap().apply(&mut asset);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_rejects_segment_derived_attributes() {
+        let result = Filter::parse("bitrate>=800000");
+
+        assert!(result.is_err());
     }
 }

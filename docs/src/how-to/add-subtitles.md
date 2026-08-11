@@ -3,15 +3,16 @@
 This guide shows how to add a WebVTT subtitle track to an existing asset. Two
 source forms work:
 
-- **Raw `.vtt`** — the WebVTT file itself. dyndo parses it and packages a CMAF
-  `wvtt` track as it reads it, so your `.vtt` stays the single source of truth.
+- **Raw `.vtt`** — the WebVTT file itself. dyndo parses it, creating a CMAF
+  `wvtt` view only when an operation needs one, so your `.vtt` stays the single
+  source of truth.
   Nothing is written back beside it.
 - **CMAF `wvtt`** — WebVTT already packaged into ISO-BMFF by a packager. Indexed,
-  probed, and served like any other CMAF track.
+  resolved, and served like any other CMAF track.
 
-> Packaging happens on the way out, per request, so a `.vtt` you edit is served
-> edited on the next request — no re-indexing and no repackaging step. How the
-> packaged track is cut is set by
+> CMAF packaging happens only when an operation needs it, so a `.vtt` you edit
+> is served edited on the next request — no re-indexing and no repackaging step.
+> How the packaged track is cut is set by
 > [`segment_options.text_length` and `boundaries`](../reference/asset-json.md#segmentation).
 
 How a track is *delivered* then depends on the protocol. DASH always references
@@ -43,7 +44,7 @@ wrote asset.json (3 tracks)
 
 ```json
 {
-  "id": "text_61af48e7-44a0-5911-9cf3-abf5d1d9c70e",
+  "id": "61af48e7-44a0-5911-9cf3-abf5d1d9c70e",
   "path": "text_wvtt_nld.mp4",
   "codec": "wvtt",
   "type": "text",
@@ -62,18 +63,17 @@ dyndo index subtitles_nl.vtt,language=nld -o asset.json
 
 ```json
 {
-  "id": "text_5b9fbdae-2717-5f58-80ed-4f067605a5e6",
+  "id": "5b9fbdae-2717-5f58-80ed-4f067605a5e6",
   "path": "subtitles_nl.vtt",
-  "codec": "wvtt",
-  "type": "text",
+  "type": "webvtt",
   "language": "nld"
 }
 ```
 
 A WebVTT file declares no language of its own, so set it here — without
-`language=` the track's language is `und` (undetermined). The `codec` is recorded
-as `wvtt` because that is what the track is packaged as; HLS unpacks it back into
-a document on the way out.
+`language=` the track's language is `und` (undetermined). A raw VTT descriptor
+has no `codec`: dyndo packages it as `wvtt` for DASH and returns the parsed VTT
+cues directly for HLS.
 
 By default the whole subtitle becomes one segment, cut only at the asset's splice points. Set `text_length` in the descriptor or the server request when you want a regular grid:
 
@@ -83,8 +83,8 @@ curl "http://localhost:8080/out/(asset:asset,text_length:4000)/index.mpd"
 
 ## Choose how HLS delivers subtitles
 
-By default an HLS text rendition points at WebVTT documents — one `.vtt` per
-segment, no `EXT-X-MAP`, cue timestamps absolute:
+By default an HLS rendition for a raw WebVTT source points at WebVTT documents
+— one `.vtt` per segment, no `EXT-X-MAP`, cue timestamps absolute:
 
 ```text
 #EXTINF:4.000,
@@ -101,7 +101,9 @@ Both forms describe the same segments — the same cut points, the same duration
 so this changes only how each one is delivered, and never how the asset is cut.
 DASH is unaffected either way.
 
-Reach for `wvtt` when a client specifically wants the packaged track. Otherwise dyndo can unpack the cues from either a raw WebVTT source or a CMAF `wvtt` source into the `.vtt` form used by the default HLS output.
+Reach for `wvtt` when a client specifically wants a raw WebVTT source packaged
+as CMAF. A CMAF `wvtt` source is always delivered as CMAF; dyndo does not
+unpackage it into WebVTT documents.
 
 ## Set the language
 

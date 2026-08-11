@@ -1,11 +1,11 @@
 # `one-second-silence-aac.mp4`
 
 A 1.2 KiB fragmented MP4 containing one second of mono AAC silence.
-It is intentionally tiny and only exercises container probing and byte-range reads.
+It is intentionally tiny and only exercises container resolution and byte-range reads.
 
 `three-frame-black-h264.mp4` is a 1.7 KiB fragmented MP4 containing three
 16×16 black H.264 frames. Its deliberately variable frame durations ensure the
-fragment carries explicit sample timing, which exercises video frame-rate probing.
+fragment carries explicit sample timing, which exercises video frame-rate discovery.
 
 `two-segment-black-white-h264.mp4` is a 1.8 KiB fragmented MP4 with a black
 first segment and white second segment. It verifies that frame extraction picks
