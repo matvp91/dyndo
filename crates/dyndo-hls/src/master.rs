@@ -2,7 +2,6 @@ use dyndo_core::asset::kind::VideoKind;
 use dyndo_core::segment_options::SegmentOptions;
 use dyndo_core::served_segment::ServedSegment;
 use dyndo_core::track::cmaf::CmafTrack;
-use dyndo_core::track::kind::CmafTrackKind;
 use dyndo_core::track::synthetic::SyntheticTrack;
 use m3u8_rs::{ClosedCaptionGroupId, ExtTag, MasterPlaylist, Resolution, VariantStream};
 
@@ -56,14 +55,11 @@ fn build_variant_streams(
 ) -> Result<Vec<VariantStream>, HlsError> {
     tracks
         .iter()
-        .filter_map(|track| match track.kind() {
-            CmafTrackKind::Video(video) => Some(build_variant_stream(
-                track,
-                video,
-                segment_options,
-                renditions,
-            )),
-            CmafTrackKind::Audio(_) | CmafTrackKind::Text(_) => None,
+        .filter_map(|track| {
+            track
+                .kind()
+                .video()
+                .map(|video| build_variant_stream(track, video, segment_options, renditions))
         })
         .collect()
 }

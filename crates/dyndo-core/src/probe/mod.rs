@@ -22,8 +22,6 @@ pub enum ProbeError {
     UnsupportedAudioSampleEntry,
     #[error("unsupported track handler")]
     UnsupportedTrackHandler,
-    #[error("asset descriptor entry is not a source track")]
-    NotSourceTrack,
     #[error(transparent)]
     Storage(#[from] opendal::Error),
     #[error(transparent)]

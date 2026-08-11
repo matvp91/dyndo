@@ -15,16 +15,8 @@ pub(super) struct AdaptationGroup<'a> {
 
 impl<'a> AdaptationGroup<'a> {
     fn new(key: String, track: &'a CmafTrack) -> Self {
-        let language = match track.kind() {
-            CmafTrackKind::Video(_) => None,
-            CmafTrackKind::Audio(audio) => Some(audio.language.to_string()),
-            CmafTrackKind::Text(text) => Some(text.language.to_string()),
-        };
-        let role = match track.kind() {
-            CmafTrackKind::Video(_) => None,
-            CmafTrackKind::Audio(audio) => audio.role,
-            CmafTrackKind::Text(text) => text.role,
-        };
+        let language = track.kind().language().map(ToString::to_string);
+        let role = track.kind().role();
 
         Self {
             key,

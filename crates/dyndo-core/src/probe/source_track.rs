@@ -7,6 +7,7 @@ use crate::asset::kind::{TextKind, undetermined_language};
 use crate::asset::track::SourceTrackDescriptor;
 use crate::track::SourceTrack;
 use crate::track::cmaf::CmafTrack;
+use crate::track::kind::TimedTextKind;
 use crate::track::timed_text::TimedTextTrack;
 
 impl SourceTrack {
@@ -16,20 +17,21 @@ impl SourceTrack {
         descriptor: Option<&SourceTrackDescriptor>,
     ) -> Result<Self, ProbeError> {
         match descriptor {
-            Some(SourceTrackDescriptor::WebVtt(descriptor)) => TimedTextTrack::probe_web_vtt(
+            Some(SourceTrackDescriptor::TimedText(descriptor)) => match &descriptor.kind {
+                TimedTextKind::WebVtt(kind) => {
+                    TimedTextTrack::probe_web_vtt(op, path, descriptor.id.clone(), kind.clone())
+                        .await
+                        .map(Self::TimedText)
+                }
+            },
+            Some(SourceTrackDescriptor::Cmaf(descriptor)) => CmafTrack::probe(
                 op,
                 path,
                 descriptor.id.clone(),
-                descriptor.kind.clone(),
+                Some(descriptor.kind.clone()),
             )
             .await
-            .map(Self::TimedText),
-            Some(descriptor) => {
-                let kind = descriptor.cmaf_kind().ok_or(ProbeError::NotSourceTrack)?;
-                CmafTrack::probe(op, path, descriptor.id().to_string(), Some(kind))
-                    .await
-                    .map(Self::Cmaf)
-            }
+            .map(Self::Cmaf),
             None => {
                 let id = source_id(path);
                 if path.as_str().ends_with(".vtt") {

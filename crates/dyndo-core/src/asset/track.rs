@@ -1,121 +1,152 @@
+use language_tags::LanguageTag;
 use relative_path::{RelativePath, RelativePathBuf};
 use serde::{Deserialize, Serialize};
 
-use super::descriptor::{
-    AudioTrackDescriptor, TextTrackDescriptor, ThumbnailTrackDescriptor, VideoTrackDescriptor,
-    WebVttTrackDescriptor,
-};
+use super::kind::{AudioKind, VideoKind};
+use crate::role::Role;
 use crate::track::SourceTrack;
-use crate::track::kind::{CmafTrackKind, TimedTextKind};
+use crate::track::kind::{CmafTrackKind, SyntheticTrackKind, TimedTextKind};
+
+/// A CMAF source-track configuration in an asset descriptor.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CmafTrackDescriptor {
+    pub id: String,
+    /// Path relative to the asset descriptor.
+    pub(super) path: RelativePathBuf,
+    pub codec: String,
+    #[serde(flatten)]
+    pub kind: CmafTrackKind,
+}
+
+/// A timed-text source-track configuration in an asset descriptor.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TimedTextTrackDescriptor {
+    pub id: String,
+    /// Path relative to the asset descriptor.
+    pub(super) path: RelativePathBuf,
+    #[serde(flatten)]
+    pub kind: TimedTextKind,
+}
 
 /// A source-track configuration in an asset descriptor.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "lowercase")]
+#[serde(untagged)]
 pub enum SourceTrackDescriptor {
-    Video(VideoTrackDescriptor),
-    Audio(AudioTrackDescriptor),
-    Text(TextTrackDescriptor),
-    WebVtt(WebVttTrackDescriptor),
+    Cmaf(CmafTrackDescriptor),
+    TimedText(TimedTextTrackDescriptor),
 }
 
 impl SourceTrackDescriptor {
     pub fn id(&self) -> &str {
         match self {
-            Self::Video(track) => &track.id,
-            Self::Audio(track) => &track.id,
-            Self::Text(track) => &track.id,
-            Self::WebVtt(track) => &track.id,
+            Self::Cmaf(track) => &track.id,
+            Self::TimedText(track) => &track.id,
         }
     }
 
     pub fn source_path(&self) -> &RelativePath {
         match self {
-            Self::Video(track) => &track.path,
-            Self::Audio(track) => &track.path,
-            Self::Text(track) => &track.path,
-            Self::WebVtt(track) => &track.path,
+            Self::Cmaf(track) => &track.path,
+            Self::TimedText(track) => &track.path,
         }
     }
 
-    pub fn cmaf_kind(&self) -> Option<CmafTrackKind> {
+    pub fn cmaf_kind(&self) -> Option<&CmafTrackKind> {
         match self {
-            Self::Video(track) => Some(CmafTrackKind::Video(track.kind.clone())),
-            Self::Audio(track) => Some(CmafTrackKind::Audio(track.kind.clone())),
-            Self::Text(track) => Some(CmafTrackKind::Text(track.kind.clone())),
-            Self::WebVtt(_) => None,
+            Self::Cmaf(track) => Some(&track.kind),
+            Self::TimedText(_) => None,
+        }
+    }
+
+    pub fn codec(&self) -> Option<&str> {
+        match self {
+            Self::Cmaf(track) => Some(&track.codec),
+            Self::TimedText(_) => None,
+        }
+    }
+
+    pub fn video_kind(&self) -> Option<&VideoKind> {
+        match self {
+            Self::Cmaf(track) => track.kind.video(),
+            Self::TimedText(_) => None,
+        }
+    }
+
+    pub fn audio_kind(&self) -> Option<&AudioKind> {
+        match self {
+            Self::Cmaf(track) => track.kind.audio(),
+            Self::TimedText(_) => None,
+        }
+    }
+
+    pub fn language(&self) -> Option<&LanguageTag> {
+        match self {
+            Self::Cmaf(track) => track.kind.language(),
+            Self::TimedText(track) => Some(&track.kind.text().language),
+        }
+    }
+
+    pub fn role(&self) -> Option<Role> {
+        match self {
+            Self::Cmaf(track) => track.kind.role(),
+            Self::TimedText(track) => track.kind.text().role,
+        }
+    }
+
+    pub fn language_and_role_mut(&mut self) -> Option<(&mut LanguageTag, &mut Option<Role>)> {
+        match self {
+            Self::Cmaf(track) => track.kind.language_and_role_mut(),
+            Self::TimedText(track) => {
+                let kind = track.kind.text_mut();
+                Some((&mut kind.language, &mut kind.role))
+            }
         }
     }
 
     pub fn asset_type(&self) -> &'static str {
         match self {
-            Self::Video(_) => "video",
-            Self::Audio(_) => "audio",
-            Self::Text(_) => "text",
-            Self::WebVtt(_) => "webvtt",
+            Self::Cmaf(track) => track.kind.content_type(),
+            Self::TimedText(track) => track.kind.asset_type(),
         }
     }
 
     pub(super) fn from_source_track(track: &SourceTrack, path: RelativePathBuf) -> Self {
         match track {
-            SourceTrack::TimedText(track) => match track.kind() {
-                TimedTextKind::WebVtt(kind) => Self::WebVtt(WebVttTrackDescriptor {
-                    id: track.id().to_string(),
-                    path,
-                    kind: kind.clone(),
-                }),
-            },
-            SourceTrack::Cmaf(track) => {
-                let id = track.id().to_string();
-                let codec = track.codec().rfc6381();
-                match track.kind() {
-                    CmafTrackKind::Video(kind) => Self::Video(VideoTrackDescriptor {
-                        id,
-                        path,
-                        codec,
-                        kind: kind.clone(),
-                    }),
-                    CmafTrackKind::Audio(kind) => Self::Audio(AudioTrackDescriptor {
-                        id,
-                        path,
-                        codec,
-                        kind: kind.clone(),
-                    }),
-                    CmafTrackKind::Text(kind) => Self::Text(TextTrackDescriptor {
-                        id,
-                        path,
-                        codec,
-                        kind: kind.clone(),
-                    }),
-                }
-            }
+            SourceTrack::TimedText(track) => Self::TimedText(TimedTextTrackDescriptor {
+                id: track.id().to_string(),
+                path,
+                kind: track.kind().clone(),
+            }),
+            SourceTrack::Cmaf(track) => Self::Cmaf(CmafTrackDescriptor {
+                id: track.id().to_string(),
+                path,
+                codec: track.codec().rfc6381(),
+                kind: track.kind().clone(),
+            }),
         }
     }
 }
 
 /// A synthetic-track configuration in an asset descriptor.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "lowercase")]
-pub enum SyntheticTrackDescriptor {
-    Thumbnail(ThumbnailTrackDescriptor),
+pub struct SyntheticTrackDescriptor {
+    /// Identifier used to address the synthetic track.
+    pub id: String,
+    #[serde(flatten)]
+    pub kind: SyntheticTrackKind,
 }
 
 impl SyntheticTrackDescriptor {
     pub fn id(&self) -> &str {
-        match self {
-            Self::Thumbnail(track) => &track.id,
-        }
+        &self.id
     }
 
     pub fn asset_type(&self) -> &'static str {
-        match self {
-            Self::Thumbnail(_) => "thumbnail",
-        }
+        self.kind.asset_type()
     }
 
-    pub fn thumbnail(&self) -> &ThumbnailTrackDescriptor {
-        match self {
-            Self::Thumbnail(track) => track,
-        }
+    pub fn thumbnail(&self) -> Option<&super::kind::ThumbnailKind> {
+        self.kind.thumbnail()
     }
 }
 

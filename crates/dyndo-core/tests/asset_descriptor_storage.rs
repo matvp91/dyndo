@@ -1,7 +1,8 @@
 use dyndo_core::asset::AssetDescriptor;
-use dyndo_core::asset::descriptor::ThumbnailTrackDescriptor;
 use dyndo_core::asset::kind::ThumbnailKind;
+use dyndo_core::asset::track::SyntheticTrackDescriptor;
 use dyndo_core::track::SourceTrack;
+use dyndo_core::track::kind::SyntheticTrackKind;
 use opendal::{Operator, services::Memory};
 use relative_path::{RelativePath, RelativePathBuf};
 
@@ -63,14 +64,14 @@ async fn read_deserializes_an_asset_descriptor_from_storage() {
         RelativePathBuf::from("assets/subtitles/en.vtt")
     );
     assert_eq!(
-        descriptor.find_thumbnail_track_by_id("preview"),
-        Some(&ThumbnailTrackDescriptor {
+        descriptor.find_synthetic_track_by_id("preview"),
+        Some(&SyntheticTrackDescriptor {
             id: "preview".to_string(),
-            kind: ThumbnailKind {
+            kind: SyntheticTrackKind::Thumbnail(ThumbnailKind {
                 tile_size: 4,
                 width: 640,
                 step: 1_000,
-            },
+            }),
         })
     );
 }

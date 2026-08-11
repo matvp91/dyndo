@@ -6,8 +6,8 @@ use image::{ImageFormat, RgbImage, imageops};
 use opendal::Operator;
 
 use crate::asset::AssetDescriptor;
-use crate::asset::descriptor::ThumbnailTrackDescriptor;
 use crate::asset::kind::ThumbnailKind;
+use crate::asset::track::SyntheticTrackDescriptor;
 use crate::image::{FrameExtractor, FrameExtractorError};
 use crate::track::SourceTrack;
 use crate::track::cmaf::CmafTrack;
@@ -22,9 +22,12 @@ pub fn resolve_synthetic_tracks(
     sources: &[SourceTrack],
 ) -> Vec<SyntheticTrack> {
     asset
-        .thumbnail_tracks()
+        .synthetic_tracks()
         .filter_map(|descriptor| {
-            SyntheticTrack::thumbnail(descriptor, sources.iter().filter_map(SourceTrack::cmaf))
+            SyntheticTrack::from_descriptor(
+                descriptor,
+                sources.iter().filter_map(SourceTrack::cmaf),
+            )
         })
         .collect()
 }
@@ -48,20 +51,21 @@ pub struct SyntheticTrack {
 }
 
 impl SyntheticTrack {
-    /// Creates a thumbnail track from its configuration and source tracks.
+    /// Creates a synthetic track from its configuration and source tracks.
     ///
     /// Selects the smallest video at least as wide as the requested sprite, or
     /// the largest video when every source must be upscaled.
-    pub fn thumbnail<'a>(
-        descriptor: &ThumbnailTrackDescriptor,
+    pub fn from_descriptor<'a>(
+        descriptor: &SyntheticTrackDescriptor,
         tracks: impl IntoIterator<Item = &'a CmafTrack>,
     ) -> Option<Self> {
-        let source = select_source(descriptor.kind.width, tracks)?;
-        let (_, height) = dimensions(&descriptor.kind, source)?;
+        let kind = descriptor.thumbnail()?;
+        let source = select_source(kind.width, tracks)?;
+        let (_, height) = dimensions(kind, source)?;
 
         Some(Self {
             id: descriptor.id.clone(),
-            kind: SyntheticTrackKind::Thumbnail(descriptor.kind.clone()),
+            kind: SyntheticTrackKind::Thumbnail(kind.clone()),
             source: source.clone(),
             height,
         })
@@ -249,8 +253,8 @@ mod tests {
     use std::sync::Arc;
 
     use super::SyntheticTrack;
-    use crate::asset::descriptor::ThumbnailTrackDescriptor;
     use crate::asset::kind::{ThumbnailKind, VideoKind};
+    use crate::asset::track::SyntheticTrackDescriptor;
     use crate::codec::{CodecConfig, WvttCodec};
     use crate::segment::InitSegment;
     use crate::track::cmaf::CmafTrack;
@@ -270,14 +274,14 @@ mod tests {
         )
     }
 
-    fn descriptor(width: u32) -> ThumbnailTrackDescriptor {
-        ThumbnailTrackDescriptor {
+    fn descriptor(width: u32) -> SyntheticTrackDescriptor {
+        SyntheticTrackDescriptor {
             id: "thumbnail".to_string(),
-            kind: ThumbnailKind {
+            kind: SyntheticTrackKind::Thumbnail(ThumbnailKind {
                 tile_size: 4,
                 width,
                 step: 1_000,
-            },
+            }),
         }
     }
 
@@ -286,7 +290,7 @@ mod tests {
         let tracks = [video("720", 1_280, 720), video("1080", 1_920, 1_080)];
         let descriptor = descriptor(1_500);
 
-        let thumbnail = SyntheticTrack::thumbnail(&descriptor, &tracks).unwrap();
+        let thumbnail = SyntheticTrack::from_descriptor(&descriptor, &tracks).unwrap();
 
         assert_eq!(thumbnail.source().id(), "1080");
     }
@@ -296,7 +300,7 @@ mod tests {
         let tracks = [video("720", 1_280, 720), video("1080", 1_920, 1_080)];
         let descriptor = descriptor(3_840);
 
-        let thumbnail = SyntheticTrack::thumbnail(&descriptor, &tracks).unwrap();
+        let thumbnail = SyntheticTrack::from_descriptor(&descriptor, &tracks).unwrap();
 
         assert_eq!(thumbnail.source().id(), "1080");
     }
@@ -305,7 +309,7 @@ mod tests {
     fn thumbnail_preserves_its_resolved_kind() {
         let descriptor = descriptor(640);
         let track = video("720", 1_280, 720);
-        let thumbnail = SyntheticTrack::thumbnail(&descriptor, [&track]).unwrap();
+        let thumbnail = SyntheticTrack::from_descriptor(&descriptor, [&track]).unwrap();
 
         assert!(matches!(thumbnail.kind(), SyntheticTrackKind::Thumbnail(_)));
     }

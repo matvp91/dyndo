@@ -5,7 +5,6 @@ use axum::{
 use dyndo_core::asset::AssetDescriptor;
 use dyndo_core::track::SourceTrack;
 use dyndo_core::track::cmaf::CmafTrack;
-use dyndo_core::track::kind::CmafTrackKind;
 use dyndo_core::track::synthetic::resolve_synthetic_tracks;
 use dyndo_dash::options::DashOptions;
 use dyndo_hls::options::HlsOptions;
@@ -45,9 +44,10 @@ pub(super) async fn hls_master(
     let source_tracks = TrackResolver::new(op, source_asset).probe_all().await?;
     let thumbnails = resolve_synthetic_tracks(asset, &source_tracks);
     let mut hls_options = *options;
-    hls_options.wvtt |= source_tracks.iter().any(|track| {
-        matches!(track, SourceTrack::Cmaf(track) if matches!(track.kind(), CmafTrackKind::Text(_)))
-    });
+    hls_options.wvtt |= source_tracks
+        .iter()
+        .filter_map(SourceTrack::cmaf)
+        .any(|track| track.kind().is_text());
     let tracks = filtered_tracks(source_tracks, asset).await?;
     let playlist = dyndo_hls::generate_master_playlist(
         &tracks,
@@ -79,12 +79,12 @@ pub(super) async fn hls_images(
     thumbnail_id: &str,
 ) -> Result<Response, ServerError> {
     let descriptor = asset
-        .find_thumbnail_track_by_id(thumbnail_id)
+        .find_synthetic_track_by_id(thumbnail_id)
         .ok_or_else(|| ServerError::NotFound(format!("thumbnail {thumbnail_id}")))?;
     let source_tracks = TrackResolver::new(op, source_asset).probe_all().await?;
     let thumbnail = resolve_synthetic_tracks(asset, &source_tracks)
         .into_iter()
-        .find(|track| track.id() == descriptor.id)
+        .find(|track| track.id() == descriptor.id())
         .ok_or_else(|| ServerError::NotFound("thumbnail".to_string()))?;
     let playlist = dyndo_hls::generate_image_playlist(&thumbnail)?;
     Ok(([(CONTENT_TYPE, HLS_CONTENT_TYPE)], playlist).into_response())

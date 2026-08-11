@@ -2,12 +2,10 @@ use opendal::Operator;
 use relative_path::{RelativePath, RelativePathBuf};
 use serde::{Deserialize, Serialize};
 
-use self::descriptor::ThumbnailTrackDescriptor;
 use self::track::{SourceTrackDescriptor, SyntheticTrackDescriptor, TrackDescriptor};
 use crate::segment_options::SegmentOptions;
 use crate::track::SourceTrack;
 
-pub mod descriptor;
 pub mod kind;
 pub mod track;
 
@@ -71,8 +69,8 @@ impl AssetDescriptor {
         self.source_tracks().find(|track| track.id() == id)
     }
 
-    pub fn find_thumbnail_track_by_id(&self, id: &str) -> Option<&ThumbnailTrackDescriptor> {
-        self.thumbnail_tracks().find(|track| track.id == id)
+    pub fn find_synthetic_track_by_id(&self, id: &str) -> Option<&SyntheticTrackDescriptor> {
+        self.synthetic_tracks().find(|track| track.id() == id)
     }
 
     pub fn source_tracks(&self) -> impl Iterator<Item = &SourceTrackDescriptor> {
@@ -81,11 +79,6 @@ impl AssetDescriptor {
 
     pub fn synthetic_tracks(&self) -> impl Iterator<Item = &SyntheticTrackDescriptor> {
         self.tracks.iter().filter_map(TrackDescriptor::synthetic)
-    }
-
-    pub fn thumbnail_tracks(&self) -> impl Iterator<Item = &ThumbnailTrackDescriptor> {
-        self.synthetic_tracks()
-            .map(SyntheticTrackDescriptor::thumbnail)
     }
 
     pub fn find_track_by_path(

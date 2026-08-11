@@ -79,12 +79,12 @@ pub(super) async fn thumbnail(
     time: u64,
 ) -> Result<Response, ServerError> {
     let descriptor = asset
-        .find_thumbnail_track_by_id(thumbnail_id)
+        .find_synthetic_track_by_id(thumbnail_id)
         .ok_or_else(|| ServerError::NotFound(format!("thumbnail {thumbnail_id}")))?;
     let source_tracks = TrackResolver::new(op, asset).probe_all().await?;
     let thumbnail = resolve_synthetic_tracks(asset, &source_tracks)
         .into_iter()
-        .find(|track| track.id() == descriptor.id);
+        .find(|track| track.id() == descriptor.id());
     let Some(thumbnail) = thumbnail else {
         return Err(ServerError::NotFound("thumbnail".to_string()));
     };
