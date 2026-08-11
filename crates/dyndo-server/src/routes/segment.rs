@@ -1,14 +1,58 @@
 use axum::{
+    Router,
+    extract::{Path, State},
     http::header::CONTENT_TYPE,
     response::{IntoResponse, Response},
+    routing::get,
 };
 use dyndo_core::asset::Asset;
 use dyndo_core::track::cmaf::ResolvedCmafTrack;
 use dyndo_core::track::{CmafRepresentationError, ResolvedTrack};
 use opendal::Operator;
 
-use super::resolve_track;
+use super::options::Options;
+use super::{load_asset, resolve_track};
 use crate::error::ServerError;
+
+pub(super) trait SegmentRoute {
+    /// Registers the per-track segment route.
+    fn segment_route(self) -> Self;
+
+    /// Serves the requested initialization, media, text, or image segment.
+    async fn track_file(
+        op: State<Operator>,
+        path: Path<(String, String, String)>,
+    ) -> Result<Response, ServerError>;
+}
+
+impl SegmentRoute for Router<Operator> {
+    fn segment_route(self) -> Self {
+        self.route("/out/{options}/{track_id}/{file}", get(Self::track_file))
+    }
+
+    async fn track_file(
+        State(op): State<Operator>,
+        Path((encoded_options, track_id, file)): Path<(String, String, String)>,
+    ) -> Result<Response, ServerError> {
+        let not_found = || ServerError::NotFound(file.clone());
+        let (file_name, extension) = file.rsplit_once('.').ok_or_else(not_found)?;
+        let options = Options::parse(&encoded_options)?;
+        let asset = load_asset(&op, &options).await?;
+
+        match (file_name, extension) {
+            ("init", "mp4") => initialization(&op, &asset, &track_id).await,
+            (time, "m4s") => media(&op, &asset, &track_id, segment_time(time, &file)?).await,
+            (time, "vtt") => text(&op, &asset, &track_id, segment_time(time, &file)?).await,
+            (time, "jpg") => thumbnail(&op, &asset, &track_id, segment_time(time, &file)?).await,
+            _ => Err(not_found()),
+        }
+    }
+}
+
+fn segment_time(name: &str, file: &str) -> Result<u64, ServerError> {
+    name.parse()
+        .map_err(|_| ServerError::NotFound(file.to_string()))
+}
 
 pub(super) async fn initialization(
     op: &Operator,
