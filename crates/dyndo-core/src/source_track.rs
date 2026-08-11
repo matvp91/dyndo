@@ -1,13 +1,13 @@
 use relative_path::RelativePath;
 
 use super::cmaf_track::CmafTrack;
-use super::vtt_track::VttTrack;
+use super::web_vtt_track::WebVttTrack;
 
 /// A track backed by an asset source.
 #[derive(Clone)]
 pub enum SourceTrack {
     Cmaf(CmafTrack),
-    Vtt(VttTrack),
+    Vtt(WebVttTrack),
 }
 
 impl SourceTrack {

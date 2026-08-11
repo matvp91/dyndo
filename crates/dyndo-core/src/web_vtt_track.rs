@@ -8,14 +8,14 @@ use super::text::{Cue, Subtitle};
 
 /// A resolved raw WebVTT track.
 #[derive(Clone)]
-pub struct VttTrack {
+pub struct WebVttTrack {
     id: String,
     path: RelativePathBuf,
     kind: TextKind,
     subtitle: Subtitle,
 }
 
-impl VttTrack {
+impl WebVttTrack {
     pub(crate) fn new(
         id: String,
         path: RelativePathBuf,

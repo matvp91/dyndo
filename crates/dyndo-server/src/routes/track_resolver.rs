@@ -6,7 +6,7 @@ use dyndo_core::cmaf_track::CmafTrack;
 use dyndo_core::probe::probe_source_tracks;
 use dyndo_core::served_segment::ServedSegment;
 use dyndo_core::source_track::SourceTrack;
-use dyndo_core::vtt_track::VttTrack;
+use dyndo_core::web_vtt_track::WebVttTrack;
 use opendal::Operator;
 
 use crate::error::ServerError;
@@ -26,7 +26,7 @@ pub(super) struct LocatedSegment {
 pub(super) enum ResolvedTrack {
     Cmaf(CmafTrack),
     Vtt {
-        source: VttTrack,
+        source: WebVttTrack,
         packaged: CmafPackage,
     },
 }
@@ -39,7 +39,7 @@ impl ResolvedTrack {
         }
     }
 
-    pub(super) fn web_vtt(&self) -> Option<&VttTrack> {
+    pub(super) fn web_vtt(&self) -> Option<&WebVttTrack> {
         match self {
             Self::Vtt { source, .. } => Some(source),
             Self::Cmaf(_) => None,

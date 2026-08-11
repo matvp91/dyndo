@@ -20,5 +20,5 @@ pub mod thumbnail_track;
 pub mod thumbnail_track_descriptor;
 pub mod time;
 pub mod track_descriptor;
-pub mod vtt_track;
 pub mod vtt_track_descriptor;
+pub mod web_vtt_track;

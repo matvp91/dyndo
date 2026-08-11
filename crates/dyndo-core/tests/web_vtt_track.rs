@@ -13,7 +13,7 @@ fn memory_operator() -> Operator {
 }
 
 #[tokio::test]
-async fn vtt_track_packages_cmaf_on_demand_and_serves_vtt_directly() {
+async fn web_vtt_track_packages_cmaf_on_demand_and_serves_vtt_directly() {
     let operator = memory_operator();
     let path = RelativePath::new("subtitles/en.vtt");
     let options = SegmentOptions {
@@ -61,7 +61,7 @@ async fn vtt_track_packages_cmaf_on_demand_and_serves_vtt_directly() {
 }
 
 #[tokio::test]
-async fn vtt_track_reports_an_invalid_subtitle_document() {
+async fn web_vtt_track_reports_an_invalid_subtitle_document() {
     let operator = memory_operator();
     let path = RelativePath::new("subtitles/invalid.vtt");
     operator

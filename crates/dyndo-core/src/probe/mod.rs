@@ -15,7 +15,7 @@ use super::segment_options::SegmentOptions;
 use super::source_track::SourceTrack;
 use super::text::Subtitle;
 use super::track_descriptor::TrackDescriptor;
-use super::vtt_track::VttTrack;
+use super::web_vtt_track::WebVttTrack;
 
 mod box_reader;
 mod metadata;
@@ -91,7 +91,7 @@ impl CmafTrack {
     }
 }
 
-impl VttTrack {
+impl WebVttTrack {
     async fn probe(
         op: &Operator,
         path: &RelativePath,
@@ -129,7 +129,7 @@ impl SourceTrack {
     ) -> Result<Self, ProbeError> {
         match descriptor {
             Some(TrackDescriptor::Vtt(descriptor)) => {
-                VttTrack::probe(op, path, descriptor.id.clone(), descriptor.kind.clone())
+                WebVttTrack::probe(op, path, descriptor.id.clone(), descriptor.kind.clone())
                     .await
                     .map(Self::Vtt)
             }
@@ -142,7 +142,7 @@ impl SourceTrack {
                         language: undetermined_language(),
                         role: None,
                     };
-                    return VttTrack::probe(op, path, id, kind).await.map(Self::Vtt);
+                    return WebVttTrack::probe(op, path, id, kind).await.map(Self::Vtt);
                 }
                 let identity = descriptor
                     .map(|descriptor| {
