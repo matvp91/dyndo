@@ -1,0 +1,49 @@
+name: Set up FFmpeg for macOS
+description: Build the pinned, minimal FFmpeg used by Dyndo's macOS release artifacts.
+
+inputs:
+  version:
+    description: FFmpeg release version
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Restore FFmpeg
+      id: cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ runner.temp }}/dyndo-ffmpeg/${{ inputs.version }}
+        key: dyndo-ffmpeg-${{ runner.os }}-${{ runner.arch }}-${{ inputs.version }}-${{ hashFiles('scripts/configure-ffmpeg.sh') }}
+
+    - name: Build FFmpeg
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        FFMPEG_VERSION: ${{ inputs.version }}
+        FFMPEG_PREFIX: ${{ runner.temp }}/dyndo-ffmpeg/${{ inputs.version }}
+      run: |
+        if ! command -v nasm >/dev/null; then
+          HOMEBREW_NO_AUTO_UPDATE=1 brew install nasm
+        fi
+
+        source_dir="${RUNNER_TEMP}/ffmpeg-source"
+        mkdir "$source_dir"
+        curl --fail --location --retry 5 --retry-all-errors --retry-delay 2 \
+          "https://github.com/FFmpeg/FFmpeg/archive/refs/tags/n${FFMPEG_VERSION}.tar.gz" \
+          --output "${RUNNER_TEMP}/ffmpeg.tar.gz"
+        tar --extract --file "${RUNNER_TEMP}/ffmpeg.tar.gz" \
+          --strip-components=1 --directory "$source_dir"
+        cd "$source_dir"
+        bash "${GITHUB_WORKSPACE}/scripts/configure-ffmpeg.sh" "$FFMPEG_PREFIX" @rpath
+        make --jobs "$(sysctl -n hw.ncpu)"
+        make install
+
+    - name: Configure FFmpeg for Cargo
+      shell: bash
+      env:
+        FFMPEG_PREFIX: ${{ runner.temp }}/dyndo-ffmpeg/${{ inputs.version }}
+      run: |
+        echo "PKG_CONFIG_PATH=${FFMPEG_PREFIX}/lib/pkgconfig" >> "$GITHUB_ENV"
+        echo "FFMPEG_PKG_CONFIG_PATH=${FFMPEG_PREFIX}/lib/pkgconfig" >> "$GITHUB_ENV"
+        echo "DYLD_FALLBACK_LIBRARY_PATH=${FFMPEG_PREFIX}/lib${DYLD_FALLBACK_LIBRARY_PATH:+:${DYLD_FALLBACK_LIBRARY_PATH}}" >> "$GITHUB_ENV"

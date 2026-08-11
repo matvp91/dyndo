@@ -7,6 +7,7 @@ ARG FFMPEG_VERSION=8.0.3
 # ---- FFmpeg stage ----
 FROM debian:trixie-slim AS ffmpeg
 ARG FFMPEG_VERSION
+COPY scripts/configure-ffmpeg.sh /usr/local/bin/configure-dyndo-ffmpeg
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         build-essential \
@@ -22,28 +23,12 @@ RUN curl --fail --location --retry 5 --retry-all-errors --retry-delay 2 \
     && mkdir ffmpeg \
     && tar --extract --file ffmpeg.tar.gz --strip-components=1 --directory ffmpeg \
     && cd ffmpeg \
-    && ./configure \
-        --prefix=/opt/ffmpeg \
-        --disable-static \
-        --enable-shared \
-        --disable-programs \
-        --disable-doc \
-        --disable-debug \
-        --disable-autodetect \
-        --disable-everything \
-        --enable-avcodec \
-        --enable-avdevice \
-        --enable-avfilter \
-        --enable-avformat \
-        --enable-avutil \
-        --enable-swresample \
-        --enable-swscale \
-        --enable-demuxer=mov \
-        --enable-decoder=h264,hevc,av1 \
-        --enable-encoder=mjpeg \
-        --enable-parser=h264,hevc,av1 \
+    && /usr/local/bin/configure-dyndo-ffmpeg /opt/ffmpeg \
     && make --jobs "$(nproc)" \
-    && make install
+    && make install \
+    && install --directory /opt/ffmpeg/share/licenses/ffmpeg \
+    && install --mode=644 LICENSE.md COPYING.LGPLv2.1 COPYING.LGPLv3 \
+        /opt/ffmpeg/share/licenses/ffmpeg/
 
 # ---- build stage ----
 # Pin the exact rustc to match rust-toolchain.toml (FROM can't read that file,
@@ -113,12 +98,19 @@ COPY --from=schema /out/schema.json /schema.json
 # binary's GLIBC_* symbols (a bookworm runtime vs a trixie build fails at
 # startup with `GLIBC_2.38 not found`).
 FROM debian:trixie-slim AS runtime
+ARG FFMPEG_VERSION
+LABEL org.opencontainers.image.source="https://github.com/matvp91/dyndo" \
+      org.opencontainers.image.licenses="GPL-3.0-only AND LGPL-2.1-or-later" \
+      org.dyndo.ffmpeg.version="${FFMPEG_VERSION}" \
+      org.dyndo.ffmpeg.source="https://github.com/FFmpeg/FFmpeg/tree/n${FFMPEG_VERSION}"
 # rustls verifies S3's TLS certs against the system trust store; fs-only runs
 # never touch this. No libssl is needed (TLS is pure-Rust rustls).
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=ffmpeg /opt/ffmpeg/lib/ /usr/local/lib/
+COPY --from=ffmpeg /opt/ffmpeg/share/licenses/ffmpeg/ /usr/share/licenses/ffmpeg/
+COPY LICENSE /usr/share/licenses/dyndo/LICENSE
 RUN ldconfig
 # Run unprivileged.
 RUN useradd --system --uid 10001 dyndo

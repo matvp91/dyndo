@@ -11,6 +11,7 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
+  FFMPEG_VERSION: 8.0.3
 
 permissions:
   contents: write
@@ -67,8 +68,10 @@ jobs:
             target: x86_64-unknown-linux-gnu
           - os: macos-latest
             target: aarch64-apple-darwin
-          - os: macos-latest
+            ffmpeg_rpath: /opt/homebrew/opt/ffmpeg/lib
+          - os: macos-15-intel
             target: x86_64-apple-darwin
+            ffmpeg_rpath: /usr/local/opt/ffmpeg/lib
     steps:
       - uses: actions/checkout@v5
       - uses: docker/setup-buildx-action@v3
@@ -90,12 +93,19 @@ jobs:
           rustup toolchain install
           rustup target add ${{ matrix.target }}
           rustup show active-toolchain
+      - name: Set up pinned FFmpeg
+        if: runner.os == 'macOS'
+        uses: ./.github/actions/setup-macos-ffmpeg
+        with:
+          version: ${{ env.FFMPEG_VERSION }}
       - uses: Swatinem/rust-cache@v2
         if: runner.os == 'macOS'
         with:
           key: ${{ matrix.target }}
       - name: Build binaries
         if: runner.os == 'macOS'
+        env:
+          RUSTFLAGS: -C link-arg=-Wl,-rpath,${{ matrix.ffmpeg_rpath }}
         run: cargo build --release -p dyndo-cli -p dyndo-server --target ${{ matrix.target }}
       - name: Package tarballs
         run: |
@@ -110,8 +120,9 @@ jobs:
           for bin in dyndo dyndo-server; do
             stage="$(mktemp -d)"
             cp "${bindir}/${bin}" "${stage}/"
-            cp README.md "${stage}/"
-            tar -czf "dist/${bin}-v${version}-${target}.tar.gz" -C "${stage}" "${bin}" README.md
+            cp README.md LICENSE "${stage}/"
+            tar -czf "dist/${bin}-v${version}-${target}.tar.gz" \
+              -C "$stage" "$bin" README.md LICENSE
           done
       - uses: actions/upload-artifact@v7
         with:
