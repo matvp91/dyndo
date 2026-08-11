@@ -11,7 +11,6 @@ use super::reader::Reader;
 use super::segment_options::SegmentOptions;
 use super::track::Track;
 use super::track_descriptor::TrackDescriptor;
-use super::track_kind::TrackKind;
 
 mod box_reader;
 mod metadata;
@@ -52,7 +51,10 @@ impl Track {
         let probed_kind = build_kind(&boxes)?;
         let (id, kind) = match descriptor {
             Some(descriptor) => (descriptor.id.clone(), descriptor.kind.clone()),
-            None => (generate_id(&probed_kind, path), probed_kind),
+            None => (
+                Uuid::new_v5(&Uuid::NAMESPACE_URL, path.as_str().as_bytes()).to_string(),
+                probed_kind,
+            ),
         };
         let segments = build_segments(&boxes, &init_segment)?;
 
@@ -70,10 +72,4 @@ pub async fn probe_tracks(
     });
 
     try_join_all(probes).await
-}
-
-fn generate_id(kind: &TrackKind, path: &RelativePath) -> String {
-    let hash = Uuid::new_v5(&Uuid::NAMESPACE_URL, path.as_str().as_bytes());
-
-    format!("{}_{hash}", kind.content_type())
 }

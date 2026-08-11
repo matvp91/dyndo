@@ -5,7 +5,9 @@ use dyndo_core::segment::{InitSegment, Segment};
 use dyndo_core::segment_options::SegmentOptions;
 use dyndo_core::track::Track;
 use dyndo_core::track_kind::{AudioKind, TextKind, TrackKind, VideoKind};
-use dyndo_hls::{generate_master_playlist, generate_media_playlist, options::HlsOptions};
+use dyndo_hls::{
+    generate_image_playlist, generate_master_playlist, generate_media_playlist, options::HlsOptions,
+};
 use mp4_atom::{Audio, Avc1, Avcc, Mp4a};
 
 fn avc_codec() -> CodecConfig {
@@ -140,7 +142,13 @@ fn generated_plain_webvtt_renditions_match_the_golden_fixtures() {
 
 #[test]
 fn generated_packaged_wvtt_renditions_match_the_golden_fixtures() {
-    let (master, media) = generate(&rendition_tracks(), &HlsOptions { wvtt: true });
+    let (master, media) = generate(
+        &rendition_tracks(),
+        &HlsOptions {
+            wvtt: true,
+            ..HlsOptions::default()
+        },
+    );
 
     assert_eq!(
         (
@@ -156,4 +164,57 @@ fn generated_packaged_wvtt_renditions_match_the_golden_fixtures() {
             include_str!("fixtures/video-audio-text/wvtt/text-en.m3u8"),
         )
     );
+}
+
+#[test]
+fn generated_image_playlists_advertise_existing_thumbnail_sprites() {
+    let tracks = [video_track()];
+    let options = HlsOptions {
+        thumbnail_tile_size: 2,
+        thumbnail_step: 1_000,
+        ..HlsOptions::default()
+    };
+    let master = generate_master_playlist(&tracks, &SegmentOptions::default(), &options)
+        .unwrap()
+        .to_string();
+    let images = generate_image_playlist(&tracks[0], &options).unwrap();
+
+    assert!(master.contains(&format!(
+        "#EXT-X-IMAGE-STREAM-INF:BANDWIDTH=64,CODECS=\"jpeg\",RESOLUTION=8x8,URI=\"image_{}.m3u8\"",
+        tracks[0].id()
+    )));
+    assert_eq!(
+        images,
+        concat!(
+            "#EXTM3U\n",
+            "#EXT-X-VERSION:6\n",
+            "#EXT-X-TARGETDURATION:2\n",
+            "#EXT-X-PLAYLIST-TYPE:VOD\n",
+            "#EXT-X-IMAGES-ONLY\n",
+            "#EXT-X-TILES:RESOLUTION=8x8,LAYOUT=2x2,DURATION=1.000\n",
+            "#EXTINF:2.000,\n",
+            "video_video-main/0.jpg\n",
+            "#EXT-X-ENDLIST\n",
+        )
+    );
+}
+
+#[test]
+fn generated_image_playlist_shortens_the_final_sprite() {
+    let track = video_track();
+    let playlist = generate_image_playlist(
+        &track,
+        &HlsOptions {
+            thumbnail_tile_size: 2,
+            thumbnail_step: 400,
+            ..HlsOptions::default()
+        },
+    )
+    .unwrap();
+
+    assert!(playlist.contains(concat!(
+        "#EXT-X-TILES:RESOLUTION=8x8,LAYOUT=2x2,DURATION=0.400\n",
+        "#EXTINF:0.400,\n",
+        "video_video-main/1600.jpg\n",
+    )));
 }

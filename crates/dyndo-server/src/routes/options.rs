@@ -71,7 +71,11 @@ impl Options {
     }
 
     pub(super) fn hls_options(&self) -> dyndo_hls::options::HlsOptions {
-        dyndo_hls::options::HlsOptions { wvtt: self.wvtt }
+        dyndo_hls::options::HlsOptions {
+            thumbnail_tile_size: self.thumbnail_tile_size,
+            thumbnail_step: self.thumbnail_step,
+            wvtt: self.wvtt,
+        }
     }
 }
 
@@ -156,7 +160,11 @@ mod tests {
 
         assert_eq!(
             options.hls_options(),
-            dyndo_hls::options::HlsOptions { wvtt: true }
+            dyndo_hls::options::HlsOptions {
+                thumbnail_tile_size: 0,
+                thumbnail_step: 0,
+                wvtt: true,
+            }
         );
     }
 }

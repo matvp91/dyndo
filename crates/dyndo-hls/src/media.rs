@@ -65,9 +65,15 @@ fn build_segment(
             segment.unscaled_duration(),
             track.timescale(),
         ))
-        .uri(format!("{}/{start_time}.{extension}", track.id()));
+        .uri(format!(
+            "{}/{start_time}.{extension}",
+            crate::media_resource_name(track)
+        ));
     if first && !plain_vtt {
-        builder.map(ExtXMap::new(format!("{}/init.mp4", track.id())));
+        builder.map(ExtXMap::new(format!(
+            "{}/init.mp4",
+            crate::media_resource_name(track)
+        )));
     }
 
     Ok(builder.build()?)

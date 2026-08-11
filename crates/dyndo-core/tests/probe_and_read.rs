@@ -39,6 +39,7 @@ async fn video_probe_and_read_returns_the_indexed_portions_of_a_fragmented_mp4()
         track.kind(),
         TrackKind::Video(kind) if (kind.width, kind.height, kind.frame_rate.as_str()) == (16, 16, "4/1")
     ));
+    assert_eq!(track.id(), "76666358-6bba-5805-9a37-a18e055e9ea8");
     assert_eq!(track.codec().rfc6381(), "avc1.42c00a");
     assert_eq!(track.segments().len(), 1);
     assert_eq!(

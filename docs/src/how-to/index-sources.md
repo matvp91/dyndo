@@ -136,7 +136,7 @@ hand-edit:
 {
   "tracks": [
     {
-      "id": "video_6b745be5-2791-5d95-8ce5-8f8bde29e2fe",
+      "id": "6b745be5-2791-5d95-8ce5-8f8bde29e2fe",
       "path": "video_1080.mp4",
       "codec": "avc1.640028",
       "type": "video",

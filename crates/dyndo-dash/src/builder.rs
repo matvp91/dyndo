@@ -115,7 +115,7 @@ fn build_representation(track: &Track, segment_options: &SegmentOptions) -> Opti
     }
 
     let mut representation = Representation {
-        id: Some(track.id().to_string()),
+        id: Some(resource_name(track)),
         bandwidth: Some(ServedSegment::maximum_bitrate(&segments)),
         codecs: Some(track.codec().rfc6381()),
         SegmentTemplate: Some(build_segment_template(track, &segments)),
@@ -137,6 +137,10 @@ fn build_representation(track: &Track, segment_options: &SegmentOptions) -> Opti
     }
 
     Some(representation)
+}
+
+fn resource_name(track: &Track) -> String {
+    format!("{}_{}", track.kind().content_type(), track.id())
 }
 
 fn build_audio_channel_configuration(channels: u16) -> AudioChannelConfiguration {

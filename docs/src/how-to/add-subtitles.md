@@ -43,7 +43,7 @@ wrote asset.json (3 tracks)
 
 ```json
 {
-  "id": "text_61af48e7-44a0-5911-9cf3-abf5d1d9c70e",
+  "id": "61af48e7-44a0-5911-9cf3-abf5d1d9c70e",
   "path": "text_wvtt_nld.mp4",
   "codec": "wvtt",
   "type": "text",
@@ -62,7 +62,7 @@ dyndo index subtitles_nl.vtt,language=nld -o asset.json
 
 ```json
 {
-  "id": "text_5b9fbdae-2717-5f58-80ed-4f067605a5e6",
+  "id": "5b9fbdae-2717-5f58-80ed-4f067605a5e6",
   "path": "subtitles_nl.vtt",
   "codec": "wvtt",
   "type": "text",

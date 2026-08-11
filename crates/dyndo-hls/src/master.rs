@@ -88,8 +88,19 @@ pub(crate) fn build_playlist(
     builder
         .media(build_media_entries(tracks)?)
         .variant_streams(build_variant_streams(tracks, segment_options, &renditions)?)
+        .unknown_tags(image_streams(tracks, hls_options))
         .has_independent_segments(true);
     Ok(builder)
+}
+
+fn image_streams(tracks: &[Track], hls_options: &HlsOptions) -> Vec<Cow<'static, str>> {
+    tracks
+        .iter()
+        .find(|track| matches!(track.kind(), TrackKind::Video(_)))
+        .and_then(|track| crate::image::stream_inf(track, hls_options))
+        .map(Cow::Owned)
+        .into_iter()
+        .collect()
 }
 
 fn build_variant_streams(
@@ -130,7 +141,7 @@ fn build_variant_stream(
         .resolution((video.width as usize, video.height as usize));
 
     Ok(VariantStream::ExtXStreamInf {
-        uri: Cow::Owned(format!("{}.m3u8", track.id())),
+        uri: Cow::Owned(format!("{}.m3u8", crate::media_resource_name(track))),
         frame_rate: Some(frame_rate(&video.frame_rate)?),
         audio: renditions
             .has_audio
@@ -178,7 +189,7 @@ fn build_media_entry(
     let mut builder = ExtXMedia::builder();
     builder
         .media_type(media_type)
-        .uri(format!("{}.m3u8", track.id()))
+        .uri(format!("{}.m3u8", crate::media_resource_name(track)))
         .group_id(group_id)
         .language(language.to_string())
         .name(roles::name(language, role))

@@ -7,7 +7,7 @@ use dyndo_core::track_kind::TrackKind;
 const TIMESCALE: u64 = 1_000;
 const CONTENT_TYPE: &str = "image";
 const MIME_TYPE: &str = "image/jpeg";
-const REPRESENTATION_ID: &str = "thumbnails";
+const REPRESENTATION_ID: &str = "image_thumbnails";
 const TILE_SCHEME: &str = "http://dashif.org/guidelines/thumbnail_tile";
 const BITS_PER_PIXEL: u64 = 1;
 
@@ -51,7 +51,7 @@ pub(crate) fn build_adaptation_set(
                 ..Default::default()
             }],
             SegmentTemplate: Some(SegmentTemplate {
-                media: Some(format!("{}/$Time$.jpg", source.id())),
+                media: Some(format!("video_{}/$Time$.jpg", source.id())),
                 timescale: Some(TIMESCALE),
                 presentationTimeOffset: Some(0),
                 SegmentTimeline: Some(SegmentTimeline {

@@ -54,7 +54,7 @@ Each track is tagged by a `type` discriminator: `"video"`, `"audio"`, or
 | Field | Type | Description |
 |---|---|---|
 | `type` | string | Track kind: `video`, `audio`, or `text`. |
-| `id` | string | Representation id (see [Representation ids](#representation-ids)). Used verbatim as the representation name in every manifest and as the `<track-id>` component of every segment URL. |
+| `id` | string | Representation id (see [Representation ids](#representation-ids)). Combined with the track type when written as a representation name or segment URL. |
 | `path` | string | Source file path, relative to the descriptor's directory. |
 | `codec` | string | The track's [RFC 6381](https://datatracker.ietf.org/doc/html/rfc6381) codec string, probed from the source (e.g. `avc1.640028`, `mp4a.40.2`, `wvtt`). Written into the manifests as-is. |
 
@@ -72,7 +72,7 @@ Video tracks carry no `language` or `role`.
 
 ```json
 {
-  "id": "video_6b745be5-2791-5d95-8ce5-8f8bde29e2fe",
+  "id": "6b745be5-2791-5d95-8ce5-8f8bde29e2fe",
   "path": "video_1080.mp4",
   "codec": "avc1.640028",
   "type": "video",
@@ -93,7 +93,7 @@ Video tracks carry no `language` or `role`.
 
 ```json
 {
-  "id": "audio_e7f831b7-7992-5c5b-9b45-428b82d90704",
+  "id": "e7f831b7-7992-5c5b-9b45-428b82d90704",
   "path": "audio_nl.mp4",
   "codec": "mp4a.40.2",
   "type": "audio",
@@ -128,7 +128,7 @@ A CMAF `wvtt` track and a raw `.vtt` track:
 
 ```json
 {
-  "id": "text_3b519953-3963-56be-8c59-ae1cd0e6d5b4",
+  "id": "3b519953-3963-56be-8c59-ae1cd0e6d5b4",
   "path": "text_wvtt_eng.mp4",
   "codec": "wvtt",
   "type": "text",
@@ -139,7 +139,7 @@ A CMAF `wvtt` track and a raw `.vtt` track:
 
 ```json
 {
-  "id": "text_c9e251a7-4fd1-54f9-abc8-ca86598e1cc5",
+  "id": "c9e251a7-4fd1-54f9-abc8-ca86598e1cc5",
   "path": "subtitles_nl.vtt",
   "codec": "wvtt",
   "type": "text",
@@ -149,20 +149,19 @@ A CMAF `wvtt` track and a raw `.vtt` track:
 
 ## Representation ids
 
-An `id` is `<type>_<uuid>`, where `<type>` is `video`, `audio`, or `text` and
-`<uuid>` is a [UUID version 5](https://datatracker.ietf.org/doc/html/rfc4122#section-4.3)
+An `id` is a [UUID version 5](https://datatracker.ietf.org/doc/html/rfc4122#section-4.3)
 generated in the URL namespace from the track's source path **relative to the
 storage root**:
 
 ```text
-id = "<type>_" + uuidv5(NAMESPACE_URL, "<path from storage root to the source>")
+id = uuidv5(NAMESPACE_URL, "<path from storage root to the source>")
 ```
 
 | Source path | Resulting id |
 |---|---|
-| `video_1080.mp4` | `video_6b745be5-2791-5d95-8ce5-8f8bde29e2fe` |
-| `audio_nl.mp4` | `audio_e7f831b7-7992-5c5b-9b45-428b82d90704` |
-| `text_wvtt_eng.mp4` | `text_3b519953-3963-56be-8c59-ae1cd0e6d5b4` |
+| `video_1080.mp4` | `6b745be5-2791-5d95-8ce5-8f8bde29e2fe` |
+| `audio_nl.mp4` | `e7f831b7-7992-5c5b-9b45-428b82d90704` |
+| `text_wvtt_eng.mp4` | `3b519953-3963-56be-8c59-ae1cd0e6d5b4` |
 
 Two consequences follow from the id being a function of the path:
 
@@ -202,7 +201,7 @@ track:
 {
   "tracks": [
     {
-      "id": "video_6b745be5-2791-5d95-8ce5-8f8bde29e2fe",
+      "id": "6b745be5-2791-5d95-8ce5-8f8bde29e2fe",
       "path": "video_1080.mp4",
       "codec": "avc1.640028",
       "type": "video",
@@ -211,7 +210,7 @@ track:
       "frame_rate": "25/1"
     },
     {
-      "id": "video_0288719a-3994-58b3-ad97-57b9ebe4227d",
+      "id": "0288719a-3994-58b3-ad97-57b9ebe4227d",
       "path": "video_720.mp4",
       "codec": "avc1.64001f",
       "type": "video",
@@ -220,7 +219,7 @@ track:
       "frame_rate": "25/1"
     },
     {
-      "id": "audio_e7f831b7-7992-5c5b-9b45-428b82d90704",
+      "id": "e7f831b7-7992-5c5b-9b45-428b82d90704",
       "path": "audio_nl.mp4",
       "codec": "mp4a.40.2",
       "type": "audio",
@@ -230,7 +229,7 @@ track:
       "role": "main"
     },
     {
-      "id": "text_d1cb4d6f-074b-5a03-b627-265487b4c4ea",
+      "id": "d1cb4d6f-074b-5a03-b627-265487b4c4ea",
       "path": "text_wvtt_nld.mp4",
       "codec": "wvtt",
       "type": "text",

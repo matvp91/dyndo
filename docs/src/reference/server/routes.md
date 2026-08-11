@@ -244,15 +244,18 @@ configured storage backend.
 |---|---|---|
 | `index.mpd` | The DASH manifest (MPD). | `application/dash+xml` |
 | `master.m3u8` | The HLS multivariant playlist. | `application/vnd.apple.mpegurl` |
-| `<track-id>.m3u8` | One track's HLS media playlist. | `application/vnd.apple.mpegurl` |
-| `<track-id>/init.mp4` | A track's CMAF initialization segment. | `video/mp4`, `audio/mp4`, or `application/mp4` |
-| `<track-id>/<time>.m4s` | The media segment starting at presentation `<time>`. | `video/mp4`, `audio/mp4`, or `application/mp4` |
-| `<track-id>/<time>.vtt` | The same segment of a text track, as a WebVTT document. | `text/vtt` |
-| `<track-id>/<time>.jpg` | A JPEG thumbnail sprite advertised by the DASH manifest. | `image/jpeg` |
+| `<type>_<track-id>.m3u8` | One track's HLS media playlist. | `application/vnd.apple.mpegurl` |
+| `image_<track-id>.m3u8` | An HLS thumbnail image media playlist. | `application/vnd.apple.mpegurl` |
+| `<type>_<track-id>/init.mp4` | A track's CMAF initialization segment. | `video/mp4`, `audio/mp4`, or `application/mp4` |
+| `<type>_<track-id>/<time>.m4s` | The media segment starting at presentation `<time>`. | `video/mp4`, `audio/mp4`, or `application/mp4` |
+| `text_<track-id>/<time>.vtt` | The same segment of a text track, as a WebVTT document. | `text/vtt` |
+| `video_<track-id>/<time>.jpg` | A JPEG thumbnail sprite advertised by the DASH manifest. | `image/jpeg` |
 
 `<track-id>` is a track's `id` exactly as recorded in the descriptor (for
-example `video_6b745be5-2791-5d95-8ce5-8f8bde29e2fe`). Because manifests emit
-these same relative URLs, players never construct them by hand.
+example `6b745be5-2791-5d95-8ce5-8f8bde29e2fe`). Manifests prefix it with the
+track type (`video`, `audio`, or `text`) when addressing a track; HLS image
+playlists use the `image` prefix. Because manifests emit these same relative
+URLs, players never construct them by hand.
 
 A full set of requests for one asset:
 
@@ -266,18 +269,20 @@ A full set of requests for one asset:
 
 ### Thumbnail sprites
 
-Set both `thumbnail_tile_size` and `thumbnail_step` on a DASH request to add an image adaptation set. A tile size of `4` creates a 4-by-4 sprite, and a step of `1000` samples one frame per second:
+Set both `thumbnail_tile_size` and `thumbnail_step` on a DASH or HLS request to add thumbnail sprites. A tile size of `4` creates a 4-by-4 sprite, and a step of `1000` samples one frame per second:
 
 ```text
 /out/(asset:demo,tts:4,ts:1000)/index.mpd
+/out/(asset:demo,tts:4,ts:1000)/master.m3u8
 ```
 
-The MPD addresses each sprite as `<video-track-id>/<time>.jpg`. Use the same options prefix when requesting that URL. If either setting is zero, the MPD has no thumbnail adaptation set and `.jpg` requests return `404`.
+The MPD addresses each sprite as `video_<track-id>/<time>.jpg`. The HLS multivariant playlist advertises a corresponding `image_<track-id>.m3u8` image media playlist. Use the same options prefix when requesting either resource. If either setting is zero, neither manifest advertises thumbnails and `.jpg` requests return `404`.
 
 ## Segments are protocol-independent
 
 There is no `dash` or `hls` component anywhere in a segment path. Both manifests
-reference the same `<track-id>/init.mp4` and `<track-id>/<time>.m4s` URLs, and a
+reference the same `<type>_<track-id>/init.mp4` and
+`<type>_<track-id>/<time>.m4s` URLs, and a
 request for one returns the same CMAF bytes regardless of which manifest sent
 the player there. Only `index.mpd` and the `.m3u8` resources are
 protocol-specific. See
@@ -301,7 +306,7 @@ on the presentation's clock.
 
 Which one a player asks for is the manifest's business: DASH always references
 `.m4s`, while HLS references `.vtt` unless the request passes
-[`wvtt`](#output-options). `<track-id>/init.mp4` stays available for the track
+[`wvtt`](#output-options). `text_<track-id>/init.mp4` stays available for the track
 either way, and is simply not referenced by a WebVTT rendition — a WebVTT segment
 needs no initialization.
 
@@ -317,7 +322,7 @@ accumulating durations from the track's earliest presentation time until it
 finds an exact match.
 
 A track whose `sidx` reports an earliest presentation time of `0` therefore
-starts at `<track-id>/0.m4s`, and each subsequent segment starts at the running
+starts at `<type>_<track-id>/0.m4s`, and each subsequent segment starts at the running
 sum of the preceding durations. These are exactly the `$Time$` values in the
 DASH `SegmentTimeline` and the URIs in the HLS media playlists.
 

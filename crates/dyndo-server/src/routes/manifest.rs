@@ -68,3 +68,15 @@ pub(super) async fn hls_media(
     let playlist = dyndo_hls::generate_media_playlist(&track, &asset.segment_options, options)?;
     Ok(([(CONTENT_TYPE, HLS_CONTENT_TYPE)], playlist.to_string()).into_response())
 }
+
+pub(super) async fn hls_images(
+    op: &Operator,
+    asset: &AssetDescriptor,
+    options: &HlsOptions,
+    track_id: &str,
+) -> Result<Response, ServerError> {
+    let track = TrackResolver::new(op, asset).probe(track_id).await?;
+    let playlist = dyndo_hls::generate_image_playlist(&track, options)
+        .ok_or_else(|| ServerError::NotFound("image playlist".to_string()))?;
+    Ok(([(CONTENT_TYPE, HLS_CONTENT_TYPE)], playlist).into_response())
+}

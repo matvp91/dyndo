@@ -1,5 +1,6 @@
 //! HLS playlist generation for dyndo assets.
 
+mod image;
 mod master;
 mod media;
 pub mod options;
@@ -42,4 +43,17 @@ pub fn generate_media_playlist(
     hls_options: &HlsOptions,
 ) -> Result<MediaPlaylist<'static>, HlsError> {
     Ok(media::build_playlist(track, segment_options, hls_options)?.build()?)
+}
+
+/// Returns the image media playlist for a video track when thumbnails are enabled.
+pub fn generate_image_playlist(track: &Track, hls_options: &HlsOptions) -> Option<String> {
+    image::build_playlist(track, hls_options)
+}
+
+fn media_resource_name(track: &Track) -> String {
+    format!("{}_{}", track.kind().content_type(), track.id())
+}
+
+fn image_resource_name(track: &Track) -> String {
+    format!("image_{}", track.id())
 }
