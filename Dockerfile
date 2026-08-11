@@ -2,7 +2,7 @@
 
 # This is the single Linux FFmpeg build definition. All Linux CI verification,
 # release artifacts, and runtime images build from these stages.
-ARG FFMPEG_VERSION=8.0.3
+ARG FFMPEG_VERSION=7.1.5
 
 # ---- FFmpeg stage ----
 FROM debian:trixie-slim AS ffmpeg
@@ -30,6 +30,18 @@ RUN curl --fail --location --retry 5 --retry-all-errors --retry-delay 2 \
         --disable-doc \
         --disable-debug \
         --disable-autodetect \
+        --disable-everything \
+        --enable-avcodec \
+        --enable-avdevice \
+        --enable-avfilter \
+        --enable-avformat \
+        --enable-avutil \
+        --enable-swresample \
+        --enable-swscale \
+        --enable-demuxer=mov \
+        --enable-decoder=h264,hevc,av1 \
+        --enable-encoder=mjpeg \
+        --enable-parser=h264,hevc,av1 \
     && make --jobs "$(nproc)" \
     && make install
 
@@ -41,7 +53,9 @@ RUN curl --fail --location --retry 5 --retry-all-errors --retry-delay 2 \
 # silently drift.
 FROM rust:1.97.0-slim-trixie AS build
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends pkg-config \
+    && apt-get install -y --no-install-recommends \
+        libclang-dev \
+        pkg-config \
     && rm -rf /var/lib/apt/lists/* \
     && rustup component add clippy
 WORKDIR /src

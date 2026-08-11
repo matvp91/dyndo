@@ -68,9 +68,7 @@ jobs:
           fi
           echo "value=$version" >> "$GITHUB_OUTPUT"
       - uses: docker/setup-buildx-action@v3
-        if: steps.version.outputs.value != 'next'
       - name: Generate the asset schema in Docker
-        if: steps.version.outputs.value != 'next'
         uses: docker/build-push-action@v6
         with:
           context: .

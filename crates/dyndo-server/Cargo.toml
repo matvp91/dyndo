@@ -26,7 +26,7 @@ tower-http = { version = "0.6", features = ["cors"] }
 figment = { version = "0.10", features = ["yaml", "env"] }
 serde = { version = "1", features = ["derive"] }
 rison = "0.1"
-rsmpeg = "0.18"
+rsmpeg = { version = "0.18", default-features = false, features = ["ffmpeg7_1", "link_system_ffmpeg"] }
 thiserror = "2"
 winnow = "1"
 

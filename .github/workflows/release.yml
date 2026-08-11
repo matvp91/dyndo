@@ -177,7 +177,9 @@ jobs:
           platforms: ${{ matrix.platform }}
           provenance: false
           outputs: type=image,name=${{ secrets.DOCKERHUB_USERNAME }}/dyndo-server,push-by-digest=true,name-canonical=true,push=true
-          cache-from: type=gha,scope=dyndo-runtime-${{ matrix.platform }}
+          cache-from: |
+            type=gha,scope=dyndo-runtime-${{ matrix.platform }}
+            type=gha,scope=dyndo-linux
           cache-to: type=gha,mode=max,scope=dyndo-runtime-${{ matrix.platform }}
       - name: Export digest
         run: |
