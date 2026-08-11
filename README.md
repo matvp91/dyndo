@@ -5,19 +5,30 @@
 ![Rust](https://img.shields.io/badge/rust-2024-orange?logo=rust)
 ![Packaging](https://img.shields.io/badge/packaging-DASH%20%7C%20HLS%20%7C%20CMAF-blue)
 
-`dyndo` serves existing CMAF files without repackaging or duplicating their media bytes. A small JSON descriptor supplies the presentation metadata; manifests, segment views, subtitles, and thumbnails are produced when requested while the original media stays untouched.
-
-> [!NOTE] `dyndo` is in early development. Both DASH and HLS are implemented, served from the same CMAF sources.
+`dyndo` serves existing CMAF files without repackaging or duplicating their
+media bytes. A small JSON descriptor supplies the presentation metadata;
+manifests, segment views, subtitles, and thumbnails are produced when requested
+while the original media stays untouched.
 
 ## Why dyndo?
 
-- **Store media once.** Segment requests are byte-range reads from the original CMAF objects, not files copied into a second packaging layout.
-- **Change presentation metadata without rewriting media.** Correct a language, assign a role, change rendition order, or add a subtitle by editing or rebuilding a small descriptor.
-- **Keep URLs stable while metadata evolves.** Track IDs derive from source paths rather than mutable labels such as language and role.
-- **Create delivery variants at request time.** Filters, segment lengths, DASH periods, and HLS subtitle form can vary without producing another media library.
-- **Keep sources immutable.** The server only reads headers and requested byte ranges, which suits read-only filesystems and object storage.
-- **Keep indexing and delivery aligned.** The CLI writes the same compact descriptor that the server reads, so presentation metadata has one source of truth.
-- **Scale parsing with metadata, not file size.** dyndo derives its index from bounded header reads instead of scanning or loading complete media objects.
+- **Store media once.** Segment requests are byte-range reads from the original
+  CMAF objects, not files copied into a second packaging layout.
+- **Change presentation metadata without rewriting media.** Correct a language,
+  assign a role, change rendition order, or add a subtitle by editing or
+  rebuilding a small descriptor.
+- **Keep URLs stable while metadata evolves.** Track IDs derive from source
+  paths rather than mutable labels such as language and role.
+- **Create delivery variants at request time.** Filters, segment lengths, DASH
+  periods, and HLS subtitle form can vary without producing another media
+  library.
+- **Keep sources immutable.** The server only reads headers and requested byte
+  ranges, which suits read-only filesystems and object storage.
+- **Keep indexing and delivery aligned.** The CLI writes the same compact
+  descriptor that the server reads, so presentation metadata has one source of
+  truth.
+- **Scale parsing with metadata, not file size.** dyndo derives its index from
+  bounded header reads instead of scanning or loading complete media objects.
 
 ## 📖 Documentation
 
@@ -29,7 +40,9 @@ Full documentation lives at **<https://matvp91.github.io/dyndo/>**:
   — index sources, add subtitles, run the server, serve from S3.
 - **[Reference](https://matvp91.github.io/dyndo/reference/cli.html)** — the CLI,
   the server's routes and configuration, and the `asset.json` descriptor.
-- **[Explanation](https://matvp91.github.io/dyndo/explanation/thin-pointer.html)** — storage-efficient dynamic packaging, the thin-pointer design, and bounded-memory parsing.
+- **[Explanation](https://matvp91.github.io/dyndo/explanation/thin-pointer.html)**
+  — storage-efficient dynamic packaging, the thin-pointer design, and
+  bounded-memory parsing.
 
 ## 🚀 Install
 
@@ -78,7 +91,10 @@ docker run --rm -p 8080:8080 -e DYNDO_FS__ROOT=/assets \
 
 ## Project layout
 
-`dyndo` is a Cargo workspace of five crates — three libraries and two binaries — with a strictly one-way dependency direction. `dyndo-core` knows nothing about manifests; the two manifest crates know nothing about each other; neither library layer knows anything about CLI or HTTP concerns.
+`dyndo` is a Cargo workspace of five crates — three libraries and two binaries —
+with a strictly one-way dependency direction. `dyndo-core` knows nothing about
+manifests; the two manifest crates know nothing about each other; neither
+library layer knows anything about CLI or HTTP concerns.
 
 ```text
 binaries     dyndo-cli                    dyndo-server
@@ -88,15 +104,17 @@ manifests        │                    dyndo-dash  dyndo-hls
 core             └───────────────────── dyndo-core
 ```
 
-| Crate                                 | Kind                    | Responsibility                                                                                                                                                                                                            |
-| ------------------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`dyndo-core`](crates/dyndo-core)     | library                 | CMAF header parsing, track and segment models, byte-range reading, WebVTT packaging, and on-demand thumbnail generation. Reads storage through [OpenDAL](https://opendal.apache.org/).                                                     |
-| [`dyndo-dash`](crates/dyndo-dash)     | library                 | DASH MPD generation: adaptation-set grouping, segment templates and timelines, DASH role signalling.                                                                                                                      |
-| [`dyndo-hls`](crates/dyndo-hls)       | library                 | HLS playlist generation: the multivariant playlist, per-track media playlists, rendition groups and HLS role signalling.                                                                                                  |
-| [`dyndo-cli`](crates/dyndo-cli)       | binary (`dyndo`)        | Indexes sources into descriptors and extracts video frames as JPEG images.                                                                                                                                                 |
-| [`dyndo-server`](crates/dyndo-server) | binary (`dyndo-server`) | The dynamic packaging HTTP server, built on [Axum](https://github.com/tokio-rs/axum).                                                                                                                                     |
+| Crate                                 | Kind                    | Responsibility                                                                                                                                                                         |
+| ------------------------------------- | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`dyndo-core`](crates/dyndo-core)     | library                 | CMAF header parsing, track and segment models, byte-range reading, WebVTT packaging, and on-demand thumbnail generation. Reads storage through [OpenDAL](https://opendal.apache.org/). |
+| [`dyndo-dash`](crates/dyndo-dash)     | library                 | DASH MPD generation: adaptation-set grouping, segment templates and timelines, DASH role signalling.                                                                                   |
+| [`dyndo-hls`](crates/dyndo-hls)       | library                 | HLS playlist generation: the multivariant playlist, per-track media playlists, rendition groups and HLS role signalling.                                                               |
+| [`dyndo-cli`](crates/dyndo-cli)       | binary (`dyndo`)        | Indexes sources into descriptors and extracts video frames as JPEG images.                                                                                                             |
+| [`dyndo-server`](crates/dyndo-server) | binary (`dyndo-server`) | The dynamic packaging HTTP server, built on [Axum](https://github.com/tokio-rs/axum).                                                                                                  |
 
-`dyndo-server` combines the protocol builders with the storage and segment model in `dyndo-core`. The CLI works directly with `dyndo-core`; it does not generate manifests.
+`dyndo-server` combines the protocol builders with the storage and segment model
+in `dyndo-core`. The CLI works directly with `dyndo-core`; it does not generate
+manifests.
 
 ## Development
 
@@ -125,7 +143,12 @@ the version pinned as `MDBOOK_VERSION` in
 CI publishes. The guide's sources live in [`docs/`](docs/) and are published to
 GitHub Pages by the same workflow.
 
-Tests run against small, committed header-only CMAF fixtures in the [`dyndo-core`](crates/dyndo-core/tests/fixtures), [`dyndo-dash`](crates/dyndo-dash/tests/fixtures), and [`dyndo-hls`](crates/dyndo-hls/tests/fixtures) crates — just enough of each file (`ftyp` + `moov` + `sidx` + first `moof`) to exercise parsing end to end without shipping gigabytes of media.
+Tests run against small, committed header-only CMAF fixtures in the
+[`dyndo-core`](crates/dyndo-core/tests/fixtures),
+[`dyndo-dash`](crates/dyndo-dash/tests/fixtures), and
+[`dyndo-hls`](crates/dyndo-hls/tests/fixtures) crates — just enough of each file
+(`ftyp` + `moov` + `sidx` + first `moof`) to exercise parsing end to end without
+shipping gigabytes of media.
 
 ## Releasing
 
