@@ -34,7 +34,7 @@ jobs:
           echo "version=${cargo_version}" >> "$GITHUB_OUTPUT"
 
   checks:
-    name: checks (fmt + Linux verify)
+    name: checks
     needs: verify
     runs-on: ubuntu-latest
     steps:

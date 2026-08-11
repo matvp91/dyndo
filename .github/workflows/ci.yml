@@ -29,7 +29,7 @@ jobs:
       - run: make fmt-check
 
   verify:
-    name: verify (Linux)
+    name: verify
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -56,7 +56,7 @@ jobs:
           }
 
   build:
-    name: build (Linux runtime image)
+    name: build
     needs: verify
     runs-on: ubuntu-latest
     steps:
