@@ -1,21 +1,24 @@
 use relative_path::RelativePath;
 
-use self::cmaf::CmafTrack;
-use self::timed_text::TimedTextTrack;
+use self::cmaf::ResolvedCmafTrack;
+use self::timed_text::ResolvedTimedTextTrack;
 
 pub mod cmaf;
+mod config;
 pub mod kind;
-pub mod synthetic;
+pub mod thumbnail;
 pub mod timed_text;
+
+pub use config::{CmafTrack, SourceTrack, ThumbnailTrack, TimedTextTrack, Track};
 
 /// A track backed by an asset source.
 #[derive(Clone)]
-pub enum SourceTrack {
-    Cmaf(CmafTrack),
-    TimedText(TimedTextTrack),
+pub enum ResolvedSourceTrack {
+    Cmaf(ResolvedCmafTrack),
+    TimedText(ResolvedTimedTextTrack),
 }
 
-impl SourceTrack {
+impl ResolvedSourceTrack {
     pub fn id(&self) -> &str {
         match self {
             Self::Cmaf(track) => track.id(),
@@ -23,7 +26,7 @@ impl SourceTrack {
         }
     }
 
-    pub fn cmaf(&self) -> Option<&CmafTrack> {
+    pub fn cmaf(&self) -> Option<&ResolvedCmafTrack> {
         match self {
             Self::Cmaf(track) => Some(track),
             Self::TimedText(_) => None,

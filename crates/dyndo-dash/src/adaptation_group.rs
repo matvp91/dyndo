@@ -1,7 +1,7 @@
 use dyndo_core::role::Role;
 use dyndo_core::segment_options::SegmentOptions;
 use dyndo_core::served_segment::ServedSegment;
-use dyndo_core::track::cmaf::CmafTrack;
+use dyndo_core::track::cmaf::ResolvedCmafTrack;
 use dyndo_core::track::kind::CmafTrackKind;
 
 pub(super) struct AdaptationGroup<'a> {
@@ -10,11 +10,11 @@ pub(super) struct AdaptationGroup<'a> {
     mime_type: &'static str,
     language: Option<String>,
     role: Option<Role>,
-    members: Vec<&'a CmafTrack>,
+    members: Vec<&'a ResolvedCmafTrack>,
 }
 
 impl<'a> AdaptationGroup<'a> {
-    fn new(key: String, track: &'a CmafTrack) -> Self {
+    fn new(key: String, track: &'a ResolvedCmafTrack) -> Self {
         let language = track.kind().language().map(ToString::to_string);
         let role = track.kind().role();
 
@@ -28,7 +28,7 @@ impl<'a> AdaptationGroup<'a> {
         }
     }
 
-    pub(super) fn group(tracks: &'a [CmafTrack]) -> Vec<Self> {
+    pub(super) fn group(tracks: &'a [ResolvedCmafTrack]) -> Vec<Self> {
         let mut groups: Vec<Self> = Vec::new();
 
         for track in tracks {
@@ -59,7 +59,7 @@ impl<'a> AdaptationGroup<'a> {
         self.role
     }
 
-    pub(super) fn members(&self) -> &[&'a CmafTrack] {
+    pub(super) fn members(&self) -> &[&'a ResolvedCmafTrack] {
         &self.members
     }
 
@@ -79,7 +79,10 @@ impl<'a> AdaptationGroup<'a> {
     }
 }
 
-fn served_segments<'a>(track: &'a CmafTrack, options: &SegmentOptions) -> Vec<ServedSegment<'a>> {
+fn served_segments<'a>(
+    track: &'a ResolvedCmafTrack,
+    options: &SegmentOptions,
+) -> Vec<ServedSegment<'a>> {
     ServedSegment::group(track.segments(), options.min_length, &options.boundaries)
 }
 
@@ -87,7 +90,7 @@ fn segment_times(segment: &ServedSegment<'_>) -> (u64, u64) {
     (segment.unscaled_start_time(), segment.unscaled_end_time())
 }
 
-fn adaptation_set_key(track: &CmafTrack) -> String {
+fn adaptation_set_key(track: &ResolvedCmafTrack) -> String {
     let codec = track.codec().rfc6381();
     let sample_entry = sample_entry(&codec);
     match track.kind() {

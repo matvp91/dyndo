@@ -2,17 +2,17 @@ use axum::{
     http::header::CONTENT_TYPE,
     response::{IntoResponse, Response},
 };
-use dyndo_core::asset::AssetDescriptor;
+use dyndo_core::asset::Asset;
 use dyndo_core::reader::Reader;
-use dyndo_core::track::synthetic::resolve_synthetic_tracks;
+use dyndo_core::track::thumbnail::resolve_thumbnail_tracks;
 use opendal::Operator;
 
-use super::track_resolver::{LocatedSegment, ResolvedTrack, TrackResolver};
+use super::track_resolver::{LocatedSegment, RequestTrack, TrackResolver};
 use crate::error::ServerError;
 
 pub(super) async fn initialization(
     op: &Operator,
-    asset: &AssetDescriptor,
+    asset: &Asset,
     track_id: &str,
 ) -> Result<Response, ServerError> {
     let track = TrackResolver::new(op, asset).resolve(track_id).await?;
@@ -23,7 +23,7 @@ pub(super) async fn initialization(
 
 pub(super) async fn media(
     op: &Operator,
-    asset: &AssetDescriptor,
+    asset: &Asset,
     track_id: &str,
     time: u64,
 ) -> Result<Response, ServerError> {
@@ -39,7 +39,7 @@ pub(super) async fn media(
 
 pub(super) async fn text(
     op: &Operator,
-    asset: &AssetDescriptor,
+    asset: &Asset,
     track_id: &str,
     time: u64,
 ) -> Result<Response, ServerError> {
@@ -60,7 +60,7 @@ pub(super) async fn text(
 
 async fn read_range(
     op: &Operator,
-    track: &ResolvedTrack,
+    track: &RequestTrack,
     range: std::ops::Range<u64>,
 ) -> Result<bytes::Bytes, ServerError> {
     match track.packaged() {
@@ -74,17 +74,17 @@ async fn read_range(
 /// Serves the thumbnail sprite named by the DASH `$Time$` substitution.
 pub(super) async fn thumbnail(
     op: &Operator,
-    asset: &AssetDescriptor,
+    asset: &Asset,
     thumbnail_id: &str,
     time: u64,
 ) -> Result<Response, ServerError> {
-    let descriptor = asset
-        .find_synthetic_track_by_id(thumbnail_id)
+    let configured = asset
+        .find_thumbnail_track_by_id(thumbnail_id)
         .ok_or_else(|| ServerError::NotFound(format!("thumbnail {thumbnail_id}")))?;
     let source_tracks = TrackResolver::new(op, asset).probe_all().await?;
-    let thumbnail = resolve_synthetic_tracks(asset, &source_tracks)
+    let thumbnail = resolve_thumbnail_tracks(asset, &source_tracks)
         .into_iter()
-        .find(|track| track.id() == descriptor.id());
+        .find(|track| track.id() == configured.id);
     let Some(thumbnail) = thumbnail else {
         return Err(ServerError::NotFound("thumbnail".to_string()));
     };

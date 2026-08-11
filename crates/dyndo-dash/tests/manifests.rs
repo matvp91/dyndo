@@ -1,13 +1,13 @@
 use std::sync::Arc;
 
-use dyndo_core::asset::kind::{AudioKind, TextKind, ThumbnailKind, VideoKind};
-use dyndo_core::asset::track::SyntheticTrackDescriptor;
 use dyndo_core::codec::{AacCodec, AvcCodec, CodecConfig, WvttCodec};
 use dyndo_core::segment::{InitSegment, Segment};
 use dyndo_core::segment_options::SegmentOptions;
-use dyndo_core::track::cmaf::CmafTrack;
-use dyndo_core::track::kind::{CmafTrackKind, SyntheticTrackKind};
-use dyndo_core::track::synthetic::SyntheticTrack;
+use dyndo_core::track::ThumbnailTrack;
+use dyndo_core::track::cmaf::ResolvedCmafTrack;
+use dyndo_core::track::kind::CmafTrackKind;
+use dyndo_core::track::kind::{AudioKind, TextKind, VideoKind};
+use dyndo_core::track::thumbnail::ResolvedThumbnailTrack;
 use dyndo_dash::{generate_mpd, options::DashOptions};
 use mp4_atom::{Audio, Avc1, Avcc, Mp4a};
 
@@ -39,9 +39,14 @@ fn aac_codec() -> CodecConfig {
     CodecConfig::Aac(AacCodec::new(&codec))
 }
 
-fn track(id: &str, kind: CmafTrackKind, codec: CodecConfig, bytes_per_segment: u64) -> CmafTrack {
+fn track(
+    id: &str,
+    kind: CmafTrackKind,
+    codec: CodecConfig,
+    bytes_per_segment: u64,
+) -> ResolvedCmafTrack {
     let init = Arc::new(InitSegment::new(codec, 1_000, 0, 100));
-    CmafTrack::new(
+    ResolvedCmafTrack::new(
         id.into(),
         format!("{id}.mp4").into(),
         kind,
@@ -53,7 +58,7 @@ fn track(id: &str, kind: CmafTrackKind, codec: CodecConfig, bytes_per_segment: u
     )
 }
 
-fn video_track(id: &str, width: u32, height: u32, bytes_per_segment: u64) -> CmafTrack {
+fn video_track(id: &str, width: u32, height: u32, bytes_per_segment: u64) -> ResolvedCmafTrack {
     track(
         id,
         CmafTrackKind::Video(VideoKind {
@@ -67,28 +72,21 @@ fn video_track(id: &str, width: u32, height: u32, bytes_per_segment: u64) -> Cma
 }
 
 fn generate(
-    tracks: &[CmafTrack],
-    descriptors: &[SyntheticTrackDescriptor],
+    tracks: &[ResolvedCmafTrack],
+    thumbnail_tracks: &[ThumbnailTrack],
     segment_options: &SegmentOptions,
     dash_options: &DashOptions,
 ) -> String {
-    let thumbnails: Vec<_> = descriptors
+    let thumbnails: Vec<_> = thumbnail_tracks
         .iter()
-        .filter_map(|descriptor| SyntheticTrack::from_descriptor(descriptor, tracks))
+        .filter_map(|thumbnail| ResolvedThumbnailTrack::from_track(thumbnail, tracks))
         .collect();
     let mpd = generate_mpd(tracks, &thumbnails, segment_options, dash_options).unwrap();
     quick_xml::se::to_string(&mpd).unwrap()
 }
 
-fn thumbnail() -> SyntheticTrackDescriptor {
-    SyntheticTrackDescriptor {
-        id: "preview".to_string(),
-        kind: SyntheticTrackKind::Thumbnail(ThumbnailKind {
-            tile_size: 2,
-            width: 16,
-            step: 1_000,
-        }),
-    }
+fn thumbnail() -> ThumbnailTrack {
+    ThumbnailTrack::new("preview".to_string(), 2, 16, 1_000)
 }
 
 fn named_fixture(fixture: &str) -> String {

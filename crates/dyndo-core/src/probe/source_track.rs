@@ -3,35 +3,32 @@ use relative_path::RelativePath;
 use uuid::Uuid;
 
 use super::ProbeError;
-use crate::asset::kind::{TextKind, undetermined_language};
-use crate::asset::track::SourceTrackDescriptor;
+use crate::track::ResolvedSourceTrack;
 use crate::track::SourceTrack;
-use crate::track::cmaf::CmafTrack;
+use crate::track::cmaf::ResolvedCmafTrack;
 use crate::track::kind::TimedTextKind;
-use crate::track::timed_text::TimedTextTrack;
+use crate::track::kind::{TextKind, undetermined_language};
+use crate::track::timed_text::ResolvedTimedTextTrack;
 
-impl SourceTrack {
+impl ResolvedSourceTrack {
     pub async fn probe(
         op: &Operator,
         path: &RelativePath,
-        descriptor: Option<&SourceTrackDescriptor>,
+        track: Option<&SourceTrack>,
     ) -> Result<Self, ProbeError> {
-        match descriptor {
-            Some(SourceTrackDescriptor::TimedText(descriptor)) => match &descriptor.kind {
+        match track {
+            Some(SourceTrack::TimedText(track)) => match &track.kind {
                 TimedTextKind::WebVtt(kind) => {
-                    TimedTextTrack::probe_web_vtt(op, path, descriptor.id.clone(), kind.clone())
+                    ResolvedTimedTextTrack::probe_web_vtt(op, path, track.id.clone(), kind.clone())
                         .await
                         .map(Self::TimedText)
                 }
             },
-            Some(SourceTrackDescriptor::Cmaf(descriptor)) => CmafTrack::probe(
-                op,
-                path,
-                descriptor.id.clone(),
-                Some(descriptor.kind.clone()),
-            )
-            .await
-            .map(Self::Cmaf),
+            Some(SourceTrack::Cmaf(track)) => {
+                ResolvedCmafTrack::probe(op, path, track.id.clone(), Some(track.kind.clone()))
+                    .await
+                    .map(Self::Cmaf)
+            }
             None => {
                 let id = source_id(path);
                 if path.as_str().ends_with(".vtt") {
@@ -39,11 +36,13 @@ impl SourceTrack {
                         language: undetermined_language(),
                         role: None,
                     };
-                    return TimedTextTrack::probe_web_vtt(op, path, id, kind)
+                    return ResolvedTimedTextTrack::probe_web_vtt(op, path, id, kind)
                         .await
                         .map(Self::TimedText);
                 }
-                CmafTrack::probe(op, path, id, None).await.map(Self::Cmaf)
+                ResolvedCmafTrack::probe(op, path, id, None)
+                    .await
+                    .map(Self::Cmaf)
             }
         }
     }

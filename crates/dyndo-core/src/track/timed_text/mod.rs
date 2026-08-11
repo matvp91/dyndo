@@ -7,14 +7,14 @@ pub mod web_vtt;
 
 /// A source track represented by timed-text documents.
 #[derive(Clone)]
-pub struct TimedTextTrack {
+pub struct ResolvedTimedTextTrack {
     id: String,
     path: RelativePathBuf,
     kind: TimedTextKind,
     subtitle: Subtitle,
 }
 
-impl TimedTextTrack {
+impl ResolvedTimedTextTrack {
     pub(crate) fn new(
         id: String,
         path: RelativePathBuf,

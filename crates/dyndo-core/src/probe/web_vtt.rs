@@ -2,12 +2,12 @@ use opendal::Operator;
 use relative_path::RelativePath;
 
 use super::ProbeError;
-use crate::asset::kind::TextKind;
 use crate::text::Subtitle;
+use crate::track::kind::TextKind;
 use crate::track::kind::TimedTextKind;
-use crate::track::timed_text::TimedTextTrack;
+use crate::track::timed_text::ResolvedTimedTextTrack;
 
-impl TimedTextTrack {
+impl ResolvedTimedTextTrack {
     pub(super) async fn probe_web_vtt(
         op: &Operator,
         path: &RelativePath,

@@ -1,7 +1,7 @@
 use dash_mpd::{
     AdaptationSet, EssentialProperty, Representation, S, SegmentTemplate, SegmentTimeline,
 };
-use dyndo_core::track::synthetic::SyntheticTrack;
+use dyndo_core::track::thumbnail::ResolvedThumbnailTrack;
 
 const TIMESCALE: u64 = 1_000;
 const CONTENT_TYPE: &str = "image";
@@ -10,7 +10,7 @@ const TILE_SCHEME: &str = "http://dashif.org/guidelines/thumbnail_tile";
 
 pub(crate) fn build_adaptation_sets(
     id: usize,
-    thumbnails: &[SyntheticTrack],
+    thumbnails: &[ResolvedThumbnailTrack],
     presentation_duration: u32,
 ) -> Vec<AdaptationSet> {
     thumbnails
@@ -24,7 +24,7 @@ pub(crate) fn build_adaptation_sets(
 
 fn build_adaptation_set(
     id: usize,
-    thumbnail: &SyntheticTrack,
+    thumbnail: &ResolvedThumbnailTrack,
     presentation_duration: u32,
 ) -> AdaptationSet {
     let duration = thumbnail.sprite_duration();

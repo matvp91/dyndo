@@ -9,7 +9,7 @@ use rsmpeg::error::RsmpegError;
 use rsmpeg::{ffi, swscale::SwsContext};
 
 use crate::segment::Segment;
-use crate::track::cmaf::CmafTrack;
+use crate::track::cmaf::ResolvedCmafTrack;
 
 /// An error encountered while extracting a video frame.
 #[derive(Debug, thiserror::Error)]
@@ -29,12 +29,12 @@ pub enum FrameExtractorError {
 /// Extracts JPEG frames from a video track.
 pub struct FrameExtractor<'a> {
     op: &'a Operator,
-    track: &'a CmafTrack,
+    track: &'a ResolvedCmafTrack,
 }
 
 impl<'a> FrameExtractor<'a> {
     /// Creates a frame extractor for `track`.
-    pub fn new(op: &'a Operator, track: &'a CmafTrack) -> Self {
+    pub fn new(op: &'a Operator, track: &'a ResolvedCmafTrack) -> Self {
         Self { op, track }
     }
 

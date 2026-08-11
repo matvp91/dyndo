@@ -1,13 +1,13 @@
 use std::sync::Arc;
 
-use dyndo_core::asset::kind::{AudioKind, TextKind, ThumbnailKind, VideoKind};
-use dyndo_core::asset::track::SyntheticTrackDescriptor;
 use dyndo_core::codec::{AacCodec, AvcCodec, CodecConfig, WvttCodec};
 use dyndo_core::segment::{InitSegment, Segment};
 use dyndo_core::segment_options::SegmentOptions;
-use dyndo_core::track::cmaf::CmafTrack;
-use dyndo_core::track::kind::{CmafTrackKind, SyntheticTrackKind};
-use dyndo_core::track::synthetic::SyntheticTrack;
+use dyndo_core::track::ThumbnailTrack;
+use dyndo_core::track::cmaf::ResolvedCmafTrack;
+use dyndo_core::track::kind::CmafTrackKind;
+use dyndo_core::track::kind::{AudioKind, TextKind, VideoKind};
+use dyndo_core::track::thumbnail::ResolvedThumbnailTrack;
 use dyndo_hls::{
     generate_image_playlist, generate_master_playlist, generate_media_playlist, options::HlsOptions,
 };
@@ -41,9 +41,14 @@ fn aac_codec() -> CodecConfig {
     CodecConfig::Aac(AacCodec::new(&codec))
 }
 
-fn track(id: &str, kind: CmafTrackKind, codec: CodecConfig, bytes_per_segment: u64) -> CmafTrack {
+fn track(
+    id: &str,
+    kind: CmafTrackKind,
+    codec: CodecConfig,
+    bytes_per_segment: u64,
+) -> ResolvedCmafTrack {
     let init = Arc::new(InitSegment::new(codec, 1_000, 0, 100));
-    CmafTrack::new(
+    ResolvedCmafTrack::new(
         id.into(),
         format!("{id}.mp4").into(),
         kind,
@@ -55,7 +60,7 @@ fn track(id: &str, kind: CmafTrackKind, codec: CodecConfig, bytes_per_segment: u
     )
 }
 
-fn video_track() -> CmafTrack {
+fn video_track() -> ResolvedCmafTrack {
     track(
         "video-main",
         CmafTrackKind::Video(VideoKind {
@@ -68,7 +73,7 @@ fn video_track() -> CmafTrack {
     )
 }
 
-fn rendition_tracks() -> Vec<CmafTrack> {
+fn rendition_tracks() -> Vec<ResolvedCmafTrack> {
     vec![
         video_track(),
         track(
@@ -94,7 +99,7 @@ fn rendition_tracks() -> Vec<CmafTrack> {
     ]
 }
 
-fn generate(tracks: &[CmafTrack], hls_options: &HlsOptions) -> (String, Vec<String>) {
+fn generate(tracks: &[ResolvedCmafTrack], hls_options: &HlsOptions) -> (String, Vec<String>) {
     let segment_options = SegmentOptions::default();
     let master = generate_master_playlist(tracks, &[], &segment_options, hls_options).unwrap();
     let media = tracks
@@ -104,15 +109,8 @@ fn generate(tracks: &[CmafTrack], hls_options: &HlsOptions) -> (String, Vec<Stri
     (master, media)
 }
 
-fn thumbnail(step: u32) -> SyntheticTrackDescriptor {
-    SyntheticTrackDescriptor {
-        id: "preview".to_string(),
-        kind: SyntheticTrackKind::Thumbnail(ThumbnailKind {
-            tile_size: 2,
-            width: 16,
-            step,
-        }),
-    }
+fn thumbnail(step: u32) -> ThumbnailTrack {
+    ThumbnailTrack::new("preview".to_string(), 2, 16, step)
 }
 
 #[test]
@@ -171,13 +169,10 @@ fn generated_packaged_wvtt_renditions_match_the_golden_fixtures() {
 #[test]
 fn generated_image_playlists_advertise_existing_thumbnail_sprites() {
     let tracks = [video_track()];
-    let descriptor = thumbnail(1_000);
-    let preview = SyntheticTrack::from_descriptor(&descriptor, &tracks).unwrap();
-    let alternate_descriptor = SyntheticTrackDescriptor {
-        id: "alternate".to_string(),
-        ..thumbnail(500)
-    };
-    let alternate = SyntheticTrack::from_descriptor(&alternate_descriptor, &tracks).unwrap();
+    let configured = thumbnail(1_000);
+    let preview = ResolvedThumbnailTrack::from_track(&configured, &tracks).unwrap();
+    let alternate = ThumbnailTrack::new("alternate".to_string(), 2, 16, 500);
+    let alternate = ResolvedThumbnailTrack::from_track(&alternate, &tracks).unwrap();
     let master = generate_master_playlist(
         &tracks,
         &[preview, alternate],
@@ -185,7 +180,7 @@ fn generated_image_playlists_advertise_existing_thumbnail_sprites() {
         &HlsOptions::default(),
     )
     .unwrap();
-    let thumbnail = SyntheticTrack::from_descriptor(&descriptor, &tracks).unwrap();
+    let thumbnail = ResolvedThumbnailTrack::from_track(&configured, &tracks).unwrap();
     let images = generate_image_playlist(&thumbnail).unwrap();
 
     assert!(master.contains(
@@ -213,9 +208,9 @@ fn generated_image_playlists_advertise_existing_thumbnail_sprites() {
 #[test]
 fn generated_image_playlist_shortens_the_final_sprite() {
     let track = video_track();
-    let descriptor = thumbnail(400);
+    let configured = thumbnail(400);
     let thumbnail =
-        SyntheticTrack::from_descriptor(&descriptor, std::slice::from_ref(&track)).unwrap();
+        ResolvedThumbnailTrack::from_track(&configured, std::slice::from_ref(&track)).unwrap();
     let playlist = generate_image_playlist(&thumbnail).unwrap();
 
     assert!(playlist.contains(concat!(

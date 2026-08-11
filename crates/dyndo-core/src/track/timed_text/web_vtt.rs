@@ -4,10 +4,10 @@ use crate::packaging::PackageError;
 use crate::probe::ProbeError;
 use crate::segment_options::SegmentOptions;
 use crate::text::{Cue, Subtitle};
-use crate::track::cmaf::CmafTrack;
+use crate::track::cmaf::ResolvedCmafTrack;
 use crate::track::cmaf::package::CmafPackage;
 use crate::track::kind::CmafTrackKind;
-use crate::track::timed_text::TimedTextTrack;
+use crate::track::timed_text::ResolvedTimedTextTrack;
 
 #[derive(Debug, thiserror::Error)]
 pub enum TimedTextPackageError {
@@ -17,7 +17,7 @@ pub enum TimedTextPackageError {
     Cmaf(#[from] ProbeError),
 }
 
-impl TimedTextTrack {
+impl ResolvedTimedTextTrack {
     pub(crate) fn package_bytes(&self, options: &SegmentOptions) -> Result<Bytes, PackageError> {
         self.subtitle
             .to_wvtt(options.text_length, &options.boundaries)
@@ -30,7 +30,7 @@ impl TimedTextTrack {
         options: &SegmentOptions,
     ) -> Result<CmafPackage, TimedTextPackageError> {
         let bytes = self.package_bytes(options)?;
-        let cmaf = CmafTrack::from_bytes(
+        let cmaf = ResolvedCmafTrack::from_bytes(
             bytes.clone(),
             self.path(),
             self.id().to_string(),

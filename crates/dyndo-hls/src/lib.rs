@@ -9,8 +9,8 @@ mod roles;
 use std::io;
 
 use dyndo_core::segment_options::SegmentOptions;
-use dyndo_core::track::cmaf::CmafTrack;
-use dyndo_core::track::synthetic::SyntheticTrack;
+use dyndo_core::track::cmaf::ResolvedCmafTrack;
+use dyndo_core::track::thumbnail::ResolvedThumbnailTrack;
 use options::HlsOptions;
 
 #[derive(Debug, thiserror::Error)]
@@ -29,8 +29,8 @@ pub enum HlsError {
 ///
 /// Returns a [`HlsError`] when the resulting playlist is invalid.
 pub fn generate_master_playlist(
-    tracks: &[CmafTrack],
-    thumbnails: &[SyntheticTrack],
+    tracks: &[ResolvedCmafTrack],
+    thumbnails: &[ResolvedThumbnailTrack],
     segment_options: &SegmentOptions,
     hls_options: &HlsOptions,
 ) -> Result<String, HlsError> {
@@ -44,7 +44,7 @@ pub fn generate_master_playlist(
 ///
 /// Returns a [`HlsError`] when the resulting playlist is invalid.
 pub fn generate_media_playlist(
-    track: &CmafTrack,
+    track: &ResolvedCmafTrack,
     segment_options: &SegmentOptions,
     hls_options: &HlsOptions,
 ) -> Result<String, HlsError> {
@@ -53,7 +53,7 @@ pub fn generate_media_playlist(
 }
 
 /// Generates the image media playlist for one thumbnail track.
-pub fn generate_image_playlist(thumbnail: &SyntheticTrack) -> Result<String, HlsError> {
+pub fn generate_image_playlist(thumbnail: &ResolvedThumbnailTrack) -> Result<String, HlsError> {
     let playlist = media::build_image_playlist(thumbnail);
     serialize(|output| playlist.write_to(output))
 }
@@ -64,10 +64,10 @@ fn serialize(write: impl FnOnce(&mut Vec<u8>) -> io::Result<()>) -> Result<Strin
     Ok(String::from_utf8(output)?)
 }
 
-fn media_resource_name(track: &CmafTrack) -> String {
+fn media_resource_name(track: &ResolvedCmafTrack) -> String {
     format!("{}_{}", track.kind().content_type(), track.id())
 }
 
-fn image_resource_name(thumbnail: &SyntheticTrack) -> String {
+fn image_resource_name(thumbnail: &ResolvedThumbnailTrack) -> String {
     format!("image_{}", thumbnail.id())
 }

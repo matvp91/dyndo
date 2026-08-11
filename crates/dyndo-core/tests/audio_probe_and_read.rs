@@ -1,7 +1,7 @@
 use std::ops::Range;
 
 use dyndo_core::reader::Reader;
-use dyndo_core::track::SourceTrack;
+use dyndo_core::track::ResolvedSourceTrack;
 use dyndo_core::track::kind::CmafTrackKind;
 use opendal::{Operator, services::Memory};
 use relative_path::RelativePath;
@@ -24,7 +24,9 @@ async fn aac_probe_and_read_remains_a_small_secondary_media_smoke_test() {
     let path = RelativePath::new("audio.mp4");
     operator.write(path.as_str(), AUDIO_FIXTURE).await.unwrap();
 
-    let track = SourceTrack::probe(&operator, path, None).await.unwrap();
+    let track = ResolvedSourceTrack::probe(&operator, path, None)
+        .await
+        .unwrap();
     let track = track.cmaf().unwrap();
     let reader = Reader::new(&operator);
     let media = reader

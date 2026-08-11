@@ -6,10 +6,10 @@ use super::ProbeError;
 use super::box_reader;
 use super::metadata::{build_codec, build_kind};
 use super::segment_index::{build_init_segment, build_segments};
-use crate::track::cmaf::CmafTrack;
+use crate::track::cmaf::ResolvedCmafTrack;
 use crate::track::kind::CmafTrackKind;
 
-impl CmafTrack {
+impl ResolvedCmafTrack {
     pub(super) async fn probe(
         op: &Operator,
         path: &RelativePath,

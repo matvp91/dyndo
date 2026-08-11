@@ -1,8 +1,36 @@
 use language_tags::LanguageTag;
 use serde::{Deserialize, Serialize};
 
-use crate::asset::kind::{AudioKind, TextKind, ThumbnailKind, VideoKind};
 use crate::role::Role;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct VideoKind {
+    pub width: u32,
+    pub height: u32,
+    pub frame_rate: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AudioKind {
+    pub sample_rate: u32,
+    pub channels: u16,
+    #[serde(default = "undetermined_language")]
+    pub language: LanguageTag,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub role: Option<Role>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TextKind {
+    #[serde(default = "undetermined_language")]
+    pub language: LanguageTag,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub role: Option<Role>,
+}
+
+pub(crate) fn undetermined_language() -> LanguageTag {
+    "und".parse().expect("und is a well-formed language tag")
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
@@ -34,7 +62,7 @@ impl TimedTextKind {
         }
     }
 
-    /// Returns the descriptor type for this timed-text format.
+    /// Returns the serialized type for this timed-text format.
     pub fn asset_type(&self) -> &'static str {
         match self {
             Self::WebVtt(_) => "webvtt",
@@ -45,13 +73,6 @@ impl TimedTextKind {
     pub fn is_web_vtt(&self) -> bool {
         matches!(self, Self::WebVtt(_))
     }
-}
-
-/// The output type of a synthetic track.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "lowercase")]
-pub enum SyntheticTrackKind {
-    Thumbnail(ThumbnailKind),
 }
 
 impl CmafTrackKind {
@@ -114,22 +135,6 @@ impl CmafTrackKind {
             Self::Video(_) => None,
             Self::Audio(kind) => Some((&mut kind.language, &mut kind.role)),
             Self::Text(kind) => Some((&mut kind.language, &mut kind.role)),
-        }
-    }
-}
-
-impl SyntheticTrackKind {
-    /// Returns the thumbnail configuration when this is a thumbnail track.
-    pub fn thumbnail(&self) -> Option<&ThumbnailKind> {
-        match self {
-            Self::Thumbnail(kind) => Some(kind),
-        }
-    }
-
-    /// Returns the descriptor type for this synthetic output.
-    pub fn asset_type(&self) -> &'static str {
-        match self {
-            Self::Thumbnail(_) => "thumbnail",
         }
     }
 }

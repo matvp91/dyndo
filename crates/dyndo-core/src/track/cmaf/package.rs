@@ -2,24 +2,24 @@ use std::ops::Range;
 
 use bytes::Bytes;
 
-use super::CmafTrack;
+use super::ResolvedCmafTrack;
 
 /// A temporary in-memory CMAF representation of a source track.
 pub struct CmafPackage {
-    cmaf: CmafTrack,
+    cmaf: ResolvedCmafTrack,
     bytes: Bytes,
 }
 
 impl CmafPackage {
-    pub(crate) fn new(cmaf: CmafTrack, bytes: Bytes) -> Self {
+    pub(crate) fn new(cmaf: ResolvedCmafTrack, bytes: Bytes) -> Self {
         Self { cmaf, bytes }
     }
 
-    pub fn cmaf(&self) -> &CmafTrack {
+    pub fn cmaf(&self) -> &ResolvedCmafTrack {
         &self.cmaf
     }
 
-    pub fn into_cmaf(self) -> CmafTrack {
+    pub fn into_cmaf(self) -> ResolvedCmafTrack {
         self.cmaf
     }
 

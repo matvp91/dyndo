@@ -2,41 +2,40 @@ use language_tags::LanguageTag;
 use relative_path::{RelativePath, RelativePathBuf};
 use serde::{Deserialize, Serialize};
 
-use super::kind::{AudioKind, VideoKind};
+use super::ResolvedSourceTrack;
+use super::kind::{AudioKind, CmafTrackKind, TimedTextKind, VideoKind};
 use crate::role::Role;
-use crate::track::SourceTrack;
-use crate::track::kind::{CmafTrackKind, SyntheticTrackKind, TimedTextKind};
 
-/// A CMAF source-track configuration in an asset descriptor.
+/// A CMAF track stored in an asset.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct CmafTrackDescriptor {
+pub struct CmafTrack {
     pub id: String,
-    /// Path relative to the asset descriptor.
+    /// Path relative to the asset file.
     pub(super) path: RelativePathBuf,
     pub codec: String,
     #[serde(flatten)]
     pub kind: CmafTrackKind,
 }
 
-/// A timed-text source-track configuration in an asset descriptor.
+/// A timed-text track stored in an asset.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TimedTextTrackDescriptor {
+pub struct TimedTextTrack {
     pub id: String,
-    /// Path relative to the asset descriptor.
+    /// Path relative to the asset file.
     pub(super) path: RelativePathBuf,
     #[serde(flatten)]
     pub kind: TimedTextKind,
 }
 
-/// A source-track configuration in an asset descriptor.
+/// A track backed by a file stored with an asset.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
-pub enum SourceTrackDescriptor {
-    Cmaf(CmafTrackDescriptor),
-    TimedText(TimedTextTrackDescriptor),
+pub enum SourceTrack {
+    Cmaf(CmafTrack),
+    TimedText(TimedTextTrack),
 }
 
-impl SourceTrackDescriptor {
+impl SourceTrack {
     pub fn id(&self) -> &str {
         match self {
             Self::Cmaf(track) => &track.id,
@@ -51,16 +50,16 @@ impl SourceTrackDescriptor {
         }
     }
 
-    pub fn cmaf_kind(&self) -> Option<&CmafTrackKind> {
+    pub fn codec(&self) -> Option<&str> {
         match self {
-            Self::Cmaf(track) => Some(&track.kind),
+            Self::Cmaf(track) => Some(&track.codec),
             Self::TimedText(_) => None,
         }
     }
 
-    pub fn codec(&self) -> Option<&str> {
+    pub fn cmaf_kind(&self) -> Option<&CmafTrackKind> {
         match self {
-            Self::Cmaf(track) => Some(&track.codec),
+            Self::Cmaf(track) => Some(&track.kind),
             Self::TimedText(_) => None,
         }
     }
@@ -110,14 +109,14 @@ impl SourceTrackDescriptor {
         }
     }
 
-    pub(super) fn from_source_track(track: &SourceTrack, path: RelativePathBuf) -> Self {
+    pub(crate) fn from_resolved(track: &ResolvedSourceTrack, path: RelativePathBuf) -> Self {
         match track {
-            SourceTrack::TimedText(track) => Self::TimedText(TimedTextTrackDescriptor {
+            ResolvedSourceTrack::TimedText(track) => Self::TimedText(TimedTextTrack {
                 id: track.id().to_string(),
                 path,
                 kind: track.kind().clone(),
             }),
-            SourceTrack::Cmaf(track) => Self::Cmaf(CmafTrackDescriptor {
+            ResolvedSourceTrack::Cmaf(track) => Self::Cmaf(CmafTrack {
                 id: track.id().to_string(),
                 path,
                 codec: track.codec().rfc6381(),
@@ -127,70 +126,80 @@ impl SourceTrackDescriptor {
     }
 }
 
-/// A synthetic-track configuration in an asset descriptor.
+/// A thumbnail track generated from source video when requested.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SyntheticTrackDescriptor {
-    /// Identifier used to address the synthetic track.
+pub struct ThumbnailTrack {
+    /// Identifier used to address the thumbnail track.
     pub id: String,
-    #[serde(flatten)]
-    pub kind: SyntheticTrackKind,
+    #[serde(rename = "type")]
+    track_type: ThumbnailType,
+    /// Thumbnails per sprite row and column.
+    pub tile_size: u32,
+    /// Width of the complete sprite image, in pixels.
+    pub width: u32,
+    /// Milliseconds between adjacent thumbnails.
+    pub step: u32,
 }
 
-impl SyntheticTrackDescriptor {
-    pub fn id(&self) -> &str {
-        &self.id
-    }
-
-    pub fn asset_type(&self) -> &'static str {
-        self.kind.asset_type()
-    }
-
-    pub fn thumbnail(&self) -> Option<&super::kind::ThumbnailKind> {
-        self.kind.thumbnail()
+impl ThumbnailTrack {
+    pub fn new(id: String, tile_size: u32, width: u32, step: u32) -> Self {
+        Self {
+            id,
+            track_type: ThumbnailType::Thumbnail,
+            tile_size,
+            width,
+            step,
+        }
     }
 }
 
-/// A track configuration in an asset descriptor.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum ThumbnailType {
+    Thumbnail,
+}
+
+/// A track stored in an asset.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
-pub enum TrackDescriptor {
-    Source(SourceTrackDescriptor),
-    Synthetic(SyntheticTrackDescriptor),
+pub enum Track {
+    Source(SourceTrack),
+    Thumbnail(ThumbnailTrack),
 }
 
-impl TrackDescriptor {
+impl Track {
     pub fn id(&self) -> &str {
         match self {
             Self::Source(track) => track.id(),
-            Self::Synthetic(track) => track.id(),
+            Self::Thumbnail(track) => &track.id,
         }
     }
 
     pub fn asset_type(&self) -> &'static str {
         match self {
             Self::Source(track) => track.asset_type(),
-            Self::Synthetic(track) => track.asset_type(),
+            Self::Thumbnail(_) => "thumbnail",
         }
     }
 
-    pub fn source(&self) -> Option<&SourceTrackDescriptor> {
+    pub fn source(&self) -> Option<&SourceTrack> {
         match self {
             Self::Source(track) => Some(track),
-            Self::Synthetic(_) => None,
+            Self::Thumbnail(_) => None,
         }
     }
 
-    pub fn source_mut(&mut self) -> Option<&mut SourceTrackDescriptor> {
+    pub fn source_mut(&mut self) -> Option<&mut SourceTrack> {
         match self {
             Self::Source(track) => Some(track),
-            Self::Synthetic(_) => None,
+            Self::Thumbnail(_) => None,
         }
     }
 
-    pub fn synthetic(&self) -> Option<&SyntheticTrackDescriptor> {
+    pub fn thumbnail(&self) -> Option<&ThumbnailTrack> {
         match self {
             Self::Source(_) => None,
-            Self::Synthetic(track) => Some(track),
+            Self::Thumbnail(track) => Some(track),
         }
     }
 }

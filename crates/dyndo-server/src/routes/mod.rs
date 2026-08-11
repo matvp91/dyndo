@@ -11,7 +11,7 @@ use axum::{
     response::Response,
     routing::get,
 };
-use dyndo_core::asset::{AssetDescriptor, AssetDescriptorError};
+use dyndo_core::asset::{Asset, AssetError};
 use opendal::Operator;
 use serde::Deserialize;
 use tower_http::cors::{Any, CorsLayer};
@@ -27,8 +27,8 @@ struct ManifestQuery {
     filter: Option<Filter>,
 }
 
-async fn load_asset(op: &Operator, options: &Options) -> Result<AssetDescriptor, ServerError> {
-    let mut asset = AssetDescriptor::read(op, &format!("{}.json", options.asset()))
+async fn load_asset(op: &Operator, options: &Options) -> Result<Asset, ServerError> {
+    let mut asset = Asset::read(op, &format!("{}.json", options.asset()))
         .await
         .map_err(|error| asset_error(options.asset(), error))?;
     options.apply_to(&mut asset);
@@ -36,9 +36,9 @@ async fn load_asset(op: &Operator, options: &Options) -> Result<AssetDescriptor,
     Ok(asset)
 }
 
-fn asset_error(asset: &str, error: AssetDescriptorError) -> ServerError {
+fn asset_error(asset: &str, error: AssetError) -> ServerError {
     match &error {
-        AssetDescriptorError::Storage(error) if error.kind() == opendal::ErrorKind::NotFound => {
+        AssetError::Storage(error) if error.kind() == opendal::ErrorKind::NotFound => {
             ServerError::NotFound(format!("asset {asset}"))
         }
         _ => error.into(),

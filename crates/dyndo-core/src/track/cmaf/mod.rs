@@ -9,7 +9,7 @@ use crate::segment::{InitSegment, Segment};
 pub mod package;
 
 #[derive(Clone)]
-pub struct CmafTrack {
+pub struct ResolvedCmafTrack {
     id: String,
     path: RelativePathBuf,
     kind: CmafTrackKind,
@@ -17,7 +17,7 @@ pub struct CmafTrack {
     segments: Vec<Segment>,
 }
 
-impl CmafTrack {
+impl ResolvedCmafTrack {
     pub fn new(
         id: String,
         path: RelativePathBuf,

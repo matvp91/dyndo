@@ -1,5 +1,5 @@
-use dyndo_core::asset::track::SourceTrackDescriptor;
 use dyndo_core::segment_options::SegmentOptions;
+use dyndo_core::track::ResolvedSourceTrack;
 use dyndo_core::track::SourceTrack;
 use dyndo_core::track::kind::{CmafTrackKind, TimedTextKind};
 use opendal::{Operator, services::Memory};
@@ -23,7 +23,9 @@ async fn web_vtt_track_packages_cmaf_on_demand_and_serves_vtt_directly() {
     };
     operator.write(path.as_str(), VTT).await.unwrap();
 
-    let SourceTrack::TimedText(vtt) = SourceTrack::probe(&operator, path, None).await.unwrap()
+    let ResolvedSourceTrack::TimedText(vtt) = ResolvedSourceTrack::probe(&operator, path, None)
+        .await
+        .unwrap()
     else {
         panic!("expected a WebVTT source track");
     };
@@ -54,7 +56,7 @@ async fn web_vtt_track_reports_an_invalid_subtitle_document() {
         .await
         .unwrap();
 
-    let error = SourceTrack::probe(&operator, path, None)
+    let error = ResolvedSourceTrack::probe(&operator, path, None)
         .await
         .err()
         .unwrap();
@@ -63,16 +65,16 @@ async fn web_vtt_track_reports_an_invalid_subtitle_document() {
 }
 
 #[tokio::test]
-async fn descriptor_type_overrides_the_source_file_extension() {
+async fn track_type_overrides_the_source_file_extension() {
     let operator = memory_operator();
     let path = RelativePath::new("subtitles/en.vtt");
     operator.write(path.as_str(), VTT).await.unwrap();
-    let descriptor: SourceTrackDescriptor = serde_json::from_str(
+    let track: SourceTrack = serde_json::from_str(
         r#"{"id":"video","path":"subtitles/en.vtt","codec":"avc1.42c00a","type":"video","width":16,"height":16,"frame_rate":"4/1"}"#,
     )
     .unwrap();
 
-    let result = SourceTrack::probe(&operator, path, Some(&descriptor)).await;
+    let result = ResolvedSourceTrack::probe(&operator, path, Some(&track)).await;
 
     assert!(result.is_err());
 }

@@ -1,8 +1,8 @@
-use dyndo_core::asset::kind::VideoKind;
 use dyndo_core::segment_options::SegmentOptions;
 use dyndo_core::served_segment::ServedSegment;
-use dyndo_core::track::cmaf::CmafTrack;
-use dyndo_core::track::synthetic::SyntheticTrack;
+use dyndo_core::track::cmaf::ResolvedCmafTrack;
+use dyndo_core::track::kind::VideoKind;
+use dyndo_core::track::thumbnail::ResolvedThumbnailTrack;
 use m3u8_rs::{ClosedCaptionGroupId, ExtTag, MasterPlaylist, Resolution, VariantStream};
 
 use crate::HlsError;
@@ -13,8 +13,8 @@ const AUDIO_GROUP_ID: &str = "audio";
 const SUBTITLES_GROUP_ID: &str = "subtitles";
 
 pub(crate) fn build_playlist(
-    tracks: &[CmafTrack],
-    thumbnails: &[SyntheticTrack],
+    tracks: &[ResolvedCmafTrack],
+    thumbnails: &[ResolvedThumbnailTrack],
     segment_options: &SegmentOptions,
     hls_options: &HlsOptions,
 ) -> Result<MasterPlaylist, HlsError> {
@@ -31,7 +31,7 @@ pub(crate) fn build_playlist(
     })
 }
 
-fn image_streams(thumbnails: &[SyntheticTrack]) -> Vec<ExtTag> {
+fn image_streams(thumbnails: &[ResolvedThumbnailTrack]) -> Vec<ExtTag> {
     thumbnails
         .iter()
         .map(|thumbnail| {
@@ -49,7 +49,7 @@ fn image_streams(thumbnails: &[SyntheticTrack]) -> Vec<ExtTag> {
 }
 
 fn build_variant_streams(
-    tracks: &[CmafTrack],
+    tracks: &[ResolvedCmafTrack],
     segment_options: &SegmentOptions,
     renditions: &Renditions,
 ) -> Result<Vec<VariantStream>, HlsError> {
@@ -65,7 +65,7 @@ fn build_variant_streams(
 }
 
 fn build_variant_stream(
-    track: &CmafTrack,
+    track: &ResolvedCmafTrack,
     video: &VideoKind,
     segment_options: &SegmentOptions,
     renditions: &Renditions,
@@ -113,6 +113,9 @@ fn frame_rate(value: &str) -> Result<f64, HlsError> {
     Ok((f64::from(numerator) / f64::from(denominator) * 1000.0).round() / 1000.0)
 }
 
-fn served_segments<'a>(track: &'a CmafTrack, options: &SegmentOptions) -> Vec<ServedSegment<'a>> {
+fn served_segments<'a>(
+    track: &'a ResolvedCmafTrack,
+    options: &SegmentOptions,
+) -> Vec<ServedSegment<'a>> {
     ServedSegment::group(track.segments(), options.min_length, &options.boundaries)
 }

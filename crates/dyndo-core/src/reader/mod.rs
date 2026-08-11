@@ -3,7 +3,7 @@ use std::ops::Range;
 use bytes::Bytes;
 use opendal::Operator;
 
-use super::track::cmaf::CmafTrack;
+use super::track::cmaf::ResolvedCmafTrack;
 
 #[derive(Debug, thiserror::Error)]
 pub enum TrackReadError {
@@ -20,14 +20,17 @@ impl Reader {
         Self { op: op.clone() }
     }
 
-    pub async fn read_initialization(&self, track: &CmafTrack) -> Result<Bytes, TrackReadError> {
+    pub async fn read_initialization(
+        &self,
+        track: &ResolvedCmafTrack,
+    ) -> Result<Bytes, TrackReadError> {
         self.read_range(track, track.init_segment().byte_range())
             .await
     }
 
     pub async fn read_range(
         &self,
-        track: &CmafTrack,
+        track: &ResolvedCmafTrack,
         range: Range<u64>,
     ) -> Result<Bytes, TrackReadError> {
         Ok(self

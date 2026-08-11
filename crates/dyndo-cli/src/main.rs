@@ -16,7 +16,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Build or update an asset descriptor from one or more media tracks.
+    /// Build or update an asset from one or more media tracks.
     Index(commands::index::IndexArgs),
     /// Extract a video frame as a JPEG image.
     Image(commands::image::ImageArgs),

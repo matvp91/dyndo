@@ -1,5 +1,5 @@
-use dyndo_core::asset::AssetDescriptor;
-use dyndo_core::asset::track::TrackDescriptor;
+use dyndo_core::asset::Asset;
+use dyndo_core::track::Track;
 use serde::{Deserialize, Deserializer, de};
 use winnow::ascii::{digit1, multispace0};
 use winnow::combinator::{
@@ -39,15 +39,10 @@ impl Filter {
             })
     }
 
-    pub(super) fn apply(
-        &self,
-        descriptor: &mut AssetDescriptor,
-    ) -> Result<(), FilterMatchedNothing> {
-        descriptor
-            .tracks
-            .retain(|track| self.expression.matches(track));
+    pub(super) fn apply(&self, asset: &mut Asset) -> Result<(), FilterMatchedNothing> {
+        asset.tracks.retain(|track| self.expression.matches(track));
 
-        if descriptor.tracks.is_empty() {
+        if asset.tracks.is_empty() {
             Err(FilterMatchedNothing)
         } else {
             Ok(())
@@ -56,7 +51,7 @@ impl Filter {
 }
 
 #[derive(Debug, thiserror::Error)]
-#[error("no asset descriptor entry matches the filter")]
+#[error("no asset track matches the filter")]
 pub(super) struct FilterMatchedNothing;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -67,11 +62,11 @@ enum Expression {
 }
 
 impl Expression {
-    fn matches(&self, descriptor: &TrackDescriptor) -> bool {
+    fn matches(&self, track: &Track) -> bool {
         match self {
-            Self::And(left, right) => left.matches(descriptor) && right.matches(descriptor),
-            Self::Or(left, right) => left.matches(descriptor) || right.matches(descriptor),
-            Self::Comparison(comparison) => comparison.matches(descriptor),
+            Self::And(left, right) => left.matches(track) && right.matches(track),
+            Self::Or(left, right) => left.matches(track) || right.matches(track),
+            Self::Comparison(comparison) => comparison.matches(track),
         }
     }
 }
@@ -84,15 +79,15 @@ struct Comparison {
 }
 
 impl Comparison {
-    fn matches(&self, descriptor: &TrackDescriptor) -> bool {
+    fn matches(&self, track: &Track) -> bool {
         match &self.value {
             Literal::Text(wanted) => self
                 .attribute
-                .text(descriptor)
+                .text(track)
                 .is_some_and(|actual| self.operator.holds(actual.as_ref(), wanted.as_str())),
             Literal::Number(wanted) => self
                 .attribute
-                .number(descriptor)
+                .number(track)
                 .is_some_and(|actual| self.operator.holds(&actual, wanted)),
         }
     }
@@ -145,11 +140,11 @@ impl Attribute {
         )
     }
 
-    fn text(self, descriptor: &TrackDescriptor) -> Option<&str> {
-        let source = descriptor.source();
+    fn text(self, track: &Track) -> Option<&str> {
+        let source = track.source();
         match self {
-            Self::Type => Some(descriptor.asset_type()),
-            Self::Id => Some(descriptor.id()),
+            Self::Type => Some(track.asset_type()),
+            Self::Id => Some(track.id()),
             Self::Codec => source.and_then(|track| track.codec()),
             Self::FrameRate => source
                 .and_then(|track| track.video_kind())
@@ -169,9 +164,9 @@ impl Attribute {
         }
     }
 
-    fn number(self, descriptor: &TrackDescriptor) -> Option<u64> {
-        let source = descriptor.source();
-        let thumbnail = descriptor.synthetic().and_then(|track| track.thumbnail());
+    fn number(self, track: &Track) -> Option<u64> {
+        let source = track.source();
+        let thumbnail = track.thumbnail();
         match self {
             Self::Width => source
                 .and_then(|track| track.video_kind())
@@ -313,11 +308,11 @@ fn parse_literal(numeric: bool, input: &mut &str) -> ModalResult<Literal> {
 
 #[cfg(test)]
 mod tests {
-    use dyndo_core::asset::AssetDescriptor;
+    use dyndo_core::asset::Asset;
 
     use super::Filter;
 
-    fn asset() -> AssetDescriptor {
+    fn asset() -> Asset {
         serde_json::from_str(
             r#"
             {
@@ -355,7 +350,7 @@ mod tests {
     }
 
     #[test]
-    fn apply_keeps_matching_thumbnail_descriptors() {
+    fn apply_keeps_matching_thumbnail_tracks() {
         let mut asset = asset();
 
         Filter::parse("type==thumbnail&&width>=640")
@@ -363,11 +358,11 @@ mod tests {
             .apply(&mut asset)
             .unwrap();
 
-        assert_eq!(asset.synthetic_tracks().count(), 1);
+        assert_eq!(asset.thumbnail_tracks().count(), 1);
     }
 
     #[test]
-    fn apply_uses_track_descriptor_fields_without_probing() {
+    fn apply_uses_track_fields_without_probing() {
         let mut asset = asset();
 
         Filter::parse("codec==mp4a.40.2")
@@ -379,7 +374,7 @@ mod tests {
     }
 
     #[test]
-    fn apply_returns_an_error_when_no_descriptor_entry_matches() {
+    fn apply_returns_an_error_when_no_track_matches() {
         let mut asset = asset();
 
         let result = Filter::parse("type==text").unwrap().apply(&mut asset);

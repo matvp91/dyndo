@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use dyndo_core::asset::AssetDescriptor;
+use dyndo_core::asset::Asset;
 use serde::Deserialize;
 
 use crate::error::ServerError;
@@ -34,8 +34,8 @@ impl Options {
             .map_err(|error| ServerError::BadRequest(format!("invalid options: {error}")))
     }
 
-    pub(super) fn apply_to(&self, descriptor: &mut AssetDescriptor) {
-        let options = &mut descriptor.segment_options;
+    pub(super) fn apply_to(&self, asset: &mut Asset) {
+        let options = &mut asset.segment_options;
         if self.min_length != 0 {
             options.min_length = self.min_length;
         }
@@ -62,7 +62,7 @@ impl Options {
 
 #[cfg(test)]
 mod tests {
-    use dyndo_core::asset::AssetDescriptor;
+    use dyndo_core::asset::Asset;
     use dyndo_core::segment_options::SegmentOptions;
 
     use super::Options;
@@ -75,19 +75,19 @@ mod tests {
     }
 
     #[test]
-    fn apply_to_preserves_descriptor_values_when_options_are_empty() {
+    fn apply_to_preserves_asset_values_when_options_are_empty() {
         let options = Options::parse("asset:demo").unwrap();
-        let mut descriptor = AssetDescriptor::default();
-        descriptor.segment_options = SegmentOptions {
+        let mut asset = Asset::default();
+        asset.segment_options = SegmentOptions {
             min_length: 1_000,
             text_length: 2_000,
             boundaries: vec![3_000],
         };
 
-        options.apply_to(&mut descriptor);
+        options.apply_to(&mut asset);
 
         assert_eq!(
-            descriptor.segment_options,
+            asset.segment_options,
             SegmentOptions {
                 min_length: 1_000,
                 text_length: 2_000,
@@ -97,15 +97,15 @@ mod tests {
     }
 
     #[test]
-    fn apply_to_overwrites_descriptor_values() {
+    fn apply_to_overwrites_asset_values() {
         let options = Options::parse("asset:demo,min_length:1000,text_length:2000").unwrap();
-        let mut descriptor = AssetDescriptor::default();
-        descriptor.segment_options.boundaries = vec![3_000];
+        let mut asset = Asset::default();
+        asset.segment_options.boundaries = vec![3_000];
 
-        options.apply_to(&mut descriptor);
+        options.apply_to(&mut asset);
 
         assert_eq!(
-            descriptor.segment_options,
+            asset.segment_options,
             SegmentOptions {
                 min_length: 1_000,
                 text_length: 2_000,

@@ -1,7 +1,7 @@
 use dyndo_core::role::Role;
 use dyndo_core::segment_options::SegmentOptions;
 use dyndo_core::served_segment::ServedSegment;
-use dyndo_core::track::cmaf::CmafTrack;
+use dyndo_core::track::cmaf::ResolvedCmafTrack;
 use dyndo_core::track::kind::CmafTrackKind;
 use language_tags::LanguageTag;
 use m3u8_rs::{AlternativeMedia, AlternativeMediaType};
@@ -19,7 +19,7 @@ pub(crate) struct Renditions {
 
 impl Renditions {
     pub(crate) fn summarize(
-        tracks: &[CmafTrack],
+        tracks: &[ResolvedCmafTrack],
         segment_options: &SegmentOptions,
         hls_options: &HlsOptions,
     ) -> Self {
@@ -62,7 +62,7 @@ impl Renditions {
         }
     }
 
-    pub(crate) fn codecs_for(&self, track: &CmafTrack) -> Vec<String> {
+    pub(crate) fn codecs_for(&self, track: &ResolvedCmafTrack) -> Vec<String> {
         let mut codecs = Vec::with_capacity(self.codecs.len() + 1);
         push_unique(&mut codecs, track.codec().rfc6381());
         for codec in &self.codecs {
@@ -71,7 +71,7 @@ impl Renditions {
         codecs
     }
 
-    pub(crate) fn media_entries(tracks: &[CmafTrack]) -> Vec<AlternativeMedia> {
+    pub(crate) fn media_entries(tracks: &[ResolvedCmafTrack]) -> Vec<AlternativeMedia> {
         let default_audio_id = default_audio_id(tracks);
         tracks
             .iter()
@@ -81,8 +81,8 @@ impl Renditions {
 }
 
 fn build_media_entry(
-    tracks: &[CmafTrack],
-    track: &CmafTrack,
+    tracks: &[ResolvedCmafTrack],
+    track: &ResolvedCmafTrack,
     default_audio_id: Option<&str>,
 ) -> Option<AlternativeMedia> {
     let (media_type, group_id, language, role, channels) = match track.kind() {
@@ -120,7 +120,7 @@ fn build_media_entry(
     })
 }
 
-fn default_audio_id(tracks: &[CmafTrack]) -> Option<&str> {
+fn default_audio_id(tracks: &[ResolvedCmafTrack]) -> Option<&str> {
     tracks
         .iter()
         .find(|track| {
@@ -131,10 +131,10 @@ fn default_audio_id(tracks: &[CmafTrack]) -> Option<&str> {
                 |track| matches!(track.kind(), CmafTrackKind::Audio(audio) if audio.role.is_none()),
             )
         })
-        .map(CmafTrack::id)
+        .map(ResolvedCmafTrack::id)
 }
 
-fn selection_tuple_is_unique(tracks: &[CmafTrack], track: &CmafTrack) -> bool {
+fn selection_tuple_is_unique(tracks: &[ResolvedCmafTrack], track: &ResolvedCmafTrack) -> bool {
     let Some((is_audio, language, role)) = selection_tuple(track) else {
         return false;
     };
@@ -151,7 +151,7 @@ fn selection_tuple_is_unique(tracks: &[CmafTrack], track: &CmafTrack) -> bool {
         == 1
 }
 
-fn selection_tuple(track: &CmafTrack) -> Option<(bool, &LanguageTag, Option<Role>)> {
+fn selection_tuple(track: &ResolvedCmafTrack) -> Option<(bool, &LanguageTag, Option<Role>)> {
     match track.kind() {
         CmafTrackKind::Video(_) => None,
         CmafTrackKind::Audio(audio) => Some((true, &audio.language, audio.role)),
