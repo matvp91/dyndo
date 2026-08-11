@@ -39,7 +39,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: book
-          path: docs/book/.
+          path: docs/book
 
   # The Pages archive preserves every release under /<version>/ and serves
   # in-progress main documentation from /next/. Pull requests only build it.
