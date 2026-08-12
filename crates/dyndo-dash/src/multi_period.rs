@@ -134,8 +134,48 @@ fn split_template(
 
     let mut template = source.clone();
     template.presentationTimeOffset = Some(slid_presentation_time_offset(source, span.start));
+    if source
+        .media
+        .as_deref()
+        .is_some_and(|media| media.contains("$Number"))
+    {
+        template.startNumber = first_segment_number(source, timeline, timescale, span)?;
+    }
     template.SegmentTimeline = Some(slice_timeline(timeline, timescale, span)?);
     Ok(template)
+}
+
+fn first_segment_number(
+    template: &SegmentTemplate,
+    timeline: &SegmentTimeline,
+    timescale: u32,
+    span: &Range<u32>,
+) -> Result<Option<u64>, DashError> {
+    let mut next_start = None;
+    let mut number = template.startNumber.unwrap_or(1);
+
+    for entry in &timeline.segments {
+        let Some(start) = entry.t.or(next_start) else {
+            return Err(DashError::MultiPeriodTimeline);
+        };
+        let repeats = u64::try_from(entry.r.unwrap_or_default())
+            .map_err(|_| DashError::MultiPeriodTimeline)?;
+        let mut segment_start = start;
+
+        for _ in 0..=repeats {
+            let segment_end = segment_start
+                .checked_add(entry.d)
+                .ok_or(DashError::MultiPeriodTimeline)?;
+            if belongs_to_period(segment_start, segment_end, timescale, span) {
+                return Ok(Some(number));
+            }
+            segment_start = segment_end;
+            number = number.checked_add(1).ok_or(DashError::MultiPeriodTimeline)?;
+        }
+        next_start = Some(segment_start);
+    }
+
+    Ok(None)
 }
 
 fn slid_presentation_time_offset(template: &SegmentTemplate, boundary_ms: u32) -> u64 {

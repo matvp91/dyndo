@@ -46,8 +46,8 @@ impl ThumbnailTrack {
 /// An error encountered while generating thumbnail media.
 #[derive(Debug, thiserror::Error)]
 pub enum ThumbnailError {
-    #[error("could not generate thumbnail sprite")]
-    SpriteGenerator,
+    #[error("could not generate thumbnail sprite: {0}")]
+    SpriteGenerator(String),
 }
 
 /// A resolved thumbnail track.
@@ -114,21 +114,23 @@ impl ResolvedThumbnailTrack {
         u64::try_from(bits_per_second).unwrap_or(u64::MAX).max(1)
     }
 
-    /// Generates a thumbnail sprite beginning at `time`.
+    /// Resolves a zero-based sprite `number` to its source timestamp.
+    pub fn time_for_number(&self, number: u64) -> Option<u64> {
+        let first = self.source.segments().first()?;
+        first
+            .start_time()
+            .checked_add(number.checked_mul(self.sprite_duration())?)
+    }
+
+    /// Generates a thumbnail sprite beginning at `start`.
     ///
     /// Returns `None` when thumbnails are disabled or unavailable for the track.
     ///
     /// # Errors
     ///
     /// Returns an error when a frame cannot be read, decoded, composed, or encoded.
-    pub async fn jpeg(&self, op: &Operator, time: u64) -> Result<Option<Bytes>, ThumbnailError> {
-        let (Some(first), Some(last)) = (
-            self.source.segments().first(),
-            self.source.segments().last(),
-        ) else {
-            return Ok(None);
-        };
-        let Some(start) = first.start_time().checked_add(time) else {
+    pub async fn jpeg(&self, op: &Operator, start: u64) -> Result<Option<Bytes>, ThumbnailError> {
+        let Some(last) = self.source.segments().last() else {
             return Ok(None);
         };
         let end = last.end_time();
@@ -147,7 +149,7 @@ impl ResolvedThumbnailTrack {
                 FrameSelection::PreviousKeyframe,
             )
             .await
-            .map_err(|_| ThumbnailError::SpriteGenerator)?;
+            .map_err(|error| ThumbnailError::SpriteGenerator(error.to_string()))?;
         Ok(Some(jpeg))
     }
 

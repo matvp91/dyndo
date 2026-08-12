@@ -139,17 +139,20 @@ async fn cmaf_representation(
         .map_err(Into::into)
 }
 
-/// Serves the thumbnail sprite named by the DASH `$Time$` substitution.
+/// Serves the thumbnail sprite named by a manifest segment number.
 pub(super) async fn thumbnail(
     op: &Operator,
     asset: &Asset,
     thumbnail_id: &str,
-    time: u64,
+    number: u64,
 ) -> Result<Response, ServerError> {
     let track = resolve_track(op, asset, thumbnail_id, None).await?;
     let thumbnail = track
         .thumbnail()
         .ok_or_else(|| ServerError::NotFound(format!("thumbnail {thumbnail_id}")))?;
+    let Some(time) = thumbnail.time_for_number(number) else {
+        return Err(ServerError::NotFound("thumbnail".to_string()));
+    };
     let Some(bytes) = thumbnail.jpeg(op, time).await? else {
         return Err(ServerError::NotFound("thumbnail".to_string()));
     };
