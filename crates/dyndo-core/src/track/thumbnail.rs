@@ -1,16 +1,11 @@
 use bytes::Bytes;
-use futures_util::{StreamExt, TryStreamExt, stream};
-use image::codecs::jpeg::JpegEncoder;
-use image::imageops::FilterType;
-use image::{ImageFormat, RgbImage, imageops};
 use opendal::Operator;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::image::{FrameExtractor, FrameExtractorError};
+use crate::image::experimental_sprite_generator::{ExperimentalSpriteGenerator, FrameSelection};
 use crate::track::cmaf::{CmafKind, ResolvedCmafTrack};
 
-const CONCURRENT_FRAME_GRABS: usize = 4;
 const BITS_PER_PIXEL: u64 = 1;
 
 /// A thumbnail track generated from source video when requested.
@@ -51,10 +46,8 @@ impl ThumbnailTrack {
 /// An error encountered while generating thumbnail media.
 #[derive(Debug, thiserror::Error)]
 pub enum ThumbnailError {
-    #[error(transparent)]
-    FrameExtractor(#[from] FrameExtractorError),
-    #[error(transparent)]
-    Image(#[from] image::ImageError),
+    #[error("could not generate thumbnail sprite")]
+    SpriteGenerator,
 }
 
 /// A resolved thumbnail track.
@@ -143,32 +136,19 @@ impl ResolvedThumbnailTrack {
             return Ok(None);
         }
 
-        let extractor = FrameExtractor::new(op, &self.source);
         let (tile_width, tile_height) = self.tile_dimensions();
-        let mut sprite = RgbImage::new(self.width(), self.height);
-        let frames = self
-            .frame_times(start, end)
-            .map(|time| extractor.jpeg(time, tile_width, tile_height));
-        let mut frames = stream::iter(frames).buffered(CONCURRENT_FRAME_GRABS);
-        let mut index = 0_u64;
-        while let Some(jpeg) = frames.try_next().await? {
-            let tile = image::load_from_memory_with_format(&jpeg, ImageFormat::Jpeg)?
-                .resize_exact(tile_width, tile_height, FilterType::Triangle)
-                .to_rgb8();
-            let column = index % u64::from(self.track.tile_size);
-            let row = index / u64::from(self.track.tile_size);
-            imageops::replace(
-                &mut sprite,
-                &tile,
-                i64::try_from(column * u64::from(tile_width)).unwrap_or(i64::MAX),
-                i64::try_from(row * u64::from(tile_height)).unwrap_or(i64::MAX),
-            );
-            index += 1;
-        }
-
-        let mut jpeg = Vec::new();
-        JpegEncoder::new(&mut jpeg).encode_image(&sprite)?;
-        Ok(Some(Bytes::from(jpeg)))
+        let times: Vec<_> = self.frame_times(start, end).collect();
+        let jpeg = ExperimentalSpriteGenerator::new(op, &self.source)
+            .jpeg(
+                &times,
+                self.track.tile_size,
+                tile_width,
+                tile_height,
+                FrameSelection::PreviousKeyframe,
+            )
+            .await
+            .map_err(|_| ThumbnailError::SpriteGenerator)?;
+        Ok(Some(jpeg))
     }
 
     fn frame_times(&self, start: u64, end: u64) -> impl Iterator<Item = u64> {
