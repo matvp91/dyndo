@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "ayu";
-            window.path_to_searchindex_js = "../searchindex-5288e92a.js";
+            window.path_to_searchindex_js = "../searchindex-c12fa3fa.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-942fa83c.js"></script>
@@ -209,9 +209,9 @@ asset.</p>
 <p>For example, changing an audio track from an undetermined language to Dutch or marking it as commentary changes the generated manifest immediately. DASH and HLS express those choices differently, but both render them from the same descriptor fields.</p>
 <p>Track IDs derive from source paths rather than mutable metadata. A language or role correction therefore does not invalidate segment URLs or cached media.</p>
 <h2 id="a-request-can-choose-a-presentation"><a class="header" href="#a-request-can-choose-a-presentation">A request can choose a presentation</a></h2>
-<p>The descriptor supplies track metadata and default segmentation settings. Server options in the request path can override segmentation and choose output behavior, while the <code>filter</code> query parameter can narrow the tracks in a top-level manifest. Without writing new media objects, a request can:</p>
+<p>The descriptor supplies track metadata and splice boundaries. Server options in the request path choose segmentation and output behavior, while the <code>filter</code> query parameter can narrow the tracks in a top-level manifest. Without writing new media objects, a request can:</p>
 <ul>
-<li>filter descriptor entries by type, codec, resolution, language, role, or thumbnail settings;</li>
+<li>filter resolved tracks by type, format, codec, resolution, language, role, or thumbnail settings;</li>
 <li>group source fragments into longer served segments;</li>
 <li>introduce boundaries for splicing or period changes;</li>
 <li>render one DASH period or several;</li>

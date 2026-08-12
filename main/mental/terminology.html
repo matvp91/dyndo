@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "ayu";
-            window.path_to_searchindex_js = "../searchindex-5288e92a.js";
+            window.path_to_searchindex_js = "../searchindex-c12fa3fa.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-942fa83c.js"></script>
@@ -204,7 +204,7 @@ contains a <code>SourceTrack</code>, while <code>Track::Thumbnail</code> contain
 and <code>TimedTextTrack</code>.</p>
 <p>After resolution, <code>ResolvedTrack</code> preserves the configured track form. Its
 variants are <code>Cmaf</code>, <code>TimedText</code>, and <code>Thumbnail</code>. A <code>ResolvedAsset</code> contains
-the resolved tracks of one asset and its segment options. <code>CmafKind</code> remains
+the resolved tracks and splice boundaries of one asset. <code>CmafKind</code> remains
 <code>Video</code>, <code>Audio</code>, or <code>Text</code>; <code>TimedTextFormat</code> is <code>WebVtt</code> today and can gain
 <code>Imsc1</code> when supported. CMAF’s <code>Text</code> kind is the container-level media
 category, independent of the timed-text document format.</p>
@@ -215,7 +215,7 @@ Representation-specific types have one public home: CMAF types live in
 <code>track::metadata</code>.</p>
 <h2 id="assets-tracks-and-discovery"><a class="header" href="#assets-tracks-and-discovery">Assets, tracks, and discovery</a></h2>
 <p>An <strong>asset</strong> is persisted configuration. <code>Asset</code> serializes directly to
-<code>asset.json</code>; it owns asset-wide segment options and a collection of <code>Track</code>
+<code>asset.json</code>; it owns asset-wide splice boundaries and a collection of <code>Track</code>
 values. Each track names its source form, gives it a stable identifier, and
 supplies metadata that is not necessarily present in the source file.</p>
 <p><code>Track</code>, <code>SourceTrack</code>, and <code>ThumbnailTrack</code> implement serialization directly.
@@ -228,15 +228,28 @@ CMAF. The file name does not override that decision.</p>
 It determines the source form from the input: <code>.vtt</code> is discovered as raw
 WebVTT; other supported inputs are discovered as CMAF. Discovery creates the
 stable source identifier that is then recorded in the asset.</p>
-<p>The word <strong>type</strong> has two deliberate meanings in the system:</p>
-<ul>
-<li>A serialized track type is the source or thumbnail form written in
-<code>asset.json</code>: <code>video</code>, <code>audio</code>, <code>text</code>, <code>webvtt</code>, or <code>thumbnail</code>.</li>
-<li>A CMAF media kind is the container category of a CMAF track: <code>video</code>,
-<code>audio</code>, or <code>text</code>.</li>
-</ul>
-<p>For example, <code>webvtt</code> is a timed-text document format, while CMAF <code>text</code> is the
-container category used when that document is packaged with the <code>wvtt</code> codec.</p>
+<p>The <code>type</code> property in <code>asset.json</code> is a serialized source discriminator. It
+selects the resolver: <code>webvtt</code> means a raw WebVTT document, whereas <code>video</code>,
+<code>audio</code>, and <code>text</code> mean CMAF sources. It is not the playback type used by a
+resolved track.</p>
+<p>Every <code>ResolvedTrack</code> has a playback <strong>type</strong> and a source <strong>format</strong>:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Resolved track</th><th>Type</th><th>Format</th></tr>
+</thead>
+<tbody>
+<tr><td>CMAF video</td><td><code>video</code></td><td><code>cmaf</code></td></tr>
+<tr><td>CMAF audio</td><td><code>audio</code></td><td><code>cmaf</code></td></tr>
+<tr><td>CMAF text</td><td><code>text</code></td><td><code>cmaf</code></td></tr>
+<tr><td>Raw WebVTT</td><td><code>text</code></td><td><code>webvtt</code></td></tr>
+<tr><td>Thumbnail</td><td><code>thumbnail</code></td><td><code>thumbnail</code></td></tr>
+</tbody>
+</table>
+</div>
+<p><code>TimedTextFormat</code> describes a timed-text document format such as WebVTT. It
+maps to the broader track format while keeping every timed-text source in the
+<code>text</code> playback type.</p>
 <h2 id="resolution-and-filtering"><a class="header" href="#resolution-and-filtering">Resolution and filtering</a></h2>
 <p>The server first reads persisted configuration with <code>Asset::read</code>. Asset-wide
 outputs such as an MPD or HLS multivariant playlist call <code>Asset::resolve</code>, then
@@ -248,7 +261,7 @@ media segment calls <code>Asset::resolve_track</code> for the requested identifi
 thumbnail is the exception: resolving one thumbnail must inspect candidate
 video sources because source selection is part of thumbnail resolution.</p>
 <p>There is no resolver service type. The loaded <code>Asset</code> already owns the asset
-path, track configuration, and segment options; the storage operator is the
+path, track configuration, and splice boundaries; the storage operator is the
 only additional input needed for resolution.</p>
 <h2 id="operation-ownership"><a class="header" href="#operation-ownership">Operation ownership</a></h2>
 <p>Operations live on the value that has the information needed to perform them:</p>

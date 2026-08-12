@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "ayu";
-            window.path_to_searchindex_js = "../searchindex-5288e92a.js";
+            window.path_to_searchindex_js = "../searchindex-c12fa3fa.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-942fa83c.js"></script>
@@ -234,7 +234,7 @@ segment request needs (the byte range to read for a given <code>&lt;time&gt;</co
 <em>is</em> the segment map; dyndo reads it, never copies it.</p>
 <p>By default every <code>sidx</code> reference becomes one served segment. A generation’s
 minimum segment length, together with the descriptor’s optional
-<a href="../reference/asset-json.html#segmentation"><code>segment_options.boundaries</code></a>, groups
+<a href="../reference/asset-json.html#boundaries"><code>boundaries</code></a>, groups
 consecutive references into larger served segments at serve time — contiguous
 byte ranges merge into one — without touching the source file or the index
 itself. Offline generation receives that value through
@@ -246,9 +246,9 @@ falls — the two manifests and the segment routes always agree.</p>
 <p>One source type arrives at its segment index differently: a raw <code>.vtt</code> subtitle
 file has no boxes and no <code>sidx</code>, so there is nothing to resolve. When CMAF data is
 needed, dyndo packages a <code>wvtt</code> view and indexes <em>that</em> — the same box walk over
-bytes that never touch storage. Its fragments are cut where the asset’s
-splice points and
-<a href="../reference/asset-json.html#segmentation"><code>text_length</code></a> say, rather than
+bytes that never touch storage. Its fragments are cut where the asset’s splice
+points and the server request’s
+<a href="../reference/server/routes.html#segmentation-options"><code>text_length</code></a> say, rather than
 recovered from a file, which is why those cuts are exact instead of snapped.</p>
 <p>Serving such a track to HLS resolves the segment from that index as usual, then
 selects the matching cue range directly from the parsed WebVTT document. The

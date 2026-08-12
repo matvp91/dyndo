@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "ayu";
-            window.path_to_searchindex_js = "../searchindex-5288e92a.js";
+            window.path_to_searchindex_js = "../searchindex-c12fa3fa.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-942fa83c.js"></script>
@@ -187,15 +187,12 @@ descriptor written by dyndo carries a <code>$schema</code> URL. It points to the
 JSON Schema for the dyndo release that wrote the file, at
 <code>https://matvp91.github.io/dyndo/&lt;version&gt;/schema.json</code>.</p>
 <h2 id="top-level-structure"><a class="header" href="#top-level-structure">Top-level structure</a></h2>
-<p>A descriptor is an object with a <code>tracks</code> array and an optional block of segment
-options. The array contains CMAF source tracks, raw WebVTT source tracks, and
+<p>A descriptor is an object with a <code>tracks</code> array and optional splice boundaries.
+The array contains CMAF source tracks, raw WebVTT source tracks, and
 derived thumbnail tracks:</p>
 <pre><code class="language-json">{
   "$schema": "https://matvp91.github.io/dyndo/0.5.1/schema.json",
-  "segment_options": {
-    "min_length": 6000,
-    "boundaries": [683640]
-  },
+  "boundaries": [683640],
   "tracks": [ /* CMAF, VTT, and thumbnail track objects */ ]
 }
 </code></pre>
@@ -218,28 +215,15 @@ Each thumbnail track has a stable <code>id</code>:</p>
 <p><code>tile_size</code> is the number of thumbnails in each row and column, <code>width</code> is the
 full sprite width in pixels, and <code>step</code> is the interval between adjacent
 thumbnails in milliseconds.</p>
-<h2 id="segmentation"><a class="header" href="#segmentation">Segmentation</a></h2>
-<p>The optional <code>segment_options</code> block records how the asset asks to be segmented. It is what the asset <em>asks for</em>, not a decision: a server request option overrides any option it names, and the descriptor is never written back. A block equal to the defaults is omitted from the file.</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Field</th><th>Type</th><th>Default</th><th>Description</th></tr>
-</thead>
-<tbody>
-<tr><td><code>min_length</code></td><td>integer</td><td><code>0</code></td><td>Minimum served segment length, in <strong>milliseconds</strong>. Whole fragments are grouped until this length is reached; <code>0</code> serves every fragment as its own segment.</td></tr>
-<tr><td><code>text_length</code></td><td>integer</td><td><code>0</code></td><td>Length of each segment of a subtitle track dyndo packages from a <code>.vtt</code>. Unlike <code>min_length</code> this is exact, since dyndo fragments those tracks itself. <code>0</code> asks for no grid, leaving the splice points as the only cuts.</td></tr>
-<tr><td><code>boundaries</code></td><td>array of integers</td><td><code>[]</code></td><td>Splice points, in <strong>milliseconds</strong> from the start of the presentation, e.g. for ad insertion. A served segment never spans one, so a segment edge exists at every splice point. Treated as a set: order and duplicates don’t matter. Each point is snapped per track to the first fragment boundary at or after it (audio fragment rasters cannot hit arbitrary millisecond positions), so a segment never opens on content from before the splice point.</td></tr>
-</tbody>
-</table>
-</div>
-<p>Grouping is applied while generating manifests and serving segments; stored CMAF
-files are never modified.</p>
-<p><code>boundaries</code> only changes video and audio output when a non-zero <code>min_length</code>
-groups multiple fragments — with the default of <code>0</code>, every fragment is already a
-served segment. Subtitle tracks are different: dyndo cuts them at the splice
-points as it packages them, whatever <code>min_length</code> says.</p>
-<p>Descriptors use only the field names shown above. Server request options accept
-additional shorthand and legacy spellings; see the
+<h2 id="boundaries"><a class="header" href="#boundaries">Boundaries</a></h2>
+<p>The optional <code>boundaries</code> array records splice points in milliseconds from the
+start of the presentation, for example for ad insertion. It is treated as a
+set: order and duplicates do not matter. Each point is snapped per CMAF track to
+the first fragment boundary at or after it, so a segment never opens on content
+from before the splice point. Raw WebVTT tracks are cut at the listed times as
+they are packaged.</p>
+<p>The server’s <code>min_length</code> and <code>text_length</code> request options choose the delivery
+grid for a particular request; they are not stored in the descriptor. See the
 <a href="server/routes.html#segmentation-options">server routes reference</a>.</p>
 <h2 id="track-objects"><a class="header" href="#track-objects">Track objects</a></h2>
 <p>Each track is tagged by a <code>type</code> discriminator: <code>"video"</code>, <code>"audio"</code>,
@@ -315,8 +299,8 @@ ISO-BMFF), which is resolved and served like any other CMAF track, or a <strong>
 <blockquote>
 <p>Both forms are served. A raw <code>.vtt</code> is parsed and packaged into a <code>wvtt</code> track
 as it is read, so nothing is written beside it and the <code>.vtt</code> stays the source
-of truth; its segments are cut where the asset’s splice points and
-<a href="#segmentation"><code>text_length</code></a> say. CMAF WebVTT tracks use <code>"type": "text"</code>
+of truth; its segments are cut where the asset’s splice points and the server
+request’s <a href="server/routes.html#segmentation-options"><code>text_length</code></a> say. CMAF WebVTT tracks use <code>"type": "text"</code>
 and record their <code>wvtt</code> codec. Raw WebVTT tracks use <code>"type": "webvtt"</code> and do
 not have a codec, because dyndo packages them only for CMAF output. HLS serves
 raw VTT cues directly from a raw WebVTT source; CMAF <code>wvtt</code> sources are served
@@ -441,7 +425,7 @@ track:</p>
 <p>The descriptor is safe to edit, and re-running <a href="./cli/index.html"><code>index</code></a> will
 not undo your edits: tracks already in the descriptor keep their metadata as-is
 on a re-index. The fields intended for hand-editing are <code>language</code> and <code>role</code> on
-audio and text tracks, the top-level <a href="#segmentation">segmentation fields</a>, and
+audio and text tracks, the top-level <a href="#boundaries">boundaries</a>, and
 track order (which picks the HLS default audio rendition).</p>
 <p>Two things to keep in mind:</p>
 <ul>

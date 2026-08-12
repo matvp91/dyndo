@@ -110,32 +110,6 @@
       ],
       "type": "string"
     },
-    "SegmentOptions": {
-      "properties": {
-        "boundaries": {
-          "description": "Times a segment has to start at, in milliseconds.",
-          "items": {
-            "format": "uint32",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "type": "array"
-        },
-        "min_length": {
-          "description": "The shortest a served segment may be, in milliseconds; fragments are\ngrouped until they reach it.",
-          "format": "uint32",
-          "minimum": 0,
-          "type": "integer"
-        },
-        "text_length": {
-          "description": "How long each segment of a packaged subtitle track is, in milliseconds.\nUnlike `min_length` this is exact, since dyndo fragments those tracks\nitself rather than grouping what a file already contains. Zero asks for no\ngrid, leaving the asset's splice points as the only cuts.",
-          "format": "uint32",
-          "minimum": 0,
-          "type": "integer"
-        }
-      },
-      "type": "object"
-    },
     "SourceTrack": {
       "anyOf": [
         {
@@ -201,7 +175,6 @@
       "description": "A timed-text track stored in an asset.",
       "oneOf": [
         {
-          "$ref": "#/$defs/TextMetadata",
           "properties": {
             "type": {
               "const": "webvtt",
@@ -218,9 +191,23 @@
         "id": {
           "type": "string"
         },
+        "language": {
+          "default": "und",
+          "type": "string"
+        },
         "path": {
           "description": "Path relative to the asset file.",
           "type": "string"
+        },
+        "role": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Role"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [
@@ -283,9 +270,14 @@
       "description": "JSON Schema used to validate this descriptor.",
       "type": "string"
     },
-    "segment_options": {
-      "$ref": "#/$defs/SegmentOptions",
-      "description": "How the asset asks to be segmented, for requests that do not say."
+    "boundaries": {
+      "description": "Splice points, in milliseconds from the presentation start.",
+      "items": {
+        "format": "uint32",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "type": "array"
     },
     "tracks": {
       "items": {

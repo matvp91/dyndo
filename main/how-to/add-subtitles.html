@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "ayu";
-            window.path_to_searchindex_js = "../searchindex-5288e92a.js";
+            window.path_to_searchindex_js = "../searchindex-c12fa3fa.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-942fa83c.js"></script>
@@ -195,7 +195,8 @@ resolved, and served like any other CMAF track.</li>
 <p>CMAF packaging happens only when an operation needs it, so a <code>.vtt</code> you edit
 is served edited on the next request — no re-indexing and no repackaging step.
 How the packaged track is cut is set by
-<a href="../reference/asset-json.html#segmentation"><code>segment_options.text_length</code> and <code>boundaries</code></a>.</p>
+<a href="../reference/asset-json.html#boundaries"><code>boundaries</code></a> and the server’s
+<a href="../reference/server/routes.html#segmentation-options"><code>text_length</code></a>.</p>
 </blockquote>
 <p>How a track is <em>delivered</em> then depends on the protocol. DASH always references
 packaged <code>wvtt</code> segments. HLS references plain WebVTT documents, because that is
@@ -240,7 +241,7 @@ its own media playlist:</p>
 <code>language=</code> the track’s language is <code>und</code> (undetermined). A raw VTT descriptor
 has no <code>codec</code>: dyndo packages it as <code>wvtt</code> for DASH and returns the parsed VTT
 cues directly for HLS.</p>
-<p>By default the whole subtitle becomes one segment, cut only at the asset’s splice points. Set <code>text_length</code> in the descriptor or the server request when you want a regular grid:</p>
+<p>By default the whole subtitle becomes one segment, cut only at the asset’s splice points. Set the server request’s <code>text_length</code> when you want a regular grid:</p>
 <pre><code class="language-bash">curl "http://localhost:8080/out/(asset:asset,text_length:4000)/index.mpd"
 </code></pre>
 <h2 id="choose-how-hls-delivers-subtitles"><a class="header" href="#choose-how-hls-delivers-subtitles">Choose how HLS delivers subtitles</a></h2>

@@ -35,7 +35,7 @@
             const path_to_root = "../../";
             const default_light_theme = "light";
             const default_dark_theme = "ayu";
-            window.path_to_searchindex_js = "../../searchindex-5288e92a.js";
+            window.path_to_searchindex_js = "../../searchindex-c12fa3fa.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../../toc-942fa83c.js"></script>
@@ -193,7 +193,7 @@ how to segment it. <code>&lt;resource&gt;</code> names what to return from it.
 Because the options travel in the path rather than a query string, a manifest
 and every segment it references share one prefix, and the relative URLs inside a
 manifest resolve correctly without rewriting.</p>
-<p><a href="#filtering-descriptor-entries"><code>filter</code></a> is the exception, and deliberately so: it travels
+<p><a href="#filtering-tracks"><code>filter</code></a> is the exception, and deliberately so: it travels
 in the query string because it shapes a manifest without needing to reach the
 resources that manifest references.</p>
 <h2 id="health-check"><a class="header" href="#health-check">Health check</a></h2>
@@ -245,11 +245,9 @@ before parsing the Rison object.</p>
 </tbody>
 </table>
 </div>
-<p>Each of these overrides the matching option in the descriptor’s
-<a href="../asset-json.html#segmentation"><code>segment_options</code></a> block. An option left at zero
-names nothing and leaves the asset’s value standing, since a request cannot
-express the difference between an absent value and a zero one. Configure segment
-boundaries only in the descriptor.</p>
+<p>These options apply only to the request. Their default of zero serves each CMAF
+fragment separately and packages raw WebVTT without a regular grid. Configure
+splice <a href="../asset-json.html#boundaries">boundaries</a> only in the descriptor.</p>
 <h3 id="output-options"><a class="header" href="#output-options">Output options</a></h3>
 <p>Two options affect DASH output:</p>
 <div class="table-wrapper">
@@ -259,7 +257,7 @@ boundaries only in the descriptor.</p>
 </thead>
 <tbody>
 <tr><td><code>compact</code></td><td><code>c</code></td><td>boolean</td><td><code>false</code></td><td>Hoist segment-template data shared by DASH representations to their adaptation set.</td></tr>
-<tr><td><code>multi_period</code></td><td><code>mp</code></td><td>boolean</td><td><code>false</code></td><td>Open a <code>Period</code> at each <a href="#segmentation-options">segment boundary</a> rather than describing the asset as one.</td></tr>
+<tr><td><code>multi_period</code></td><td><code>mp</code></td><td>boolean</td><td><code>false</code></td><td>Open a <code>Period</code> at each <a href="../asset-json.html#boundaries">asset boundary</a> rather than describing the asset as one.</td></tr>
 </tbody>
 </table>
 </div>
@@ -281,8 +279,8 @@ shorthand. The forms are equivalent:</p>
 /out/(a:demo,sml:6000,c:!t)/index.mpd
 </code></pre>
 <p>Unknown keys are rejected on every output route.</p>
-<h2 id="filtering-descriptor-entries"><a class="header" href="#filtering-descriptor-entries">Filtering descriptor entries</a></h2>
-<p>A request can narrow an asset’s track entries, so one descriptor covers every
+<h2 id="filtering-tracks"><a class="header" href="#filtering-tracks">Filtering tracks</a></h2>
+<p>A request can narrow an asset’s resolved tracks, so one descriptor covers every
 variation you want to offer — a resolution cap, one audio language, or selected
 thumbnail tracks — instead of one descriptor per variation.</p>
 <div class="table-wrapper">
@@ -298,15 +296,15 @@ thumbnail tracks — instead of one descriptor per variation.</p>
 <pre><code class="language-text">/out/(asset:demo)/index.mpd?filter=type!=video%7C%7Cheight%3C=720
 /out/(asset:demo)/master.m3u8?filter=type==audio
 </code></pre>
-<p>The <code>filter</code> parameter is accepted on every manifest route. It first removes
-non-matching entries from the asset descriptor, then the route resolves the
-remaining entries. Track-file routes do not parse a query, so filtering never
-gates their URLs.</p>
+<p>The <code>filter</code> parameter is accepted on every manifest route. The route resolves
+the asset, then removes non-matching tracks. Resolving first lets a thumbnail
+bind to its source video even when that video is absent from the manifest.
+Track-file routes do not parse a query, so filtering never gates their URLs.</p>
 <p>The syntax follows <a href="https://docs.unified-streaming.com/documentation/vod/player-urls.html">Unified Streaming’s URL
 filters</a>,
 so filters written for that stack read the same here.</p>
 <h3 id="expression-syntax"><a class="header" href="#expression-syntax">Expression syntax</a></h3>
-<p>A filter is a boolean expression over asset descriptor fields:</p>
+<p>A filter is a boolean expression over resolved track fields:</p>
 <pre><code class="language-text">attribute &lt;operator&gt; value
 expression &amp;&amp; expression        both must hold
 expression || expression        either may hold
@@ -349,25 +347,25 @@ request is a <code>400</code>. The same rule makes a cache-busting or analytics 
 a manifest URL a <code>400</code> — put those in the path’s
 <a href="#the-options-object">options object</a>.</p>
 <h3 id="attributes"><a class="header" href="#attributes">Attributes</a></h3>
-<p>Filtering runs before media is resolved. Consequently, every available attribute
-is stored in the descriptor and <code>codec</code> is the descriptor value. Segment-derived
-<code>bitrate</code>, <code>avg_bitrate</code>, and <code>duration</code> filters are not available.</p>
+<p>Filtering runs after track resolution. Segment-derived <code>bitrate</code>, <code>avg_bitrate</code>,
+and <code>duration</code> filters are not available.</p>
 <div class="table-wrapper">
 <table>
 <thead>
 <tr><th>Attribute</th><th>Type</th><th>Present on</th><th>Description</th></tr>
 </thead>
 <tbody>
-<tr><td><code>type</code></td><td>text</td><td>every entry</td><td><code>video</code>, <code>audio</code>, <code>text</code>, <code>webvtt</code>, or <code>thumbnail</code>.</td></tr>
-<tr><td><code>id</code></td><td>text</td><td>every entry</td><td>The track identifier.</td></tr>
+<tr><td><code>type</code></td><td>text</td><td>every track</td><td><code>video</code>, <code>audio</code>, <code>text</code>, or <code>thumbnail</code>. Both CMAF text and raw WebVTT have type <code>text</code>.</td></tr>
+<tr><td><code>format</code></td><td>text</td><td>every track</td><td><code>cmaf</code>, <code>webvtt</code>, or <code>thumbnail</code>.</td></tr>
+<tr><td><code>id</code></td><td>text</td><td>every track</td><td>The track identifier.</td></tr>
 <tr><td><code>codec</code></td><td>text</td><td>CMAF track</td><td>The descriptor codec, for example <code>avc1.640028</code>.</td></tr>
 <tr><td><code>width</code></td><td>numeric</td><td>video, thumbnail</td><td>Frame or complete sprite width in pixels.</td></tr>
 <tr><td><code>height</code></td><td>numeric</td><td>video</td><td>Frame height in pixels.</td></tr>
 <tr><td><code>frame_rate</code></td><td>text</td><td>video</td><td>The rate as written, for example <code>25/1</code>.</td></tr>
 <tr><td><code>sample_rate</code></td><td>numeric</td><td>audio</td><td>Samples per second.</td></tr>
 <tr><td><code>channels</code></td><td>numeric</td><td>audio</td><td>Channel count.</td></tr>
-<tr><td><code>language</code></td><td>text</td><td>audio, text, webvtt</td><td>The track’s language tag, compared exactly as the descriptor spells it.</td></tr>
-<tr><td><code>role</code></td><td>text</td><td>audio, text, webvtt</td><td>One of the <a href="../roles.html">track roles</a>.</td></tr>
+<tr><td><code>language</code></td><td>text</td><td>audio, text</td><td>The track’s language tag, compared exactly as the descriptor spells it.</td></tr>
+<tr><td><code>role</code></td><td>text</td><td>audio, text</td><td>One of the <a href="../roles.html">track roles</a>.</td></tr>
 <tr><td><code>tile_size</code></td><td>numeric</td><td>thumbnail</td><td>Thumbnails per sprite row and column.</td></tr>
 <tr><td><code>step</code></td><td>numeric</td><td>thumbnail</td><td>Milliseconds between adjacent thumbnails.</td></tr>
 </tbody>
@@ -377,7 +375,7 @@ is stored in the descriptor and <code>codec</code> is the descriptor value. Segm
 happily and simply matches no entry. A numeric attribute does check:
 <code>height==tall</code> is a <code>400</code>.</p>
 <h3 id="what-a-filter-keeps"><a class="header" href="#what-a-filter-keeps">What a filter keeps</a></h3>
-<p><strong>A descriptor entry is kept only if the expression is true for that entry.</strong>
+<p><strong>A track is kept only if the expression is true for that track.</strong>
 Each track and thumbnail is judged on its own; nothing is judged as a group.</p>
 <p><strong>A comparison against an attribute the track does not carry is false, whatever
 the operator.</strong> An audio track has no <code>height</code>, so <code>height&lt;=720</code> is false for it
@@ -510,8 +508,8 @@ shared path prefix.</p>
 </thead>
 <tbody>
 <tr><td><code>200 OK</code></td><td>The manifest or segment was generated and returned; also the <code>/health</code> probe.</td></tr>
-<tr><td><code>400 Bad Request</code></td><td>The options path segment is malformed Rison or contains an unknown option, a manifest route carries an unrecognised query parameter, or the <a href="#filtering-descriptor-entries">filter</a> is malformed — an unknown attribute, an ordering operator on a textual attribute, or a non-numeric value for a numeric attribute.</td></tr>
-<tr><td><code>404 Not Found</code></td><td>The path does not contain separate options and resource components; <code>&lt;track-id&gt;</code> matches no track; a segment filename has an unsupported extension or a non-integer time; <code>&lt;time&gt;</code> is not a segment boundary; a thumbnail is disabled or unavailable; the descriptor does not exist; or the <a href="#filtering-descriptor-entries">filter</a> matched no descriptor entry.</td></tr>
+<tr><td><code>400 Bad Request</code></td><td>The options path segment is malformed Rison or contains an unknown option, a manifest route carries an unrecognised query parameter, or the <a href="#filtering-tracks">filter</a> is malformed — an unknown attribute, an ordering operator on a textual attribute, or a non-numeric value for a numeric attribute.</td></tr>
+<tr><td><code>404 Not Found</code></td><td>The path does not contain separate options and resource components; <code>&lt;track-id&gt;</code> matches no track; a segment filename has an unsupported extension or a non-integer time; <code>&lt;time&gt;</code> is not a segment boundary; a thumbnail is disabled or unavailable; the descriptor does not exist; or the <a href="#filtering-tracks">filter</a> matched no track.</td></tr>
 <tr><td><code>500 Internal Server Error</code></td><td>The descriptor JSON is malformed; a source file is unreadable or is not valid, supported CMAF; packaged subtitle cues cannot be parsed; thumbnail generation fails; or manifest serialization fails.</td></tr>
 </tbody>
 </table>
