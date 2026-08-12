@@ -3,7 +3,7 @@ use opendal::Operator;
 use relative_path::RelativePath;
 use uuid::Uuid;
 
-use super::cmaf::{CmafError, ResolvedCmafTrack};
+use super::cmaf::{CmafError, CmafKind, ResolvedCmafTrack};
 use super::metadata::{AudioMetadata, TextMetadata, VideoMetadata};
 use super::thumbnail::ResolvedThumbnailTrack;
 use super::timed_text::{ResolvedTimedTextTrack, TimedTextError, WebVttPackageError};
@@ -75,11 +75,34 @@ impl ResolvedTrack {
     }
 
     pub fn video_metadata(&self) -> Option<&VideoMetadata> {
-        self.cmaf().and_then(|track| track.kind().video())
+        match self {
+            Self::Cmaf(track) => match track.kind() {
+                CmafKind::Video(metadata) => Some(metadata),
+                CmafKind::Audio(_) | CmafKind::Text(_) => None,
+            },
+            Self::TimedText(_) | Self::Thumbnail(_) => None,
+        }
     }
 
     pub fn audio_metadata(&self) -> Option<&AudioMetadata> {
-        self.cmaf().and_then(|track| track.kind().audio())
+        match self {
+            Self::Cmaf(track) => match track.kind() {
+                CmafKind::Audio(metadata) => Some(metadata),
+                CmafKind::Video(_) | CmafKind::Text(_) => None,
+            },
+            Self::TimedText(_) | Self::Thumbnail(_) => None,
+        }
+    }
+
+    pub fn text_metadata(&self) -> Option<&TextMetadata> {
+        match self {
+            Self::Cmaf(track) => match track.kind() {
+                CmafKind::Text(metadata) => Some(metadata),
+                CmafKind::Video(_) | CmafKind::Audio(_) => None,
+            },
+            Self::TimedText(track) => Some(track.format().text()),
+            Self::Thumbnail(_) => None,
+        }
     }
 
     pub fn language(&self) -> Option<&LanguageTag> {

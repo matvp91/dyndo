@@ -15,6 +15,28 @@ fn memory_operator() -> Operator {
 }
 
 #[tokio::test]
+async fn resolved_text_metadata_is_available_for_web_vtt_and_wvtt() {
+    let operator = memory_operator();
+    let path = RelativePath::new("subtitles/en.vtt");
+    operator.write(path.as_str(), VTT).await.unwrap();
+
+    let timed_text = ResolvedTrack::discover(&operator, path).await.unwrap();
+    assert!(timed_text.text_metadata().is_some());
+
+    let ResolvedTrack::TimedText(timed_text) = timed_text else {
+        panic!("expected a WebVTT source track");
+    };
+    let wvtt = ResolvedTrack::Cmaf(
+        timed_text
+            .package_wvtt(&SegmentOptions::default())
+            .await
+            .unwrap(),
+    );
+
+    assert!(wvtt.text_metadata().is_some());
+}
+
+#[tokio::test]
 async fn web_vtt_track_packages_cmaf_on_demand_and_serves_vtt_directly() {
     let operator = memory_operator();
     let path = RelativePath::new("subtitles/en.vtt");

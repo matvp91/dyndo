@@ -64,20 +64,6 @@ impl CmafKind {
         }
     }
 
-    pub fn video(&self) -> Option<&VideoMetadata> {
-        match self {
-            Self::Video(metadata) => Some(metadata),
-            Self::Audio(_) | Self::Text(_) => None,
-        }
-    }
-
-    pub fn audio(&self) -> Option<&AudioMetadata> {
-        match self {
-            Self::Video(_) | Self::Text(_) => None,
-            Self::Audio(metadata) => Some(metadata),
-        }
-    }
-
     pub fn language(&self) -> Option<&LanguageTag> {
         match self {
             Self::Video(_) => None,

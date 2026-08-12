@@ -49,15 +49,21 @@ impl SourceTrack {
 
     pub fn video_metadata(&self) -> Option<&VideoMetadata> {
         match self {
-            Self::Cmaf(track) => track.kind.video(),
-            Self::TimedText(_) => None,
+            Self::Cmaf(CmafTrack {
+                kind: CmafKind::Video(metadata),
+                ..
+            }) => Some(metadata),
+            Self::Cmaf(_) | Self::TimedText(_) => None,
         }
     }
 
     pub fn audio_metadata(&self) -> Option<&AudioMetadata> {
         match self {
-            Self::Cmaf(track) => track.kind.audio(),
-            Self::TimedText(_) => None,
+            Self::Cmaf(CmafTrack {
+                kind: CmafKind::Audio(metadata),
+                ..
+            }) => Some(metadata),
+            Self::Cmaf(_) | Self::TimedText(_) => None,
         }
     }
 
