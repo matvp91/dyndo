@@ -1,0 +1,2882 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>dyndo</title>
+        <meta name="robots" content="noindex">
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="Dynamic media packaging for adaptive streaming, in Rust.">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="favicon-8114d1fc.png">
+        <link rel="stylesheet" href="css/variables-8adf115d.css">
+        <link rel="stylesheet" href="css/general-e96d0476.css">
+        <link rel="stylesheet" href="css/chrome-d279d366.css">
+        <link rel="stylesheet" href="css/print-9e4910d8.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="fonts/fonts-9644e21d.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="mdbook-highlight-css" href="highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="ayu-highlight-3fdfc3ac.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "";
+            const default_light_theme = "light";
+            const default_dark_theme = "ayu";
+            window.path_to_searchindex_js = "searchindex-93d478c5.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="toc-942fa83c.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="mdbook-body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
+            </noscript>
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="mdbook-page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
+                        </label>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
+                        </button>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
+                        </ul>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">dyndo</h1>
+
+                    <div class="right-buttons">
+                        <a href="print.html" title="Print this book" aria-label="Print this book">
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
+                        </a>
+                        <a href="https://github.com/matvp91/dyndo" title="Git repository" aria-label="Git repository">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8zM97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1zm-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7zm32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1zm-11.4-14.7c-1.6 1-1.6 3.6 0 5.9 1.6 2.3 4.3 3.3 5.6 2.3 1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2z"/></svg></span>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="mdbook-content" class="content">
+                    <main>
+                        <h1 id="dyndo"><a class="header" href="#dyndo">dyndo</a></h1>
+<p><strong>Dynamic adaptive-streaming delivery from media you already store.</strong></p>
+<p><code>dyndo</code> serves existing CMAF files without repackaging or duplicating their media bytes. A small JSON descriptor supplies the presentation metadata; manifests, segment views, subtitles, and thumbnails are produced when requested while the original media stays untouched.</p>
+<blockquote>
+<p><code>dyndo</code> is in early development. Both DASH and HLS are implemented, served
+from the same CMAF sources.</p>
+</blockquote>
+<h2 id="what-this-enables"><a class="header" href="#what-this-enables">What this enables</a></h2>
+<ul>
+<li><strong>No second media library.</strong> The original CMAF objects are the media dyndo serves. Segment requests become byte-range reads rather than reads from separately packaged copies.</li>
+<li><strong>Metadata can change independently of media.</strong> Languages, roles, rendition order, and subtitle membership live in <code>asset.json</code>, so correcting them does not rewrite a large source object.</li>
+<li><strong>Delivery variants do not require new files.</strong> A request can filter tracks, regroup fragments, split a DASH presentation into periods, select the HLS subtitle form, or enable thumbnails.</li>
+<li><strong>Track URLs survive metadata corrections.</strong> IDs derive from source paths, not mutable labels such as language or role.</li>
+<li><strong>Storage may remain read-only.</strong> dyndo reads source headers and requested ranges but never writes generated media back beside them.</li>
+<li><strong>Local files and object storage use the same model.</strong> OpenDAL supplies the storage boundary, while the descriptor and HTTP routes stay unchanged.</li>
+</ul>
+<h2 id="the-idea-in-one-picture"><a class="header" href="#the-idea-in-one-picture">The idea in one picture</a></h2>
+<pre><code class="language-text">CMAF sources                asset.json                dyndo-server
+(fragmented MP4      dyndo    (thin                       │
+ + global sidx)  ──index──▶   descriptor)  ────────▶  ┌───┴─────────────────────────┐
+      │                                               │  GET /out/(asset:…)/…       │
+      │                                               │        index.mpd            │
+      └───────────── byte-range reads ───────────────▶│        master.m3u8          │
+                                                      │        &lt;track&gt;/init.mp4     │
+                                                      │        &lt;track&gt;/&lt;time&gt;.m4s   │
+                                                      └─────────────────────────────┘
+</code></pre>
+<ol>
+<li><strong>Index</strong> your CMAF files once with the <code>dyndo</code> CLI to produce <code>asset.json</code>.</li>
+<li><strong>Serve</strong> that descriptor with <code>dyndo-server</code>. At request time it parses each
+source’s header, derives the segment index, and answers manifest and segment
+requests with ranged reads from the original media.</li>
+</ol>
+<p>Because the descriptor stores only per-track metadata and a source path — no
+segment list, no byte offsets — a single <code>asset.json</code> is a few hundred bytes,
+and serving an 800 MB source reads the same ~10 KB header region as an 8 MB one.
+See <a href="#the-thin-pointer-approach">The thin-pointer approach</a> for why.</p>
+<h2 id="the-two-tools"><a class="header" href="#the-two-tools">The two tools</a></h2>
+<p>dyndo is two programs, and you get each the easy way — no Rust toolchain
+required:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Tool</th><th>What it does</th><th>How to get it</th></tr>
+</thead>
+<tbody>
+<tr><td><a href="#dyndo-cli"><code>dyndo</code></a> (CLI)</td><td>Index CMAF and WebVTT sources into <code>asset.json</code>, and extract video frames.</td><td>The <a href="#install-the-cli">one-line installer</a>.</td></tr>
+<tr><td><a href="#dyndo-server"><code>dyndo-server</code></a></td><td>Generate DASH/HLS manifests and serve CMAF segments on the fly.</td><td>The <a href="https://hub.docker.com/r/matvp91/dyndo-server"><code>matvp91/dyndo-server</code></a> image on Docker Hub.</td></tr>
+</tbody>
+</table>
+</div>
+<p>This book covers both programs and the <code>asset.json</code> descriptor that connects
+them: you produce a descriptor with the CLI, and the server reads it. If neither
+the installer nor Docker fits your platform, you can also
+<a href="#build-from-source">build from source</a>.</p>
+<h2 id="quick-install"><a class="header" href="#quick-install">Quick install</a></h2>
+<p>Install the <code>dyndo</code> CLI (macOS and Linux):</p>
+<pre><code class="language-bash">curl -fsSL https://matvp91.github.io/dyndo/install.sh | bash
+</code></pre>
+<p>See <a href="#install-the-cli">Install the CLI</a> for details. For the server,
+pull the Docker image — see
+<a href="#deploy-with-docker">Deploy with Docker</a>.</p>
+<h2 id="how-to-read-this-book"><a class="header" href="#how-to-read-this-book">How to read this book</a></h2>
+<p>This documentation follows the <a href="https://diataxis.fr/">Diátaxis</a> framework. Pick
+the section that matches what you need right now:</p>
+<ul>
+<li><strong><a href="#getting-started">Tutorial</a></strong> — <em>I’m new here.</em> A single
+guided lesson that takes you from nothing to a playing stream.</li>
+<li><strong><a href="#index-your-cmaf-sources">How-to guides</a></strong> — <em>I have a task to do.</em>
+Focused recipes: index sources, add subtitles, label tracks with roles, run
+the server, serve from S3, deploy with Docker.</li>
+<li><strong><a href="#dyndo-cli">Reference</a></strong> — <em>I need to look something up.</em> Exact,
+exhaustive descriptions of every command, route, config key, descriptor field,
+and track role.</li>
+<li><strong><a href="#the-thin-pointer-approach">Explanation</a></strong> — <em>I want to understand why.</em>
+The design ideas behind dyndo: dynamic packaging without media copies, the
+thin pointer, and bounded-memory parsing.</li>
+</ul>
+<h2 id="supported-codecs"><a class="header" href="#supported-codecs">Supported codecs</a></h2>
+<p>Codec parameters are read from the source and emitted as
+<a href="https://datatracker.ietf.org/doc/html/rfc6381">RFC 6381</a> strings.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Media</th><th>Codec</th><th>Sample entry</th></tr>
+</thead>
+<tbody>
+<tr><td>Video</td><td>AVC / H.264</td><td><code>avc1</code></td></tr>
+<tr><td>Video</td><td>HEVC / H.265</td><td><code>hvc1</code>, <code>hev1</code></td></tr>
+<tr><td>Video</td><td>AV1</td><td><code>av01</code></td></tr>
+<tr><td>Audio</td><td>AAC</td><td><code>mp4a</code></td></tr>
+<tr><td>Audio</td><td>Dolby Digital (AC-3)</td><td><code>ac-3</code></td></tr>
+<tr><td>Audio</td><td>Dolby Digital Plus (E-AC-3)</td><td><code>ec-3</code></td></tr>
+<tr><td>Text</td><td>WebVTT in ISO-BMFF</td><td><code>wvtt</code></td></tr>
+</tbody>
+</table>
+</div>
+<p>Raw WebVTT (<code>.vtt</code>) files are also accepted as text-track sources: dyndo parses
+one and creates a temporary <code>wvtt</code> view only for CMAF output, so the <code>.vtt</code>
+stays the source of truth. DASH is served that packaged track, while HLS is
+served plain WebVTT documents — see <a href="#add-a-subtitle-track">Add a subtitle track</a>.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="install-the-cli"><a class="header" href="#install-the-cli">Install the CLI</a></h1>
+<p>In this short lesson you’ll install the prebuilt <code>dyndo</code> CLI and confirm it
+runs — no Rust toolchain needed. Set aside two minutes.</p>
+<p>Prebuilt binaries cover macOS (Apple Silicon and Intel) and Linux (x86_64).
+On any other platform, <a href="#build-from-source">build from source</a>
+instead.</p>
+<h2 id="step-1-run-the-installer"><a class="header" href="#step-1-run-the-installer">Step 1: Run the installer</a></h2>
+<pre><code class="language-bash">curl -fsSL https://matvp91.github.io/dyndo/install.sh | bash
+</code></pre>
+<p>The script detects your platform, downloads the latest release from GitHub,
+verifies its checksum, and installs the <code>dyndo</code> binary into <code>~/.dyndo/bin</code>.
+If that directory isn’t on your <code>PATH</code> yet, it appends one line (marked
+<code># dyndo</code>) to your shell’s rc file — <code>~/.zshrc</code>, <code>~/.bashrc</code>, or fish’s
+<code>config.fish</code> — and says so.</p>
+<h2 id="step-2-verify-it-runs"><a class="header" href="#step-2-verify-it-runs">Step 2: Verify it runs</a></h2>
+<p>Open a new terminal, then:</p>
+<pre><code class="language-bash">dyndo --version
+</code></pre>
+<p>You should see the name and version, e.g. <code>dyndo x.y.z</code>. That’s it — the CLI
+is installed.</p>
+<h2 id="pinning-a-version"><a class="header" href="#pinning-a-version">Pinning a version</a></h2>
+<p>The installer takes an optional version, with or without the leading <code>v</code>:</p>
+<pre><code class="language-bash">curl -fsSL https://matvp91.github.io/dyndo/install.sh | bash -s &lt;version&gt;
+</code></pre>
+<p>Setting <code>DYNDO_VERSION=&lt;version&gt;</code> does the same. Available versions are
+listed on the <a href="https://github.com/matvp91/dyndo/releases">releases page</a>.</p>
+<h2 id="uninstalling"><a class="header" href="#uninstalling">Uninstalling</a></h2>
+<p>Remove the install directory, and the <code># dyndo</code> line from your shell’s rc
+file if you like:</p>
+<pre><code class="language-bash">rm -rf ~/.dyndo
+</code></pre>
+<h2 id="where-to-next"><a class="header" href="#where-to-next">Where to next?</a></h2>
+<p>Follow <a href="#getting-started">Getting started</a> to create CMAF sources, index
+them, and play a stream. It runs <code>dyndo-server</code> with Docker, since this
+installer ships only the <code>dyndo</code> CLI — for the server on its own, see
+<a href="#deploy-with-docker">Deploy with Docker</a>.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="getting-started"><a class="header" href="#getting-started">Getting started</a></h1>
+<p>This tutorial takes you from an empty directory to a <strong>playing adaptive stream</strong>
+served by dyndo. Along the way you’ll install the CLI, create a pair of CMAF
+sources, index them into an <code>asset.json</code>, and start the server as a container.</p>
+<p>You don’t need to know anything about CMAF, DASH, or HLS to follow along — we’ll
+create everything from scratch. By the end you’ll have a running server, see how it reads the original media without copying it, and change presentation metadata without repackaging a source.</p>
+<p>Set aside about 15 minutes.</p>
+<h2 id="what-youll-need"><a class="header" href="#what-youll-need">What you’ll need</a></h2>
+<ul>
+<li>The <strong><code>dyndo</code> CLI</strong> — you’ll install it in step 1, no Rust toolchain required.</li>
+<li><a href="https://ffmpeg.org/"><code>ffmpeg</code></a>, used <strong>only</strong> to create the sample media in
+step 2. If you already have CMAF files, you can skip that step.</li>
+<li><a href="https://docs.docker.com/get-docker/">Docker</a>, to run the server in step 4.</li>
+</ul>
+<p>Work in a fresh directory of your choice; every command below is run from there.</p>
+<h2 id="step-1-install-the-cli"><a class="header" href="#step-1-install-the-cli">Step 1: Install the CLI</a></h2>
+<p>Install the prebuilt <code>dyndo</code> CLI with the one-line installer:</p>
+<pre><code class="language-bash">curl -fsSL https://matvp91.github.io/dyndo/install.sh | bash
+</code></pre>
+<p>Open a new terminal so the updated <code>PATH</code> takes effect, then check it works — it
+prints its name and version:</p>
+<pre><code class="language-bash">dyndo --version
+</code></pre>
+<blockquote>
+<p>Prefer not to use the installer, or on a platform it doesn’t cover? See
+<a href="#install-the-cli">Install the CLI</a> for options, or
+<a href="#build-from-source">Build from source</a>.</p>
+</blockquote>
+<h2 id="step-2-create-two-cmaf-sources"><a class="header" href="#step-2-create-two-cmaf-sources">Step 2: Create two CMAF sources</a></h2>
+<p>dyndo serves <strong>CMAF</strong>: fragmented MP4 files, one media track each, carrying a
+single global <code>sidx</code> segment index. Let’s make one video track and one audio
+track.</p>
+<p>First, generate a 10-second test clip with a video and an audio stream:</p>
+<pre><code class="language-bash">ffmpeg -f lavfi -i "testsrc=size=1280x720:rate=25:duration=10" \
+       -f lavfi -i "sine=frequency=440:duration=10" \
+       -c:v libx264 -profile:v high -pix_fmt yuv420p -g 50 -keyint_min 50 \
+       -c:a aac -b:a 128k -ar 48000 -ac 2 \
+       source.mp4
+</code></pre>
+<p>Now repackage each track into its own CMAF file, into an <code>assets/</code> directory —
+that’s the directory you’ll hand to the server in step 4. The <code>+global_sidx</code>
+flag is the important one: it writes a <strong>single</strong> segment index covering the
+whole file, which is what dyndo reads.</p>
+<pre><code class="language-bash">mkdir -p assets
+
+# Video track -&gt; assets/video.mp4
+ffmpeg -i source.mp4 -map 0:v:0 -c copy \
+  -movflags +frag_keyframe+empty_moov+separate_moof+default_base_moof+global_sidx \
+  assets/video.mp4
+
+# Audio track -&gt; assets/audio.mp4
+ffmpeg -i source.mp4 -map 0:a:0 -c copy \
+  -movflags +frag_keyframe+empty_moov+separate_moof+default_base_moof+global_sidx \
+  assets/audio.mp4
+</code></pre>
+<p>You now have two CMAF sources under <code>assets/</code>.</p>
+<h2 id="step-3-index-the-sources"><a class="header" href="#step-3-index-the-sources">Step 3: Index the sources</a></h2>
+<p>Turn your two files into an <code>asset.json</code> descriptor. Each positional argument
+adds one track; paths are resolved relative to the output descriptor’s
+directory, so from your working directory they’re just the file names inside
+<code>assets/</code>. An input can also carry <code>key=value</code> parameters after the path —
+here we tag the audio track’s language:</p>
+<pre><code class="language-bash">dyndo index video.mp4 audio.mp4,language=eng -o assets/asset.json
+</code></pre>
+<pre><code class="language-text">wrote assets/asset.json (2 tracks)
+</code></pre>
+<p>Take a look at what it wrote:</p>
+<pre><code class="language-bash">cat assets/asset.json
+</code></pre>
+<pre><code class="language-json">{
+  "tracks": [
+    {
+      "id": "0a252792-21d4-505e-86eb-b7f0d5ec1f8f",
+      "path": "video.mp4",
+      "codec": "avc1.64001f",
+      "type": "video",
+      "width": 1280,
+      "height": 720,
+      "frame_rate": "25/1"
+    },
+    {
+      "id": "39a70a1c-e177-5a37-aab0-661b18a593ae",
+      "path": "audio.mp4",
+      "codec": "mp4a.40.2",
+      "type": "audio",
+      "sample_rate": 48000,
+      "channels": 2,
+      "language": "eng"
+    }
+  ]
+}
+</code></pre>
+<p>That’s the whole descriptor: per-track metadata and a source path, nothing more.
+Notice there’s no segment list and no byte offsets — the server re-derives those
+from each source at request time.</p>
+<p>Each <code>id</code> is <code>&lt;type&gt;_&lt;uuid&gt;</code>, where the UUID is derived from the source’s path.
+That makes it stable and reproducible — indexing the same file at the same path
+always yields the same id — and independent of metadata, so relabelling a track
+never changes the URLs it is served under. You should see exactly the ids above,
+since they come from the paths <code>assets/video.mp4</code> and <code>assets/audio.mp4</code>.</p>
+<h2 id="step-4-start-the-server"><a class="header" href="#step-4-start-the-server">Step 4: Start the server</a></h2>
+<p>Run <code>dyndo-server</code> from Docker Hub, mounting your <code>assets/</code> directory into the
+container:</p>
+<pre><code class="language-bash">docker run --rm -p 8080:8080 \
+  -e DYNDO_FS__ROOT=/assets \
+  -v "$PWD/assets:/assets:ro" \
+  matvp91/dyndo-server
+</code></pre>
+<pre><code class="language-text">dyndo-server listening on http://0.0.0.0:8080
+</code></pre>
+<ul>
+<li><code>-v "$PWD/assets:/assets:ro"</code> mounts your descriptor and its CMAF sources into
+the container, read-only.</li>
+<li><code>-e DYNDO_FS__ROOT=/assets</code> points the server’s storage root at that mount.</li>
+<li><code>-p 8080:8080</code> publishes the port to your host.</li>
+</ul>
+<p>The server exposes each descriptor it finds as <strong>both</strong> a DASH and an HLS stream.
+Leave it running and open a second terminal for the next step. (For everything
+Docker can do here — pinning a version, using a config file, serving from S3 —
+see <a href="#deploy-with-docker">Deploy with Docker</a>.)</p>
+<h2 id="step-5-play-the-stream"><a class="header" href="#step-5-play-the-stream">Step 5: Play the stream</a></h2>
+<p>Streams are served under <code>/out/</code>, and the first part of the path is an object
+naming which descriptor to serve. Your descriptor is at <code>assets/asset.json</code> and
+the storage root is that <code>assets/</code> directory, so its path relative to the root is
+<code>asset.json</code> — and you name it <strong>without</strong> the <code>.json</code> extension: <code>asset</code>.</p>
+<p>First, confirm the DASH manifest is being served:</p>
+<pre><code class="language-bash">curl "http://localhost:8080/out/(asset:asset)/index.mpd"
+</code></pre>
+<p>You should see an XML document beginning with <code>&lt;MPD …&gt;</code> that lists a video and
+an audio <code>AdaptationSet</code>. The HLS multivariant playlist is served from the same
+asset:</p>
+<pre><code class="language-bash">curl "http://localhost:8080/out/(asset:asset)/master.m3u8"
+</code></pre>
+<p>The server also accepts compact option names: <code>(a:asset)</code> is equivalent to
+<code>(asset:asset)</code>. This tutorial keeps the full name for readability; the
+<a href="#the-options-object">HTTP routes reference</a> lists
+all full names and shorthands.</p>
+<pre><code class="language-text">#EXTM3U
+#EXT-X-MEDIA:TYPE=AUDIO,URI="39a70a1c-e177-5a37-aab0-661b18a593ae.m3u8",GROUP-ID="audio",LANGUAGE="eng",NAME="English",DEFAULT=YES,AUTOSELECT=YES,CHANNELS="2"
+#EXT-X-STREAM-INF:BANDWIDTH=1301560,AVERAGE-BANDWIDTH=616404,CODECS="avc1.64001f,mp4a.40.2",RESOLUTION=1280x720,FRAME-RATE=25.000,AUDIO="audio",CLOSED-CAPTIONS=NONE
+0a252792-21d4-505e-86eb-b7f0d5ec1f8f.m3u8
+#EXT-X-INDEPENDENT-SEGMENTS
+</code></pre>
+<p>The bandwidth figures are measured from your own files, so yours will differ.</p>
+<blockquote>
+<p>Wrap the URL in quotes. The parentheses are shell metacharacters in <code>bash</code> and
+<code>zsh</code>, so an unquoted URL will not survive the command line.</p>
+</blockquote>
+<p><strong>That’s a working stream.</strong> To watch it, point a player at the manifest URL.
+<a href="https://www.videolan.org/">VLC</a> can open either protocol directly:</p>
+<pre><code class="language-bash">vlc "http://localhost:8080/out/(asset:asset)/index.mpd"    # or master.m3u8 for HLS
+</code></pre>
+<p>You’ll see the ffmpeg test pattern play and hear the tone. dyndo is serving the
+manifest and every segment live, reading ranges out of <code>assets/video.mp4</code> and
+<code>assets/audio.mp4</code> as the player requests them.</p>
+<h2 id="step-6-change-metadata-without-changing-media"><a class="header" href="#step-6-change-metadata-without-changing-media">Step 6: Change metadata without changing media</a></h2>
+<p>Leave the server running for one more request. Update the existing audio track’s language and mark it as the main rendition:</p>
+<pre><code class="language-bash">dyndo index audio.mp4,language=nld,role=main -o assets/asset.json
+</code></pre>
+<p>The known source path keeps its existing track entry and applies the explicit metadata overrides. Request the HLS manifest again:</p>
+<pre><code class="language-bash">curl "http://localhost:8080/out/(asset:asset)/master.m3u8"
+</code></pre>
+<p>Its audio rendition now carries <code>LANGUAGE="nld"</code> and is marked as the default. The server picked up the descriptor change on the next request. It did not rewrite <code>audio.mp4</code>, and the track ID and segment URLs stayed the same.</p>
+<p>When you’re done, stop the server with <code>Ctrl-C</code>.</p>
+<h2 id="what-you-did"><a class="header" href="#what-you-did">What you did</a></h2>
+<p>In a few minutes you:</p>
+<ol>
+<li>installed the <code>dyndo</code> CLI;</li>
+<li>produced two CMAF sources;</li>
+<li><strong>indexed</strong> them into a tiny <code>asset.json</code> descriptor; and</li>
+<li><strong>served</strong> their original byte ranges with dynamically generated manifests; and</li>
+<li><strong>changed</strong> player-facing metadata without rewriting media or changing its URLs.</li>
+</ol>
+<p>That separation is the core of dyndo: media remains stable and stored once, while its presentation can evolve independently.</p>
+<h2 id="where-to-next-1"><a class="header" href="#where-to-next-1">Where to next</a></h2>
+<ul>
+<li>Add subtitles to the stream you just built:
+<a href="#add-a-subtitle-track">Add a subtitle track</a>.</li>
+<li>Label audio and subtitle tracks so players present them correctly:
+<a href="#label-tracks-with-roles">Label tracks with roles</a>.</li>
+<li>Everything Docker can do — pin a version, mount a config file, run in
+production: <a href="#deploy-with-docker">Deploy with Docker</a>.</li>
+<li>Serve your media from object storage instead of local disk:
+<a href="#serve-media-from-s3">Serve media from S3</a>.</li>
+<li>Understand what just happened under the hood:
+<a href="#dynamic-packaging-without-media-copies">Dynamic packaging without media copies</a>.</li>
+<li>Look up every command and option: <a href="#dyndo-cli">dyndo CLI reference</a>.</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="index-your-cmaf-sources"><a class="header" href="#index-your-cmaf-sources">Index your CMAF sources</a></h1>
+<p>This guide shows how to build an <code>asset.json</code> descriptor from a set of media
+files with <code>dyndo index</code>. You do this once per asset; the CLI and server read the descriptor afterwards.</p>
+<h2 id="before-you-start"><a class="header" href="#before-you-start">Before you start</a></h2>
+<p><code>index</code> accepts two kinds of input, selected by file extension
+(case-sensitively — <code>.MP4</code> is not recognised):</p>
+<ul>
+<li><strong><code>.mp4</code></strong> — a CMAF track: a fragmented MP4 with a single global <code>sidx</code>
+segment index and a <a href="#supported-codecs">supported codec</a>.
+The <strong>first</strong> track in the <code>moov</code> is the one described; any others are ignored,
+so give each track its own file.</li>
+<li><strong><code>.vtt</code></strong> — a raw WebVTT subtitle file (see
+<a href="#add-a-subtitle-track">Add a subtitle track</a>).</li>
+</ul>
+<p>An unreadable or non-conforming source aborts the run — there are no silent
+fallbacks and no skip-and-continue. If you need to produce conforming CMAF
+files, see the ffmpeg recipe in the
+<a href="#step-2-create-two-cmaf-sources">Getting started tutorial</a>.</p>
+<h2 id="index-one-track-per-input"><a class="header" href="#index-one-track-per-input">Index one track per input</a></h2>
+<p>Pass each source as a positional argument. Every file becomes one track — one
+video rendition, one audio rendition, and so on:</p>
+<pre><code class="language-bash">dyndo index \
+  video_1080.mp4 \
+  video_720.mp4 \
+  audio_en.mp4 \
+  -o asset.json
+</code></pre>
+<pre><code class="language-text">wrote asset.json (3 tracks)
+</code></pre>
+<p>The <code>-o</code> path defaults to <code>asset.json</code> in the current directory; pass it
+explicitly to write elsewhere.</p>
+<h2 id="set-a-language-or-role"><a class="header" href="#set-a-language-or-role">Set a language or role</a></h2>
+<p>An input may carry per-track parameters after the path, as comma-separated
+<code>key=value</code> fields — <code>language</code> (an ISO-639-2 code) and <code>role</code> (the track’s
+purpose). Both apply to <strong>audio</strong> and <strong>text</strong> tracks only:</p>
+<pre><code class="language-bash">dyndo index \
+  video.mp4 \
+  audio_nl.mp4,language=nld,role=main \
+  audio_fr.mp4,language=fra,role=dub \
+  -o asset.json
+</code></pre>
+<p><code>language</code> overrides the code discovered from the file; <code>role</code> is never read
+from media, so this is the only way to set it apart from editing the JSON. The nine valid role
+values are <code>main</code>, <code>alternate</code>, <code>commentary</code>, <code>dub</code>, <code>description</code>,
+<code>enhanced-audio-intelligibility</code>, <code>subtitle</code>, <code>caption</code>, and <code>forced-subtitle</code>.</p>
+<p>Validation here is deliberately thin: an <strong>unknown key</strong> or an <strong>unrecognised
+role value</strong> aborts the run, but a role is not checked against the track’s type
+(<code>audio.mp4,role=subtitle</code> is stored as given), and both fields on a video input
+are accepted and silently ignored. Choosing a role that suits the track is up to
+you — <a href="#track-roles">Track roles</a> shows which roles are meaningful
+where.</p>
+<p>For what each role does to the generated manifests — which rendition a player
+defaults to, what it auto-selects, and the accessibility signalling — see
+<a href="#label-tracks-with-roles">Label tracks with roles</a>.</p>
+<h2 id="add-to-or-update-an-existing-descriptor"><a class="header" href="#add-to-or-update-an-existing-descriptor">Add to or update an existing descriptor</a></h2>
+<p>Running <code>index</code> against an <code>asset.json</code> that already exists <strong>merges</strong> into it
+rather than overwriting, keyed by each input’s source path:</p>
+<ul>
+<li>a <strong>new path</strong> is discovered from its file and appended;</li>
+<li>a path <strong>already in the descriptor</strong> keeps its entry exactly as it stands —
+the file’s metadata is not rediscovered, so anything you’ve hand-edited in the
+JSON survives. The only thing a re-index changes is what you explicitly ask
+for with <code>language=</code>/<code>role=</code> overrides.</li>
+</ul>
+<pre><code class="language-bash"># start with the video
+dyndo index video.mp4 -o asset.json           # wrote asset.json (1 tracks)
+
+# append an audio track
+dyndo index audio.mp4 -o asset.json           # wrote asset.json (2 tracks)
+
+# set a role on that same audio track — still two tracks, nothing else changes
+dyndo index audio.mp4,role=main -o asset.json # wrote asset.json (2 tracks)
+</code></pre>
+<p>Two consequences of this merge model are worth knowing:</p>
+<ul>
+<li>Only the inputs you name on this run are opened. Loading the existing
+descriptor just parses its JSON, so a re-index succeeds even if a
+previously indexed source has since moved or been deleted.</li>
+<li>If a source file’s <strong>content</strong> changed, <code>index</code> won’t notice: remove the
+track’s entry from the JSON (or delete the descriptor) and index the file
+afresh. Likewise, renaming a source on disk and indexing the new name appends
+a second entry (with a new id, since the id follows the path) — remove the
+stale one by hand.</li>
+</ul>
+<h2 id="understand-how-paths-resolve"><a class="header" href="#understand-how-paths-resolve">Understand how paths resolve</a></h2>
+<p>Input paths are <strong>relative to the output descriptor’s directory</strong>, not to your
+shell’s working directory. This keeps a descriptor portable: <code>path</code> values in
+<code>asset.json</code> stay valid as long as the sources sit in the same place relative to
+it.</p>
+<p>For example, writing the descriptor into a subdirectory:</p>
+<pre><code class="language-bash">dyndo index video.mp4 audio.mp4 -o out/asset.json
+</code></pre>
+<p>resolves the inputs as <code>out/video.mp4</code> and <code>out/audio.mp4</code>, and records
+<code>"path": "video.mp4"</code> and <code>"path": "audio.mp4"</code> in the descriptor.</p>
+<p>The root that all of this resolves against is dyndo’s storage root, which for
+the CLI is the current directory. Override it with the <code>OPENDAL_FS_ROOT</code>
+environment variable:</p>
+<pre><code class="language-bash">OPENDAL_FS_ROOT=/srv/media dyndo index video.mp4 -o asset.json
+</code></pre>
+<h2 id="inspect-the-result"><a class="header" href="#inspect-the-result">Inspect the result</a></h2>
+<p>The descriptor is small, human-readable JSON — safe to open, diff, and even
+hand-edit:</p>
+<pre><code class="language-json">{
+  "tracks": [
+    {
+      "id": "6b745be5-2791-5d95-8ce5-8f8bde29e2fe",
+      "path": "video_1080.mp4",
+      "codec": "avc1.640028",
+      "type": "video",
+      "width": 1920,
+      "height": 1080,
+      "frame_rate": "25/1"
+    }
+  ]
+}
+</code></pre>
+<p>Each track’s <code>id</code> is <code>&lt;type&gt;_&lt;uuid&gt;</code>, where the UUID is derived from the source’s
+path relative to the storage root. It is therefore deterministic — the same file
+at the same path always yields the same id — and unaffected by metadata, so
+relabelling a track never changes it. The server uses these ids as the
+representation names in every manifest and segment URL. For the full field list,
+see the <a href="#assetjson-descriptor">asset.json descriptor reference</a>.</p>
+<h2 id="next-steps"><a class="header" href="#next-steps">Next steps</a></h2>
+<ul>
+<li>Add subtitles to the descriptor: <a href="#add-a-subtitle-track">Add a subtitle track</a>.</li>
+<li>Control how players present each track:
+<a href="#label-tracks-with-roles">Label tracks with roles</a>.</li>
+<li>Serve the descriptor: <a href="#run-and-configure-the-server">Run and configure the server</a>.</li>
+<li>Extract a frame from the indexed video: <a href="#extract-a-video-frame">Extract a video frame</a>.</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="extract-a-video-frame"><a class="header" href="#extract-a-video-frame">Extract a video frame</a></h1>
+<p>Use <code>dyndo image</code> to save a full-resolution JPEG from the highest-resolution video track in an asset descriptor.</p>
+<h2 id="extract-the-frame"><a class="header" href="#extract-the-frame">Extract the frame</a></h2>
+<p>Pass the descriptor, a presentation time in milliseconds, and an output path:</p>
+<pre><code class="language-bash">dyndo image --input assets/asset.json --time 5000 --output frame.jpg
+</code></pre>
+<pre><code class="language-text">wrote frame.jpg
+</code></pre>
+<p>The command resolves the video source through the descriptor, reads only the initialization data and media segment needed for that time, decodes the displayed frame, and writes it at the video’s declared dimensions.</p>
+<h2 id="use-a-different-storage-root"><a class="header" href="#use-a-different-storage-root">Use a different storage root</a></h2>
+<p>CLI paths are handled by an OpenDAL filesystem rooted at the current directory. Set <code>OPENDAL_FS_ROOT</code> when the descriptor, source, or output should resolve from another root:</p>
+<pre><code class="language-bash">OPENDAL_FS_ROOT=/srv/media dyndo image \
+  --input assets/asset.json \
+  --time 5000 \
+  --output previews/frame.jpg
+</code></pre>
+<p>The output directory must already exist.</p>
+<h2 id="troubleshooting"><a class="header" href="#troubleshooting">Troubleshooting</a></h2>
+<ul>
+<li><code>asset has no video track</code> means the descriptor contains only audio or text tracks.</li>
+<li>A time outside the video track is rejected; times are milliseconds from the presentation timeline.</li>
+<li>Decode and JPEG errors usually indicate unsupported or malformed source media or an FFmpeg build without the required decoder or Motion JPEG encoder.</li>
+</ul>
+<p>For the exact command contract, see <a href="#dyndo-image"><code>dyndo image</code></a>.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="add-thumbnail-sprites"><a class="header" href="#add-thumbnail-sprites">Add thumbnail sprites</a></h1>
+<p>Use thumbnail sprites to let DASH and HLS players show a timeline preview. A
+thumbnail configuration belongs to the asset, not to an individual video track:
+dyndo selects a suitable source video when it builds the manifest and generates
+each JPEG sprite only when a client requests it.</p>
+<h2 id="before-you-start-1"><a class="header" href="#before-you-start-1">Before you start</a></h2>
+<p>You need an <code>asset.json</code> containing at least one video track. Create one with
+<a href="#index-your-cmaf-sources">Index your CMAF sources</a> if needed.</p>
+<h2 id="add-a-thumbnail-configuration"><a class="header" href="#add-a-thumbnail-configuration">Add a thumbnail configuration</a></h2>
+<p>Add a thumbnail track to the descriptor’s <code>tracks</code> array. This configuration creates
+4-by-4 sprites, each 640 pixels wide, with one frame per second:</p>
+<pre><code class="language-json">{
+  "tracks": [
+    /* existing tracks */,
+    {
+      "id": "preview",
+      "type": "thumbnail",
+      "tile_size": 4,
+      "width": 640
+    }
+  ]
+}
+</code></pre>
+<p><code>tile_size</code> is the number of tiles in both a sprite row and column. A value of
+<code>4</code> therefore creates 16 frames per sprite. <code>width</code> is the width of the whole
+composite JPEG, not one tile; it must divide evenly by <code>tile_size</code>. Frames
+follow the regular IDR cadence of the selected video source.</p>
+<p>The <code>id</code> names this thumbnail track in manifest URLs. It is independent of every
+video track ID, so you can add more than one configuration for the
+same asset.</p>
+<h2 id="let-dyndo-choose-the-video-source"><a class="header" href="#let-dyndo-choose-the-video-source">Let dyndo choose the video source</a></h2>
+<p>Do not configure a video-track ID. dyndo uses the smallest video at least as
+wide as the requested sprite; if every video is narrower, it uses the largest
+one. This gives the sprite enough source pixels without always decoding the
+highest rendition.</p>
+<p>If the descriptor has no usable video source, the thumbnail configuration is
+not advertised and its image routes return <code>404</code>.</p>
+<h2 id="verify-the-manifests"><a class="header" href="#verify-the-manifests">Verify the manifests</a></h2>
+<p>Request either manifest as usual:</p>
+<pre><code class="language-bash">curl "http://localhost:8080/out/(asset:asset)/index.mpd"
+curl "http://localhost:8080/out/(asset:asset)/master.m3u8"
+</code></pre>
+<p>The DASH MPD gains an <code>image/jpeg</code> adaptation set with the DASH thumbnail-tile
+property. The HLS multivariant playlist gains an image-stream reference like:</p>
+<pre><code class="language-text">#EXT-X-IMAGE-STREAM-INF:BANDWIDTH=...,CODECS="jpeg",RESOLUTION=160x90,URI="preview.m3u8"
+</code></pre>
+<p>The image media playlist points at JPEG sprites such as
+<code>preview/1.jpg</code>. Both protocols reference the same generated JPEG
+sprites; requesting a sprite does not write it to storage.</p>
+<h2 id="select-thumbnail-configurations-per-request"><a class="header" href="#select-thumbnail-configurations-per-request">Select thumbnail configurations per request</a></h2>
+<p>Use the manifest <code>filter</code> parameter to choose the configurations a particular
+client sees. For example, this excludes all thumbnails:</p>
+<pre><code class="language-text">/out/(asset:asset)/master.m3u8?filter=type!=thumbnail
+</code></pre>
+<p>This keeps only thumbnail configurations whose composite width is at least 640
+pixels while retaining every media track:</p>
+<pre><code class="language-text">/out/(asset:asset)/master.m3u8?filter=type!=thumbnail%7C%7Cwidth&gt;=640
+</code></pre>
+<p>Filters affect manifests only. A client must use the image URLs emitted by the
+manifest it requested. For the complete descriptor fields and route contract,
+see the <a href="#thumbnail-tracks">asset.json reference</a>
+and <a href="#thumbnail-sprites">server routes reference</a>.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="add-a-subtitle-track"><a class="header" href="#add-a-subtitle-track">Add a subtitle track</a></h1>
+<p>This guide shows how to add a WebVTT subtitle track to an existing asset. Two
+source forms work:</p>
+<ul>
+<li><strong>Raw <code>.vtt</code></strong> — the WebVTT file itself. dyndo parses it, creating a CMAF
+<code>wvtt</code> view only when an operation needs one, so your <code>.vtt</code> stays the single
+source of truth.
+Nothing is written back beside it.</li>
+<li><strong>CMAF <code>wvtt</code></strong> — WebVTT already packaged into ISO-BMFF by a packager. Indexed,
+resolved, and served like any other CMAF track.</li>
+</ul>
+<blockquote>
+<p>CMAF packaging happens only when an operation needs it, so a <code>.vtt</code> you edit
+is served edited on the next request — no re-indexing and no repackaging step.
+How the packaged track is cut is set by
+<a href="#boundaries"><code>boundaries</code></a> and the server’s
+<a href="#segmentation-options"><code>text_length</code></a>.</p>
+</blockquote>
+<p>How a track is <em>delivered</em> then depends on the protocol. DASH always references
+packaged <code>wvtt</code> segments. HLS references plain WebVTT documents, because that is
+the form its players handle most widely — see
+<a href="#choose-how-hls-delivers-subtitles">Choose how HLS delivers subtitles</a>.</p>
+<h2 id="before-you-start-2"><a class="header" href="#before-you-start-2">Before you start</a></h2>
+<p>You need:</p>
+<ul>
+<li>an <code>asset.json</code> (see <a href="#index-your-cmaf-sources">Index your CMAF sources</a>); and</li>
+<li>a <a href="https://www.w3.org/TR/webvtt1/">WebVTT</a> subtitle file, either raw (<code>.vtt</code>)
+or already packaged as CMAF <code>wvtt</code> (<code>.mp4</code>).</li>
+</ul>
+<h2 id="add-a-cmaf-wvtt-subtitle"><a class="header" href="#add-a-cmaf-wvtt-subtitle">Add a CMAF <code>wvtt</code> subtitle</a></h2>
+<p>Index it like any other CMAF source. It becomes a regular text track, advertised
+in DASH as a text <code>AdaptationSet</code> and in HLS as a <code>TYPE=SUBTITLES</code> rendition with
+its own media playlist:</p>
+<pre><code class="language-bash">dyndo index text_wvtt_nld.mp4,language=nld,role=subtitle -o asset.json
+</code></pre>
+<pre><code class="language-text">wrote asset.json (3 tracks)
+</code></pre>
+<pre><code class="language-json">{
+  "id": "61af48e7-44a0-5911-9cf3-abf5d1d9c70e",
+  "path": "text_wvtt_nld.mp4",
+  "codec": "wvtt",
+  "type": "text",
+  "language": "nld",
+  "role": "subtitle"
+}
+</code></pre>
+<h2 id="add-a-raw-vtt-subtitle"><a class="header" href="#add-a-raw-vtt-subtitle">Add a raw <code>.vtt</code> subtitle</a></h2>
+<p>Index the <code>.vtt</code> with a <code>language</code>:</p>
+<pre><code class="language-bash">dyndo index subtitles_nl.vtt,language=nld -o asset.json
+</code></pre>
+<pre><code class="language-json">{
+  "id": "5b9fbdae-2717-5f58-80ed-4f067605a5e6",
+  "path": "subtitles_nl.vtt",
+  "type": "webvtt",
+  "language": "nld"
+}
+</code></pre>
+<p>A WebVTT file declares no language of its own, so set it here — without
+<code>language=</code> the track’s language is <code>und</code> (undetermined). A raw VTT descriptor
+has no <code>codec</code>: dyndo packages it as <code>wvtt</code> for DASH and returns the parsed VTT
+cues directly for HLS.</p>
+<p>By default the whole subtitle becomes one segment, cut only at the asset’s splice points. Set the server request’s <code>text_length</code> when you want a regular grid:</p>
+<pre><code class="language-bash">curl "http://localhost:8080/out/(asset:asset,text_length:4000)/index.mpd"
+</code></pre>
+<h2 id="choose-how-hls-delivers-subtitles"><a class="header" href="#choose-how-hls-delivers-subtitles">Choose how HLS delivers subtitles</a></h2>
+<p>By default an HLS rendition for a raw WebVTT source points at WebVTT documents
+— one <code>.vtt</code> per segment, no <code>EXT-X-MAP</code>, cue timestamps absolute:</p>
+<pre><code class="language-text">#EXTINF:4.000,
+5b9fbdae-2717-5f58-80ed-4f067605a5e6/0.vtt
+</code></pre>
+<p>To point it at packaged <code>wvtt</code> segments instead, pass <code>wvtt</code> in the request options:</p>
+<pre><code class="language-bash">curl "http://localhost:8080/out/(asset:asset,wvtt:!t)/master.m3u8"
+</code></pre>
+<p>Both forms describe the same segments — the same cut points, the same durations —
+so this changes only how each one is delivered, and never how the asset is cut.
+DASH is unaffected either way.</p>
+<p>Reach for <code>wvtt</code> when a client specifically wants a raw WebVTT source packaged
+as CMAF. A CMAF <code>wvtt</code> source is always delivered as CMAF; dyndo does not
+unpackage it into WebVTT documents.</p>
+<h2 id="set-the-language"><a class="header" href="#set-the-language">Set the language</a></h2>
+<p>The <code>language</code> value is a BCP 47 language tag. Both short tags such as <code>en</code> and
+region-specific tags such as <code>pt-BR</code> are accepted; the existing three-letter
+forms (<code>eng</code>, <code>nld</code>, <code>fra</code>, …) remain supported. dyndo rejects malformed tags
+and copies accepted tags into manifests unchanged.</p>
+<p>The <code>language</code> stored in <code>asset.json</code> is authoritative. To relabel a track,
+either re-index it with a new <code>language=</code> override or edit the field in the JSON
+directly — the manifests follow without any repackaging, and the track’s <code>id</code>
+does not change, because ids follow the source path rather than its metadata.</p>
+<h2 id="add-subtitles-in-several-languages"><a class="header" href="#add-subtitles-in-several-languages">Add subtitles in several languages</a></h2>
+<p>Each file becomes one track; index them together or in separate runs against the
+same descriptor:</p>
+<pre><code class="language-bash">dyndo index \
+  text_wvtt_nld.mp4,language=nld \
+  text_wvtt_eng.mp4,language=eng \
+  -o asset.json
+</code></pre>
+<p>Re-indexing the same path never duplicates the track — <code>index</code> matches on the
+source path and updates the existing entry in place.</p>
+<p>Two subtitle tracks may not end up with the same HLS rendition <code>NAME</code>, which is
+the language plus the role’s label. Same language <em>and</em> same role is a conflict;
+generating the playlist fails with <code>duplicate rendition name</code>. Give them
+different roles, or different languages.</p>
+<h2 id="give-the-subtitle-a-role"><a class="header" href="#give-the-subtitle-a-role">Give the subtitle a role</a></h2>
+<p>By default a text track is presented as a plain subtitle. To mark it as closed
+captions (SDH) or a forced-narrative track, re-index it with a <code>role</code> — this
+updates the entry in place and changes nothing else:</p>
+<pre><code class="language-bash">dyndo index text_wvtt_eng.mp4,role=caption -o asset.json
+</code></pre>
+<p>The roles intended for text are <code>subtitle</code>, <code>caption</code>, and <code>forced-subtitle</code>.
+Each changes how the track is signalled in both manifests — see
+<a href="#label-tracks-with-roles">Label tracks with roles</a>.</p>
+<h2 id="next-steps-1"><a class="header" href="#next-steps-1">Next steps</a></h2>
+<ul>
+<li>Mark subtitles as captions or forced narrative:
+<a href="#label-tracks-with-roles">Label tracks with roles</a>.</li>
+<li>Serve the asset: <a href="#run-and-configure-the-server">Run and configure the server</a>.</li>
+<li>The text-track fields in detail:
+<a href="#text-tracks">asset.json descriptor</a>.</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="label-tracks-with-roles"><a class="header" href="#label-tracks-with-roles">Label tracks with roles</a></h1>
+<p>A track’s <strong>role</strong> is its author-declared purpose — main audio, director’s
+commentary, audio description, closed captions, forced narrative subtitles, and
+so on. dyndo records the role in the descriptor and renders it into both the
+DASH and HLS manifests, so players present the track correctly: which audio a
+viewer hears by default, which subtitles auto-enable, and which renditions are
+flagged for accessibility.</p>
+<p>Roles apply to <strong>audio and text tracks only</strong> — never video.</p>
+<h2 id="set-a-role-while-indexing"><a class="header" href="#set-a-role-while-indexing">Set a role while indexing</a></h2>
+<p>A role is never discovered from the media; you declare it. Add <code>role=&lt;role&gt;</code> to a
+track descriptor when you <a href="#index-your-cmaf-sources">index</a> it:</p>
+<pre><code class="language-bash">dyndo index \
+  video.mp4 \
+  audio_en.mp4,language=eng,role=main \
+  audio_en_commentary.mp4,language=eng,role=commentary \
+  -o asset.json
+</code></pre>
+<p>To set a role on a track that’s already in the descriptor, re-index it — <code>index</code>
+merges by source path, so this updates the entry in place and changes nothing
+else about it:</p>
+<pre><code class="language-bash">dyndo index audio_en_commentary.mp4,role=commentary -o asset.json
+</code></pre>
+<p>You can also hand-edit the <code>role</code> field in <code>asset.json</code> directly; it takes the
+same values.</p>
+<h2 id="audio-roles"><a class="header" href="#audio-roles">Audio roles</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Role</th><th>Use it for</th><th>Effect on the manifests</th></tr>
+</thead>
+<tbody>
+<tr><td><code>main</code></td><td>The primary audio.</td><td>Becomes the default HLS audio rendition; DASH <code>Role=main</code>.</td></tr>
+<tr><td><code>alternate</code></td><td>An alternate mix of the main audio.</td><td>DASH <code>Role=alternate</code>.</td></tr>
+<tr><td><code>dub</code></td><td>A dubbed rendition in another language.</td><td>DASH <code>Role=dub</code>.</td></tr>
+<tr><td><code>commentary</code></td><td>Commentary, e.g. director’s.</td><td>DASH <code>Role=commentary</code>.</td></tr>
+<tr><td><code>description</code></td><td>Audio description for blind / low-vision viewers.</td><td>DASH <code>Accessibility=description</code>; HLS <code>CHARACTERISTICS=public.accessibility.describes-video</code>.</td></tr>
+<tr><td><code>enhanced-audio-intelligibility</code></td><td>Dialogue enhanced for intelligibility.</td><td>DASH <code>Accessibility=enhanced-audio-intelligibility</code>; HLS <code>CHARACTERISTICS=public.accessibility.enhances-speech</code>.</td></tr>
+</tbody>
+</table>
+</div>
+<p>The <strong>default</strong> HLS audio rendition is the first track marked <code>main</code>; if none is,
+it is the first audio track with no role at all. Mark exactly one track <code>main</code> to
+control what plays by default — and note that if you give <em>every</em> audio track a
+non-<code>main</code> role, no rendition is marked default.</p>
+<p>Whether a non-default rendition is auto-selectable is decided by how
+distinguishable it is, not by its role: <code>AUTOSELECT=YES</code> when a rendition is the
+only one sharing its language, <code>FORCED</code> flag, and accessibility characteristics.
+So a <code>main</code> + <code>commentary</code> pair in the same language leaves the commentary track
+opt-in, while a lone commentary track is auto-selectable. See the
+<a href="#autoselect">roles reference</a> for the exact rule.</p>
+<h2 id="text-subtitle-roles"><a class="header" href="#text-subtitle-roles">Text (subtitle) roles</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Role</th><th>Use it for</th><th>Effect on the manifests</th></tr>
+</thead>
+<tbody>
+<tr><td><code>subtitle</code></td><td>Translation subtitles (dialogue only).</td><td>DASH <code>Role=subtitle</code>. This is also what a track with no role renders as.</td></tr>
+<tr><td><code>caption</code></td><td>SDH / closed captions (dialogue plus non-dialogue sound).</td><td>DASH <code>Role=subtitle</code> plus <code>Accessibility=caption</code>; HLS <code>CHARACTERISTICS</code> naming the SDH characteristics.</td></tr>
+<tr><td><code>forced-subtitle</code></td><td>Forced narrative (foreign dialogue, on-screen text).</td><td>DASH <code>Role=forced-subtitle</code>; HLS <code>FORCED=YES</code>.</td></tr>
+</tbody>
+</table>
+</div>
+<p>Text renditions are never marked <code>DEFAULT</code> in HLS — subtitles stay off until the
+viewer enables them, or until the player acts on <code>FORCED</code>.</p>
+<p>The role also names the rendition: an HLS rendition’s <code>NAME</code> uses the English
+language name plus the role’s label, so <code>caption</code> on an English track reads
+<code>English (Captions)</code>. Two renditions in one group cannot share a <code>NAME</code>.</p>
+<h2 id="examples"><a class="header" href="#examples">Examples</a></h2>
+<p>A main track plus a commentary track — the viewer hears the main audio by
+default and can switch to commentary:</p>
+<pre><code class="language-bash">dyndo index \
+  video.mp4 \
+  audio_en.mp4,language=eng,role=main \
+  audio_en_comm.mp4,language=eng,role=commentary \
+  -o asset.json
+</code></pre>
+<p>An audio-description track for accessibility:</p>
+<pre><code class="language-bash">dyndo index audio_en_ad.mp4,language=eng,role=description -o asset.json
+</code></pre>
+<p>Forced subtitles that display automatically for foreign-language dialogue —
+set the role on the subtitle source you <a href="#add-a-subtitle-track">index</a>:</p>
+<pre><code class="language-bash">dyndo index text_wvtt_forced_eng.mp4,language=eng,role=forced-subtitle -o asset.json
+</code></pre>
+<h2 id="what-gets-rejected"><a class="header" href="#what-gets-rejected">What gets rejected</a></h2>
+<p>Only an <strong>unrecognised role value</strong> is rejected, and it aborts the whole run
+before anything is written:</p>
+<pre><code class="language-text">error: invalid value 'audio.mp4,role=bogus' for '&lt;INPUTS&gt;...': unknown role: bogus
+</code></pre>
+<p>Everything else is accepted as given. In particular, <code>index</code> does <strong>not</strong> check
+that a role suits the track: <code>audio.mp4,role=subtitle</code> is stored, and a <code>role=</code>
+on a video input is silently discarded because video tracks have no role field.
+Nothing warns you about a role that makes no sense for its track — the manifests
+will simply carry it through. Use the tables above to pick deliberately.</p>
+<h2 id="next-steps-2"><a class="header" href="#next-steps-2">Next steps</a></h2>
+<ul>
+<li>The exact DASH and HLS output for every role:
+<a href="#track-roles">Track roles reference</a>.</li>
+<li>How <code>role</code> sits in the descriptor:
+<a href="#assetjson-descriptor">asset.json descriptor</a>.</li>
+<li>Where roles are set: <a href="#index-your-cmaf-sources">Index your CMAF sources</a>.</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="run-and-configure-the-server"><a class="header" href="#run-and-configure-the-server">Run and configure the server</a></h1>
+<p>This guide covers how <code>dyndo-server</code> is configured and how it behaves once
+running. For the container recipes themselves — pinning versions, mounting a
+config file, building the image — see
+<a href="#deploy-with-docker">Deploy with Docker</a>. For the complete schema and
+precedence rules, see the
+<a href="#configuration">Configuration reference</a>.</p>
+<h2 id="start-the-server"><a class="header" href="#start-the-server">Start the server</a></h2>
+<p>The server ships as the
+<a href="https://hub.docker.com/r/matvp91/dyndo-server"><code>matvp91/dyndo-server</code></a> image.
+The one setting you must supply is the <strong>storage root</strong> — the directory (or
+bucket) your descriptors and media live in. There is no built-in default; if the
+selected backend has no root, the server exits at startup.</p>
+<pre><code class="language-bash">docker run --rm -p 8080:8080 \
+  -e DYNDO_FS__ROOT=/assets \
+  -v "$PWD/assets:/assets:ro" \
+  matvp91/dyndo-server
+</code></pre>
+<pre><code class="language-text">dyndo-server listening on http://0.0.0.0:8080
+</code></pre>
+<p>Here the <code>fs</code> backend (the default) reads from <code>/assets</code>, which is your local
+<code>./assets</code> mounted into the container. Running from a source build instead? The
+<code>dyndo-server</code> binary reads the same configuration — see
+<a href="#build-from-source">Build from source</a>.</p>
+<h2 id="request-a-stream"><a class="header" href="#request-a-stream">Request a stream</a></h2>
+<p>Streams live under <code>/out/</code>, and the first path segment is a Rison object naming
+the descriptor to serve — its path relative to the storage root, <strong>without</strong> the
+<code>.json</code> extension:</p>
+<pre><code class="language-text">http://localhost:8080/out/(asset:asset)/index.mpd      # DASH
+http://localhost:8080/out/(asset:asset)/master.m3u8    # HLS
+</code></pre>
+<p>With storage root <code>./assets</code>, <code>asset:asset</code> resolves to <code>assets/asset.json</code>.
+Nested descriptors work the same way: <code>assets/movies/big.json</code> is addressed as
+<code>(asset:movies%2Fbig)</code>. The encoded slash keeps the Rison object in one URL path
+segment; Axum decodes it before the server parses the options.</p>
+<p>The same object can override how the asset is segmented for that request:</p>
+<pre><code class="language-text">http://localhost:8080/out/(asset:asset,sml:6000)/index.mpd
+</code></pre>
+<p>The server accepts full option names and compact aliases. These DASH requests
+are equivalent:</p>
+<pre><code class="language-text">http://localhost:8080/out/(asset:asset,min_length:6000,compact:!t)/index.mpd
+http://localhost:8080/out/(a:asset,sml:6000,c:!t)/index.mpd
+</code></pre>
+<p><code>asset</code>/<code>a</code> selects the descriptor and <code>min_length</code>/<code>sml</code> controls shared segmentation. DASH adds <code>compact</code>/<code>c</code> and <code>multi_period</code>/<code>mp</code>; HLS adds <code>wvtt</code>. Thumbnail settings belong in the asset descriptor.</p>
+<p>Parentheses are shell metacharacters, so quote these URLs when passing them to
+<code>curl</code> or a player from a shell. See the
+<a href="#http-routes">HTTP routes reference</a> for the full route table
+and every option.</p>
+<h2 id="configure-with-a-file-or-environment-variables"><a class="header" href="#configure-with-a-file-or-environment-variables">Configure with a file or environment variables</a></h2>
+<p>The server layers three sources, each overriding the one before it: built-in
+defaults, then a <code>config.yaml</code>, then <code>DYNDO_</code>-prefixed environment variables.</p>
+<p>A <code>config.yaml</code> looks like this:</p>
+<pre><code class="language-yaml">store: fs
+
+server:
+  host: 0.0.0.0
+  port: 8080
+
+fs:
+  root: /assets
+</code></pre>
+<ul>
+<li><code>store</code> selects the storage backend: <code>fs</code> (local disk) or <code>s3</code>.</li>
+<li><code>server.host</code> / <code>server.port</code> set the listen address.</li>
+<li>The <code>fs:</code> section configures the local-filesystem backend; its <code>root</code> is the
+directory descriptors and media are read from.</li>
+</ul>
+<p>To use a file, mount it and point the server at it with <code>DYNDO_CONFIG</code> (see
+<a href="#use-a-config-file-instead-of-environment-variables">Deploy with Docker</a>).</p>
+<p>Every setting also maps to a <code>DYNDO_</code>-prefixed environment variable. Nested keys
+use a <strong>double underscore</strong> (<code>__</code>) as the separator, so single underscores
+inside a field name survive:</p>
+<pre><code class="language-bash">docker run --rm -p 8080:8080 \
+  -e DYNDO_SERVER__PORT=9000 \
+  -e DYNDO_FS__ROOT=/assets \
+  -v "$PWD/assets:/assets:ro" \
+  matvp91/dyndo-server
+</code></pre>
+<p>Environment variables take precedence over <code>config.yaml</code>, which in turn
+overrides the built-in defaults — so you can bake a <code>config.yaml</code> into an image
+and override just what differs per environment.</p>
+<h2 id="point-at-a-specific-config-file"><a class="header" href="#point-at-a-specific-config-file">Point at a specific config file</a></h2>
+<p>By default the server looks for <code>config.yaml</code> in its working directory. Set
+<code>DYNDO_CONFIG</code> to load a different path:</p>
+<pre><code class="language-bash">-e DYNDO_CONFIG=/etc/dyndo/prod.yaml
+</code></pre>
+<p>When <code>DYNDO_CONFIG</code> is set, the named file <strong>must exist</strong> or the server exits
+with an error. Without it, a missing <code>config.yaml</code> is fine — the server falls
+back to defaults and environment variables.</p>
+<h2 id="health-checks"><a class="header" href="#health-checks">Health checks</a></h2>
+<p>The server answers <code>GET /health</code> with <code>200 OK</code>. Use it as a container or
+load-balancer liveness probe; it never collides with a stream route. See
+<a href="#health-checks-1">Deploy with Docker</a> for wiring it into
+an orchestrator.</p>
+<h2 id="serving-to-browser-players"><a class="header" href="#serving-to-browser-players">Serving to browser players</a></h2>
+<p>The server sends permissive CORS headers (any origin, any method), so a
+browser-based player can load a manifest during development without a proxy.</p>
+<h2 id="next-steps-3"><a class="header" href="#next-steps-3">Next steps</a></h2>
+<ul>
+<li>Container recipes and production tips:
+<a href="#deploy-with-docker">Deploy with Docker</a>.</li>
+<li>Serve from object storage: <a href="#serve-media-from-s3">Serve media from S3</a>.</li>
+<li>Full configuration schema and precedence:
+<a href="#configuration">Configuration reference</a>.</li>
+<li>Every route and status code:
+<a href="#http-routes">HTTP routes reference</a>.</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="serve-media-from-s3"><a class="header" href="#serve-media-from-s3">Serve media from S3</a></h1>
+<p>All of dyndo’s I/O goes through <a href="https://opendal.apache.org/">OpenDAL</a>, so the
+server can read descriptors and media from Amazon S3 (or an S3-compatible store)
+instead of the local filesystem. Nothing about your assets changes — the same
+<code>asset.json</code> and CMAF files work unmodified, because paths inside a descriptor
+are relative and backend-agnostic.</p>
+<p>Backed by S3 the server is <strong>stateless</strong>: there’s no volume to mount, and all
+configuration comes through environment variables.</p>
+<h2 id="run-against-s3"><a class="header" href="#run-against-s3">Run against S3</a></h2>
+<p>Select the <code>s3</code> store and give it a bucket, region, endpoint, and credentials:</p>
+<pre><code class="language-bash">docker run --rm -p 8080:8080 \
+  -e DYNDO_STORE=s3 \
+  -e DYNDO_S3__BUCKET=my-assets \
+  -e DYNDO_S3__REGION=eu-west-1 \
+  -e DYNDO_S3__ENDPOINT=https://s3.eu-west-1.amazonaws.com \
+  -e AWS_ACCESS_KEY_ID=AKIA... \
+  -e AWS_SECRET_ACCESS_KEY=... \
+  matvp91/dyndo-server
+</code></pre>
+<ul>
+<li><code>DYNDO_S3__BUCKET</code> is <strong>required</strong> — the server fails to start without it.</li>
+<li><code>DYNDO_S3__REGION</code> and <code>DYNDO_S3__ENDPOINT</code> identify the S3 service.</li>
+<li>Every S3 setting maps to a <code>DYNDO_S3__*</code> variable (double underscore between
+segments, single underscores preserved within a name), so
+<code>DYNDO_S3__ACCESS_KEY_ID</code> sets <code>s3.access_key_id</code>.</li>
+</ul>
+<p>With <code>store: s3</code>, an asset at key <code>asset.json</code> is served exactly as it is from
+local disk:</p>
+<pre><code class="language-text">http://localhost:8080/out/(asset:asset)/index.mpd
+</code></pre>
+<p>Set <code>DYNDO_S3__ROOT</code> to prepend a key prefix if your assets live under a
+subdirectory of the bucket.</p>
+<h2 id="the-same-from-a-config-file"><a class="header" href="#the-same-from-a-config-file">The same, from a config file</a></h2>
+<p>If you’d rather keep settings in a file, the equivalent <code>config.yaml</code> is:</p>
+<pre><code class="language-yaml">store: s3
+
+server:
+  host: 0.0.0.0
+  port: 8080
+
+s3:
+  bucket: my-assets
+  region: eu-west-1
+  endpoint: https://s3.eu-west-1.amazonaws.com
+  root: /
+</code></pre>
+<p>Mount it and point the server at it with <code>DYNDO_CONFIG</code> — see
+<a href="#use-a-config-file-instead-of-environment-variables">Deploy with Docker</a>.</p>
+<h2 id="credentials"><a class="header" href="#credentials">Credentials</a></h2>
+<p>The S3 backend reads the standard AWS environment variables
+(<code>AWS_ACCESS_KEY_ID</code>, <code>AWS_SECRET_ACCESS_KEY</code>), so credentials never have to live
+in <code>config.yaml</code>. You can also supply them through dyndo’s own configuration
+(<code>DYNDO_S3__ACCESS_KEY_ID</code>, <code>DYNDO_S3__SECRET_ACCESS_KEY</code>).</p>
+<blockquote>
+<p>Prefer the AWS environment variables or a secrets manager for credentials in
+production; keep any checked-in <code>config.yaml</code> free of secrets.</p>
+</blockquote>
+<h2 id="verify-the-backend"><a class="header" href="#verify-the-backend">Verify the backend</a></h2>
+<p>If the selected store is misconfigured — an <code>s3</code> store with no <code>bucket</code>, or an
+<code>fs</code> store with no <code>root</code> — the server fails at startup while building the
+storage operator, rather than returning errors per request. A clean
+<code>listening on …</code> line means the backend is wired up correctly.</p>
+<h2 id="next-steps-4"><a class="header" href="#next-steps-4">Next steps</a></h2>
+<ul>
+<li>All S3 keys and how they map to environment variables:
+<a href="#configuration">Configuration reference</a>.</li>
+<li>General server operation:
+<a href="#run-and-configure-the-server">Run and configure the server</a>.</li>
+<li>Container recipes: <a href="#deploy-with-docker">Deploy with Docker</a>.</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="deploy-with-docker"><a class="header" href="#deploy-with-docker">Deploy with Docker</a></h1>
+<p>Every release of <code>dyndo-server</code> is published to Docker Hub as
+<a href="https://hub.docker.com/r/matvp91/dyndo-server"><code>matvp91/dyndo-server</code></a>, so you
+can run it anywhere Docker runs — no Rust toolchain required. The image is
+multi-arch (amd64 and arm64), and one image serves from either storage backend;
+you pick the backend at runtime with configuration.</p>
+<h2 id="quick-start-run-it-locally"><a class="header" href="#quick-start-run-it-locally">Quick start: run it locally</a></h2>
+<p>This is the fastest way to get dyndo running. You need a directory containing
+an <code>asset.json</code> and the CMAF sources it points at — if you don’t have one yet,
+the <a href="#getting-started">Getting started tutorial</a> shows how to
+create it. Then one command starts the server:</p>
+<pre><code class="language-bash">docker run --rm -p 8080:8080 \
+  -e DYNDO_FS__ROOT=/assets \
+  -v "$PWD/assets:/assets:ro" \
+  matvp91/dyndo-server
+</code></pre>
+<ul>
+<li><code>-p 8080:8080</code> publishes the port. The server binds <code>0.0.0.0</code> inside the
+container, so it is reachable from the host with no extra configuration.</li>
+<li><code>-v "$PWD/assets:/assets:ro"</code> mounts your assets read-only — the server only
+reads them.</li>
+<li><code>-e DYNDO_FS__ROOT=/assets</code> points the filesystem backend at the mount. <code>fs</code>
+is the default store, so its root is the only setting you must supply.</li>
+</ul>
+<p>Then request a stream just as you would from a local server — naming the
+descriptor (here <code>/assets/asset.json</code>, so <code>asset</code> relative to the root, without
+its extension) in the Rison object at the front of the path:</p>
+<pre><code class="language-text">http://localhost:8080/out/(asset:asset)/index.mpd      # DASH
+http://localhost:8080/out/(asset:asset)/master.m3u8    # HLS
+</code></pre>
+<h2 id="pin-a-version"><a class="header" href="#pin-a-version">Pin a version</a></h2>
+<p>Releases are tagged three ways on Docker Hub: the full version
+(<code>:&lt;major&gt;.&lt;minor&gt;.&lt;patch&gt;</code>), the minor line (<code>:&lt;major&gt;.&lt;minor&gt;</code>), and
+<code>:latest</code>. Pick a version from the
+<a href="https://hub.docker.com/r/matvp91/dyndo-server/tags">tags page</a> and pin the
+full version in production so a new release never changes what you run:</p>
+<pre><code class="language-bash">docker run --rm -p 8080:8080 -e DYNDO_FS__ROOT=/assets \
+  -v "$PWD/assets:/assets:ro" matvp91/dyndo-server:&lt;version&gt;
+</code></pre>
+<h2 id="serve-from-s3-instead"><a class="header" href="#serve-from-s3-instead">Serve from S3 instead</a></h2>
+<p>Backed by S3 the container is stateless — no volume, all configuration through
+environment variables:</p>
+<pre><code class="language-bash">docker run --rm -p 8080:8080 \
+  -e DYNDO_STORE=s3 \
+  -e DYNDO_S3__BUCKET=my-assets \
+  -e DYNDO_S3__REGION=eu-west-1 \
+  -e DYNDO_S3__ENDPOINT=https://s3.eu-west-1.amazonaws.com \
+  -e AWS_ACCESS_KEY_ID=AKIA... \
+  -e AWS_SECRET_ACCESS_KEY=... \
+  matvp91/dyndo-server
+</code></pre>
+<p>The values above are placeholders — substitute your own bucket, region,
+endpoint, and credentials. See <a href="#serve-media-from-s3">Serve media from S3</a> for how
+each setting maps, and prefer a secrets manager over inline credentials in
+production.</p>
+<h2 id="use-a-config-file-instead-of-environment-variables"><a class="header" href="#use-a-config-file-instead-of-environment-variables">Use a config file instead of environment variables</a></h2>
+<p>To keep settings in a file, mount a <code>config.yaml</code> and point the server at it
+with <code>DYNDO_CONFIG</code>:</p>
+<pre><code class="language-bash">docker run --rm -p 8080:8080 \
+  -v "$PWD/config.yaml:/etc/dyndo/config.yaml:ro" \
+  -v "$PWD/assets:/assets:ro" \
+  -e DYNDO_CONFIG=/etc/dyndo/config.yaml \
+  matvp91/dyndo-server
+</code></pre>
+<p>Environment variables still override the file, so you can bake defaults into
+<code>config.yaml</code> and override per environment.</p>
+<h2 id="health-checks-1"><a class="header" href="#health-checks-1">Health checks</a></h2>
+<p>The server answers <code>GET /health</code> with <code>200 OK</code>. Point a Kubernetes liveness or
+readiness probe — or an external load balancer — at it:</p>
+<pre><code class="language-yaml"># Kubernetes pod spec
+livenessProbe:
+  httpGet:
+    path: /health
+    port: 8080
+</code></pre>
+<p>The runtime image is deliberately minimal — just the binary and CA
+certificates, with no HTTP client — so prefer an out-of-container probe
+like the above over a <code>HEALTHCHECK</code> that would need <code>curl</code> inside the
+container.</p>
+<h2 id="build-the-image-yourself"><a class="header" href="#build-the-image-yourself">Build the image yourself</a></h2>
+<p>The repository ships a <code>Dockerfile</code>, so you can build from source instead of
+pulling:</p>
+<pre><code class="language-bash">docker build -t dyndo-server .
+docker run --rm -p 8080:8080 -e DYNDO_FS__ROOT=/assets \
+  -v "$PWD/assets:/assets:ro" dyndo-server
+</code></pre>
+<p>It is a multi-stage build: a Rust stage compiles <code>dyndo-server</code>, and a slim
+Debian runtime carries just the binary and CA certificates (needed for S3 over
+TLS). The container runs as an unprivileged user.</p>
+<h2 id="next-steps-5"><a class="header" href="#next-steps-5">Next steps</a></h2>
+<ul>
+<li>Configuration schema and precedence:
+<a href="#configuration">Configuration reference</a>.</li>
+<li>Running without a container:
+<a href="#run-and-configure-the-server">Run and configure the server</a>.</li>
+<li>Object-storage details: <a href="#serve-media-from-s3">Serve media from S3</a>.</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="build-from-source"><a class="header" href="#build-from-source">Build from source</a></h1>
+<p>The <a href="#install-the-cli">installer</a> covers the <code>dyndo</code> CLI on macOS and
+Linux, and <a href="#deploy-with-docker">Docker</a> covers the server. Building from
+source is the fallback for when neither fits — an unsupported platform, or
+running the server without Docker.</p>
+<h2 id="prerequisites"><a class="header" href="#prerequisites">Prerequisites</a></h2>
+<ul>
+<li>A recent stable <a href="https://www.rust-lang.org/tools/install">Rust toolchain</a> with
+<code>cargo</code>. The minimum supported version is pinned in the repository’s
+<code>rust-toolchain.toml</code>; any current stable release satisfies it.</li>
+<li><a href="https://git-scm.com/"><code>git</code></a>, to clone the repository.</li>
+</ul>
+<h2 id="build"><a class="header" href="#build">Build</a></h2>
+<p>Clone the repository and build in release mode:</p>
+<pre><code class="language-bash">git clone https://github.com/matvp91/dyndo.git
+cd dyndo
+cargo build --release
+</code></pre>
+<p>This produces both binaries under <code>target/release/</code>:</p>
+<ul>
+<li><code>target/release/dyndo</code> — the CLI.</li>
+<li><code>target/release/dyndo-server</code> — the server.</li>
+</ul>
+<p>Run them straight from there, or put them on your <code>PATH</code>.</p>
+<h2 id="install-the-cli-on-your-path"><a class="header" href="#install-the-cli-on-your-path">Install the CLI on your PATH</a></h2>
+<p><code>cargo install</code> copies the <code>dyndo</code> binary into <code>~/.cargo/bin</code>, which the Rust
+installer already adds to your <code>PATH</code>:</p>
+<pre><code class="language-bash">cargo install --path crates/dyndo-cli
+dyndo --version
+</code></pre>
+<p>You can now use every <a href="#dyndo-cli">CLI command</a> — <code>index</code>, <code>dash</code>,
+<code>hls</code> — exactly as the rest of this book describes.</p>
+<h2 id="run-the-server"><a class="header" href="#run-the-server">Run the server</a></h2>
+<p>The <code>dyndo-server</code> binary reads the same configuration as the Docker image
+(built-in defaults, then <code>config.yaml</code>, then <code>DYNDO_*</code> environment variables).
+Point it at a storage root and run it:</p>
+<pre><code class="language-bash">DYNDO_FS__ROOT=./assets ./target/release/dyndo-server
+</code></pre>
+<pre><code class="language-text">dyndo-server listening on http://0.0.0.0:8080
+</code></pre>
+<p>Everything in <a href="#run-and-configure-the-server">Run and configure the server</a> applies — the
+same config keys, request URLs, and <code>/health</code> endpoint. Only the way you launch
+the process differs.</p>
+<h2 id="next-steps-6"><a class="header" href="#next-steps-6">Next steps</a></h2>
+<ul>
+<li>Configure and operate the server:
+<a href="#run-and-configure-the-server">Run and configure the server</a>.</li>
+<li>The full command-line surface: <a href="#dyndo-cli">dyndo CLI reference</a>.</li>
+<li>Prefer prebuilt binaries after all?
+<a href="#install-the-cli">Install the CLI</a>.</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="dyndo-cli"><a class="header" href="#dyndo-cli">dyndo CLI</a></h1>
+<p><code>dyndo</code> is the command-line tool for building asset descriptors and extracting video frames. It is the binary produced by the <code>dyndo-cli</code> crate.</p>
+<pre><code class="language-text">dyndo &lt;COMMAND&gt;
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Command</th><th>Purpose</th></tr>
+</thead>
+<tbody>
+<tr><td><a href="#dyndo-index"><code>index</code></a></td><td>Build or update an <code>asset.json</code> descriptor from CMAF and WebVTT sources.</td></tr>
+<tr><td><a href="#dyndo-image"><code>image</code></a></td><td>Extract a full-resolution JPEG frame from an asset’s first video track.</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="global-options"><a class="header" href="#global-options">Global options</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Option</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>-h, --help</code></td><td>Print help. Available on the top-level command and every subcommand.</td></tr>
+<tr><td><code>-V, --version</code></td><td>Print the version.</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="storage-root"><a class="header" href="#storage-root">Storage root</a></h2>
+<p>All paths are read and written through an <a href="https://opendal.apache.org/">OpenDAL</a> filesystem operator rooted at one directory. By default that root is the current working directory; override it with <code>OPENDAL_FS_ROOT</code>:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variable</th><th>Description</th><th>Default</th></tr>
+</thead>
+<tbody>
+<tr><td><code>OPENDAL_FS_ROOT</code></td><td>Root directory for all CLI reads and writes.</td><td><code>.</code></td></tr>
+</tbody>
+</table>
+</div>
+<p>Within that root, a track’s source path is resolved relative to the descriptor that references it. See <a href="#understand-how-paths-resolve">Understand how paths resolve</a>.</p>
+<h2 id="exit-behavior"><a class="header" href="#exit-behavior">Exit behavior</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Status</th><th>When</th></tr>
+</thead>
+<tbody>
+<tr><td><code>0</code></td><td>The command completed successfully.</td></tr>
+<tr><td><code>1</code></td><td>A runtime error occurred, such as a missing file, malformed descriptor, invalid source, unavailable frame, decode failure, or write failure. The message is written to stderr with the <code>dyndo:</code> prefix.</td></tr>
+<tr><td><code>2</code></td><td>Clap rejected the command line, such as an unknown command or option, a missing required argument, or an invalid track descriptor. Usage is written to stderr.</td></tr>
+</tbody>
+</table>
+</div>
+<p>Commands do not silently skip invalid inputs. <code>index</code> writes its descriptor only after all named inputs have been processed; <code>image</code> writes its JPEG only after the requested frame has been decoded.</p>
+<h2 id="commands"><a class="header" href="#commands">Commands</a></h2>
+<ul>
+<li><a href="#dyndo-index"><code>index</code></a></li>
+<li><a href="#dyndo-image"><code>image</code></a></li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="dyndo-index"><a class="header" href="#dyndo-index">dyndo index</a></h1>
+<p>Build or update an <code>asset.json</code> descriptor from one or more track descriptors.
+Each input becomes one track. New tracks are discovered from their file; tracks
+already in the descriptor keep their metadata as-is, with only explicit
+overrides applied.</p>
+<h2 id="synopsis"><a class="header" href="#synopsis">Synopsis</a></h2>
+<pre><code class="language-text">dyndo index [OPTIONS] &lt;INPUTS&gt;...
+</code></pre>
+<h2 id="options"><a class="header" href="#options">Options</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Option</th><th>Description</th><th>Default</th></tr>
+</thead>
+<tbody>
+<tr><td><code>&lt;INPUTS&gt;...</code></td><td>Track descriptor(s), one per track: <code>&lt;path&gt;[,language=..][,role=..]</code>. Positional, at least one required.</td><td><em>(required)</em></td></tr>
+<tr><td><code>-o, --output &lt;OUTPUT&gt;</code></td><td>Output descriptor path.</td><td><code>asset.json</code></td></tr>
+<tr><td><code>-h, --help</code></td><td>Print help.</td><td></td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="descriptor-syntax"><a class="header" href="#descriptor-syntax">Descriptor syntax</a></h2>
+<p>Each input is a comma-separated descriptor whose <strong>first field is the file
+path</strong>; the remaining fields are <code>key=value</code> overrides:</p>
+<ul>
+<li><code>language</code> — a BCP 47 language tag, such as <code>en</code>, <code>eng</code>, or <code>pt-BR</code>; overrides
+the language discovered from the file. Applied to audio and text tracks. Malformed
+tags are rejected.</li>
+<li><code>role</code> — the track’s purpose; never discovered from media, so this is the only way to set it
+apart from editing the JSON. Applied to audio and text tracks. One of <code>main</code>,
+<code>alternate</code>, <code>commentary</code>, <code>dub</code>, <code>description</code>,
+<code>enhanced-audio-intelligibility</code>, <code>subtitle</code>, <code>caption</code>, <code>forced-subtitle</code>.</li>
+</ul>
+<p>A bare <code>video.mp4</code> is the zero-override case. An <strong>empty value</strong> (<code>language=</code>,
+<code>role=</code>) means “no override”. When a key is repeated, the last occurrence wins.</p>
+<p>Two behaviours are worth knowing because they are permissive rather than strict:</p>
+<ul>
+<li><strong>Overrides on a video input are accepted and silently ignored.</strong> Video tracks
+have no <code>language</code> or <code>role</code> field, so <code>video.mp4,language=eng</code> indexes the
+video without complaint and without effect.</li>
+<li><strong>A role is not checked against the track type.</strong> <code>audio.mp4,role=subtitle</code> is
+accepted and stored. Only an <em>unrecognised</em> role value aborts the run. Picking
+a role that suits the track is up to you — see <a href="#track-roles">Track roles</a> for
+which roles are meaningful where.</li>
+</ul>
+<p>An unknown key (anything other than <code>language</code> or <code>role</code>), or an unrecognised
+role value, is rejected while parsing arguments:</p>
+<pre><code class="language-text">error: invalid value 'audio.mp4,codec=aac' for '&lt;INPUTS&gt;...': expected language=.. or role=.., got "codec=aac"
+error: invalid value 'audio.mp4,role=bogus' for '&lt;INPUTS&gt;...': unknown role: bogus
+</code></pre>
+<p>Because the path is simply the first field, <code>path=video.mp4</code> is read as a file
+literally named <code>path=video.mp4</code>, not as a <code>path</code> key.</p>
+<h2 id="input-formats"><a class="header" href="#input-formats">Input formats</a></h2>
+<p>The file extension selects how an input is read. Matching is
+<strong>case-sensitive</strong> — <code>.MP4</code> is not recognised.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Extension</th><th>Format</th><th>Becomes</th></tr>
+</thead>
+<tbody>
+<tr><td><code>.mp4</code></td><td>CMAF — fragmented MP4</td><td>A video, audio, or text (<code>wvtt</code>) track, by media handler.</td></tr>
+<tr><td><code>.vtt</code></td><td>Raw WebVTT</td><td>A VTT track (see the caveat below).</td></tr>
+</tbody>
+</table>
+</div>
+<p>Any other extension aborts with <code>unsupported track format</code>.</p>
+<p>A <code>.mp4</code> input must parse as CMAF or the run aborts. The reader streams from the
+start of the file until it has the <code>moov</code>, the <code>sidx</code>, and the first <code>moof</code>, and
+requires:</p>
+<ul>
+<li>a <code>moov</code> containing at least one <code>trak</code>, whose <strong>first</strong> track is the one
+described (additional tracks in the file are ignored);</li>
+<li>a sample entry in that track’s <code>stsd</code>, using a
+<a href="#supported-codecs">supported codec</a>;</li>
+<li>a single <code>sidx</code> with a non-zero timescale, no zero-duration references, and
+every reference a media reference starting with a SAP of type 1.</li>
+</ul>
+<blockquote>
+<p>A raw <code>.vtt</code> input is recorded as a <code>webvtt</code> track without a codec. dyndo parses
+it and creates a <code>wvtt</code> view only for CMAF output, so nothing is written beside your
+<code>.vtt</code>. Its language is <code>und</code> unless you pass <code>language=</code>, because WebVTT
+declares none of its own.</p>
+</blockquote>
+<h2 id="description"><a class="header" href="#description">Description</a></h2>
+<p>For each input, <code>index</code> decides between two cases by looking up the input’s
+resolved path in the existing descriptor (when <code>--output</code> already exists, it is
+loaded first):</p>
+<ul>
+<li><strong>New path</strong> — the file is discovered: its header region is read, the track kind
+is determined from its media handler, codec and per-type metadata are
+extracted, any <code>language</code>/<code>role</code> overrides are applied, and a track entry is
+appended with an id derived from the path.</li>
+<li><strong>Known path</strong> — the descriptor’s stored metadata is kept <strong>as-is</strong>; the file
+is not rediscovered, so hand-edits to the JSON survive a re-index. Explicit
+<code>language=</code>/<code>role=</code> overrides are the only mutation, and the <code>id</code> never
+changes.</li>
+</ul>
+<p>Loading an existing descriptor only parses its JSON — the sources it already
+lists are <strong>not</strong> opened. A re-index therefore succeeds even if a previously
+indexed file has since been moved or deleted; only the inputs named on this run
+are read.</p>
+<p>The descriptor is then written to <code>--output</code> as pretty-printed JSON:</p>
+<pre><code class="language-text">wrote asset.json (3 tracks)
+</code></pre>
+<p>Input paths are resolved relative to the <strong>output descriptor’s directory</strong>, and
+the <code>path</code> stored for each track is that same descriptor-relative path. See
+<a href="#storage-root">path resolution</a>.</p>
+<h2 id="examples-1"><a class="header" href="#examples-1">Examples</a></h2>
+<p>Index a multi-rendition asset, tagging the audio:</p>
+<pre><code class="language-bash">dyndo index \
+  video_1080.mp4 \
+  video_720.mp4 \
+  audio_en.mp4,language=eng,role=main \
+  -o asset.json
+</code></pre>
+<p>Add a subtitle from a CMAF <code>wvtt</code> source:</p>
+<pre><code class="language-bash">dyndo index text_wvtt_nld.mp4,language=nld,role=subtitle -o asset.json
+</code></pre>
+<p>Set a role on a track that is already indexed (updates the entry in place —
+nothing else about it changes):</p>
+<pre><code class="language-bash">dyndo index audio_fr.mp4,role=dub -o asset.json
+</code></pre>
+<p>Write the descriptor into a subdirectory (inputs resolve relative to it):</p>
+<pre><code class="language-bash">dyndo index video.mp4 audio.mp4 -o out/asset.json
+</code></pre>
+<h2 id="see-also"><a class="header" href="#see-also">See also</a></h2>
+<ul>
+<li><a href="#index-your-cmaf-sources">Index your CMAF sources</a> — task-oriented guide.</li>
+<li><a href="#add-a-subtitle-track">Add a subtitle track</a> — text tracks.</li>
+<li><a href="#assetjson-descriptor">asset.json descriptor</a> — the output format.</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="dyndo-image"><a class="header" href="#dyndo-image">dyndo image</a></h1>
+<p>Extract one full-resolution JPEG frame from the highest-resolution video track in an asset descriptor.</p>
+<h2 id="synopsis-1"><a class="header" href="#synopsis-1">Synopsis</a></h2>
+<pre><code class="language-text">dyndo image --input &lt;INPUT&gt; --time &lt;TIME&gt; --output &lt;OUTPUT&gt;
+</code></pre>
+<h2 id="options-1"><a class="header" href="#options-1">Options</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Option</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>-i, --input &lt;INPUT&gt;</code></td><td>Asset descriptor path. Required.</td></tr>
+<tr><td><code>-t, --time &lt;TIME&gt;</code></td><td>Frame time in milliseconds. Required.</td></tr>
+<tr><td><code>-o, --output &lt;OUTPUT&gt;</code></td><td>Output JPEG path. Required.</td></tr>
+<tr><td><code>-h, --help</code></td><td>Print help.</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="behavior"><a class="header" href="#behavior">Behavior</a></h2>
+<p>The command reads the descriptor, selects the video rendition with the greatest
+pixel area, resolves that track from storage, and decodes the displayed frame at
+the requested millisecond. The JPEG keeps the video’s declared width and height.</p>
+<p>All paths use the CLI’s <a href="#storage-root">OpenDAL filesystem root</a>. The video source path is resolved relative to the descriptor. The output path is resolved from the storage root.</p>
+<p>The command fails when the descriptor has no video track, the requested time falls outside that track, the source cannot be decoded, or the JPEG cannot be written. On success it prints:</p>
+<pre><code class="language-text">wrote frame.jpg
+</code></pre>
+<h2 id="example"><a class="header" href="#example">Example</a></h2>
+<pre><code class="language-bash">dyndo image --input assets/asset.json --time 1250 --output frame.jpg
+</code></pre>
+<h2 id="see-also-1"><a class="header" href="#see-also-1">See also</a></h2>
+<ul>
+<li><a href="#extract-a-video-frame">Extract a video frame</a> — task-oriented instructions.</li>
+<li><a href="#assetjson-descriptor">asset.json descriptor</a> — the input format.</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="dyndo-server"><a class="header" href="#dyndo-server">dyndo-server</a></h1>
+<p><code>dyndo-server</code> is the dynamic packaging HTTP server, produced by the
+<code>dyndo-server</code> crate and built on <a href="https://github.com/tokio-rs/axum">Axum</a>. It
+serves DASH and HLS manifests and CMAF segments generated on the fly from <code>asset.json</code> descriptors. The source media remains unchanged; presentation metadata and request options determine what each generated manifest exposes.</p>
+<h2 id="running"><a class="header" href="#running">Running</a></h2>
+<pre><code class="language-text">dyndo-server
+</code></pre>
+<p>The server takes no command-line arguments; all settings come from configuration
+(see <a href="#configuration">Configuration</a>). On startup it:</p>
+<ol>
+<li>loads configuration (defaults, then <code>config.yaml</code>, then <code>DYNDO_*</code>
+environment variables);</li>
+<li>builds the storage operator for the selected backend; and</li>
+<li>binds the configured address and begins serving.</li>
+</ol>
+<pre><code class="language-text">dyndo-server listening on http://0.0.0.0:8080
+</code></pre>
+<p>If configuration cannot be loaded, or the selected storage backend is
+misconfigured, the server exits during startup rather than serving errors per
+request.</p>
+<h2 id="what-it-serves"><a class="header" href="#what-it-serves">What it serves</a></h2>
+<p>Every descriptor in the storage backend is addressable under the server’s
+<code>/out/</code> tree, as both a DASH and an HLS stream over one shared set of segment
+routes:</p>
+<pre><code class="language-text">GET /out/(asset:demo)/index.mpd      # DASH manifest
+GET /out/(asset:demo)/master.m3u8    # HLS multivariant playlist
+</code></pre>
+<p>The bracketed part is a Rison object naming the descriptor and, optionally,
+overriding segmentation or output settings for that request. Manifests are generated per request by parsing each source’s CMAF header; media segments are returned as byte-range reads from the original files. Thumbnail sprites and subtitle representations are generated only when requested. Nothing is written back to storage.</p>
+<p>There is no explicit listing route: an asset is served if a descriptor exists at
+the path a request names.</p>
+<h2 id="in-this-section"><a class="header" href="#in-this-section">In this section</a></h2>
+<ul>
+<li><a href="#http-routes">HTTP routes</a> — the complete route table, the Rison
+options object, content types, and status codes.</li>
+<li><a href="#configuration">Configuration</a> — the config schema, layering, and
+environment-variable mapping.</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="http-routes"><a class="header" href="#http-routes">HTTP routes</a></h1>
+<p>The server exposes two things: a health probe, and a single output tree under
+<code>/out/</code>. All routes are <code>GET</code>.</p>
+<pre><code class="language-text">GET /health
+GET /out/&lt;options&gt;/&lt;resource&gt;[?filter=&lt;expression&gt;]
+</code></pre>
+<p><code>&lt;options&gt;</code> is a <strong>Rison</strong> object — a compact, URL-friendly object notation, so
+<code>(asset:demo,sml:6000)</code> is the equivalent of the JSON
+<code>{"asset":"demo","sml":6000}</code> — carrying the asset to serve and
+how to segment it. <code>&lt;resource&gt;</code> names what to return from it.
+Because the options travel in the path rather than a query string, a manifest
+and every segment it references share one prefix, and the relative URLs inside a
+manifest resolve correctly without rewriting.</p>
+<p><a href="#filtering-tracks"><code>filter</code></a> is the exception, and deliberately so: it travels
+in the query string because it shapes a manifest without needing to reach the
+resources that manifest references.</p>
+<h2 id="health-check"><a class="header" href="#health-check">Health check</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Path</th><th>Description</th><th>Content-Type</th></tr>
+</thead>
+<tbody>
+<tr><td><code>/health</code></td><td>Liveness probe. Returns <code>200 OK</code> with an empty body.</td><td><em>(none)</em></td></tr>
+</tbody>
+</table>
+</div>
+<p><code>/health</code> is a fixed route registered ahead of the <code>/out/</code> tree, so it can never
+be shadowed by an asset. Use it for container and load-balancer health checks;
+see <a href="#deploy-with-docker">Deploy with Docker</a>.</p>
+<h2 id="the-options-object"><a class="header" href="#the-options-object">The options object</a></h2>
+<p>The first path segment after <code>/out/</code> is a Rison object. The enclosing
+parentheses are optional — this is Rison’s <em>o-rison</em> form, intended for exactly
+this place — so both of these name the same options:</p>
+<pre><code class="language-text">/out/(asset:demo,sml:6000)/master.m3u8
+/out/asset:demo,sml:6000/master.m3u8
+</code></pre>
+<pre><code class="language-text">/out/(asset:movies%2Fbig-buck-bunny)/index.mpd
+</code></pre>
+<p>The options object must occupy one URL path segment. Percent-encode <code>/</code> as
+<code>%2F</code> when an option value contains a nested path. The server decodes the value
+before parsing the Rison object.</p>
+<h3 id="common-options"><a class="header" href="#common-options">Common options</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Full key</th><th>Shorthand</th><th>Type</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>asset</code></td><td><code>a</code></td><td>string</td><td><strong>Required.</strong> Path to the descriptor, relative to the storage root, <strong>without</strong> the <code>.json</code> extension.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="segmentation-options"><a class="header" href="#segmentation-options">Segmentation options</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Full key</th><th>Shorthand</th><th>Type</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>min_length</code></td><td><code>sml</code>, <code>segment_min_length</code></td><td>integer</td><td><code>0</code></td><td>Minimum served segment length in milliseconds. Whole fragments are grouped until this length is reached.</td></tr>
+<tr><td><code>text_length</code></td><td><code>stl</code>, <code>segment_text_length</code></td><td>integer</td><td><code>0</code></td><td>Length of each segment of a subtitle track dyndo packages from a <code>.vtt</code>, in milliseconds. Exact, not a minimum. <code>0</code> cuts one only at the splice points.</td></tr>
+</tbody>
+</table>
+</div>
+<p>These options apply only to the request. Their default of zero serves each CMAF
+fragment separately and packages raw WebVTT without a regular grid. Configure
+splice <a href="#boundaries">boundaries</a> only in the descriptor.</p>
+<h3 id="output-options"><a class="header" href="#output-options">Output options</a></h3>
+<p>Two options affect DASH output:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Full key</th><th>Shorthand</th><th>Type</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>compact</code></td><td><code>c</code></td><td>boolean</td><td><code>false</code></td><td>Hoist segment-template data shared by DASH representations to their adaptation set.</td></tr>
+<tr><td><code>multi_period</code></td><td><code>mp</code></td><td>boolean</td><td><code>false</code></td><td>Open a <code>Period</code> at each <a href="#boundaries">asset boundary</a> rather than describing the asset as one.</td></tr>
+</tbody>
+</table>
+</div>
+<p>One option affects HLS output:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Full key</th><th>Shorthand</th><th>Type</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>wvtt</code></td><td>—</td><td>boolean</td><td><code>false</code></td><td>Package a raw WebVTT rendition as <code>wvtt</code> segments rather than WebVTT documents. CMAF <code>wvtt</code> sources always use <code>wvtt</code> segments.</td></tr>
+</tbody>
+</table>
+</div>
+<p>The supported shorthand map is therefore <code>asset</code> → <code>a</code>, <code>min_length</code> → <code>sml</code>,
+<code>text_length</code> → <code>stl</code>, <code>compact</code> → <code>c</code>, <code>multi_period</code> → <code>mp</code>. <code>wvtt</code> has no
+shorthand. The forms are equivalent:</p>
+<pre><code class="language-text">/out/(asset:demo,min_length:6000,compact:!t)/index.mpd
+/out/(a:demo,sml:6000,c:!t)/index.mpd
+</code></pre>
+<p>Unknown keys are rejected on every output route.</p>
+<h2 id="filtering-tracks"><a class="header" href="#filtering-tracks">Filtering tracks</a></h2>
+<p>A request can narrow an asset’s resolved tracks, so one descriptor covers every
+variation you want to offer — a resolution cap, one audio language, or selected
+thumbnail tracks — instead of one descriptor per variation.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Parameter</th><th>Applies to</th></tr>
+</thead>
+<tbody>
+<tr><td><code>filter</code></td><td>every manifest route</td></tr>
+</tbody>
+</table>
+</div>
+<pre><code class="language-text">/out/(asset:demo)/index.mpd?filter=type!=video%7C%7Cheight%3C=720
+/out/(asset:demo)/master.m3u8?filter=type==audio
+</code></pre>
+<p>The <code>filter</code> parameter is accepted on every manifest route. The route resolves
+the asset, then removes non-matching tracks. Resolving first lets a thumbnail
+bind to its source video even when that video is absent from the manifest.
+Track-file routes do not parse a query, so filtering never gates their URLs.</p>
+<p>The syntax follows <a href="https://docs.unified-streaming.com/documentation/vod/player-urls.html">Unified Streaming’s URL
+filters</a>,
+so filters written for that stack read the same here.</p>
+<h3 id="expression-syntax"><a class="header" href="#expression-syntax">Expression syntax</a></h3>
+<p>A filter is a boolean expression over resolved track fields:</p>
+<pre><code class="language-text">attribute &lt;operator&gt; value
+expression &amp;&amp; expression        both must hold
+expression || expression        either may hold
+( expression )                  grouping
+</code></pre>
+<p><code>&amp;&amp;</code> binds tighter than <code>||</code>, so <code>a||b&amp;&amp;c</code> means <code>a||(b&amp;&amp;c)</code>. Wrap the
+enclosing expression in parentheses if you prefer — they are accepted but not
+required. Whitespace around operators is allowed.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Operator</th><th>Meaning</th><th>Applies to</th></tr>
+</thead>
+<tbody>
+<tr><td><code>==</code> <code>!=</code></td><td>equal, not equal</td><td>every attribute</td></tr>
+<tr><td><code>&lt;</code> <code>&lt;=</code> <code>&gt;</code> <code>&gt;=</code></td><td>ordering</td><td>numeric attributes only</td></tr>
+</tbody>
+</table>
+</div>
+<p>An ordering operator on a textual attribute — <code>language&lt;nl</code> — is a <code>400</code>.</p>
+<h3 id="percent-encoding"><a class="header" href="#percent-encoding">Percent-encoding</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Character</th><th>Encode as</th><th>Why</th></tr>
+</thead>
+<tbody>
+<tr><td><code>&lt;</code> <code>&gt;</code></td><td><code>%3C</code> <code>%3E</code></td><td>Not legal URI characters. Unencoded, the request is rejected by the HTTP layer before dyndo sees it.</td></tr>
+<tr><td><code>&amp;&amp;</code></td><td><code>%26%26</code></td><td><code>&amp;</code> separates query parameters, so an unencoded <code>&amp;&amp;</code> splits the filter in two.</td></tr>
+<tr><td><code>||</code></td><td><code>%7C%7C</code></td><td>Usually survives unencoded, but RFC 3986 excludes <code>|</code> from a query.</td></tr>
+</tbody>
+</table>
+</div>
+<p>Any HTTP client that builds a URL properly handles this for you.</p>
+<p>An unencoded <code>&amp;&amp;</code> would otherwise be the dangerous case:
+<code>?filter=type!=video&amp;&amp;height%3C=720</code> arrives as <code>filter=type!=video</code>, a valid
+filter on its own. It is caught because <strong>a manifest request accepts no query
+parameter but the filter</strong>, so the two junk fragments are unrecognised and the
+request is a <code>400</code>. The same rule makes a cache-busting or analytics parameter on
+a manifest URL a <code>400</code> — put those in the path’s
+<a href="#the-options-object">options object</a>.</p>
+<h3 id="attributes"><a class="header" href="#attributes">Attributes</a></h3>
+<p>Filtering runs after track resolution. Segment-derived <code>bitrate</code>, <code>avg_bitrate</code>,
+and <code>duration</code> filters are not available.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Attribute</th><th>Type</th><th>Present on</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>type</code></td><td>text</td><td>every track</td><td><code>video</code>, <code>audio</code>, <code>text</code>, or <code>thumbnail</code>. Both CMAF text and raw WebVTT have type <code>text</code>.</td></tr>
+<tr><td><code>format</code></td><td>text</td><td>every track</td><td><code>cmaf</code>, <code>webvtt</code>, or <code>thumbnail</code>.</td></tr>
+<tr><td><code>id</code></td><td>text</td><td>every track</td><td>The track identifier.</td></tr>
+<tr><td><code>codec</code></td><td>text</td><td>CMAF track</td><td>The descriptor codec, for example <code>avc1.640028</code>.</td></tr>
+<tr><td><code>width</code></td><td>numeric</td><td>video, thumbnail</td><td>Frame or complete sprite width in pixels.</td></tr>
+<tr><td><code>height</code></td><td>numeric</td><td>video</td><td>Frame height in pixels.</td></tr>
+<tr><td><code>frame_rate</code></td><td>text</td><td>video</td><td>The rate as written, for example <code>25/1</code>.</td></tr>
+<tr><td><code>sample_rate</code></td><td>numeric</td><td>audio</td><td>Samples per second.</td></tr>
+<tr><td><code>channels</code></td><td>numeric</td><td>audio</td><td>Channel count.</td></tr>
+<tr><td><code>language</code></td><td>text</td><td>audio, text</td><td>The track’s language tag, compared exactly as the descriptor spells it.</td></tr>
+<tr><td><code>role</code></td><td>text</td><td>audio, text</td><td>One of the <a href="#track-roles">track roles</a>.</td></tr>
+<tr><td><code>tile_size</code></td><td>numeric</td><td>thumbnail</td><td>Thumbnails per sprite row and column.</td></tr>
+</tbody>
+</table>
+</div>
+<p>A textual value is not checked against what exists — <code>role==narrator</code> parses
+happily and simply matches no entry. A numeric attribute does check:
+<code>height==tall</code> is a <code>400</code>.</p>
+<h3 id="what-a-filter-keeps"><a class="header" href="#what-a-filter-keeps">What a filter keeps</a></h3>
+<p><strong>A track is kept only if the expression is true for that track.</strong>
+Each track and thumbnail is judged on its own; nothing is judged as a group.</p>
+<p><strong>A comparison against an attribute the track does not carry is false, whatever
+the operator.</strong> An audio track has no <code>height</code>, so <code>height&lt;=720</code> is false for it
+— and so is <code>height!=720</code>, which reads backwards until you hold the rule in
+mind. The consequence matters:</p>
+<pre><code class="language-text">?filter=height%3C=720   video capped at 720 — and every audio and
+                        subtitle track dropped with it
+</code></pre>
+<p>Sparing a type is the <code>type!=…</code> idiom, which works because <code>type</code> is the one
+attribute every track carries:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Goal</th><th>Filter</th></tr>
+</thead>
+<tbody>
+<tr><td>Cap video at 720, keep everything else</td><td><code>type!=video||height&lt;=720</code></td></tr>
+<tr><td>Video only, capped at 720</td><td><code>type==video&amp;&amp;height&lt;=720</code></td></tr>
+<tr><td>Everything but the audio</td><td><code>type!=audio</code></td></tr>
+<tr><td>Video up to 720 plus subtitles, no audio</td><td><code>type!=audio&amp;&amp;(type!=video||height&lt;=720)</code></td></tr>
+<tr><td>Dutch audio only, video untouched</td><td><code>type!=audio||language==nld</code></td></tr>
+<tr><td>Keep only thumbnails at least 640 pixels wide</td><td><code>type!=thumbnail||width&gt;=640</code></td></tr>
+</tbody>
+</table>
+</div>
+<p>Mind <code>&amp;&amp;</code> against <code>||</code> here: <code>type!=video&amp;&amp;height&lt;=720</code> requires <em>both</em>, so it
+drops the audio it was meant to spare. Use <code>||</code> to spare, <code>&amp;&amp;</code> to narrow.</p>
+<p>A filter that leaves at least one descriptor entry produces a manifest — dropping
+all video but keeping audio is a legitimate audio-only presentation. A filter
+that matches <strong>nothing</strong> is a <code>404</code>.</p>
+<h3 id="caching"><a class="header" href="#caching">Caching</a></h3>
+<p>The filter is part of the URL’s query string, so a CDN in front of dyndo must
+include the query string in its cache key, or every filter will be served
+whichever variant was cached first.</p>
+<h3 id="the-asset-key"><a class="header" href="#the-asset-key">The <code>asset</code> key</a></h3>
+<p>The server appends <code>.json</code> to the value, so <code>asset:demo</code> reads <code>demo.json</code> from
+the storage root. The decoded value may contain slashes, letting descriptors sit
+in nested directories. For example, <code>asset:movies%2Fbig</code> reads
+<code>movies/big.json</code>. OpenDAL determines how the resulting path is resolved by the
+configured storage backend.</p>
+<h2 id="resources"><a class="header" href="#resources">Resources</a></h2>
+<p><code>&lt;resource&gt;</code> is everything after the options object.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Resource</th><th>Description</th><th>Content-Type</th></tr>
+</thead>
+<tbody>
+<tr><td><code>index.mpd</code></td><td>The DASH manifest (MPD).</td><td><code>application/dash+xml</code></td></tr>
+<tr><td><code>master.m3u8</code></td><td>The HLS multivariant playlist.</td><td><code>application/vnd.apple.mpegurl</code></td></tr>
+<tr><td><code>&lt;track-id&gt;.m3u8</code></td><td>One track’s HLS media playlist.</td><td><code>application/vnd.apple.mpegurl</code></td></tr>
+<tr><td><code>&lt;thumbnail-id&gt;.m3u8</code></td><td>An HLS thumbnail image media playlist.</td><td><code>application/vnd.apple.mpegurl</code></td></tr>
+<tr><td><code>&lt;track-id&gt;/init.mp4</code></td><td>A track’s CMAF initialization segment.</td><td><code>video/mp4</code>, <code>audio/mp4</code>, or <code>application/mp4</code></td></tr>
+<tr><td><code>&lt;track-id&gt;/&lt;time&gt;.m4s</code></td><td>The media segment starting at presentation <code>&lt;time&gt;</code>.</td><td><code>video/mp4</code>, <code>audio/mp4</code>, or <code>application/mp4</code></td></tr>
+<tr><td><code>&lt;track-id&gt;/&lt;time&gt;.vtt</code></td><td>The same segment of a text track, as a WebVTT document.</td><td><code>text/vtt</code></td></tr>
+<tr><td><code>&lt;thumbnail-id&gt;/&lt;number&gt;.jpg</code></td><td>A one-based numbered JPEG thumbnail sprite advertised by DASH and HLS.</td><td><code>image/jpeg</code></td></tr>
+</tbody>
+</table>
+</div>
+<p><code>&lt;track-id&gt;</code> is a track’s <code>id</code> exactly as recorded in the descriptor (for
+example <code>6b745be5-2791-5d95-8ce5-8f8bde29e2fe</code>). <code>&lt;thumbnail-id&gt;</code> is the
+thumbnail’s own <code>id</code>. Because manifests emit these same relative URLs, players
+never construct them by hand.</p>
+<p>A full set of requests for one asset:</p>
+<pre><code class="language-text">/out/(asset:demo)/index.mpd
+/out/(asset:demo)/master.m3u8
+/out/(asset:demo)/6b745be5-2791-5d95-8ce5-8f8bde29e2fe.m3u8
+/out/(asset:demo)/6b745be5-2791-5d95-8ce5-8f8bde29e2fe/init.mp4
+/out/(asset:demo)/6b745be5-2791-5d95-8ce5-8f8bde29e2fe/0.m4s
+</code></pre>
+<h3 id="thumbnail-sprites"><a class="header" href="#thumbnail-sprites">Thumbnail sprites</a></h3>
+<p>Add a thumbnail object to the asset descriptor to advertise a thumbnail sprite.
+A tile size of <code>4</code> creates a 4-by-4 sprite whose frames follow the selected
+video source’s regular IDR cadence:</p>
+<pre><code class="language-text">/out/(asset:demo)/index.mpd
+/out/(asset:demo)/master.m3u8
+</code></pre>
+<p>The MPD addresses each sprite as <code>&lt;thumbnail-id&gt;/&lt;number&gt;.jpg</code>. The HLS
+multivariant playlist advertises <code>&lt;thumbnail-id&gt;.m3u8</code>. A thumbnail that
+cannot select a video source is omitted from manifests and its image routes
+return <code>404</code>.</p>
+<h2 id="segments-are-protocol-independent"><a class="header" href="#segments-are-protocol-independent">Segments are protocol-independent</a></h2>
+<p>There is no <code>dash</code> or <code>hls</code> component anywhere in a segment path. Both manifests
+reference the same <code>&lt;track-id&gt;/init.mp4</code> and <code>&lt;track-id&gt;/&lt;time&gt;.m4s</code> URLs, and a
+request for one returns the same CMAF bytes regardless of which manifest sent
+the player there. Only <code>index.mpd</code> and the <code>.m3u8</code> resources are
+protocol-specific. See
+<a href="#dynamic-packaging-without-media-copies">Dynamic packaging without media copies</a>
+for why.</p>
+<h2 id="text-segment-representations"><a class="header" href="#text-segment-representations">Text segment representations</a></h2>
+<p>A raw WebVTT source has two runtime representations with the same segment
+boundaries and durations.</p>
+<pre><code class="language-text">/out/(asset:demo)/3b519953-…/0.m4s   → packaged wvtt bytes
+/out/(asset:demo)/3b519953-…/0.vtt   → the WebVTT document those bytes hold
+</code></pre>
+<p>A <code>.vtt</code> request selects cues directly from the parsed WebVTT source. The
+document carries the absolute timestamps the source used and no
+<code>X-TIMESTAMP-MAP</code>, since the times are already on the presentation’s clock.</p>
+<p>Which one a player asks for is the manifest’s business: DASH always references
+<code>.m4s</code>, while HLS references <code>.vtt</code> for a raw WebVTT source unless the request
+passes <a href="#output-options"><code>wvtt</code></a>. HLS always references <code>.m4s</code> for a CMAF <code>wvtt</code>
+source. <code>&lt;track-id&gt;/init.mp4</code> stays available for the track either way, and is
+simply not referenced by a WebVTT rendition — a WebVTT segment needs no
+initialization.</p>
+<p>A <code>.vtt</code> response is available only for a raw WebVTT source. dyndo does not
+unpackage CMAF <code>wvtt</code> media into a WebVTT document.</p>
+<h2 id="segment-addressing"><a class="header" href="#segment-addressing">Segment addressing</a></h2>
+<p>A media segment is addressed by its <strong>presentation start time</strong>, an integer in
+the track’s own timescale, with a <code>.m4s</code> extension — or <code>.vtt</code> for a text track
+served as a document. The server re-derives the
+track’s segment list for the request’s segmentation options, then walks it
+accumulating durations from the track’s earliest presentation time until it
+finds an exact match.</p>
+<p>A track whose <code>sidx</code> reports an earliest presentation time of <code>0</code> therefore
+starts at <code>&lt;track-id&gt;/0.m4s</code>, and each subsequent segment starts at the running
+sum of the preceding durations. These are exactly the <code>$Time$</code> values in the
+DASH <code>SegmentTimeline</code> and the URIs in the HLS media playlists.</p>
+<p>Because segmentation options change where segment edges fall, a <code>&lt;time&gt;</code> is only
+valid for the same options that produced it. Requesting a segment under
+different <code>min_length</code> values than the manifest
+was generated with will usually <code>404</code> — which is why the options live in the
+shared path prefix.</p>
+<h2 id="status-codes"><a class="header" href="#status-codes">Status codes</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Code</th><th>When</th></tr>
+</thead>
+<tbody>
+<tr><td><code>200 OK</code></td><td>The manifest or segment was generated and returned; also the <code>/health</code> probe.</td></tr>
+<tr><td><code>400 Bad Request</code></td><td>The options path segment is malformed Rison or contains an unknown option, a manifest route carries an unrecognised query parameter, or the <a href="#filtering-tracks">filter</a> is malformed — an unknown attribute, an ordering operator on a textual attribute, or a non-numeric value for a numeric attribute.</td></tr>
+<tr><td><code>404 Not Found</code></td><td>The path does not contain separate options and resource components; <code>&lt;track-id&gt;</code> matches no track; a segment filename has an unsupported extension or a non-integer time; <code>&lt;time&gt;</code> is not a segment boundary; a thumbnail is disabled or unavailable; the descriptor does not exist; or the <a href="#filtering-tracks">filter</a> matched no track.</td></tr>
+<tr><td><code>500 Internal Server Error</code></td><td>The descriptor JSON is malformed; a source file is unreadable or is not valid, supported CMAF; packaged subtitle cues cannot be parsed; thumbnail generation fails; or manifest serialization fails.</td></tr>
+</tbody>
+</table>
+</div>
+<p>The split between <code>404</code> and <code>500</code> reflects ownership: a <strong>missing</strong> object is
+treated as a client addressing error, while a <strong>malformed</strong> descriptor or
+<strong>broken</strong> media file is the server’s own content problem, because the asset
+files are server-owned. Error responses carry a short plain-text message.</p>
+<h2 id="cors"><a class="header" href="#cors">CORS</a></h2>
+<p>The server applies a permissive CORS policy — any origin, any method — so
+browser-based players can load manifests and segments cross-origin during
+development.</p>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="configuration"><a class="header" href="#configuration">Configuration</a></h1>
+<p><code>dyndo-server</code> is configured by layering three sources, each overriding the one
+before it:</p>
+<ol>
+<li><strong>built-in defaults</strong>,</li>
+<li>a <strong><code>config.yaml</code></strong> file, then</li>
+<li><strong><code>DYNDO_</code>-prefixed environment variables</strong>.</li>
+</ol>
+<p>There are no command-line flags. Configuration is deserialized directly into
+<a href="https://opendal.apache.org/">OpenDAL</a>’s backend config structs, so backend
+settings are exactly OpenDAL’s own.</p>
+<h2 id="configuration-file"><a class="header" href="#configuration-file">Configuration file</a></h2>
+<p>The file is <code>./config.yaml</code> in the working directory by default. Set
+<code>DYNDO_CONFIG</code> to load a different path:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variable</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>DYNDO_CONFIG</code></td><td>Path to the YAML config file. If set, the file <strong>must exist</strong> or the server exits. If unset, a missing <code>config.yaml</code> is ignored (defaults + env are used).</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="schema"><a class="header" href="#schema">Schema</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Type</th><th>Description</th><th>Default</th></tr>
+</thead>
+<tbody>
+<tr><td><code>store</code></td><td><code>fs</code> | <code>s3</code></td><td>Which storage backend serves assets.</td><td><code>fs</code></td></tr>
+<tr><td><code>server.host</code></td><td>string</td><td>Listen address.</td><td><code>0.0.0.0</code></td></tr>
+<tr><td><code>server.port</code></td><td>integer</td><td>Listen port.</td><td><code>8080</code></td></tr>
+<tr><td><code>fs</code></td><td>table</td><td>Local-filesystem backend settings (OpenDAL <code>Fs</code>). Required when <code>store: fs</code>.</td><td><em>(none)</em></td></tr>
+<tr><td><code>s3</code></td><td>table</td><td>S3 backend settings (OpenDAL <code>S3</code>). Required when <code>store: s3</code>.</td><td><em>(none)</em></td></tr>
+</tbody>
+</table>
+</div>
+<p>Neither backend section is defaulted: whichever backend <code>store</code> selects must be
+supplied (via file or environment) with the fields OpenDAL needs, or the server
+fails to build its storage operator at startup.</p>
+<h3 id="fs-backend"><a class="header" href="#fs-backend"><code>fs</code> backend</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>fs.root</code></td><td>Root directory that descriptors and media are read from. <strong>Required</strong> for <code>store: fs</code>.</td></tr>
+</tbody>
+</table>
+</div>
+<pre><code class="language-yaml">store: fs
+fs:
+  root: ./assets
+</code></pre>
+<h3 id="s3-backend"><a class="header" href="#s3-backend"><code>s3</code> backend</a></h3>
+<p>The <code>s3</code> table is OpenDAL’s S3 configuration. The commonly used keys:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Key</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>s3.bucket</code></td><td>Bucket name. <strong>Required</strong> for <code>store: s3</code>.</td></tr>
+<tr><td><code>s3.region</code></td><td>AWS region.</td></tr>
+<tr><td><code>s3.endpoint</code></td><td>Service endpoint URL.</td></tr>
+<tr><td><code>s3.root</code></td><td>Key prefix prepended to every object path.</td></tr>
+<tr><td><code>s3.access_key_id</code></td><td>Access key ID (or supply via <code>AWS_ACCESS_KEY_ID</code>).</td></tr>
+<tr><td><code>s3.secret_access_key</code></td><td>Secret access key (or supply via <code>AWS_SECRET_ACCESS_KEY</code>).</td></tr>
+</tbody>
+</table>
+</div>
+<pre><code class="language-yaml">store: s3
+s3:
+  bucket: my-assets
+  region: eu-west-1
+  endpoint: https://s3.eu-west-1.amazonaws.com
+  root: /
+</code></pre>
+<p>Credentials may be omitted from the file and supplied through the standard
+<code>AWS_*</code> environment variables, which OpenDAL’s S3 backend reads.</p>
+<h2 id="environment-variables"><a class="header" href="#environment-variables">Environment variables</a></h2>
+<p>Every setting maps to a <code>DYNDO_</code>-prefixed variable. Nested keys are separated by
+a <strong>double underscore</strong> (<code>__</code>); single underscores within a field name are
+preserved.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Variable</th><th>Sets</th></tr>
+</thead>
+<tbody>
+<tr><td><code>DYNDO_STORE</code></td><td><code>store</code></td></tr>
+<tr><td><code>DYNDO_SERVER__HOST</code></td><td><code>server.host</code></td></tr>
+<tr><td><code>DYNDO_SERVER__PORT</code></td><td><code>server.port</code></td></tr>
+<tr><td><code>DYNDO_FS__ROOT</code></td><td><code>fs.root</code></td></tr>
+<tr><td><code>DYNDO_S3__BUCKET</code></td><td><code>s3.bucket</code></td></tr>
+<tr><td><code>DYNDO_S3__REGION</code></td><td><code>s3.region</code></td></tr>
+<tr><td><code>DYNDO_S3__ACCESS_KEY_ID</code></td><td><code>s3.access_key_id</code></td></tr>
+<tr><td><code>DYNDO_S3__SECRET_ACCESS_KEY</code></td><td><code>s3.secret_access_key</code></td></tr>
+</tbody>
+</table>
+</div>
+<p>The double-underscore rule is what keeps a name like <code>access_key_id</code> intact —
+<code>DYNDO_S3__ACCESS_KEY_ID</code> nests as <code>s3.access_key_id</code>, not <code>s3.access.key.id</code>.</p>
+<h2 id="precedence"><a class="header" href="#precedence">Precedence</a></h2>
+<p>Later layers win field by field (a deep merge), so you can commit a
+<code>config.yaml</code> and override only what changes per environment:</p>
+<pre><code class="language-bash"># config.yaml sets port 8080 and fs.root ./assets;
+# these env vars override just those two fields.
+DYNDO_SERVER__PORT=9000 DYNDO_FS__ROOT=/srv/media dyndo-server
+</code></pre>
+<h2 id="startup-errors"><a class="header" href="#startup-errors">Startup errors</a></h2>
+<p>Configuration problems are reported at startup, not per request:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Condition</th><th>Result</th></tr>
+</thead>
+<tbody>
+<tr><td><code>DYNDO_CONFIG</code> names a missing file</td><td>Exit: “DYNDO_CONFIG points to a missing file”.</td></tr>
+<tr><td>YAML/env cannot be merged or deserialized into the schema</td><td>Exit: “failed to load configuration”.</td></tr>
+<tr><td>Selected backend rejected (e.g. <code>s3</code> with no <code>bucket</code>, <code>fs</code> with no <code>root</code>)</td><td>Exit: “failed to build storage operator”.</td></tr>
+</tbody>
+</table>
+</div>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="assetjson-descriptor"><a class="header" href="#assetjson-descriptor">asset.json descriptor</a></h1>
+<p>The <code>asset.json</code> descriptor is the shared contract between dyndo’s CLI and server. <a href="#dyndo-index"><code>dyndo index</code></a> writes and updates it; <a href="#dyndo-image"><code>dyndo image</code></a> and the server read it. It is deliberately small: it records <strong>per-track metadata and, for source tracks, a source path</strong> — no segment list, byte offsets, or timescale. Those are re-derived from each source at read time.</p>
+<p>The file is pretty-printed JSON and safe to read, diff, and hand-edit. Each
+descriptor written by dyndo carries a <code>$schema</code> URL. It points to the immutable
+JSON Schema for the dyndo release that wrote the file, at
+<code>https://matvp91.github.io/dyndo/&lt;version&gt;/schema.json</code>.</p>
+<h2 id="top-level-structure"><a class="header" href="#top-level-structure">Top-level structure</a></h2>
+<p>A descriptor is an object with a <code>tracks</code> array and optional splice boundaries.
+The array contains CMAF source tracks, raw WebVTT source tracks, and
+derived thumbnail tracks:</p>
+<pre><code class="language-json">{
+  "$schema": "https://matvp91.github.io/dyndo/0.5.1/schema.json",
+  "boundaries": [683640],
+  "tracks": [ /* CMAF, VTT, and thumbnail track objects */ ]
+}
+</code></pre>
+<p>Track order is preserved as written and is <strong>significant</strong>: within the HLS audio
+group, the default rendition is the first <code>main</code>-role track, or the first audio
+track with no role when none is marked <code>main</code>. <code>index</code> appends tracks in the
+order you pass them.</p>
+<h2 id="thumbnail-tracks"><a class="header" href="#thumbnail-tracks">Thumbnail tracks</a></h2>
+<p>Thumbnail tracks describe JPEG sprite sheets derived from the source tracks.
+They have no source path or codec: dyndo resolves their source at request time.
+Each thumbnail track has a stable <code>id</code>:</p>
+<pre><code class="language-json">{
+  "id": "preview",
+  "type": "thumbnail",
+  "tile_size": 4,
+  "width": 640
+}
+</code></pre>
+<p><code>tile_size</code> is the number of thumbnails in each row and column, <code>width</code> is the
+full sprite width in pixels, and adjacent thumbnails follow the source’s IDR
+cadence.</p>
+<h2 id="boundaries"><a class="header" href="#boundaries">Boundaries</a></h2>
+<p>The optional <code>boundaries</code> array records splice points in milliseconds from the
+start of the presentation, for example for ad insertion. It is treated as a
+set: order and duplicates do not matter. Each point is snapped per CMAF track to
+the first fragment boundary at or after it, so a segment never opens on content
+from before the splice point. Raw WebVTT tracks are cut at the listed times as
+they are packaged.</p>
+<p>The server’s <code>min_length</code> and <code>text_length</code> request options choose the delivery
+grid for a particular request; they are not stored in the descriptor. See the
+<a href="#segmentation-options">server routes reference</a>.</p>
+<h2 id="track-objects"><a class="header" href="#track-objects">Track objects</a></h2>
+<p>Each track is tagged by a <code>type</code> discriminator: <code>"video"</code>, <code>"audio"</code>,
+<code>"text"</code>, <code>"webvtt"</code>, or <code>"thumbnail"</code>. CMAF tracks (<code>video</code>, <code>audio</code>, and <code>text</code>)
+share these fields:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Field</th><th>Type</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>type</code></td><td>string</td><td>Track kind: <code>video</code>, <code>audio</code>, or <code>text</code>.</td></tr>
+<tr><td><code>id</code></td><td>string</td><td>Representation id (see <a href="#representation-ids">Representation ids</a>). Combined with the track type when written as a representation name or segment URL.</td></tr>
+<tr><td><code>path</code></td><td>string</td><td>Source file path, relative to the descriptor’s directory.</td></tr>
+<tr><td><code>codec</code></td><td>string</td><td>The track’s <a href="https://datatracker.ietf.org/doc/html/rfc6381">RFC 6381</a> codec string, discovered from the source (e.g. <code>avc1.640028</code>, <code>mp4a.40.2</code>, <code>wvtt</code>). Written into the manifests as-is.</td></tr>
+</tbody>
+</table>
+</div>
+<p>Unknown fields in a track entry are ignored on read. Type-specific fields follow.</p>
+<h3 id="video-tracks"><a class="header" href="#video-tracks">Video tracks</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Field</th><th>Type</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>width</code></td><td>integer</td><td>Visual width, in pixels.</td></tr>
+<tr><td><code>height</code></td><td>integer</td><td>Visual height, in pixels.</td></tr>
+<tr><td><code>frame_rate</code></td><td>string</td><td>Frame rate as a reduced <code>numerator/denominator</code> ratio (e.g. <code>25/1</code>, <code>30000/1001</code>), derived from the track timescale and its first fragment’s sample duration.</td></tr>
+</tbody>
+</table>
+</div>
+<p>Video tracks carry no <code>language</code> or <code>role</code>.</p>
+<pre><code class="language-json">{
+  "id": "6b745be5-2791-5d95-8ce5-8f8bde29e2fe",
+  "path": "video_1080.mp4",
+  "codec": "avc1.640028",
+  "type": "video",
+  "width": 1920,
+  "height": 1080,
+  "frame_rate": "25/1"
+}
+</code></pre>
+<h3 id="audio-tracks"><a class="header" href="#audio-tracks">Audio tracks</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Field</th><th>Type</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>sample_rate</code></td><td>integer</td><td>Sampling rate, in Hz.</td></tr>
+<tr><td><code>channels</code></td><td>integer</td><td>Number of audio channels (e.g. <code>2</code> for stereo, <code>6</code> for 5.1).</td></tr>
+<tr><td><code>language</code></td><td>string</td><td>Well-formed BCP 47 language tag declared by the source’s <code>mdhd</code> box, or <code>und</code> when the source declares none or the field is omitted. Always written.</td></tr>
+<tr><td><code>role</code></td><td>string <em>(optional)</em></td><td>The track’s declared purpose. Omitted when unset. See <a href="#track-roles">Track roles</a>.</td></tr>
+</tbody>
+</table>
+</div>
+<pre><code class="language-json">{
+  "id": "e7f831b7-7992-5c5b-9b45-428b82d90704",
+  "path": "audio_nl.mp4",
+  "codec": "mp4a.40.2",
+  "type": "audio",
+  "sample_rate": 48000,
+  "channels": 2,
+  "language": "nld",
+  "role": "main"
+}
+</code></pre>
+<h3 id="text-and-vtt-tracks"><a class="header" href="#text-and-vtt-tracks">Text and VTT tracks</a></h3>
+<p>A text track’s source is WebVTT in one of two forms: <strong>CMAF <code>wvtt</code></strong> (WebVTT in
+ISO-BMFF), which is resolved and served like any other CMAF track, or a <strong>raw
+<code>.vtt</code></strong> file.</p>
+<blockquote>
+<p>Both forms are served. A raw <code>.vtt</code> is parsed and packaged into a <code>wvtt</code> track
+as it is read, so nothing is written beside it and the <code>.vtt</code> stays the source
+of truth; its segments are cut where the asset’s splice points and the server
+request’s <a href="#segmentation-options"><code>text_length</code></a> say. CMAF WebVTT tracks use <code>"type": "text"</code>
+and record their <code>wvtt</code> codec. Raw WebVTT tracks use <code>"type": "webvtt"</code> and do
+not have a codec, because dyndo packages them only for CMAF output. HLS serves
+raw VTT cues directly from a raw WebVTT source; CMAF <code>wvtt</code> sources are served
+as CMAF segments. See
+<a href="#choose-how-hls-delivers-subtitles">Add a subtitle track</a>.</p>
+</blockquote>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Field</th><th>Type</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>language</code></td><td>string</td><td>Well-formed BCP 47 language tag from the source’s <code>mdhd</code> box for CMAF <code>wvtt</code>, or <code>und</code> for a raw <code>.vtt</code> or an omitted field. Always written.</td></tr>
+<tr><td><code>role</code></td><td>string <em>(optional)</em></td><td>The track’s declared purpose. Omitted when unset, which DASH renders as <code>subtitle</code>. See <a href="#track-roles">Track roles</a>.</td></tr>
+</tbody>
+</table>
+</div>
+<p>A CMAF <code>wvtt</code> track and a raw <code>.vtt</code> track:</p>
+<pre><code class="language-json">{
+  "id": "3b519953-3963-56be-8c59-ae1cd0e6d5b4",
+  "path": "text_wvtt_eng.mp4",
+  "codec": "wvtt",
+  "type": "text",
+  "language": "eng",
+  "role": "caption"
+}
+</code></pre>
+<pre><code class="language-json">{
+  "id": "c9e251a7-4fd1-54f9-abc8-ca86598e1cc5",
+  "path": "subtitles_nl.vtt",
+  "type": "webvtt",
+  "language": "nld"
+}
+</code></pre>
+<h2 id="representation-ids"><a class="header" href="#representation-ids">Representation ids</a></h2>
+<p>An <code>id</code> is a <a href="https://datatracker.ietf.org/doc/html/rfc4122#section-4.3">UUID version 5</a>
+generated in the URL namespace from the track’s source path <strong>relative to the
+storage root</strong>:</p>
+<pre><code class="language-text">id = uuidv5(NAMESPACE_URL, "&lt;path from storage root to the source&gt;")
+</code></pre>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Source path</th><th>Resulting id</th></tr>
+</thead>
+<tbody>
+<tr><td><code>video_1080.mp4</code></td><td><code>6b745be5-2791-5d95-8ce5-8f8bde29e2fe</code></td></tr>
+<tr><td><code>audio_nl.mp4</code></td><td><code>e7f831b7-7992-5c5b-9b45-428b82d90704</code></td></tr>
+<tr><td><code>text_wvtt_eng.mp4</code></td><td><code>3b519953-3963-56be-8c59-ae1cd0e6d5b4</code></td></tr>
+</tbody>
+</table>
+</div>
+<p>Two consequences follow from the id being a function of the path:</p>
+<ul>
+<li><strong>It is deterministic.</strong> Indexing the same file at the same path always
+produces the same id, on any machine. Re-creating a descriptor from scratch
+reproduces the ids it had before.</li>
+<li><strong>It is independent of metadata.</strong> Language, role, resolution, and bitrate do
+not enter into it, so relabelling a track never changes its id — and therefore
+never changes the URLs it is served under.</li>
+</ul>
+<p>An id is written once, when the track is first indexed, and copied verbatim on
+every later write. Indexing the <em>same source</em> through a differently placed
+descriptor resolves to a different path and so mints a different id; the
+existing entry, matched by path, keeps the id it already has.</p>
+<p>Editing an <code>id</code> by hand works and is honoured everywhere, but changes every URL
+the track is served under.</p>
+<h2 id="path-resolution"><a class="header" href="#path-resolution">Path resolution</a></h2>
+<p><code>path</code> is always relative to the <strong>descriptor’s own directory</strong>, normalized
+(<code>..</code> segments are resolved). A descriptor at <code>assets/asset.json</code> with
+<code>"path": "video.mp4"</code> refers to <code>assets/video.mp4</code>; <code>"path": "../shared/a.mp4"</code>
+refers to <code>shared/a.mp4</code>. This keeps a descriptor portable: move the descriptor
+and its sources together and every path stays valid.</p>
+<p>Both the CLI and the server resolve that result against their storage root — for
+the CLI, <code>OPENDAL_FS_ROOT</code> (default: the current directory); for the server, the
+selected backend’s root.</p>
+<h2 id="complete-example"><a class="header" href="#complete-example">Complete example</a></h2>
+<p>An asset with two video renditions, one audio track, and a CMAF <code>wvtt</code> subtitle
+track:</p>
+<pre><code class="language-json">{
+  "tracks": [
+    {
+      "id": "6b745be5-2791-5d95-8ce5-8f8bde29e2fe",
+      "path": "video_1080.mp4",
+      "codec": "avc1.640028",
+      "type": "video",
+      "width": 1920,
+      "height": 1080,
+      "frame_rate": "25/1"
+    },
+    {
+      "id": "0288719a-3994-58b3-ad97-57b9ebe4227d",
+      "path": "video_720.mp4",
+      "codec": "avc1.64001f",
+      "type": "video",
+      "width": 1280,
+      "height": 720,
+      "frame_rate": "25/1"
+    },
+    {
+      "id": "e7f831b7-7992-5c5b-9b45-428b82d90704",
+      "path": "audio_nl.mp4",
+      "codec": "mp4a.40.2",
+      "type": "audio",
+      "sample_rate": 48000,
+      "channels": 2,
+      "language": "nld",
+      "role": "main"
+    },
+    {
+      "id": "d1cb4d6f-074b-5a03-b627-265487b4c4ea",
+      "path": "text_wvtt_nld.mp4",
+      "codec": "wvtt",
+      "type": "text",
+      "language": "nld",
+      "role": "subtitle"
+    }
+  ]
+}
+</code></pre>
+<h2 id="a-note-on-hand-editing"><a class="header" href="#a-note-on-hand-editing">A note on hand-editing</a></h2>
+<p>The descriptor is safe to edit, and re-running <a href="#dyndo-index"><code>index</code></a> will
+not undo your edits: tracks already in the descriptor keep their metadata as-is
+on a re-index. The fields intended for hand-editing are <code>language</code> and <code>role</code> on
+audio and text tracks, the top-level <a href="#boundaries">boundaries</a>, and
+track order (which picks the HLS default audio rendition).</p>
+<p>Two things to keep in mind:</p>
+<ul>
+<li>Metadata fields like <code>width</code>, <code>codec</code>, or <code>sample_rate</code> describe the source as
+discovered; editing them does not change the media, and a value that contradicts
+the source will produce manifests players cannot use.</li>
+<li>Because <code>index</code> leaves known tracks untouched, it will <strong>not</strong> notice that a
+source file’s content changed. To rediscover a track, remove its entry from the
+JSON (or delete the descriptor) and index the file again.</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="track-roles"><a class="header" href="#track-roles">Track roles</a></h1>
+<p>A track’s <strong>role</strong> is its author-declared purpose. It is never discovered from the
+media, and is stored in the descriptor’s
+<a href="#track-object"><code>role</code> field</a>. This page is the exact reference
+for the role vocabulary and how each role is rendered into DASH and HLS.</p>
+<p>To set a role, see <a href="#label-tracks-with-roles">Label tracks with roles</a>.</p>
+<h2 id="the-vocabulary"><a class="header" href="#the-vocabulary">The vocabulary</a></h2>
+<p>There is one flat set of nine role values. Any of them may be stored on any
+audio or text track — <code>index</code> rejects only values outside this list, and does
+not check a role against the track’s type. The grouping below is by intended
+use, not by enforcement.</p>
+<p>Video tracks have no <code>role</code> field; a <code>role=</code> override on a video input is
+accepted and silently discarded.</p>
+<h3 id="intended-for-audio"><a class="header" href="#intended-for-audio">Intended for audio</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Value</th><th>Meaning</th></tr>
+</thead>
+<tbody>
+<tr><td><code>main</code></td><td>The primary audio.</td></tr>
+<tr><td><code>alternate</code></td><td>An alternate version of the main audio.</td></tr>
+<tr><td><code>commentary</code></td><td>Commentary (e.g. director’s commentary).</td></tr>
+<tr><td><code>dub</code></td><td>A dubbed rendition in another language.</td></tr>
+<tr><td><code>description</code></td><td>Audio description for viewers who are blind or have low vision.</td></tr>
+<tr><td><code>enhanced-audio-intelligibility</code></td><td>Dialogue enhanced for intelligibility.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="intended-for-text"><a class="header" href="#intended-for-text">Intended for text</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Value</th><th>Meaning</th></tr>
+</thead>
+<tbody>
+<tr><td><code>subtitle</code></td><td>Translation subtitles (dialogue only).</td></tr>
+<tr><td><code>caption</code></td><td>SDH / closed captions (dialogue plus non-dialogue sound description).</td></tr>
+<tr><td><code>forced-subtitle</code></td><td>Forced narrative subtitles (foreign dialogue or on-screen text).</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="dash-mapping"><a class="header" href="#dash-mapping">DASH mapping</a></h2>
+<p>Roles are emitted as descriptors on the track’s <code>AdaptationSet</code>. Both
+descriptor kinds use the <strong>same</strong> scheme, <code>urn:mpeg:dash:role:2011</code>, and both
+carry the role name as a string <code>value</code>. Tracks are grouped into adaptation sets partly by role, so a set’s members always agree on it.</p>
+<h3 id="audio"><a class="header" href="#audio">Audio</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Audio role</th><th><code>Role@value</code></th><th><code>Accessibility@value</code></th></tr>
+</thead>
+<tbody>
+<tr><td><em>(none)</em></td><td>—</td><td>—</td></tr>
+<tr><td><code>main</code></td><td><code>main</code></td><td>—</td></tr>
+<tr><td><code>alternate</code></td><td><code>alternate</code></td><td>—</td></tr>
+<tr><td><code>commentary</code></td><td><code>commentary</code></td><td>—</td></tr>
+<tr><td><code>dub</code></td><td><code>dub</code></td><td>—</td></tr>
+<tr><td><code>description</code></td><td>—</td><td><code>description</code></td></tr>
+<tr><td><code>enhanced-audio-intelligibility</code></td><td>—</td><td><code>enhanced-audio-intelligibility</code></td></tr>
+</tbody>
+</table>
+</div>
+<p>The two accessibility roles emit an <code>Accessibility</code> descriptor <strong>instead of</strong> a
+<code>Role</code>, not in addition to one.</p>
+<h3 id="text"><a class="header" href="#text">Text</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Text role</th><th><code>Role@value</code></th><th><code>Accessibility@value</code></th></tr>
+</thead>
+<tbody>
+<tr><td><em>(none)</em></td><td><code>subtitle</code></td><td>—</td></tr>
+<tr><td><code>subtitle</code></td><td><code>subtitle</code></td><td>—</td></tr>
+<tr><td><code>caption</code></td><td><code>subtitle</code></td><td><code>caption</code></td></tr>
+<tr><td><code>forced-subtitle</code></td><td><code>forced-subtitle</code></td><td>—</td></tr>
+</tbody>
+</table>
+</div>
+<p>A text <code>AdaptationSet</code> always carries a <code>Role</code>; <code>caption</code> is signalled as a
+subtitle role plus an accessibility descriptor.</p>
+<pre><code class="language-xml">&lt;AdaptationSet id="2" contentType="text" lang="eng" mimeType="application/mp4" …&gt;
+  &lt;Accessibility schemeIdUri="urn:mpeg:dash:role:2011" value="caption"/&gt;
+  &lt;Role schemeIdUri="urn:mpeg:dash:role:2011" value="subtitle"/&gt;
+  …
+&lt;/AdaptationSet&gt;
+</code></pre>
+<h2 id="hls-mapping"><a class="header" href="#hls-mapping">HLS mapping</a></h2>
+<p>Roles set the attributes on the <code>EXT-X-MEDIA</code> rendition entries in the
+multivariant playlist. Audio renditions all share <code>GROUP-ID="audio"</code> and text
+renditions all share <code>GROUP-ID="subtitles"</code>; the role does not affect group
+membership.</p>
+<p>Attributes whose value is <code>NO</code> are omitted from the output rather than written
+out, which is equivalent.</p>
+<h3 id="name"><a class="header" href="#name"><code>NAME</code></a></h3>
+<p>The rendition’s language, qualified by a human-readable label when a role is
+set:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Role</th><th>Label</th><th>Example <code>NAME</code></th></tr>
+</thead>
+<tbody>
+<tr><td><em>(none)</em></td><td>—</td><td><code>nld</code></td></tr>
+<tr><td><code>main</code></td><td>Main</td><td><code>nld (Main)</code></td></tr>
+<tr><td><code>alternate</code></td><td>Alternate</td><td><code>nld (Alternate)</code></td></tr>
+<tr><td><code>commentary</code></td><td>Commentary</td><td><code>eng (Commentary)</code></td></tr>
+<tr><td><code>dub</code></td><td>Dub</td><td><code>fra (Dub)</code></td></tr>
+<tr><td><code>description</code></td><td>Audio Description</td><td><code>eng (Audio Description)</code></td></tr>
+<tr><td><code>enhanced-audio-intelligibility</code></td><td>Enhanced Dialogue</td><td><code>eng (Enhanced Dialogue)</code></td></tr>
+<tr><td><code>subtitle</code></td><td>Subtitles</td><td><code>nld (Subtitles)</code></td></tr>
+<tr><td><code>caption</code></td><td>Captions</td><td><code>eng (Captions)</code></td></tr>
+<tr><td><code>forced-subtitle</code></td><td>Forced Subtitles</td><td><code>eng (Forced Subtitles)</code></td></tr>
+</tbody>
+</table>
+</div>
+<p>Two renditions in the same group may not produce the same <code>NAME</code>; generating the
+playlist fails with <code>duplicate rendition name: &lt;name&gt;</code> if they do.</p>
+<h3 id="default"><a class="header" href="#default"><code>DEFAULT</code></a></h3>
+<p><code>DEFAULT=YES</code> goes to exactly one <strong>audio</strong> rendition, chosen in this order:</p>
+<ol>
+<li>the first audio track whose role is <code>main</code>;</li>
+<li>otherwise, the first audio track with <strong>no</strong> role.</li>
+</ol>
+<p>If every audio track carries a non-<code>main</code> role, no rendition is marked default.
+Text renditions are never marked default.</p>
+<h3 id="autoselect"><a class="header" href="#autoselect"><code>AUTOSELECT</code></a></h3>
+<p><code>AUTOSELECT=YES</code> when either:</p>
+<ul>
+<li>the rendition is the group default (above); or</li>
+<li>it is the <strong>only</strong> rendition sharing its combination of media type, language,
+<code>FORCED</code> flag, and <code>CHARACTERISTICS</code>.</li>
+</ul>
+<p>So a lone Dutch subtitle track is auto-selectable, while a Dutch subtitle track
+sitting alongside a Dutch forced-subtitle track is still auto-selectable
+(different <code>FORCED</code> flags), and two plain Dutch subtitle tracks are neither.</p>
+<h3 id="forced"><a class="header" href="#forced"><code>FORCED</code></a></h3>
+<p><code>FORCED=YES</code> only for <code>forced-subtitle</code>.</p>
+<h3 id="characteristics"><a class="header" href="#characteristics"><code>CHARACTERISTICS</code></a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Role</th><th><code>CHARACTERISTICS</code></th></tr>
+</thead>
+<tbody>
+<tr><td><code>description</code></td><td><code>public.accessibility.describes-video</code></td></tr>
+<tr><td><code>enhanced-audio-intelligibility</code></td><td><code>public.accessibility.enhances-speech</code></td></tr>
+<tr><td><code>caption</code></td><td><code>public.accessibility.transcribes-spoken-dialog,public.accessibility.describes-music-and-sound</code></td></tr>
+<tr><td>all others</td><td><em>(absent)</em></td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="see-also-2"><a class="header" href="#see-also-2">See also</a></h2>
+<ul>
+<li><a href="#label-tracks-with-roles">Label tracks with roles</a> — how to set them.</li>
+<li><a href="#assetjson-descriptor">asset.json descriptor</a> — the <code>role</code> field in context.</li>
+<li><a href="#http-routes">Server routes</a> — the DASH and HLS outputs in which roles appear.</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="the-thin-pointer-approach"><a class="header" href="#the-thin-pointer-approach">The thin-pointer approach</a></h1>
+<p>This page explains the central design decision in dyndo — serving adaptive
+streams from a <em>thin pointer</em> to your media rather than a repackaged copy of it —
+and the trade-offs that come with it.</p>
+<h2 id="the-conventional-approach-package-ahead-of-time"><a class="header" href="#the-conventional-approach-package-ahead-of-time">The conventional approach: package ahead of time</a></h2>
+<p>A traditional packager runs once, ahead of playback, and writes a full set of
+DASH and HLS renditions to disk. For each source it produces init segments,
+thousands of media segments, and the manifests that index them. The output is a
+complete, self-contained copy of your media, restructured for streaming.</p>
+<p>This works, but it has costs:</p>
+<ul>
+<li><strong>Storage is duplicated.</strong> The packaged output is a second full copy of the
+media, often in two layouts (one for DASH, one for HLS).</li>
+<li><strong>Storage is coupled to protocol.</strong> Adding or changing a protocol means
+re-running the packager and writing yet more files.</li>
+<li><strong>The segment layout is frozen.</strong> The manifest and the on-disk segments must
+agree, so they are produced together and kept together.</li>
+</ul>
+<h2 id="dyndos-approach-keep-the-source-point-at-it"><a class="header" href="#dyndos-approach-keep-the-source-point-at-it">dyndo’s approach: keep the source, point at it</a></h2>
+<p>dyndo inverts this. It never writes media. Instead, indexing records a small
+<strong>descriptor</strong> — <a href="#assetjson-descriptor"><code>asset.json</code></a> — that says only
+<em>what</em> the tracks are and <em>where</em> their source files live:</p>
+<pre><code class="language-json">{
+  "id": "6b745be5-2791-5d95-8ce5-8f8bde29e2fe",
+  "path": "video_1080.mp4",
+  "codec": "avc1.640028",
+  "type": "video",
+  "width": 1920,
+  "height": 1080,
+  "frame_rate": "25/1"
+}
+</code></pre>
+<p>Notice what is <em>not</em> here: no list of segments, no byte offsets, no init-segment
+range, not even a timescale, no per-protocol layout. The descriptor is a pointer,
+not a copy. At request time the server reads the source’s header and re-derives
+everything else (the <a href="#reading-a-source-headers-and-the-segment-index">next page</a> covers how).</p>
+<p>This yields three properties:</p>
+<ul>
+<li><strong>No duplicated storage.</strong> Your original CMAF files <em>are</em> the served media.
+The descriptor adds a few hundred bytes per asset.</li>
+<li><strong>One source of truth.</strong> The segment map lives in exactly one place — the
+source’s own <code>sidx</code> — and is never copied into the descriptor, so the two can
+never drift apart.</li>
+<li><strong>Protocol at the edge.</strong> Because segments are never protocol-specific (they
+are just CMAF), adding HLS alongside DASH costs a manifest generator, not a
+second copy of the media. See
+<a href="#dynamic-packaging-without-media-copies">Dynamic packaging without media copies</a>.</li>
+</ul>
+<h2 id="what-you-trade-for-it"><a class="header" href="#what-you-trade-for-it">What you trade for it</a></h2>
+<p>The thin pointer moves work from packaging time to request time, so it is not
+free:</p>
+<ul>
+<li><strong>Per-request parsing.</strong> Every manifest request parses the source headers
+afresh rather than reading a finished file. That work is deliberately bounded
+(see <a href="#reading-a-source-headers-and-the-segment-index">Reading a source</a>), but it is real, and a production
+deployment would cache generated manifests.</li>
+<li><strong>Sources must already be CMAF.</strong> dyndo indexes and serves CMAF; it does not
+transcode. The media must already be fragmented MP4 with a global <code>sidx</code>.
+Producing that is a one-time, out-of-band step (for example with ffmpeg).</li>
+<li><strong>The source files must stay put.</strong> The descriptor points at them by relative
+path; move a source without moving its descriptor and the pointer dangles.</li>
+</ul>
+<h2 id="when-this-fits"><a class="header" href="#when-this-fits">When this fits</a></h2>
+<p>The thin pointer is a good fit when you already have (or can cheaply produce)
+CMAF masters and want to serve them over multiple protocols without maintaining
+a second, protocol-shaped copy of your library. It trades a little repeated
+computation for a large reduction in stored bytes and a single, canonical
+segment map.</p>
+<h2 id="see-also-3"><a class="header" href="#see-also-3">See also</a></h2>
+<ul>
+<li><a href="#reading-a-source-headers-and-the-segment-index">Reading a source: headers and the segment index</a> — how
+the descriptor stays this thin.</li>
+<li><a href="#dynamic-packaging-without-media-copies">Dynamic packaging without media copies</a> — how media,
+metadata, and request-time presentation choices stay independent.</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="reading-a-source-headers-and-the-segment-index"><a class="header" href="#reading-a-source-headers-and-the-segment-index">Reading a source: headers and the segment index</a></h1>
+<p>The <a href="#the-thin-pointer-approach">thin-pointer approach</a> only works if dyndo can recover a
+source’s entire segment layout cheaply and repeatedly. This page explains how it
+does that: by reading a small header region and re-deriving the segment index
+from the <code>sidx</code>, without ever touching the media payload.</p>
+<h2 id="the-shape-of-a-cmaf-track"><a class="header" href="#the-shape-of-a-cmaf-track">The shape of a CMAF track</a></h2>
+<p>A CMAF track file is laid out, roughly, as:</p>
+<pre><code class="language-text">┌───────┬─────────────┬────────┬──────┬──────┬──────┬──────┬─────
+│ ftyp  │    moov     │  sidx  │ moof │ mdat │ moof │ mdat │ …
+└───────┴─────────────┴────────┴──────┴──────┴──────┴──────┴─────
+  brand   track header  segment  ─── media fragments (the bulk) ───
+          (one track)   index
+</code></pre>
+<ul>
+<li><strong><code>ftyp</code> + <code>moov</code></strong> — the initialization data: brands, and the single track’s
+timescale, codec sample entry, and handler. Together these are the <em>init
+segment</em>.</li>
+<li><strong><code>sidx</code></strong> — the segment index: one reference per (sub)segment, each giving
+that segment’s byte size and duration.</li>
+<li><strong><code>moof</code> + <code>mdat</code> pairs</strong> — the media fragments. The <code>mdat</code> boxes hold the
+actual coded samples and account for essentially the whole file.</li>
+</ul>
+<p>Everything dyndo needs to describe and address the track lives in the first
+three boxes. The <code>mdat</code> bodies matter only when a <em>specific</em> segment is
+requested — and then only that segment’s byte range.</p>
+<h2 id="probing-read-the-header-stop-at-the-first-fragment"><a class="header" href="#probing-read-the-header-stop-at-the-first-fragment">Probing: read the header, stop at the first fragment</a></h2>
+<p>To index or serve a track, dyndo streams the file from the start and parses
+boxes until it has the <code>moov</code>, the <code>sidx</code>, and the first <code>moof</code> — then stops. The
+first <code>moof</code> marks the end of the header region; the parser never reads the
+<code>mdat</code> that follows it. Boxes it doesn’t care about are skipped by length.</p>
+<p>From those boxes it assembles:</p>
+<ul>
+<li>the <strong>track metadata</strong> (codec and its <a href="https://datatracker.ietf.org/doc/html/rfc6381">RFC 6381</a>
+parameters, dimensions or sample rate/channels, language) from the <code>moov</code>’s
+single track and the first fragment’s timing; and</li>
+<li>the <strong>segment index</strong> from the <code>sidx</code>.</li>
+</ul>
+<h2 id="re-deriving-the-segment-map-from-the-sidx"><a class="header" href="#re-deriving-the-segment-map-from-the-sidx">Re-deriving the segment map from the <code>sidx</code></a></h2>
+<p>The <code>sidx</code> is what makes the descriptor able to omit the segment list entirely.
+Each of its references gives a segment’s size in bytes and duration in the track
+timescale. Walking the references in order, dyndo reconstructs, for every
+segment:</p>
+<ul>
+<li>its <strong>byte offset</strong> — a running sum of the preceding segment sizes, starting
+just after the <code>sidx</code>; and</li>
+<li>its <strong>presentation time</strong> — a running sum of the preceding durations, starting
+at the <code>sidx</code>’s earliest presentation time.</li>
+</ul>
+<p>Those two running sums are exactly what a manifest needs (the <code>$Time$</code> values in
+a DASH <code>SegmentTimeline</code>, the segment URIs in an HLS media playlist) and what a
+segment request needs (the byte range to read for a given <code>&lt;time&gt;</code>). The <code>sidx</code>
+<em>is</em> the segment map; dyndo reads it, never copies it.</p>
+<p>By default every <code>sidx</code> reference becomes one served segment. A generation’s
+minimum segment length, together with the descriptor’s optional
+<a href="#boundaries"><code>boundaries</code></a>, groups
+consecutive references into larger served segments at serve time — contiguous
+byte ranges merge into one — without touching the source file or the index
+itself. Offline generation receives that value through
+<code>--segment-min-length</code>; server requests use <code>min_length</code> or its <code>sml</code>
+shorthand. Grouping decisions are made in exact integer arithmetic on each
+track’s native timescale values, so tracks with different timescales (video at
+90000, audio at 48000) reach identical decisions about where a segment edge
+falls — the two manifests and the segment routes always agree.</p>
+<p>One source type arrives at its segment index differently: a raw <code>.vtt</code> subtitle
+file has no boxes and no <code>sidx</code>, so there is nothing to resolve. When CMAF data is
+needed, dyndo packages a <code>wvtt</code> view and indexes <em>that</em> — the same box walk over
+bytes that never touch storage. Its fragments are cut where the asset’s splice
+points and the server request’s
+<a href="#segmentation-options"><code>text_length</code></a> say, rather than
+recovered from a file, which is why those cuts are exact instead of snapped.</p>
+<p>Serving such a track to HLS resolves the segment from that index as usual, then
+selects the matching cue range directly from the parsed WebVTT document. The
+same index still defines the cut points for both forms, so they never disagree
+about where a segment starts.</p>
+<h2 id="why-an-800-mb-file-parses-like-an-8-mb-one"><a class="header" href="#why-an-800-mb-file-parses-like-an-8-mb-one">Why an 800 MB file parses like an 8 MB one</a></h2>
+<p>The header region — <code>moov</code> + <code>sidx</code> + first <code>moof</code> — is a fixed, small part of
+the file regardless of how long the track is. A longer track has a longer
+<code>sidx</code> (one reference per segment) and more <code>mdat</code> bytes, but dyndo reads the
+<code>sidx</code> and stops before the <code>mdat</code>. Parsing cost tracks the number of segments,
+not the size of the media, so an 800 MB source is parsed from roughly the same
+~10 KB header region as an 8 MB one. The <code>mdat</code> body is never fetched during
+indexing or manifest generation.</p>
+<h2 id="reading-a-segment"><a class="header" href="#reading-a-segment">Reading a segment</a></h2>
+<p>When a player later requests <code>&lt;track-id&gt;/&lt;time&gt;.m4s</code>, dyndo re-derives the index the
+same way, finds the segment whose cumulative start time equals <code>&lt;time&gt;</code>, and
+issues a single byte-range read for that segment’s <code>offset..offset+size</code>. Init
+segments (<code>init.mp4</code>) are the <code>ftyp</code>+<code>moov</code> range at the front of the file. In
+both cases dyndo reads only the bytes that segment occupies — the rest of the
+file is never transferred.</p>
+<h2 id="see-also-4"><a class="header" href="#see-also-4">See also</a></h2>
+<ul>
+<li><a href="#the-thin-pointer-approach">The thin-pointer approach</a> — why the descriptor can be
+this small.</li>
+<li><a href="#assetjson-descriptor">asset.json descriptor</a> — what indexing records.</li>
+<li><a href="#http-routes">HTTP routes</a> — how <code>&lt;time&gt;</code> addresses a
+segment.</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="dynamic-packaging-without-media-copies"><a class="header" href="#dynamic-packaging-without-media-copies">Dynamic packaging without media copies</a></h1>
+<p>dyndo separates stored media from the way that media is presented to a player. A CMAF source holds encoded samples and a segment index; a raw WebVTT source holds subtitle cues. A small descriptor points to those sources and holds presentation metadata. Manifests and responses are derived from them when requested.</p>
+<p>This separation is what makes the system dynamic: changing the presentation does not require changing the media.</p>
+<h2 id="media-bytes-stay-in-their-original-objects"><a class="header" href="#media-bytes-stay-in-their-original-objects">Media bytes stay in their original objects</a></h2>
+<p>A conventional packaging pipeline commonly writes initialization segments, individual media-segment files, manifests, and sometimes separate output trees for different delivery formats. Storing those outputs alongside a fragmented MP4 source can duplicate media bytes already present in that source.</p>
+<p>dyndo instead reads ranges from the original fragmented MP4:</p>
+<pre><code class="language-text">  CMAF source ── header read ──▶ track and segment model ──▶ manifest
+       │
+       └──────── requested byte range ─────────────────────▶ media response
+</code></pre>
+<p>For a CMAF source, the initialization segment and each served media segment are byte ranges inside the source object. Grouping fragments changes the boundaries of the range returned to the client; it does not create stored segment files. The server does not write generated output back to storage.</p>
+<p>Raw WebVTT follows a different read path. dyndo reads the subtitle document and
+packages it as CMAF <code>wvtt</code> in memory for DASH, while HLS selects WebVTT cues
+directly from the parsed document. These bytes are generated on demand, not
+copied from ranges in the <code>.vtt</code> file and not persisted as a second subtitle
+asset.</p>
+<p>This has practical consequences:</p>
+<ul>
+<li>the stored media exists once;</li>
+<li>read-only storage is sufficient;</li>
+<li>adding a delivery format does not require another media tree;</li>
+<li>a CMAF source’s <code>sidx</code> remains the source-fragment index from which served segments are derived;</li>
+<li>resolving a CMAF source uses bounded header reads rather than reading the entire media object.</li>
+</ul>
+<h2 id="metadata-is-independent-of-encoded-media"><a class="header" href="#metadata-is-independent-of-encoded-media">Metadata is independent of encoded media</a></h2>
+<p>Information such as a track’s language and role affects how a player presents a rendition, but it does not change the encoded samples. dyndo therefore stores that information in <a href="#assetjson-descriptor"><code>asset.json</code></a>, where it can be corrected without touching the source object.</p>
+<p>For example, changing an audio track from an undetermined language to Dutch or marking it as commentary changes the generated manifest immediately. DASH and HLS express those choices differently, but both render them from the same descriptor fields.</p>
+<p>Track IDs derive from source paths rather than mutable metadata. A language or role correction therefore does not invalidate segment URLs or cached media.</p>
+<h2 id="a-request-can-choose-a-presentation"><a class="header" href="#a-request-can-choose-a-presentation">A request can choose a presentation</a></h2>
+<p>The descriptor supplies track metadata and splice boundaries. Server options in the request path choose segmentation and output behavior, while the <code>filter</code> query parameter can narrow the tracks in a top-level manifest. Without writing new media objects, a request can:</p>
+<ul>
+<li>filter resolved tracks by type, format, codec, resolution, language, role, or thumbnail settings;</li>
+<li>group source fragments into longer served segments;</li>
+<li>introduce boundaries for splicing or period changes;</li>
+<li>render one DASH period or several;</li>
+<li>choose packaged <code>wvtt</code> or WebVTT documents for HLS;</li>
+<li>add a DASH thumbnail timeline and generate its JPEG sprites on demand.</li>
+</ul>
+<p>Segmentation and output options live in the shared path prefix used by a manifest and its relative resources. A manifest filter is different: it only removes tracks from that manifest and does not prevent their URLs from being requested directly.</p>
+<h2 id="delivery-formats-are-views-not-stored-layouts"><a class="header" href="#delivery-formats-are-views-not-stored-layouts">Delivery formats are views, not stored layouts</a></h2>
+<p>DASH and HLS manifests are different descriptions of the same track and segment model. The protocol-specific crates decide how to group renditions, express roles, and write timelines or playlists. The media-serving path does not need to know which manifest led a player to it.</p>
+<pre><code class="language-text">                         ┌─ DASH MPD
+  source + asset.json ───┤
+                         └─ HLS playlists
+                                  │
+                                  ▼
+                    shared init and media byte ranges
+</code></pre>
+<p>Some responses genuinely require generated bytes. A raw WebVTT source is
+packaged into CMAF <code>wvtt</code> in memory for DASH or packaged HLS output. This
+one-way conversion happens on demand and is not stored as another subtitle
+package; dyndo does not unpackage CMAF <code>wvtt</code> media into WebVTT documents.</p>
+<h2 id="operational-benefits"><a class="header" href="#operational-benefits">Operational benefits</a></h2>
+<ul>
+<li><strong>Fewer invalidation problems.</strong> Metadata documents and manifests are small; large immutable media objects can keep stable URLs and cache lifetimes.</li>
+<li><strong>Faster corrections.</strong> Fixing a label, role, or selection rule does not wait for a media repackaging job.</li>
+<li><strong>Less pipeline state.</strong> There is no generated segment inventory that must be kept synchronized with its source and manifest.</li>
+<li><strong>One descriptor contract.</strong> The CLI writes the descriptor that the server reads, keeping indexed metadata and delivery configuration connected without making the CLI a manifest generator.</li>
+<li><strong>Storage flexibility.</strong> The same descriptor model works over a filesystem or S3-compatible object storage through OpenDAL.</li>
+<li><strong>Incremental presentation changes.</strong> Tracks can be indexed into a descriptor, relabelled, reordered, or removed without rebuilding unrelated renditions.</li>
+</ul>
+<h2 id="trade-offs"><a class="header" href="#trade-offs">Trade-offs</a></h2>
+<p>Dynamic packaging exchanges stored output for request-time work:</p>
+<ul>
+<li>source media must already be supported CMAF; dyndo does not transcode;</li>
+<li>manifest requests parse source headers and build track models;</li>
+<li>generated responses should be cached in a production deployment where the same URLs are requested repeatedly;</li>
+<li>moving a source without updating its descriptor breaks the path to it, while replacing a source with incompatible media can make resolution or serving fail.</li>
+</ul>
+<p>These trade-offs fit libraries that already have CMAF masters and value immutable media, inexpensive metadata changes, and avoiding protocol-shaped copies.</p>
+<h2 id="see-also-5"><a class="header" href="#see-also-5">See also</a></h2>
+<ul>
+<li><a href="#the-thin-pointer-approach">The thin-pointer approach</a> — why the descriptor contains metadata and paths rather than copied segment indexes.</li>
+<li><a href="#reading-a-source-headers-and-the-segment-index">Reading a source: headers and the segment index</a> — how dyndo derives the served segment model.</li>
+<li><a href="#http-routes">HTTP routes</a> — how request options select a presentation and address its media.</li>
+</ul>
+<div style="break-before: page; page-break-before: always;"></div>
+<h1 id="terminology"><a class="header" href="#terminology">Terminology</a></h1>
+<p>This explanation defines the terms used to describe an asset and the work dyndo
+does with it. The distinctions are intentional: they determine which type owns
+an operation and which operations a track supports.</p>
+<pre><code class="language-text">Asset
+├── source tracks
+│   ├── CMAF
+│   └── timed text
+│       ├── WebVTT
+│       └── IMSC1
+└── thumbnail tracks
+    └── thumbnail sprites (images)
+</code></pre>
+<h2 id="source-tracks"><a class="header" href="#source-tracks">Source tracks</a></h2>
+<p>A <strong>source track</strong> is backed by an input stored with the asset. CMAF tracks are
+already fragmented ISO-BMFF media. Timed-text tracks are subtitle documents;
+WebVTT is supported today and IMSC1 belongs to the same category when it is
+added. Every source track has a path and can be resolved from storage.</p>
+<p>The stored model keeps source and thumbnail tracks distinct: <code>Track::Source</code>
+contains a <code>SourceTrack</code>, while <code>Track::Thumbnail</code> contains a
+<code>ThumbnailTrack</code>. Only <code>SourceTrack</code> has a path. Its variants are <code>CmafTrack</code>
+and <code>TimedTextTrack</code>.</p>
+<p>After resolution, <code>ResolvedTrack</code> preserves the configured track form. Its
+variants are <code>Cmaf</code>, <code>TimedText</code>, and <code>Thumbnail</code>. A <code>ResolvedAsset</code> contains
+the resolved tracks and splice boundaries of one asset. <code>CmafKind</code> remains
+<code>Video</code>, <code>Audio</code>, or <code>Text</code>; <code>TimedTextFormat</code> is <code>WebVtt</code> today and can gain
+<code>Imsc1</code> when supported. CMAF’s <code>Text</code> kind is the container-level media
+category, independent of the timed-text document format.</p>
+<p>Shared sum types such as <code>Track</code> and <code>SourceTrack</code> live directly in <code>track</code>.
+Representation-specific types have one public home: CMAF types live in
+<code>track::cmaf</code>, timed-text types in <code>track::timed_text</code>, and thumbnail types in
+<code>track::thumbnail</code>. Media metadata shared by these representations lives in
+<code>track::metadata</code>.</p>
+<h2 id="assets-tracks-and-discovery"><a class="header" href="#assets-tracks-and-discovery">Assets, tracks, and discovery</a></h2>
+<p>An <strong>asset</strong> is persisted configuration. <code>Asset</code> serializes directly to
+<code>asset.json</code>; it owns asset-wide splice boundaries and a collection of <code>Track</code>
+values. Each track names its source form, gives it a stable identifier, and
+supplies metadata that is not necessarily present in the source file.</p>
+<p><code>Track</code>, <code>SourceTrack</code>, and <code>ThumbnailTrack</code> implement serialization directly.
+Only a source track has a source path, so operations that read a file accept a
+source track rather than a general track.</p>
+<p>When a track is configured, its type is authoritative: a <code>webvtt</code> track is
+resolved as raw WebVTT, and a <code>video</code>, <code>audio</code>, or <code>text</code> track is resolved as
+CMAF. The file name does not override that decision.</p>
+<p><strong>Discovery</strong> is the configuration-free operation used when indexing a new source.
+It determines the source form from the input: <code>.vtt</code> is discovered as raw
+WebVTT; other supported inputs are discovered as CMAF. Discovery creates the
+stable source identifier that is then recorded in the asset.</p>
+<p>The <code>type</code> property in <code>asset.json</code> is a serialized source discriminator. It
+selects the resolver: <code>webvtt</code> means a raw WebVTT document, whereas <code>video</code>,
+<code>audio</code>, and <code>text</code> mean CMAF sources. It is not the playback type used by a
+resolved track.</p>
+<p>Every <code>ResolvedTrack</code> has a playback <strong>type</strong> and a source <strong>format</strong>:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Resolved track</th><th>Type</th><th>Format</th></tr>
+</thead>
+<tbody>
+<tr><td>CMAF video</td><td><code>video</code></td><td><code>cmaf</code></td></tr>
+<tr><td>CMAF audio</td><td><code>audio</code></td><td><code>cmaf</code></td></tr>
+<tr><td>CMAF text</td><td><code>text</code></td><td><code>cmaf</code></td></tr>
+<tr><td>Raw WebVTT</td><td><code>text</code></td><td><code>webvtt</code></td></tr>
+<tr><td>Thumbnail</td><td><code>thumbnail</code></td><td><code>thumbnail</code></td></tr>
+</tbody>
+</table>
+</div>
+<p><code>TimedTextFormat</code> describes a timed-text document format such as WebVTT. It
+maps to the broader track format while keeping every timed-text source in the
+<code>text</code> playback type.</p>
+<h2 id="resolution-and-filtering"><a class="header" href="#resolution-and-filtering">Resolution and filtering</a></h2>
+<p>The server first reads persisted configuration with <code>Asset::read</code>. Asset-wide
+outputs such as an MPD or HLS multivariant playlist call <code>Asset::resolve</code>, then
+apply any track filter to the resulting <code>ResolvedAsset</code>. Resolving before
+filtering lets thumbnails bind to source video even when that video is later
+excluded from the output.</p>
+<p>Track-specific outputs do not resolve the full asset. An HLS media playlist or
+media segment calls <code>Asset::resolve_track</code> for the requested identifier. A
+thumbnail is the exception: resolving one thumbnail must inspect candidate
+video sources because source selection is part of thumbnail resolution.</p>
+<p>There is no resolver service type. The loaded <code>Asset</code> already owns the asset
+path, track configuration, and splice boundaries; the storage operator is the
+only additional input needed for resolution.</p>
+<h2 id="operation-ownership"><a class="header" href="#operation-ownership">Operation ownership</a></h2>
+<p>Operations live on the value that has the information needed to perform them:</p>
+<ul>
+<li><code>Asset::read</code> and <code>Asset::write</code> persist asset configuration.</li>
+<li><code>Asset::resolve</code> creates a <code>ResolvedAsset</code> for asset-wide operations.</li>
+<li><code>Asset::resolve_track</code> resolves one configured track by identifier.</li>
+<li><code>SourceTrack::resolve</code> resolves a configured source using its declared form
+and metadata.</li>
+<li><code>ResolvedTrack::discover</code> identifies an unconfigured input for the indexing
+workflow.</li>
+<li><code>TimedTextTrack::resolve</code>, <code>CmafTrack::resolve</code>, and
+<code>ThumbnailTrack::resolve</code> implement representation-specific resolution.</li>
+<li><code>ResolvedTimedTextTrack::from_web_vtt_text</code> creates a resolved WebVTT track
+when the document is already in memory.</li>
+<li><code>ResolvedTimedTextTrack::package_wvtt</code> creates the CMAF representation needed
+by HLS or DASH.</li>
+<li><code>ResolvedCmafTrack::read_range</code> reads CMAF bytes without requiring callers to
+know where those bytes are stored.</li>
+<li><code>Subtitle::slice</code> performs subtitle-document slicing independently of track
+and manifest concerns.</li>
+</ul>
+<p>There is no separate probe or reader service. Resolution and reading are
+capabilities of the track types themselves.</p>
+<h2 id="thumbnail-tracks-1"><a class="header" href="#thumbnail-tracks-1">Thumbnail tracks</a></h2>
+<p>A <strong>thumbnail track</strong> is derived from source video when requested and has no
+independent source path. <code>ThumbnailTrack</code> carries its identifier and sprite
+settings but no source location. Resolution selects a suitable video source and
+creates a <code>ResolvedThumbnailTrack</code>. That track samples frames along the video
+timeline to produce thumbnail sprites.</p>
+<h2 id="thumbnails-and-images"><a class="header" href="#thumbnails-and-images">Thumbnails and images</a></h2>
+<p>A <strong>thumbnail</strong> is a playback purpose: it provides visual navigation through a
+presentation. A thumbnail track produces time-addressable <strong>thumbnail sprites</strong>.</p>
+<p>An <strong>image</strong> is a payload format, such as the JPEG sprite returned by a
+thumbnail request. It is not the kind of track configured by the asset. The
+track therefore uses <code>"type": "thumbnail"</code>; HLS and DASH still describe
+the resulting output as image media where their specifications require it.</p>
+<h2 id="cmaf-representations"><a class="header" href="#cmaf-representations">CMAF representations</a></h2>
+<p>A timed-text source can be packaged temporarily into CMAF when a CMAF manifest
+or segment is needed. The result is a <code>ResolvedCmafTrack</code>, not a separate
+package type, not a new source track, and not a file written beside the asset.
+Packaging converts a WebVTT source into a temporary CMAF representation.
+Packaging is one-way: a CMAF source is not unpacked into a WebVTT document, so
+raw WebVTT output is available only from a WebVTT source.</p>
+<p>A <code>ResolvedCmafTrack</code> can have either of two byte backings:</p>
+<ul>
+<li>A resolved CMAF source is backed by its stored file.</li>
+<li>CMAF produced from timed text is backed by in-memory bytes.</li>
+</ul>
+<p>Both representations expose the same index, metadata, and <code>read_range</code>
+operation. A stored representation returns its path from <code>source_path</code>; an
+in-memory representation returns no path. Consequently, an in-memory CMAF
+representation cannot be added to an <code>Asset</code> as a source track.</p>
+<p>The asset-wide resolution flow is:</p>
+<pre><code class="language-text">asset.json
+  → Asset::read
+  → Asset::resolve
+  → ResolvedAsset
+  → filter resolved tracks
+  → manifest
+</code></pre>
+<p>Track-specific resolution avoids resolving unrelated tracks:</p>
+<pre><code class="language-text">asset.json
+  → Asset::read
+  → Asset::resolve_track
+  → ResolvedTrack
+  → requested CMAF, timed-text, or thumbnail representation
+</code></pre>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+
+            </nav>
+
+        </div>
+
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="elasticlunr-ef4e11c1.min.js"></script>
+        <script src="mark-09e88c2c.min.js"></script>
+        <script src="searcher-09f2665d.js"></script>
+
+        <script src="clipboard-1626706a.min.js"></script>
+        <script src="highlight-abc7f01d.js"></script>
+        <script src="book-609e4cb8.js"></script>
+
+        <!-- Custom JS scripts -->
+
+        <script>
+        window.addEventListener('load', function() {
+            window.setTimeout(window.print, 100);
+        });
+        </script>
+
+
+    </div>
+    </body>
+</html>

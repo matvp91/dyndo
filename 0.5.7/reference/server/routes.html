@@ -1,0 +1,579 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>HTTP routes - dyndo</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="Dynamic media packaging for adaptive streaming, in Rust.">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../../favicon-de23e50b.svg">
+        <link rel="shortcut icon" href="../../favicon-8114d1fc.png">
+        <link rel="stylesheet" href="../../css/variables-8adf115d.css">
+        <link rel="stylesheet" href="../../css/general-e96d0476.css">
+        <link rel="stylesheet" href="../../css/chrome-d279d366.css">
+        <link rel="stylesheet" href="../../css/print-9e4910d8.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../../fonts/fonts-9644e21d.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" id="mdbook-highlight-css" href="../../highlight-493f70e1.css">
+        <link rel="stylesheet" id="mdbook-tomorrow-night-css" href="../../tomorrow-night-4c0ae647.css">
+        <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../../ayu-highlight-3fdfc3ac.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root and default themes to javascript -->
+        <script>
+            const path_to_root = "../../";
+            const default_light_theme = "light";
+            const default_dark_theme = "ayu";
+            window.path_to_searchindex_js = "../../searchindex-93d478c5.js";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="../../toc-942fa83c.js"></script>
+    </head>
+    <body>
+    <div id="mdbook-help-container">
+        <div id="mdbook-help-popup">
+            <h2 class="mdbook-help-title">Keyboard shortcuts</h2>
+            <div>
+                <p>Press <kbd>←</kbd> or <kbd>→</kbd> to navigate between chapters</p>
+                <p>Press <kbd>S</kbd> or <kbd>/</kbd> to search in the book</p>
+                <p>Press <kbd>?</kbd> to show this help</p>
+                <p>Press <kbd>Esc</kbd> to hide this help</p>
+            </div>
+        </div>
+    </div>
+    <div id="mdbook-body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                let theme = localStorage.getItem('mdbook-theme');
+                let sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            const default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? default_dark_theme : default_light_theme;
+            let theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="mdbook-sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            let sidebar = null;
+            const sidebar_toggle = document.getElementById("mdbook-sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+                sidebar_toggle.checked = false;
+            }
+            if (sidebar === 'visible') {
+                sidebar_toggle.checked = true;
+            } else {
+                html.classList.remove('sidebar-visible');
+            }
+        </script>
+
+        <nav id="mdbook-sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="../../toc.html"></iframe>
+            </noscript>
+            <div id="mdbook-sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="mdbook-page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="mdbook-menu-bar-hover-placeholder"></div>
+                <div id="mdbook-menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="mdbook-sidebar-toggle" class="icon-button" for="mdbook-sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="mdbook-sidebar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M0 96C0 78.3 14.3 64 32 64H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32C14.3 128 0 113.7 0 96zM0 256c0-17.7 14.3-32 32-32H416c17.7 0 32 14.3 32 32s-14.3 32-32 32H32c-17.7 0-32-14.3-32-32zM448 416c0 17.7-14.3 32-32 32H32c-17.7 0-32-14.3-32-32s14.3-32 32-32H416c17.7 0 32 14.3 32 32z"/></svg></span>
+                        </label>
+                        <button id="mdbook-theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="mdbook-theme-list">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M371.3 367.1c27.3-3.9 51.9-19.4 67.2-42.9L600.2 74.1c12.6-19.5 9.4-45.3-7.6-61.2S549.7-4.4 531.1 9.6L294.4 187.2c-24 18-38.2 46.1-38.4 76.1L371.3 367.1zm-19.6 25.4l-116-104.4C175.9 290.3 128 339.6 128 400c0 3.9 .2 7.8 .6 11.6c1.8 17.5-10.2 36.4-27.8 36.4H96c-17.7 0-32 14.3-32 32s14.3 32 32 32H240c61.9 0 112-50.1 112-112c0-2.5-.1-5-.2-7.5z"/></svg></span>
+                        </button>
+                        <ul id="mdbook-theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-default_theme">Auto</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="mdbook-theme-ayu">Ayu</button></li>
+                        </ul>
+                        <button id="mdbook-search-toggle" class="icon-button" type="button" title="Search (`/`)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="/ s" aria-controls="mdbook-searchbar">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M416 208c0 45.9-14.9 88.3-40 122.7L502.6 457.4c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L330.7 376c-34.4 25.2-76.8 40-122.7 40C93.1 416 0 322.9 0 208S93.1 0 208 0S416 93.1 416 208zM208 352c79.5 0 144-64.5 144-144s-64.5-144-144-144S64 128.5 64 208s64.5 144 144 144z"/></svg></span>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">dyndo</h1>
+
+                    <div class="right-buttons">
+                        <a href="../../print.html" title="Print this book" aria-label="Print this book">
+                            <span class=fa-svg id="print-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H354.7L384 93.3V160h64V93.3c0-17-6.7-33.3-18.7-45.3L400 18.7C388 6.7 371.7 0 354.7 0H128zM384 352v32 64H128V384 368 352H384zm64 32h32c17.7 0 32-14.3 32-32V256c0-35.3-28.7-64-64-64H64c-35.3 0-64 28.7-64 64v96c0 17.7 14.3 32 32 32H64v64c0 35.3 28.7 64 64 64H384c35.3 0 64-28.7 64-64V384zm-16-88c-13.3 0-24-10.7-24-24s10.7-24 24-24s24 10.7 24 24s-10.7 24-24 24z"/></svg></span>
+                        </a>
+                        <a href="https://github.com/matvp91/dyndo" title="Git repository" aria-label="Git repository">
+                            <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8zM97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1zm-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7zm32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1zm-11.4-14.7c-1.6 1-1.6 3.6 0 5.9 1.6 2.3 4.3 3.3 5.6 2.3 1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2z"/></svg></span>
+                        </a>
+                        <a href="https://github.com/matvp91/dyndo/edit/main/docs/src/reference/server/routes.md" title="Suggest an edit" aria-label="Suggest an edit" rel="edit">
+                            <span class=fa-svg id="git-edit-button"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M421.7 220.3l-11.3 11.3-22.6 22.6-205 205c-6.6 6.6-14.8 11.5-23.8 14.1L30.8 511c-8.4 2.5-17.5 .2-23.7-6.1S-1.5 489.7 1 481.2L38.7 353.1c2.6-9 7.5-17.2 14.1-23.8l205-205 22.6-22.6 11.3-11.3 33.9 33.9 62.1 62.1 33.9 33.9zM96 353.9l-9.3 9.3c-.9 .9-1.6 2.1-2 3.4l-25.3 86 86-25.3c1.3-.4 2.5-1.1 3.4-2l9.3-9.3H112c-8.8 0-16-7.2-16-16V353.9zM453.3 19.3l39.4 39.4c25 25 25 65.5 0 90.5l-14.5 14.5-22.6 22.6-11.3 11.3-33.9-33.9-62.1-62.1L314.3 67.7l11.3-11.3 22.6-22.6 14.5-14.5c25-25 65.5-25 90.5 0z"/></svg></span>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="mdbook-search-wrapper" class="hidden">
+                    <form id="mdbook-searchbar-outer" class="searchbar-outer">
+                        <div class="search-wrapper">
+                            <input type="search" id="mdbook-searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="mdbook-searchresults-outer" aria-describedby="searchresults-header">
+                            <div class="spinner-wrapper">
+                                <span class=fa-svg id="fa-spin"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M304 48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zm0 416c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM48 304c26.5 0 48-21.5 48-48s-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48zm464-48c0-26.5-21.5-48-48-48s-48 21.5-48 48s21.5 48 48 48s48-21.5 48-48zM142.9 437c18.7-18.7 18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zm0-294.2c18.7-18.7 18.7-49.1 0-67.9S93.7 56.2 75 75s-18.7 49.1 0 67.9s49.1 18.7 67.9 0zM369.1 437c18.7 18.7 49.1 18.7 67.9 0s18.7-49.1 0-67.9s-49.1-18.7-67.9 0s-18.7 49.1 0 67.9z"/></svg></span>
+                            </div>
+                        </div>
+                    </form>
+                    <div id="mdbook-searchresults-outer" class="searchresults-outer hidden">
+                        <div id="mdbook-searchresults-header" class="searchresults-header"></div>
+                        <ul id="mdbook-searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('mdbook-sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('mdbook-sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#mdbook-sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="mdbook-content" class="content">
+                    <main>
+                        <h1 id="http-routes"><a class="header" href="#http-routes">HTTP routes</a></h1>
+<p>The server exposes two things: a health probe, and a single output tree under
+<code>/out/</code>. All routes are <code>GET</code>.</p>
+<pre><code class="language-text">GET /health
+GET /out/&lt;options&gt;/&lt;resource&gt;[?filter=&lt;expression&gt;]
+</code></pre>
+<p><code>&lt;options&gt;</code> is a <strong>Rison</strong> object — a compact, URL-friendly object notation, so
+<code>(asset:demo,sml:6000)</code> is the equivalent of the JSON
+<code>{"asset":"demo","sml":6000}</code> — carrying the asset to serve and
+how to segment it. <code>&lt;resource&gt;</code> names what to return from it.
+Because the options travel in the path rather than a query string, a manifest
+and every segment it references share one prefix, and the relative URLs inside a
+manifest resolve correctly without rewriting.</p>
+<p><a href="#filtering-tracks"><code>filter</code></a> is the exception, and deliberately so: it travels
+in the query string because it shapes a manifest without needing to reach the
+resources that manifest references.</p>
+<h2 id="health-check"><a class="header" href="#health-check">Health check</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Path</th><th>Description</th><th>Content-Type</th></tr>
+</thead>
+<tbody>
+<tr><td><code>/health</code></td><td>Liveness probe. Returns <code>200 OK</code> with an empty body.</td><td><em>(none)</em></td></tr>
+</tbody>
+</table>
+</div>
+<p><code>/health</code> is a fixed route registered ahead of the <code>/out/</code> tree, so it can never
+be shadowed by an asset. Use it for container and load-balancer health checks;
+see <a href="../../how-to/deploy-with-docker.html">Deploy with Docker</a>.</p>
+<h2 id="the-options-object"><a class="header" href="#the-options-object">The options object</a></h2>
+<p>The first path segment after <code>/out/</code> is a Rison object. The enclosing
+parentheses are optional — this is Rison’s <em>o-rison</em> form, intended for exactly
+this place — so both of these name the same options:</p>
+<pre><code class="language-text">/out/(asset:demo,sml:6000)/master.m3u8
+/out/asset:demo,sml:6000/master.m3u8
+</code></pre>
+<pre><code class="language-text">/out/(asset:movies%2Fbig-buck-bunny)/index.mpd
+</code></pre>
+<p>The options object must occupy one URL path segment. Percent-encode <code>/</code> as
+<code>%2F</code> when an option value contains a nested path. The server decodes the value
+before parsing the Rison object.</p>
+<h3 id="common-options"><a class="header" href="#common-options">Common options</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Full key</th><th>Shorthand</th><th>Type</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>asset</code></td><td><code>a</code></td><td>string</td><td><strong>Required.</strong> Path to the descriptor, relative to the storage root, <strong>without</strong> the <code>.json</code> extension.</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="segmentation-options"><a class="header" href="#segmentation-options">Segmentation options</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Full key</th><th>Shorthand</th><th>Type</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>min_length</code></td><td><code>sml</code>, <code>segment_min_length</code></td><td>integer</td><td><code>0</code></td><td>Minimum served segment length in milliseconds. Whole fragments are grouped until this length is reached.</td></tr>
+<tr><td><code>text_length</code></td><td><code>stl</code>, <code>segment_text_length</code></td><td>integer</td><td><code>0</code></td><td>Length of each segment of a subtitle track dyndo packages from a <code>.vtt</code>, in milliseconds. Exact, not a minimum. <code>0</code> cuts one only at the splice points.</td></tr>
+</tbody>
+</table>
+</div>
+<p>These options apply only to the request. Their default of zero serves each CMAF
+fragment separately and packages raw WebVTT without a regular grid. Configure
+splice <a href="../asset-json.html#boundaries">boundaries</a> only in the descriptor.</p>
+<h3 id="output-options"><a class="header" href="#output-options">Output options</a></h3>
+<p>Two options affect DASH output:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Full key</th><th>Shorthand</th><th>Type</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>compact</code></td><td><code>c</code></td><td>boolean</td><td><code>false</code></td><td>Hoist segment-template data shared by DASH representations to their adaptation set.</td></tr>
+<tr><td><code>multi_period</code></td><td><code>mp</code></td><td>boolean</td><td><code>false</code></td><td>Open a <code>Period</code> at each <a href="../asset-json.html#boundaries">asset boundary</a> rather than describing the asset as one.</td></tr>
+</tbody>
+</table>
+</div>
+<p>One option affects HLS output:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Full key</th><th>Shorthand</th><th>Type</th><th>Default</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>wvtt</code></td><td>—</td><td>boolean</td><td><code>false</code></td><td>Package a raw WebVTT rendition as <code>wvtt</code> segments rather than WebVTT documents. CMAF <code>wvtt</code> sources always use <code>wvtt</code> segments.</td></tr>
+</tbody>
+</table>
+</div>
+<p>The supported shorthand map is therefore <code>asset</code> → <code>a</code>, <code>min_length</code> → <code>sml</code>,
+<code>text_length</code> → <code>stl</code>, <code>compact</code> → <code>c</code>, <code>multi_period</code> → <code>mp</code>. <code>wvtt</code> has no
+shorthand. The forms are equivalent:</p>
+<pre><code class="language-text">/out/(asset:demo,min_length:6000,compact:!t)/index.mpd
+/out/(a:demo,sml:6000,c:!t)/index.mpd
+</code></pre>
+<p>Unknown keys are rejected on every output route.</p>
+<h2 id="filtering-tracks"><a class="header" href="#filtering-tracks">Filtering tracks</a></h2>
+<p>A request can narrow an asset’s resolved tracks, so one descriptor covers every
+variation you want to offer — a resolution cap, one audio language, or selected
+thumbnail tracks — instead of one descriptor per variation.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Parameter</th><th>Applies to</th></tr>
+</thead>
+<tbody>
+<tr><td><code>filter</code></td><td>every manifest route</td></tr>
+</tbody>
+</table>
+</div>
+<pre><code class="language-text">/out/(asset:demo)/index.mpd?filter=type!=video%7C%7Cheight%3C=720
+/out/(asset:demo)/master.m3u8?filter=type==audio
+</code></pre>
+<p>The <code>filter</code> parameter is accepted on every manifest route. The route resolves
+the asset, then removes non-matching tracks. Resolving first lets a thumbnail
+bind to its source video even when that video is absent from the manifest.
+Track-file routes do not parse a query, so filtering never gates their URLs.</p>
+<p>The syntax follows <a href="https://docs.unified-streaming.com/documentation/vod/player-urls.html">Unified Streaming’s URL
+filters</a>,
+so filters written for that stack read the same here.</p>
+<h3 id="expression-syntax"><a class="header" href="#expression-syntax">Expression syntax</a></h3>
+<p>A filter is a boolean expression over resolved track fields:</p>
+<pre><code class="language-text">attribute &lt;operator&gt; value
+expression &amp;&amp; expression        both must hold
+expression || expression        either may hold
+( expression )                  grouping
+</code></pre>
+<p><code>&amp;&amp;</code> binds tighter than <code>||</code>, so <code>a||b&amp;&amp;c</code> means <code>a||(b&amp;&amp;c)</code>. Wrap the
+enclosing expression in parentheses if you prefer — they are accepted but not
+required. Whitespace around operators is allowed.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Operator</th><th>Meaning</th><th>Applies to</th></tr>
+</thead>
+<tbody>
+<tr><td><code>==</code> <code>!=</code></td><td>equal, not equal</td><td>every attribute</td></tr>
+<tr><td><code>&lt;</code> <code>&lt;=</code> <code>&gt;</code> <code>&gt;=</code></td><td>ordering</td><td>numeric attributes only</td></tr>
+</tbody>
+</table>
+</div>
+<p>An ordering operator on a textual attribute — <code>language&lt;nl</code> — is a <code>400</code>.</p>
+<h3 id="percent-encoding"><a class="header" href="#percent-encoding">Percent-encoding</a></h3>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Character</th><th>Encode as</th><th>Why</th></tr>
+</thead>
+<tbody>
+<tr><td><code>&lt;</code> <code>&gt;</code></td><td><code>%3C</code> <code>%3E</code></td><td>Not legal URI characters. Unencoded, the request is rejected by the HTTP layer before dyndo sees it.</td></tr>
+<tr><td><code>&amp;&amp;</code></td><td><code>%26%26</code></td><td><code>&amp;</code> separates query parameters, so an unencoded <code>&amp;&amp;</code> splits the filter in two.</td></tr>
+<tr><td><code>||</code></td><td><code>%7C%7C</code></td><td>Usually survives unencoded, but RFC 3986 excludes <code>|</code> from a query.</td></tr>
+</tbody>
+</table>
+</div>
+<p>Any HTTP client that builds a URL properly handles this for you.</p>
+<p>An unencoded <code>&amp;&amp;</code> would otherwise be the dangerous case:
+<code>?filter=type!=video&amp;&amp;height%3C=720</code> arrives as <code>filter=type!=video</code>, a valid
+filter on its own. It is caught because <strong>a manifest request accepts no query
+parameter but the filter</strong>, so the two junk fragments are unrecognised and the
+request is a <code>400</code>. The same rule makes a cache-busting or analytics parameter on
+a manifest URL a <code>400</code> — put those in the path’s
+<a href="#the-options-object">options object</a>.</p>
+<h3 id="attributes"><a class="header" href="#attributes">Attributes</a></h3>
+<p>Filtering runs after track resolution. Segment-derived <code>bitrate</code>, <code>avg_bitrate</code>,
+and <code>duration</code> filters are not available.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Attribute</th><th>Type</th><th>Present on</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>type</code></td><td>text</td><td>every track</td><td><code>video</code>, <code>audio</code>, <code>text</code>, or <code>thumbnail</code>. Both CMAF text and raw WebVTT have type <code>text</code>.</td></tr>
+<tr><td><code>format</code></td><td>text</td><td>every track</td><td><code>cmaf</code>, <code>webvtt</code>, or <code>thumbnail</code>.</td></tr>
+<tr><td><code>id</code></td><td>text</td><td>every track</td><td>The track identifier.</td></tr>
+<tr><td><code>codec</code></td><td>text</td><td>CMAF track</td><td>The descriptor codec, for example <code>avc1.640028</code>.</td></tr>
+<tr><td><code>width</code></td><td>numeric</td><td>video, thumbnail</td><td>Frame or complete sprite width in pixels.</td></tr>
+<tr><td><code>height</code></td><td>numeric</td><td>video</td><td>Frame height in pixels.</td></tr>
+<tr><td><code>frame_rate</code></td><td>text</td><td>video</td><td>The rate as written, for example <code>25/1</code>.</td></tr>
+<tr><td><code>sample_rate</code></td><td>numeric</td><td>audio</td><td>Samples per second.</td></tr>
+<tr><td><code>channels</code></td><td>numeric</td><td>audio</td><td>Channel count.</td></tr>
+<tr><td><code>language</code></td><td>text</td><td>audio, text</td><td>The track’s language tag, compared exactly as the descriptor spells it.</td></tr>
+<tr><td><code>role</code></td><td>text</td><td>audio, text</td><td>One of the <a href="../roles.html">track roles</a>.</td></tr>
+<tr><td><code>tile_size</code></td><td>numeric</td><td>thumbnail</td><td>Thumbnails per sprite row and column.</td></tr>
+</tbody>
+</table>
+</div>
+<p>A textual value is not checked against what exists — <code>role==narrator</code> parses
+happily and simply matches no entry. A numeric attribute does check:
+<code>height==tall</code> is a <code>400</code>.</p>
+<h3 id="what-a-filter-keeps"><a class="header" href="#what-a-filter-keeps">What a filter keeps</a></h3>
+<p><strong>A track is kept only if the expression is true for that track.</strong>
+Each track and thumbnail is judged on its own; nothing is judged as a group.</p>
+<p><strong>A comparison against an attribute the track does not carry is false, whatever
+the operator.</strong> An audio track has no <code>height</code>, so <code>height&lt;=720</code> is false for it
+— and so is <code>height!=720</code>, which reads backwards until you hold the rule in
+mind. The consequence matters:</p>
+<pre><code class="language-text">?filter=height%3C=720   video capped at 720 — and every audio and
+                        subtitle track dropped with it
+</code></pre>
+<p>Sparing a type is the <code>type!=…</code> idiom, which works because <code>type</code> is the one
+attribute every track carries:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Goal</th><th>Filter</th></tr>
+</thead>
+<tbody>
+<tr><td>Cap video at 720, keep everything else</td><td><code>type!=video||height&lt;=720</code></td></tr>
+<tr><td>Video only, capped at 720</td><td><code>type==video&amp;&amp;height&lt;=720</code></td></tr>
+<tr><td>Everything but the audio</td><td><code>type!=audio</code></td></tr>
+<tr><td>Video up to 720 plus subtitles, no audio</td><td><code>type!=audio&amp;&amp;(type!=video||height&lt;=720)</code></td></tr>
+<tr><td>Dutch audio only, video untouched</td><td><code>type!=audio||language==nld</code></td></tr>
+<tr><td>Keep only thumbnails at least 640 pixels wide</td><td><code>type!=thumbnail||width&gt;=640</code></td></tr>
+</tbody>
+</table>
+</div>
+<p>Mind <code>&amp;&amp;</code> against <code>||</code> here: <code>type!=video&amp;&amp;height&lt;=720</code> requires <em>both</em>, so it
+drops the audio it was meant to spare. Use <code>||</code> to spare, <code>&amp;&amp;</code> to narrow.</p>
+<p>A filter that leaves at least one descriptor entry produces a manifest — dropping
+all video but keeping audio is a legitimate audio-only presentation. A filter
+that matches <strong>nothing</strong> is a <code>404</code>.</p>
+<h3 id="caching"><a class="header" href="#caching">Caching</a></h3>
+<p>The filter is part of the URL’s query string, so a CDN in front of dyndo must
+include the query string in its cache key, or every filter will be served
+whichever variant was cached first.</p>
+<h3 id="the-asset-key"><a class="header" href="#the-asset-key">The <code>asset</code> key</a></h3>
+<p>The server appends <code>.json</code> to the value, so <code>asset:demo</code> reads <code>demo.json</code> from
+the storage root. The decoded value may contain slashes, letting descriptors sit
+in nested directories. For example, <code>asset:movies%2Fbig</code> reads
+<code>movies/big.json</code>. OpenDAL determines how the resulting path is resolved by the
+configured storage backend.</p>
+<h2 id="resources"><a class="header" href="#resources">Resources</a></h2>
+<p><code>&lt;resource&gt;</code> is everything after the options object.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Resource</th><th>Description</th><th>Content-Type</th></tr>
+</thead>
+<tbody>
+<tr><td><code>index.mpd</code></td><td>The DASH manifest (MPD).</td><td><code>application/dash+xml</code></td></tr>
+<tr><td><code>master.m3u8</code></td><td>The HLS multivariant playlist.</td><td><code>application/vnd.apple.mpegurl</code></td></tr>
+<tr><td><code>&lt;track-id&gt;.m3u8</code></td><td>One track’s HLS media playlist.</td><td><code>application/vnd.apple.mpegurl</code></td></tr>
+<tr><td><code>&lt;thumbnail-id&gt;.m3u8</code></td><td>An HLS thumbnail image media playlist.</td><td><code>application/vnd.apple.mpegurl</code></td></tr>
+<tr><td><code>&lt;track-id&gt;/init.mp4</code></td><td>A track’s CMAF initialization segment.</td><td><code>video/mp4</code>, <code>audio/mp4</code>, or <code>application/mp4</code></td></tr>
+<tr><td><code>&lt;track-id&gt;/&lt;time&gt;.m4s</code></td><td>The media segment starting at presentation <code>&lt;time&gt;</code>.</td><td><code>video/mp4</code>, <code>audio/mp4</code>, or <code>application/mp4</code></td></tr>
+<tr><td><code>&lt;track-id&gt;/&lt;time&gt;.vtt</code></td><td>The same segment of a text track, as a WebVTT document.</td><td><code>text/vtt</code></td></tr>
+<tr><td><code>&lt;thumbnail-id&gt;/&lt;number&gt;.jpg</code></td><td>A one-based numbered JPEG thumbnail sprite advertised by DASH and HLS.</td><td><code>image/jpeg</code></td></tr>
+</tbody>
+</table>
+</div>
+<p><code>&lt;track-id&gt;</code> is a track’s <code>id</code> exactly as recorded in the descriptor (for
+example <code>6b745be5-2791-5d95-8ce5-8f8bde29e2fe</code>). <code>&lt;thumbnail-id&gt;</code> is the
+thumbnail’s own <code>id</code>. Because manifests emit these same relative URLs, players
+never construct them by hand.</p>
+<p>A full set of requests for one asset:</p>
+<pre><code class="language-text">/out/(asset:demo)/index.mpd
+/out/(asset:demo)/master.m3u8
+/out/(asset:demo)/6b745be5-2791-5d95-8ce5-8f8bde29e2fe.m3u8
+/out/(asset:demo)/6b745be5-2791-5d95-8ce5-8f8bde29e2fe/init.mp4
+/out/(asset:demo)/6b745be5-2791-5d95-8ce5-8f8bde29e2fe/0.m4s
+</code></pre>
+<h3 id="thumbnail-sprites"><a class="header" href="#thumbnail-sprites">Thumbnail sprites</a></h3>
+<p>Add a thumbnail object to the asset descriptor to advertise a thumbnail sprite.
+A tile size of <code>4</code> creates a 4-by-4 sprite whose frames follow the selected
+video source’s regular IDR cadence:</p>
+<pre><code class="language-text">/out/(asset:demo)/index.mpd
+/out/(asset:demo)/master.m3u8
+</code></pre>
+<p>The MPD addresses each sprite as <code>&lt;thumbnail-id&gt;/&lt;number&gt;.jpg</code>. The HLS
+multivariant playlist advertises <code>&lt;thumbnail-id&gt;.m3u8</code>. A thumbnail that
+cannot select a video source is omitted from manifests and its image routes
+return <code>404</code>.</p>
+<h2 id="segments-are-protocol-independent"><a class="header" href="#segments-are-protocol-independent">Segments are protocol-independent</a></h2>
+<p>There is no <code>dash</code> or <code>hls</code> component anywhere in a segment path. Both manifests
+reference the same <code>&lt;track-id&gt;/init.mp4</code> and <code>&lt;track-id&gt;/&lt;time&gt;.m4s</code> URLs, and a
+request for one returns the same CMAF bytes regardless of which manifest sent
+the player there. Only <code>index.mpd</code> and the <code>.m3u8</code> resources are
+protocol-specific. See
+<a href="../../explanation/dynamic-packaging.html">Dynamic packaging without media copies</a>
+for why.</p>
+<h2 id="text-segment-representations"><a class="header" href="#text-segment-representations">Text segment representations</a></h2>
+<p>A raw WebVTT source has two runtime representations with the same segment
+boundaries and durations.</p>
+<pre><code class="language-text">/out/(asset:demo)/3b519953-…/0.m4s   → packaged wvtt bytes
+/out/(asset:demo)/3b519953-…/0.vtt   → the WebVTT document those bytes hold
+</code></pre>
+<p>A <code>.vtt</code> request selects cues directly from the parsed WebVTT source. The
+document carries the absolute timestamps the source used and no
+<code>X-TIMESTAMP-MAP</code>, since the times are already on the presentation’s clock.</p>
+<p>Which one a player asks for is the manifest’s business: DASH always references
+<code>.m4s</code>, while HLS references <code>.vtt</code> for a raw WebVTT source unless the request
+passes <a href="#output-options"><code>wvtt</code></a>. HLS always references <code>.m4s</code> for a CMAF <code>wvtt</code>
+source. <code>&lt;track-id&gt;/init.mp4</code> stays available for the track either way, and is
+simply not referenced by a WebVTT rendition — a WebVTT segment needs no
+initialization.</p>
+<p>A <code>.vtt</code> response is available only for a raw WebVTT source. dyndo does not
+unpackage CMAF <code>wvtt</code> media into a WebVTT document.</p>
+<h2 id="segment-addressing"><a class="header" href="#segment-addressing">Segment addressing</a></h2>
+<p>A media segment is addressed by its <strong>presentation start time</strong>, an integer in
+the track’s own timescale, with a <code>.m4s</code> extension — or <code>.vtt</code> for a text track
+served as a document. The server re-derives the
+track’s segment list for the request’s segmentation options, then walks it
+accumulating durations from the track’s earliest presentation time until it
+finds an exact match.</p>
+<p>A track whose <code>sidx</code> reports an earliest presentation time of <code>0</code> therefore
+starts at <code>&lt;track-id&gt;/0.m4s</code>, and each subsequent segment starts at the running
+sum of the preceding durations. These are exactly the <code>$Time$</code> values in the
+DASH <code>SegmentTimeline</code> and the URIs in the HLS media playlists.</p>
+<p>Because segmentation options change where segment edges fall, a <code>&lt;time&gt;</code> is only
+valid for the same options that produced it. Requesting a segment under
+different <code>min_length</code> values than the manifest
+was generated with will usually <code>404</code> — which is why the options live in the
+shared path prefix.</p>
+<h2 id="status-codes"><a class="header" href="#status-codes">Status codes</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Code</th><th>When</th></tr>
+</thead>
+<tbody>
+<tr><td><code>200 OK</code></td><td>The manifest or segment was generated and returned; also the <code>/health</code> probe.</td></tr>
+<tr><td><code>400 Bad Request</code></td><td>The options path segment is malformed Rison or contains an unknown option, a manifest route carries an unrecognised query parameter, or the <a href="#filtering-tracks">filter</a> is malformed — an unknown attribute, an ordering operator on a textual attribute, or a non-numeric value for a numeric attribute.</td></tr>
+<tr><td><code>404 Not Found</code></td><td>The path does not contain separate options and resource components; <code>&lt;track-id&gt;</code> matches no track; a segment filename has an unsupported extension or a non-integer time; <code>&lt;time&gt;</code> is not a segment boundary; a thumbnail is disabled or unavailable; the descriptor does not exist; or the <a href="#filtering-tracks">filter</a> matched no track.</td></tr>
+<tr><td><code>500 Internal Server Error</code></td><td>The descriptor JSON is malformed; a source file is unreadable or is not valid, supported CMAF; packaged subtitle cues cannot be parsed; thumbnail generation fails; or manifest serialization fails.</td></tr>
+</tbody>
+</table>
+</div>
+<p>The split between <code>404</code> and <code>500</code> reflects ownership: a <strong>missing</strong> object is
+treated as a client addressing error, while a <strong>malformed</strong> descriptor or
+<strong>broken</strong> media file is the server’s own content problem, because the asset
+files are server-owned. Error responses carry a short plain-text message.</p>
+<h2 id="cors"><a class="header" href="#cors">CORS</a></h2>
+<p>The server applies a permissive CORS policy — any origin, any method — so
+browser-based players can load manifests and segments cross-origin during
+development.</p>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../../reference/server.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                            </a>
+
+                            <a rel="next prefetch" href="../../reference/server/configuration.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../../reference/server.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
+                    </a>
+
+                    <a rel="next prefetch" href="../../reference/server/configuration.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
+                    </a>
+            </nav>
+
+        </div>
+
+        <template id=fa-eye><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M288 32c-80.8 0-145.5 36.8-192.6 80.6C48.6 156 17.3 208 2.5 243.7c-3.3 7.9-3.3 16.7 0 24.6C17.3 304 48.6 356 95.4 399.4C142.5 443.2 207.2 480 288 480s145.5-36.8 192.6-80.6c46.8-43.5 78.1-95.4 93-131.1c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C433.5 68.8 368.8 32 288 32zM432 256c0 79.5-64.5 144-144 144s-144-64.5-144-144s64.5-144 144-144s144 64.5 144 144zM288 192c0 35.3-28.7 64-64 64c-11.5 0-22.3-3-31.6-8.4c-.2 2.8-.4 5.5-.4 8.4c0 53 43 96 96 96s96-43 96-96s-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6z"/></svg></span></template>
+        <template id=fa-eye-slash><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M38.8 5.1C28.4-3.1 13.3-1.2 5.1 9.2S-1.2 34.7 9.2 42.9l592 464c10.4 8.2 25.5 6.3 33.7-4.1s6.3-25.5-4.1-33.7L525.6 386.7c39.6-40.6 66.4-86.1 79.9-118.4c3.3-7.9 3.3-16.7 0-24.6c-14.9-35.7-46.2-87.7-93-131.1C465.5 68.8 400.8 32 320 32c-68.2 0-125 26.3-169.3 60.8L38.8 5.1zM223.1 149.5C248.6 126.2 282.7 112 320 112c79.5 0 144 64.5 144 144c0 24.9-6.3 48.3-17.4 68.7L408 294.5c5.2-11.8 8-24.8 8-38.5c0-53-43-96-96-96c-2.8 0-5.6 .1-8.4 .4c5.3 9.3 8.4 20.1 8.4 31.6c0 10.2-2.4 19.8-6.6 28.3l-90.3-70.8zm223.1 298L373 389.9c-16.4 6.5-34.3 10.1-53 10.1c-79.5 0-144-64.5-144-144c0-6.9 .5-13.6 1.4-20.2L83.1 161.5C60.3 191.2 44 220.8 34.5 243.7c-3.3 7.9-3.3 16.7 0 24.6c14.9 35.7 46.2 87.7 93 131.1C174.5 443.2 239.2 480 320 480c47.8 0 89.9-12.9 126.2-32.5z"/></svg></span></template>
+        <template id=fa-copy><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M502.6 70.63l-61.25-61.25C435.4 3.371 427.2 0 418.7 0H255.1c-35.35 0-64 28.66-64 64l.0195 256C192 355.4 220.7 384 256 384h192c35.2 0 64-28.8 64-64V93.25C512 84.77 508.6 76.63 502.6 70.63zM464 320c0 8.836-7.164 16-16 16H255.1c-8.838 0-16-7.164-16-16L239.1 64.13c0-8.836 7.164-16 16-16h128L384 96c0 17.67 14.33 32 32 32h47.1V320zM272 448c0 8.836-7.164 16-16 16H63.1c-8.838 0-16-7.164-16-16L47.98 192.1c0-8.836 7.164-16 16-16H160V128H63.99c-35.35 0-64 28.65-64 64l.0098 256C.002 483.3 28.66 512 64 512h192c35.2 0 64-28.8 64-64v-32h-47.1L272 448z"/></svg></span></template>
+        <template id=fa-play><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M73 39c-14.8-9.1-33.4-9.4-48.5-.9S0 62.6 0 80V432c0 17.4 9.4 33.4 24.5 41.9s33.7 8.1 48.5-.9L361 297c14.3-8.7 23-24.2 23-41s-8.7-32.2-23-41L73 39z"/></svg></span></template>
+        <template id=fa-clock-rotate-left><span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M75 75L41 41C25.9 25.9 0 36.6 0 57.9V168c0 13.3 10.7 24 24 24H134.1c21.4 0 32.1-25.9 17-41l-30.8-30.8C155 85.5 203 64 256 64c106 0 192 86 192 192s-86 192-192 192c-40.8 0-78.6-12.7-109.7-34.4c-14.5-10.1-34.4-6.6-44.6 7.9s-6.6 34.4 7.9 44.6C151.2 495 201.7 512 256 512c141.4 0 256-114.6 256-256S397.4 0 256 0C185.3 0 121.3 28.7 75 75zm181 53c-13.3 0-24 10.7-24 24V256c0 6.4 2.5 12.5 7 17l72 72c9.4 9.4 24.6 9.4 33.9 0s9.4-24.6 0-33.9l-65-65V152c0-13.3-10.7-24-24-24z"/></svg></span></template>
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../../elasticlunr-ef4e11c1.min.js"></script>
+        <script src="../../mark-09e88c2c.min.js"></script>
+        <script src="../../searcher-09f2665d.js"></script>
+
+        <script src="../../clipboard-1626706a.min.js"></script>
+        <script src="../../highlight-abc7f01d.js"></script>
+        <script src="../../book-609e4cb8.js"></script>
+
+        <!-- Custom JS scripts -->
+
+
+
+    </div>
+    </body>
+</html>
