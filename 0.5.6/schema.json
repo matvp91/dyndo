@@ -1,0 +1,294 @@
+{
+  "$defs": {
+    "AudioMetadata": {
+      "properties": {
+        "channels": {
+          "format": "uint16",
+          "maximum": 65535,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "language": {
+          "default": "und",
+          "type": "string"
+        },
+        "role": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Role"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sample_rate": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "sample_rate",
+        "channels"
+      ],
+      "type": "object"
+    },
+    "CmafTrack": {
+      "description": "A CMAF track stored in an asset.",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/VideoMetadata",
+          "properties": {
+            "type": {
+              "const": "video",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "$ref": "#/$defs/AudioMetadata",
+          "properties": {
+            "type": {
+              "const": "audio",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "$ref": "#/$defs/TextMetadata",
+          "properties": {
+            "type": {
+              "const": "text",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        }
+      ],
+      "properties": {
+        "codec": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "path": {
+          "description": "Path relative to the asset file.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "path",
+        "codec"
+      ],
+      "type": "object"
+    },
+    "Role": {
+      "enum": [
+        "main",
+        "alternate",
+        "commentary",
+        "dub",
+        "description",
+        "enhanced-audio-intelligibility",
+        "subtitle",
+        "caption",
+        "forced-subtitle"
+      ],
+      "type": "string"
+    },
+    "SourceTrack": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/CmafTrack"
+        },
+        {
+          "$ref": "#/$defs/TimedTextTrack"
+        }
+      ],
+      "description": "A track backed by a file stored with an asset."
+    },
+    "TextMetadata": {
+      "description": "Language and presentation metadata shared by text representations.",
+      "properties": {
+        "language": {
+          "default": "und",
+          "type": "string"
+        },
+        "role": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Role"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "ThumbnailTrack": {
+      "description": "A thumbnail track generated from source video when requested.",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "step": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "tile_size": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "width": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "tile_size",
+        "width",
+        "step"
+      ],
+      "type": "object"
+    },
+    "TimedTextTrack": {
+      "description": "A timed-text track stored in an asset.",
+      "oneOf": [
+        {
+          "properties": {
+            "type": {
+              "const": "webvtt",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        }
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "language": {
+          "default": "und",
+          "type": "string"
+        },
+        "path": {
+          "description": "Path relative to the asset file.",
+          "type": "string"
+        },
+        "role": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Role"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "path"
+      ],
+      "type": "object"
+    },
+    "Track": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ThumbnailTrack",
+          "properties": {
+            "type": {
+              "const": "thumbnail",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "$ref": "#/$defs/SourceTrack"
+        }
+      ],
+      "description": "A track stored in an asset."
+    },
+    "VideoMetadata": {
+      "properties": {
+        "frame_rate": {
+          "type": "string"
+        },
+        "height": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "width": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "width",
+        "height",
+        "frame_rate"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://matvp91.github.io/dyndo/0.5.6/schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "default": "https://matvp91.github.io/dyndo/0.5.6/schema.json",
+      "description": "JSON Schema used to validate this descriptor.",
+      "type": "string"
+    },
+    "boundaries": {
+      "description": "Splice points, in milliseconds from the presentation start.",
+      "items": {
+        "format": "uint32",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "type": "array"
+    },
+    "tracks": {
+      "items": {
+        "$ref": "#/$defs/Track"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "tracks"
+  ],
+  "title": "Asset",
+  "type": "object"
+}
