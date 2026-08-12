@@ -63,7 +63,12 @@ impl SegmentRoute for Router<Operator> {
                 )
                 .await
             }
-            (time, "jpg") => thumbnail(&op, &asset, &track_id, segment_time(time, &file)?).await,
+            (number, "jpg") => {
+                let number = number
+                    .parse()
+                    .map_err(|_| ServerError::NotFound(file.clone()))?;
+                thumbnail(&op, &asset, &track_id, number).await
+            }
             _ => Err(not_found()),
         }
     }
@@ -139,20 +144,18 @@ async fn cmaf_representation(
         .map_err(Into::into)
 }
 
-/// Serves the thumbnail sprite named by the DASH `$Time$` substitution.
+/// Serves a numbered thumbnail sprite.
 pub(super) async fn thumbnail(
     op: &Operator,
     asset: &Asset,
     thumbnail_id: &str,
-    time: u64,
+    number: u32,
 ) -> Result<Response, ServerError> {
     let track = resolve_track(op, asset, thumbnail_id, None).await?;
     let thumbnail = track
         .thumbnail()
         .ok_or_else(|| ServerError::NotFound(format!("thumbnail {thumbnail_id}")))?;
-    let Some(bytes) = thumbnail.jpeg(op, time).await? else {
-        return Err(ServerError::NotFound("thumbnail".to_string()));
-    };
+    let bytes = thumbnail.jpeg(op, number).await?;
 
     Ok(([(CONTENT_TYPE, "image/jpeg")], bytes).into_response())
 }

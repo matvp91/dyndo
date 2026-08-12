@@ -94,7 +94,7 @@ async fn generate(
 }
 
 fn thumbnail() -> ThumbnailTrack {
-    ThumbnailTrack::new("preview".to_string(), 2, 16, 1_000)
+    ThumbnailTrack::new("preview".to_string(), 2, 16)
 }
 
 #[tokio::test]

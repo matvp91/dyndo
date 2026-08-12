@@ -22,7 +22,7 @@ async fn resolved_asset_contains_video_subtitle_and_thumbnail_tracks() {
                 "tracks":[
                     {"id":"video-main","path":"video.mp4","codec":"avc1.42c00a","type":"video","width":16,"height":16,"frame_rate":"4/1"},
                     {"id":"text-en","path":"subtitles/en.vtt","type":"webvtt","language":"en"},
-                    {"id":"preview","type":"thumbnail","tile_size":4,"width":640,"step":1000}
+                    {"id":"preview","type":"thumbnail","tile_size":4,"width":640}
                 ]
             }"#,
         )

@@ -115,8 +115,8 @@ async fn generate(tracks: &[ResolvedTrack], hls_options: &HlsOptions) -> (String
     (master, media)
 }
 
-fn thumbnail(step: u32) -> ThumbnailTrack {
-    ThumbnailTrack::new("preview".to_string(), 2, 16, step)
+fn thumbnail() -> ThumbnailTrack {
+    ThumbnailTrack::new("preview".to_string(), 2, 16)
 }
 
 #[tokio::test]
@@ -179,9 +179,9 @@ async fn generated_packaged_wvtt_renditions_match_the_golden_fixtures() {
 #[tokio::test]
 async fn generated_image_playlists_advertise_existing_thumbnail_sprites() {
     let tracks = [video_track()];
-    let configured = thumbnail(1_000);
+    let configured = thumbnail();
     let preview = configured.resolve(&tracks).unwrap();
-    let alternate = ThumbnailTrack::new("alternate".to_string(), 2, 16, 500);
+    let alternate = ThumbnailTrack::new("alternate".to_string(), 2, 16);
     let alternate = alternate.resolve(&tracks).unwrap();
     let asset = ResolvedAsset::new(
         Vec::new(),
@@ -222,7 +222,7 @@ async fn generated_image_playlists_advertise_existing_thumbnail_sprites() {
 #[test]
 fn generated_image_playlist_shortens_the_final_sprite() {
     let track = video_track();
-    let configured = thumbnail(400);
+    let configured = thumbnail();
     let thumbnail = configured.resolve(std::slice::from_ref(&track)).unwrap();
     let playlist = generate_image_playlist(&thumbnail).unwrap();
 

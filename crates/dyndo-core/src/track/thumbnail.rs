@@ -1,16 +1,11 @@
 use bytes::Bytes;
-use futures_util::{StreamExt, TryStreamExt, stream};
-use image::codecs::jpeg::JpegEncoder;
-use image::imageops::FilterType;
-use image::{ImageFormat, RgbImage, imageops};
 use opendal::Operator;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::image::{FrameExtractor, FrameExtractorError};
+use crate::image::SpriteGenerator;
 use crate::track::cmaf::{CmafKind, ResolvedCmafTrack};
 
-const CONCURRENT_FRAME_GRABS: usize = 4;
 const BITS_PER_PIXEL: u64 = 1;
 
 /// A thumbnail track generated from source video when requested.
@@ -19,16 +14,14 @@ pub struct ThumbnailTrack {
     pub id: String,
     pub tile_size: u32,
     pub width: u32,
-    pub step: u32,
 }
 
 impl ThumbnailTrack {
-    pub fn new(id: String, tile_size: u32, width: u32, step: u32) -> Self {
+    pub fn new(id: String, tile_size: u32, width: u32) -> Self {
         Self {
             id,
             tile_size,
             width,
-            step,
         }
     }
 
@@ -51,10 +44,8 @@ impl ThumbnailTrack {
 /// An error encountered while generating thumbnail media.
 #[derive(Debug, thiserror::Error)]
 pub enum ThumbnailError {
-    #[error(transparent)]
-    FrameExtractor(#[from] FrameExtractorError),
-    #[error(transparent)]
-    Image(#[from] image::ImageError),
+    #[error("could not generate thumbnail sprite")]
+    Generation(#[source] Box<dyn std::error::Error + Send + Sync>),
 }
 
 /// A resolved thumbnail track.
@@ -81,11 +72,6 @@ impl ResolvedThumbnailTrack {
         self.track.tile_size
     }
 
-    /// Returns the interval between adjacent thumbnail frames, in milliseconds.
-    pub fn step(&self) -> u32 {
-        self.track.step
-    }
-
     /// Returns the width of the complete thumbnail sprite.
     pub fn width(&self) -> u32 {
         self.track.width
@@ -102,11 +88,16 @@ impl ResolvedThumbnailTrack {
         (self.width() / tile_size, self.height / tile_size)
     }
 
+    /// Returns the interval between regular IDR frames, in milliseconds.
+    pub fn frame_duration(&self) -> u64 {
+        SpriteGenerator::cadence(&self.source)
+    }
+
     /// Returns the duration covered by one thumbnail sprite, in milliseconds.
     pub fn sprite_duration(&self) -> u64 {
         u64::from(self.track.tile_size)
             .saturating_mul(u64::from(self.track.tile_size))
-            .saturating_mul(u64::from(self.track.step))
+            .saturating_mul(self.frame_duration())
     }
 
     /// Returns the estimated bandwidth of the JPEG sprite representation.
@@ -121,60 +112,16 @@ impl ResolvedThumbnailTrack {
         u64::try_from(bits_per_second).unwrap_or(u64::MAX).max(1)
     }
 
-    /// Generates a thumbnail sprite beginning at `time`.
-    ///
-    /// Returns `None` when thumbnails are disabled or unavailable for the track.
+    /// Generates thumbnail sprite `number`.
     ///
     /// # Errors
     ///
     /// Returns an error when a frame cannot be read, decoded, composed, or encoded.
-    pub async fn jpeg(&self, op: &Operator, time: u64) -> Result<Option<Bytes>, ThumbnailError> {
-        let (Some(first), Some(last)) = (
-            self.source.segments().first(),
-            self.source.segments().last(),
-        ) else {
-            return Ok(None);
-        };
-        let Some(start) = first.start_time().checked_add(time) else {
-            return Ok(None);
-        };
-        let end = last.end_time();
-        if start >= end {
-            return Ok(None);
-        }
-
-        let extractor = FrameExtractor::new(op, &self.source);
-        let (tile_width, tile_height) = self.tile_dimensions();
-        let mut sprite = RgbImage::new(self.width(), self.height);
-        let frames = self
-            .frame_times(start, end)
-            .map(|time| extractor.jpeg(time, tile_width, tile_height));
-        let mut frames = stream::iter(frames).buffered(CONCURRENT_FRAME_GRABS);
-        let mut index = 0_u64;
-        while let Some(jpeg) = frames.try_next().await? {
-            let tile = image::load_from_memory_with_format(&jpeg, ImageFormat::Jpeg)?
-                .resize_exact(tile_width, tile_height, FilterType::Triangle)
-                .to_rgb8();
-            let column = index % u64::from(self.track.tile_size);
-            let row = index / u64::from(self.track.tile_size);
-            imageops::replace(
-                &mut sprite,
-                &tile,
-                i64::try_from(column * u64::from(tile_width)).unwrap_or(i64::MAX),
-                i64::try_from(row * u64::from(tile_height)).unwrap_or(i64::MAX),
-            );
-            index += 1;
-        }
-
-        let mut jpeg = Vec::new();
-        JpegEncoder::new(&mut jpeg).encode_image(&sprite)?;
-        Ok(Some(Bytes::from(jpeg)))
-    }
-
-    fn frame_times(&self, start: u64, end: u64) -> impl Iterator<Item = u64> {
-        let step = u64::from(self.track.step);
-        (0..u64::from(self.track.tile_size).pow(2))
-            .map_while(move |index| start.checked_add(index * step).filter(|time| *time < end))
+    pub async fn jpeg(&self, op: &Operator, number: u32) -> Result<Bytes, ThumbnailError> {
+        SpriteGenerator::new(op, &self.source, self.tile_dimensions().0, self.tile_size())
+            .jpeg(number)
+            .await
+            .map_err(ThumbnailError::Generation)
     }
 }
 
@@ -255,7 +202,7 @@ mod tests {
     }
 
     fn track(tile_size: u32, width: u32) -> ThumbnailTrack {
-        ThumbnailTrack::new("thumbnail".to_string(), tile_size, width, 1_000)
+        ThumbnailTrack::new("thumbnail".to_string(), tile_size, width)
     }
 
     #[test]
@@ -289,7 +236,7 @@ mod tests {
 
     #[test]
     fn thumbnail_resolves_with_zero_settings() {
-        let configured = ThumbnailTrack::new("thumbnail".to_string(), 0, 0, 0);
+        let configured = ThumbnailTrack::new("thumbnail".to_string(), 0, 0);
         let source = video("720", 1_280, 720);
 
         let thumbnail = configured.resolve([&source]).unwrap();

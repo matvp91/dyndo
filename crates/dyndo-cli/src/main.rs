@@ -18,15 +18,12 @@ struct Cli {
 enum Command {
     /// Build or update an asset from one or more media tracks.
     Index(commands::index::IndexArgs),
-    /// Extract a video frame as a JPEG image.
-    Image(commands::image::ImageArgs),
 }
 
 impl Command {
     async fn run(self, op: &Operator) -> Result<(), Box<dyn std::error::Error>> {
         match self {
             Self::Index(args) => commands::index::run(op, args).await,
-            Self::Image(args) => commands::image::run(op, args).await,
         }
     }
 }
