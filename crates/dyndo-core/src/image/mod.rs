@@ -1,5 +1,7 @@
 //! Video frame extraction and image encoding.
 
-mod sprite_generator;
+mod frame_decoder;
+mod sprite;
+mod sprite_encoder;
 
-pub use sprite_generator::SpriteGenerator;
+pub use sprite::{Sprite, SpriteGeneratorError};

@@ -3,10 +3,8 @@ use opendal::Operator;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::image::SpriteGenerator;
+use crate::image::Sprite;
 use crate::track::cmaf::{CmafKind, ResolvedCmafTrack};
-
-const BITS_PER_PIXEL: u64 = 1;
 
 /// A thumbnail track generated from source video when requested.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -30,30 +28,29 @@ impl ThumbnailTrack {
         &self,
         tracks: impl IntoIterator<Item = &'a ResolvedCmafTrack>,
     ) -> Option<ResolvedThumbnailTrack> {
-        let source = select_source(tile_width(self), tracks)?;
-        let (_, height) = dimensions(self, source)?;
+        let source = select_source(self.width / self.tile_size, tracks)?;
 
         Some(ResolvedThumbnailTrack {
-            track: self.clone(),
+            id: self.id.clone(),
+            tile_size: self.tile_size,
+            width: self.width,
             source: source.clone(),
-            height,
         })
     }
 }
 
 /// An error encountered while generating thumbnail media.
 #[derive(Debug, thiserror::Error)]
-pub enum ThumbnailError {
-    #[error("could not generate thumbnail sprite")]
-    Generation(#[source] Box<dyn std::error::Error + Send + Sync>),
-}
+#[error("{0}")]
+pub struct ThumbnailError(String);
 
 /// A resolved thumbnail track.
 #[derive(Clone)]
 pub struct ResolvedThumbnailTrack {
-    track: ThumbnailTrack,
+    id: String,
+    tile_size: u32,
+    width: u32,
     source: ResolvedCmafTrack,
-    height: u32,
 }
 
 impl ResolvedThumbnailTrack {
@@ -64,28 +61,34 @@ impl ResolvedThumbnailTrack {
 
     /// Returns the thumbnail track identifier.
     pub fn id(&self) -> &str {
-        &self.track.id
+        &self.id
     }
 
     /// Returns the number of tiles in each sprite row and column.
     pub fn tile_size(&self) -> u32 {
-        self.track.tile_size
+        self.tile_size
     }
 
     /// Returns the width of the complete thumbnail sprite.
     pub fn width(&self) -> u32 {
-        self.track.width
+        self.width
     }
 
     /// Returns the height of the complete thumbnail sprite.
     pub fn height(&self) -> u32 {
-        self.height
+        let CmafKind::Video(video) = self.source.kind() else {
+            unreachable!("thumbnail source must be video");
+        };
+        let height = u64::from(self.width()) * u64::from(video.height) / u64::from(video.width);
+        (height - height % u64::from(self.tile_size())) as u32
     }
 
     /// Returns the dimensions of one thumbnail tile.
     pub fn tile_dimensions(&self) -> (u32, u32) {
-        let tile_size = self.track.tile_size.max(1);
-        (self.width() / tile_size, self.height / tile_size)
+        (
+            self.width() / self.tile_size,
+            self.height() / self.tile_size,
+        )
     }
 
     /// Returns the interval between regular IDR frames, in milliseconds.
@@ -95,21 +98,14 @@ impl ResolvedThumbnailTrack {
 
     /// Returns the duration covered by one thumbnail sprite, in milliseconds.
     pub fn sprite_duration(&self) -> u64 {
-        u64::from(self.track.tile_size)
-            .saturating_mul(u64::from(self.track.tile_size))
-            .saturating_mul(self.frame_duration())
+        u64::from(self.tile_size()).pow(2) * self.frame_duration()
     }
 
     /// Returns the estimated bandwidth of the JPEG sprite representation.
     pub fn bandwidth(&self) -> u64 {
-        let bits = u128::from(self.width())
-            .saturating_mul(u128::from(self.height))
-            .saturating_mul(u128::from(BITS_PER_PIXEL));
-        let bits_per_second = bits
-            .saturating_mul(1_000)
-            .div_ceil(u128::from(self.sprite_duration()).max(1));
-
-        u64::try_from(bits_per_second).unwrap_or(u64::MAX).max(1)
+        (u64::from(self.width()) * u64::from(self.height()) * 1_000)
+            .div_ceil(self.sprite_duration())
+            .max(1)
     }
 
     /// Generates thumbnail sprite `number`.
@@ -118,10 +114,10 @@ impl ResolvedThumbnailTrack {
     ///
     /// Returns an error when a frame cannot be read, decoded, composed, or encoded.
     pub async fn jpeg(&self, op: &Operator, number: u32) -> Result<Bytes, ThumbnailError> {
-        SpriteGenerator::new(op, &self.source, self.tile_dimensions().0, self.tile_size())
+        Sprite::new(op, &self.source, self.tile_dimensions().0, self.tile_size())
             .jpeg(number)
             .await
-            .map_err(ThumbnailError::Generation)
+            .map_err(|error| ThumbnailError(error.to_string()))
     }
 }
 
@@ -133,9 +129,10 @@ fn select_source<'a>(
     let mut largest = None;
 
     for track in tracks {
-        let Some((track, video_width)) = video_width(track) else {
+        let CmafKind::Video(video) = track.kind() else {
             continue;
         };
+        let video_width = video.width;
         if largest.is_none_or(|(_, largest_width)| video_width > largest_width) {
             largest = Some((track, video_width));
         }
@@ -147,35 +144,6 @@ fn select_source<'a>(
     }
 
     smallest_suitable.or(largest).map(|(track, _)| track)
-}
-
-fn video_width(track: &ResolvedCmafTrack) -> Option<(&ResolvedCmafTrack, u32)> {
-    let CmafKind::Video(video) = track.kind() else {
-        return None;
-    };
-    Some((track, video.width))
-}
-
-fn tile_width(track: &ThumbnailTrack) -> u32 {
-    track.width / track.tile_size.max(1)
-}
-
-fn dimensions(track: &ThumbnailTrack, source: &ResolvedCmafTrack) -> Option<(u32, u32)> {
-    let CmafKind::Video(video) = source.kind() else {
-        return None;
-    };
-    if video.width == 0 {
-        return None;
-    }
-    let height =
-        u64::from(track.width).saturating_mul(u64::from(video.height)) / u64::from(video.width);
-    let height = if track.tile_size == 0 {
-        height
-    } else {
-        height - height % u64::from(track.tile_size)
-    };
-    let height = u32::try_from(height).ok()?;
-    Some((track.width, height))
 }
 
 #[cfg(test)]
