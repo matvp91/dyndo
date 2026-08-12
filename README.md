@@ -141,7 +141,7 @@ the version pinned as `MDBOOK_VERSION` in
 [`.github/workflows/docs.yml`](.github/workflows/docs.yml)
 (`cargo install mdbook --version <that version>`) so local output matches what
 CI publishes. The guide's sources live in [`docs/`](docs/) and are published to
-GitHub Pages by the same workflow: [`/next/`](https://matvp91.github.io/dyndo/next/)
+GitHub Pages by the same workflow: [`/main/`](https://matvp91.github.io/dyndo/main/)
 tracks `main`, while each release remains available at
 `https://matvp91.github.io/dyndo/<version>/`.
 
