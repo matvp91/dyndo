@@ -51,7 +51,7 @@ async fn resolved_asset_contains_video_subtitle_and_thumbnail_tracks() {
         .track("text-en")
         .and_then(ResolvedTrack::timed_text)
         .unwrap();
-    assert!(matches!(subtitles.format(), TimedTextFormat::WebVtt(_)));
+    assert!(matches!(subtitles.format(), TimedTextFormat::WebVtt));
     let packaged_subtitles = subtitles
         .package_wvtt(&asset.segment_options)
         .await

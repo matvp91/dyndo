@@ -100,7 +100,7 @@ impl ResolvedTrack {
                 CmafKind::Text(metadata) => Some(metadata),
                 CmafKind::Video(_) | CmafKind::Audio(_) => None,
             },
-            Self::TimedText(track) => Some(track.format().text()),
+            Self::TimedText(track) => Some(track.text_metadata()),
             Self::Thumbnail(_) => None,
         }
     }
@@ -108,7 +108,7 @@ impl ResolvedTrack {
     pub fn language(&self) -> Option<&LanguageTag> {
         match self {
             Self::Cmaf(track) => track.kind().language(),
-            Self::TimedText(track) => Some(&track.format().text().language),
+            Self::TimedText(track) => Some(&track.text_metadata().language),
             Self::Thumbnail(_) => None,
         }
     }
@@ -116,7 +116,7 @@ impl ResolvedTrack {
     pub fn role(&self) -> Option<Role> {
         match self {
             Self::Cmaf(track) => track.kind().role(),
-            Self::TimedText(track) => track.format().text().role,
+            Self::TimedText(track) => track.text_metadata().role,
             Self::Thumbnail(_) => None,
         }
     }

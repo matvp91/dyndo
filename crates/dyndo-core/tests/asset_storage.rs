@@ -76,6 +76,7 @@ async fn read_or_new_preserves_the_asset_base_when_adding_a_track() {
     )
     .unwrap();
     assert_eq!(value["tracks"][0]["type"], "webvtt");
+    assert_eq!(value["tracks"][0]["language"], "en");
     assert!(value["tracks"][0].get("codec").is_none());
 }
 

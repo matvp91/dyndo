@@ -38,7 +38,8 @@ impl ResolvedTimedTextTrack {
         Ok(Self::new(
             id,
             source_path,
-            TimedTextFormat::WebVtt(metadata),
+            TimedTextFormat::WebVtt,
+            metadata,
             Subtitle::from_vtt_text(document)?,
         ))
     }
@@ -58,7 +59,7 @@ impl ResolvedTimedTextTrack {
         ResolvedCmafTrack::from_cmaf_bytes(
             bytes,
             self.id().to_string(),
-            CmafKind::Text(self.format().text().clone()),
+            CmafKind::Text(self.text_metadata().clone()),
         )
         .await
         .map_err(Into::into)
@@ -79,9 +80,6 @@ impl ResolvedTimedTextTrack {
     }
 
     fn web_vtt_segment(&self, start: u64, end: u64) -> Option<String> {
-        if !self.format().is_web_vtt() {
-            return None;
-        }
         let start = u32::try_from(start).ok()?;
         let end = u32::try_from(end).ok()?;
         self.subtitle

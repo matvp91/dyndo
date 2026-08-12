@@ -1,5 +1,5 @@
 use dyndo_core::segment_options::SegmentOptions;
-use dyndo_core::track::cmaf::{ResolvedCmafTrack, ServedSegment};
+use dyndo_core::track::cmaf::{CmafKind, ResolvedCmafTrack, ServedSegment};
 use dyndo_core::track::metadata::VideoMetadata;
 use dyndo_core::track::thumbnail::ResolvedThumbnailTrack;
 use m3u8_rs::{ClosedCaptionGroupId, ExtTag, MasterPlaylist, Resolution, VariantStream};
@@ -54,11 +54,14 @@ fn build_variant_streams(
 ) -> Result<Vec<VariantStream>, HlsError> {
     tracks
         .iter()
-        .filter_map(|track| {
-            track
-                .kind()
-                .video()
-                .map(|video| build_variant_stream(track, video, segment_options, renditions))
+        .filter_map(|track| match track.kind() {
+            CmafKind::Video(video) => Some(build_variant_stream(
+                track,
+                video,
+                segment_options,
+                renditions,
+            )),
+            CmafKind::Audio(_) | CmafKind::Text(_) => None,
         })
         .collect()
 }

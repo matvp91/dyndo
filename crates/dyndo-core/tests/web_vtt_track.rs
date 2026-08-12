@@ -51,7 +51,7 @@ async fn web_vtt_track_packages_cmaf_on_demand_and_serves_vtt_directly() {
     else {
         panic!("expected a WebVTT source track");
     };
-    assert!(matches!(vtt.format(), TimedTextFormat::WebVtt(_)));
+    assert!(matches!(vtt.format(), TimedTextFormat::WebVtt));
     let packaged = vtt.package_wvtt(&options).await.unwrap();
 
     assert!(matches!(packaged.kind(), CmafKind::Text(_)));

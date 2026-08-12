@@ -36,8 +36,7 @@ impl SourceTrack {
         match self {
             Self::Cmaf(track) => track.kind.language_and_role_mut(),
             Self::TimedText(track) => {
-                let metadata = track.format.text_mut();
-                Some((&mut metadata.language, &mut metadata.role))
+                Some((&mut track.metadata.language, &mut track.metadata.role))
             }
         }
     }
@@ -68,6 +67,7 @@ impl SourceTrack {
                 id: track.id().to_string(),
                 path,
                 format: track.format().clone(),
+                metadata: track.text_metadata().clone(),
             })),
             ResolvedTrack::Cmaf(track) => Some(Self::Cmaf(CmafTrack {
                 id: track.id().to_string(),

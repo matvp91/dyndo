@@ -19,6 +19,8 @@ pub struct TimedTextTrack {
     pub(super) path: RelativePathBuf,
     #[serde(flatten)]
     pub format: TimedTextFormat,
+    #[serde(flatten)]
+    pub metadata: TextMetadata,
 }
 
 impl TimedTextTrack {
@@ -29,12 +31,12 @@ impl TimedTextTrack {
         path: &RelativePath,
     ) -> Result<ResolvedTimedTextTrack, TimedTextError> {
         match &self.format {
-            TimedTextFormat::WebVtt(metadata) => {
+            TimedTextFormat::WebVtt => {
                 ResolvedTimedTextTrack::from_web_vtt_source(
                     op,
                     path,
                     self.id.clone(),
-                    metadata.clone(),
+                    self.metadata.clone(),
                 )
                 .await
             }
@@ -46,31 +48,15 @@ impl TimedTextTrack {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "type", rename_all = "lowercase")]
 pub enum TimedTextFormat {
-    WebVtt(TextMetadata),
+    WebVtt,
 }
 
 impl TimedTextFormat {
-    pub fn text(&self) -> &TextMetadata {
-        match self {
-            Self::WebVtt(metadata) => metadata,
-        }
-    }
-
-    pub fn text_mut(&mut self) -> &mut TextMetadata {
-        match self {
-            Self::WebVtt(metadata) => metadata,
-        }
-    }
-
     /// Returns the format used to expose this timed-text source as a track.
     pub const fn track_format(&self) -> TrackFormat {
         match self {
-            Self::WebVtt(_) => TrackFormat::WebVtt,
+            Self::WebVtt => TrackFormat::WebVtt,
         }
-    }
-
-    pub fn is_web_vtt(&self) -> bool {
-        matches!(self, Self::WebVtt(_))
     }
 }
 
@@ -80,6 +66,7 @@ pub struct ResolvedTimedTextTrack {
     id: String,
     source_path: RelativePathBuf,
     format: TimedTextFormat,
+    metadata: TextMetadata,
     subtitle: Subtitle,
 }
 
@@ -88,12 +75,14 @@ impl ResolvedTimedTextTrack {
         id: String,
         source_path: RelativePathBuf,
         format: TimedTextFormat,
+        metadata: TextMetadata,
         subtitle: Subtitle,
     ) -> Self {
         Self {
             id,
             source_path,
             format,
+            metadata,
             subtitle,
         }
     }
@@ -108,6 +97,10 @@ impl ResolvedTimedTextTrack {
 
     pub fn format(&self) -> &TimedTextFormat {
         &self.format
+    }
+
+    pub fn text_metadata(&self) -> &TextMetadata {
+        &self.metadata
     }
 }
 
