@@ -9,7 +9,6 @@ mod roles;
 use std::io;
 
 use dyndo_core::asset::ResolvedAsset;
-use dyndo_core::track::cmaf::CmafKind;
 use dyndo_core::track::thumbnail::ResolvedThumbnailTrack;
 use dyndo_core::track::{CmafRepresentationError, ResolvedTrack};
 use options::HlsOptions;
@@ -40,18 +39,12 @@ pub async fn generate_master_playlist(
 ) -> Result<String, HlsError> {
     let tracks = asset.cmaf_representations(text_length).await?;
     let thumbnails: Vec<_> = asset.thumbnails().cloned().collect();
-    let mut hls_options = *hls_options;
-    hls_options.wvtt |= asset
-        .tracks()
-        .iter()
-        .filter_map(ResolvedTrack::cmaf)
-        .any(|track| matches!(track.kind(), CmafKind::Text(_)));
     let playlist = master::build_playlist(
         &tracks,
         &thumbnails,
         min_length,
         asset.boundaries(),
-        &hls_options,
+        hls_options,
     )?;
     serialize(|output| playlist.write_to(output))
 }
@@ -69,10 +62,9 @@ pub async fn generate_media_playlist(
     boundaries: &[u32],
     hls_options: &HlsOptions,
 ) -> Result<String, HlsError> {
+    let plain_vtt = track.timed_text().is_some() && !hls_options.wvtt;
     let cmaf = track.cmaf_representation(text_length, boundaries).await?;
-    let mut hls_options = *hls_options;
-    hls_options.wvtt |= track.timed_text().is_none();
-    let playlist = media::build_playlist(&cmaf, min_length, boundaries, &hls_options);
+    let playlist = media::build_playlist(&cmaf, min_length, boundaries, plain_vtt);
     serialize(|output| playlist.write_to(output))
 }
 
