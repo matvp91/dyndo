@@ -255,12 +255,12 @@
       "type": "object"
     }
   },
-  "$id": "https://matvp91.github.io/dyndo/0.5.6/schema.json",
+  "$id": "https://matvp91.github.io/dyndo/0.5.7/schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
     "$schema": {
-      "default": "https://matvp91.github.io/dyndo/0.5.6/schema.json",
+      "default": "https://matvp91.github.io/dyndo/0.5.7/schema.json",
       "description": "JSON Schema used to validate this descriptor.",
       "type": "string"
     },
