@@ -137,11 +137,7 @@ impl Attribute {
     fn is_numeric(self) -> bool {
         matches!(
             self,
-            Self::Width
-                | Self::Height
-                | Self::SampleRate
-                | Self::Channels
-                | Self::TileSize
+            Self::Width | Self::Height | Self::SampleRate | Self::Channels | Self::TileSize
         )
     }
 
@@ -158,11 +154,7 @@ impl Attribute {
                 .language()
                 .map(|language| Cow::Borrowed(language.as_str())),
             Self::Role => track.role().map(|role| Cow::Borrowed(role.as_str())),
-            Self::Width
-            | Self::Height
-            | Self::SampleRate
-            | Self::Channels
-            | Self::TileSize => None,
+            Self::Width | Self::Height | Self::SampleRate | Self::Channels | Self::TileSize => None,
         }
     }
 
