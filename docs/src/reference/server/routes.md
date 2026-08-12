@@ -175,7 +175,6 @@ and `duration` filters are not available.
 | `language` | text | audio, text | The track's language tag, compared exactly as the descriptor spells it. |
 | `role` | text | audio, text | One of the [track roles](../roles.md). |
 | `tile_size` | numeric | thumbnail | Thumbnails per sprite row and column. |
-| `step` | numeric | thumbnail | Milliseconds between adjacent thumbnails. |
 
 A textual value is not checked against what exists — `role==narrator` parses
 happily and simply matches no entry. A numeric attribute does check:
@@ -242,7 +241,7 @@ configured storage backend.
 | `<type>_<track-id>/init.mp4` | A track's CMAF initialization segment. | `video/mp4`, `audio/mp4`, or `application/mp4` |
 | `<type>_<track-id>/<time>.m4s` | The media segment starting at presentation `<time>`. | `video/mp4`, `audio/mp4`, or `application/mp4` |
 | `text_<track-id>/<time>.vtt` | The same segment of a text track, as a WebVTT document. | `text/vtt` |
-| `image_<thumbnail-id>/<time>.jpg` | A JPEG thumbnail sprite advertised by DASH and HLS. | `image/jpeg` |
+| `image_<thumbnail-id>/<number>.jpg` | A numbered JPEG thumbnail sprite advertised by DASH and HLS. | `image/jpeg` |
 
 `<track-id>` is a track's `id` exactly as recorded in the descriptor (for
 example `6b745be5-2791-5d95-8ce5-8f8bde29e2fe`). Manifests prefix it with the
@@ -263,15 +262,15 @@ A full set of requests for one asset:
 ### Thumbnail sprites
 
 Add a thumbnail object to the asset descriptor to advertise a thumbnail sprite.
-A tile size of `4` creates a 4-by-4 sprite, and a step of `1000` samples one
-frame per second:
+A tile size of `4` creates a 4-by-4 sprite whose frames follow the selected
+video source's regular IDR cadence:
 
 ```text
 /out/(asset:demo)/index.mpd
 /out/(asset:demo)/master.m3u8
 ```
 
-The MPD addresses each sprite as `image_<thumbnail-id>/<time>.jpg`. The HLS
+The MPD addresses each sprite as `image_<thumbnail-id>/<number>.jpg`. The HLS
 multivariant playlist advertises `image_<thumbnail-id>.m3u8`. A thumbnail that
 cannot select a video source is omitted from manifests and its image routes
 return `404`.

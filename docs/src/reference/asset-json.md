@@ -37,14 +37,13 @@ Each thumbnail track has a stable `id`:
   "id": "preview",
   "type": "thumbnail",
   "tile_size": 4,
-  "width": 640,
-  "step": 1000
+  "width": 640
 }
 ```
 
 `tile_size` is the number of thumbnails in each row and column, `width` is the
-full sprite width in pixels, and `step` is the interval between adjacent
-thumbnails in milliseconds.
+full sprite width in pixels, and adjacent thumbnails follow the source's IDR
+cadence.
 
 ## Boundaries
 

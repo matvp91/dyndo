@@ -28,8 +28,7 @@ fn build_adaptation_set(
     presentation_duration: u32,
 ) -> AdaptationSet {
     let duration = thumbnail.sprite_duration();
-    let last_time = sprite_start_time(u64::from(presentation_duration).saturating_sub(1), duration);
-    let repeats = i64::try_from(last_time / duration).unwrap_or(i64::MAX);
+    let segment_count = u64::from(presentation_duration).div_ceil(duration.max(1));
 
     AdaptationSet {
         id: Some(id.to_string()),
@@ -50,14 +49,16 @@ fn build_adaptation_set(
                 ..Default::default()
             }],
             SegmentTemplate: Some(SegmentTemplate {
-                media: Some(format!("{}/$Time$.jpg", thumbnail.id())),
+                media: Some(format!("{}/$Number$.jpg", thumbnail.id())),
+                startNumber: Some(0),
                 timescale: Some(TIMESCALE),
                 presentationTimeOffset: Some(0),
                 SegmentTimeline: Some(SegmentTimeline {
                     segments: vec![S {
                         t: Some(0),
                         d: duration,
-                        r: (repeats != 0).then_some(repeats),
+                        r: (segment_count > 1)
+                            .then(|| i64::try_from(segment_count - 1).unwrap_or(i64::MAX)),
                         ..Default::default()
                     }],
                 }),
@@ -67,8 +68,4 @@ fn build_adaptation_set(
         }],
         ..Default::default()
     }
-}
-
-fn sprite_start_time(presentation_time: u64, duration: u64) -> u64 {
-    presentation_time / duration * duration
 }

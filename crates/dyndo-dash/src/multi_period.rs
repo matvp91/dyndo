@@ -14,8 +14,9 @@ const PERIOD_CONNECTIVITY_SCHEME: &str = "urn:mpeg:dash:period-connectivity:2015
 /// Splits dyndo's un-compacted single-period MPD at presentation-time boundaries.
 ///
 /// The timelines retain their original media timestamps, which keeps `$Time$`
-/// segment addresses stable. A period's presentation-time offset moves by its
-/// millisecond boundary in each template's timescale.
+/// segment addresses stable. `$Number$` templates advance their start number
+/// by the number of preceding segments. A period's presentation-time offset
+/// moves by its millisecond boundary in each template's timescale.
 pub(crate) fn split(mpd: &mut MPD, boundaries: &[u32]) -> Result<(), DashError> {
     let duration = presentation_duration(mpd)?;
     let spans = period_spans(boundaries, duration);
@@ -134,7 +135,20 @@ fn split_template(
 
     let mut template = source.clone();
     template.presentationTimeOffset = Some(slid_presentation_time_offset(source, span.start));
-    template.SegmentTimeline = Some(slice_timeline(timeline, timescale, span)?);
+    let (timeline, first_segment) = slice_timeline(timeline, timescale, span)?;
+    if source
+        .media
+        .as_deref()
+        .is_some_and(|media| media.contains("$Number"))
+    {
+        template.startNumber = Some(
+            source
+                .startNumber
+                .unwrap_or(1)
+                .saturating_add(first_segment),
+        );
+    }
+    template.SegmentTimeline = Some(timeline);
     Ok(template)
 }
 
@@ -151,10 +165,12 @@ fn slice_timeline(
     timeline: &SegmentTimeline,
     timescale: u32,
     span: &Range<u32>,
-) -> Result<SegmentTimeline, DashError> {
+) -> Result<(SegmentTimeline, u64), DashError> {
     let mut segments = Vec::new();
     let mut next_start = None;
     let mut previous_end = None;
+    let mut segment_number = 0_u64;
+    let mut first_segment = None;
 
     for entry in &timeline.segments {
         let Some(start) = entry.t.or(next_start) else {
@@ -169,14 +185,19 @@ fn slice_timeline(
                 .checked_add(entry.d)
                 .ok_or(DashError::MultiPeriodTimeline)?;
             if belongs_to_period(segment_start, segment_end, timescale, span) {
+                first_segment.get_or_insert(segment_number);
                 append_segment(&mut segments, &mut previous_end, segment_start, entry.d);
             }
             segment_start = segment_end;
+            segment_number = segment_number.saturating_add(1);
         }
         next_start = Some(segment_start);
     }
 
-    Ok(SegmentTimeline { segments })
+    Ok((
+        SegmentTimeline { segments },
+        first_segment.unwrap_or(segment_number),
+    ))
 }
 
 fn belongs_to_period(start: u64, end: u64, timescale: u32, span: &Range<u32>) -> bool {

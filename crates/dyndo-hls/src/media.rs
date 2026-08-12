@@ -38,14 +38,13 @@ pub(crate) fn build_image_playlist(thumbnail: &ResolvedThumbnailTrack) -> MediaP
     let sprite_duration = thumbnail.sprite_duration();
     let target_duration = sprite_duration.min(duration).div_ceil(1_000);
     let (width, height) = thumbnail.tile_dimensions();
-    let segments = (0..duration)
-        .step_by(usize::try_from(sprite_duration).unwrap_or(usize::MAX))
-        .enumerate()
-        .map(|(index, start)| {
+    let segments = (0..duration.div_ceil(sprite_duration.max(1)))
+        .map(|number| {
+            let start = number.saturating_mul(sprite_duration);
             let remaining = duration - start;
             let image_duration = remaining.min(sprite_duration);
             let mut unknown_tags = Vec::with_capacity(2);
-            if index == 0 {
+            if number == 0 {
                 unknown_tags.push(ExtTag {
                     tag: "X-IMAGES-ONLY".to_string(),
                     rest: None,
@@ -57,11 +56,11 @@ pub(crate) fn build_image_playlist(thumbnail: &ResolvedThumbnailTrack) -> MediaP
                     "RESOLUTION={width}x{height},LAYOUT={}x{},DURATION={}",
                     thumbnail.tile_size(),
                     thumbnail.tile_size(),
-                    seconds(u64::from(thumbnail.step())),
+                    seconds(thumbnail.frame_duration()),
                 )),
             });
             MediaSegment {
-                uri: format!("{}/{start}.jpg", thumbnail.id()),
+                uri: format!("{}/{number}.jpg", thumbnail.id()),
                 duration: image_duration as f32 / 1_000.0,
                 title: None,
                 byte_range: None,

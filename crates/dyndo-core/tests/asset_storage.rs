@@ -11,7 +11,7 @@ fn memory_operator() -> Operator {
 
 #[test]
 fn thumbnail_track_serializes_its_type_from_the_track_variant() {
-    let track = Track::Thumbnail(ThumbnailTrack::new("preview".to_string(), 4, 640, 1_000));
+    let track = Track::Thumbnail(ThumbnailTrack::new("preview".to_string(), 4, 640));
 
     let value = serde_json::to_value(track).unwrap();
 
@@ -83,7 +83,7 @@ async fn read_or_new_preserves_the_asset_base_when_adding_a_track() {
 #[tokio::test]
 async fn read_deserializes_an_asset_from_storage() {
     let operator = memory_operator();
-    operator.write("assets/asset.json", r#"{"boundaries":[1000],"tracks":[{"id":"text","path":"subtitles/en.vtt","type":"webvtt"},{"id":"preview","tile_size":4,"width":640,"step":1000,"type":"thumbnail"}]}"#).await.unwrap();
+    operator.write("assets/asset.json", r#"{"boundaries":[1000],"tracks":[{"id":"text","path":"subtitles/en.vtt","type":"webvtt"},{"id":"preview","tile_size":4,"width":640,"type":"thumbnail"}]}"#).await.unwrap();
 
     let asset = Asset::read(&operator, "assets/asset.json").await.unwrap();
 
@@ -93,7 +93,7 @@ async fn read_deserializes_an_asset_from_storage() {
     );
     assert_eq!(
         asset.find_thumbnail_track_by_id("preview"),
-        Some(&ThumbnailTrack::new("preview".to_string(), 4, 640, 1_000))
+        Some(&ThumbnailTrack::new("preview".to_string(), 4, 640))
     );
     assert_eq!(asset.boundaries, [1_000]);
 }
@@ -143,7 +143,7 @@ async fn read_rejects_the_removed_image_track_type() {
     operator
         .write(
             "asset.json",
-            r#"{"tracks":[{"id":"preview","type":"image","tile_size":4,"width":640,"step":1000}]}"#,
+            r#"{"tracks":[{"id":"preview","type":"image","tile_size":4,"width":640}]}"#,
         )
         .await
         .unwrap();

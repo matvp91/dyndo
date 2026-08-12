@@ -23,8 +23,7 @@ Add a thumbnail track to the descriptor's `tracks` array. This configuration cre
       "id": "preview",
       "type": "thumbnail",
       "tile_size": 4,
-      "width": 640,
-      "step": 1000
+      "width": 640
     }
   ]
 }
@@ -32,9 +31,8 @@ Add a thumbnail track to the descriptor's `tracks` array. This configuration cre
 
 `tile_size` is the number of tiles in both a sprite row and column. A value of
 `4` therefore creates 16 frames per sprite. `width` is the width of the whole
-composite JPEG, not one tile; it must divide evenly by `tile_size`. `step` is
-the interval between frames in milliseconds. This example makes every sprite
-cover 16 seconds of presentation time.
+composite JPEG, not one tile; it must divide evenly by `tile_size`. Frames
+follow the regular IDR cadence of the selected video source.
 
 The `id` names this thumbnail track in manifest URLs. It is independent of every
 video track ID, so you can add more than one configuration for the

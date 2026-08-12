@@ -113,7 +113,6 @@ enum Attribute {
     SampleRate,
     Channels,
     TileSize,
-    Step,
 }
 
 impl Attribute {
@@ -131,7 +130,6 @@ impl Attribute {
             "sample_rate" => Some(Self::SampleRate),
             "channels" => Some(Self::Channels),
             "tile_size" => Some(Self::TileSize),
-            "step" => Some(Self::Step),
             _ => None,
         }
     }
@@ -139,12 +137,7 @@ impl Attribute {
     fn is_numeric(self) -> bool {
         matches!(
             self,
-            Self::Width
-                | Self::Height
-                | Self::SampleRate
-                | Self::Channels
-                | Self::TileSize
-                | Self::Step
+            Self::Width | Self::Height | Self::SampleRate | Self::Channels | Self::TileSize
         )
     }
 
@@ -161,12 +154,7 @@ impl Attribute {
                 .language()
                 .map(|language| Cow::Borrowed(language.as_str())),
             Self::Role => track.role().map(|role| Cow::Borrowed(role.as_str())),
-            Self::Width
-            | Self::Height
-            | Self::SampleRate
-            | Self::Channels
-            | Self::TileSize
-            | Self::Step => None,
+            Self::Width | Self::Height | Self::SampleRate | Self::Channels | Self::TileSize => None,
         }
     }
 
@@ -186,7 +174,6 @@ impl Attribute {
                 .map(|kind| u64::from(kind.sample_rate)),
             Self::Channels => track.audio_metadata().map(|kind| u64::from(kind.channels)),
             Self::TileSize => thumbnail.map(|track| u64::from(track.tile_size())),
-            Self::Step => thumbnail.map(|track| u64::from(track.step())),
             Self::Type
             | Self::Format
             | Self::Id
@@ -364,7 +351,7 @@ mod tests {
             "WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nText\n",
         )
         .unwrap();
-        let thumbnail = ThumbnailTrack::new("preview".to_string(), 4, 640, 1_000)
+        let thumbnail = ThumbnailTrack::new("preview".to_string(), 4, 640)
             .resolve([&video])
             .unwrap();
         ResolvedAsset::new(
