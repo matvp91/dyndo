@@ -32,9 +32,7 @@ pub(super) trait ManifestRoute {
     ) -> Result<Response, ServerError>;
 }
 
-// Rejecting unknown fields prevents an unencoded `&&` from silently truncating a filter.
 #[derive(Debug, Default, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub(super) struct ManifestQuery {
     filter: Option<Filter>,
 }
@@ -150,6 +148,14 @@ mod tests {
     #[test]
     fn manifest_query_deserializes_filter() {
         let uri: Uri = "/?filter=type%3D%3Dvideo".parse().unwrap();
+        let Query(query) = Query::<ManifestQuery>::try_from_uri(&uri).unwrap();
+
+        assert!(query.filter.is_some());
+    }
+
+    #[test]
+    fn manifest_query_ignores_unknown_parameters() {
+        let uri: Uri = "/?filter=type%3D%3Dvideo&cache=refresh".parse().unwrap();
         let Query(query) = Query::<ManifestQuery>::try_from_uri(&uri).unwrap();
 
         assert!(query.filter.is_some());
