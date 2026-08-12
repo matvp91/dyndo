@@ -1,9 +1,10 @@
 use dyndo_core::role::Role;
+use dyndo_core::track::TrackType;
 use dyndo_core::track::cmaf::{CmafKind, ResolvedCmafTrack};
 
 pub(super) struct AdaptationGroup<'a> {
     key: String,
-    content_type: &'static str,
+    track_type: TrackType,
     mime_type: &'static str,
     language: Option<String>,
     role: Option<Role>,
@@ -17,7 +18,7 @@ impl<'a> AdaptationGroup<'a> {
 
         Self {
             key,
-            content_type: track.kind().content_type(),
+            track_type: track.kind().track_type(),
             mime_type: track.kind().mime_type(),
             language,
             role,
@@ -40,8 +41,8 @@ impl<'a> AdaptationGroup<'a> {
         groups
     }
 
-    pub(super) fn content_type(&self) -> &'static str {
-        self.content_type
+    pub(super) const fn track_type(&self) -> TrackType {
+        self.track_type
     }
 
     pub(super) fn mime_type(&self) -> &'static str {

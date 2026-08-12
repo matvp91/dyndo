@@ -73,12 +73,12 @@ fn build_adaptation_set(
 
     Some(AdaptationSet {
         id: Some(id.to_string()),
-        contentType: Some(group.content_type().to_string()),
+        contentType: Some(group.track_type().as_str().to_string()),
         mimeType: Some(group.mime_type().to_string()),
         lang: group.language().map(str::to_string),
         startWithSAP: Some(1),
-        Role: roles::roles(group.content_type(), group.role()),
-        Accessibility: roles::accessibility(group.content_type(), group.role()),
+        Role: roles::roles(group.track_type(), group.role()),
+        Accessibility: roles::accessibility(group.track_type(), group.role()),
         representations,
         ..Default::default()
     })

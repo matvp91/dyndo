@@ -70,14 +70,6 @@ impl Track {
         }
     }
 
-    /// Returns the serialized source discriminator used in `asset.json`.
-    pub fn asset_type(&self) -> &'static str {
-        match self {
-            Self::Source(track) => track.asset_type(),
-            Self::Thumbnail(_) => "thumbnail",
-        }
-    }
-
     pub fn source(&self) -> Option<&SourceTrack> {
         match self {
             Self::Source(track) => Some(track),

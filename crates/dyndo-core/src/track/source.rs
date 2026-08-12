@@ -91,14 +91,6 @@ impl SourceTrack {
         }
     }
 
-    /// Returns the serialized source discriminator used in `asset.json`.
-    pub fn asset_type(&self) -> &'static str {
-        match self {
-            Self::Cmaf(track) => track.kind.content_type(),
-            Self::TimedText(track) => track.format.asset_type(),
-        }
-    }
-
     /// Resolves this configured source from storage.
     pub async fn resolve(
         &self,

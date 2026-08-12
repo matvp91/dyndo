@@ -52,10 +52,6 @@ impl CmafKind {
         }
     }
 
-    pub fn content_type(&self) -> &'static str {
-        self.track_type().as_str()
-    }
-
     pub fn mime_type(&self) -> &'static str {
         match self {
             Self::Video(_) => "video/mp4",
