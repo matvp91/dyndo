@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "ayu";
-            window.path_to_searchindex_js = "../searchindex-c12fa3fa.js";
+            window.path_to_searchindex_js = "../searchindex-3cfcafc8.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-942fa83c.js"></script>
@@ -198,17 +198,15 @@ each JPEG sprite only when a client requests it.</p>
       "id": "preview",
       "type": "thumbnail",
       "tile_size": 4,
-      "width": 640,
-      "step": 1000
+      "width": 640
     }
   ]
 }
 </code></pre>
 <p><code>tile_size</code> is the number of tiles in both a sprite row and column. A value of
 <code>4</code> therefore creates 16 frames per sprite. <code>width</code> is the width of the whole
-composite JPEG, not one tile; it must divide evenly by <code>tile_size</code>. <code>step</code> is
-the interval between frames in milliseconds. This example makes every sprite
-cover 16 seconds of presentation time.</p>
+composite JPEG, not one tile; it must divide evenly by <code>tile_size</code>. Frames
+follow the regular IDR cadence of the selected video source.</p>
 <p>The <code>id</code> names this thumbnail track in manifest URLs. It is independent of every
 video track ID, so you can add more than one configuration for the
 same asset.</p>

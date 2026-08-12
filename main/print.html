@@ -36,7 +36,7 @@
             const path_to_root = "";
             const default_light_theme = "light";
             const default_dark_theme = "ayu";
-            window.path_to_searchindex_js = "searchindex-c12fa3fa.js";
+            window.path_to_searchindex_js = "searchindex-3cfcafc8.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-942fa83c.js"></script>
@@ -680,17 +680,15 @@ each JPEG sprite only when a client requests it.</p>
       "id": "preview",
       "type": "thumbnail",
       "tile_size": 4,
-      "width": 640,
-      "step": 1000
+      "width": 640
     }
   ]
 }
 </code></pre>
 <p><code>tile_size</code> is the number of tiles in both a sprite row and column. A value of
 <code>4</code> therefore creates 16 frames per sprite. <code>width</code> is the width of the whole
-composite JPEG, not one tile; it must divide evenly by <code>tile_size</code>. <code>step</code> is
-the interval between frames in milliseconds. This example makes every sprite
-cover 16 seconds of presentation time.</p>
+composite JPEG, not one tile; it must divide evenly by <code>tile_size</code>. Frames
+follow the regular IDR cadence of the selected video source.</p>
 <p>The <code>id</code> names this thumbnail track in manifest URLs. It is independent of every
 video track ID, so you can add more than one configuration for the
 same asset.</p>
@@ -1734,7 +1732,6 @@ and <code>duration</code> filters are not available.</p>
 <tr><td><code>language</code></td><td>text</td><td>audio, text</td><td>The track’s language tag, compared exactly as the descriptor spells it.</td></tr>
 <tr><td><code>role</code></td><td>text</td><td>audio, text</td><td>One of the <a href="#track-roles">track roles</a>.</td></tr>
 <tr><td><code>tile_size</code></td><td>numeric</td><td>thumbnail</td><td>Thumbnails per sprite row and column.</td></tr>
-<tr><td><code>step</code></td><td>numeric</td><td>thumbnail</td><td>Milliseconds between adjacent thumbnails.</td></tr>
 </tbody>
 </table>
 </div>
@@ -1798,7 +1795,7 @@ configured storage backend.</p>
 <tr><td><code>&lt;type&gt;_&lt;track-id&gt;/init.mp4</code></td><td>A track’s CMAF initialization segment.</td><td><code>video/mp4</code>, <code>audio/mp4</code>, or <code>application/mp4</code></td></tr>
 <tr><td><code>&lt;type&gt;_&lt;track-id&gt;/&lt;time&gt;.m4s</code></td><td>The media segment starting at presentation <code>&lt;time&gt;</code>.</td><td><code>video/mp4</code>, <code>audio/mp4</code>, or <code>application/mp4</code></td></tr>
 <tr><td><code>text_&lt;track-id&gt;/&lt;time&gt;.vtt</code></td><td>The same segment of a text track, as a WebVTT document.</td><td><code>text/vtt</code></td></tr>
-<tr><td><code>image_&lt;thumbnail-id&gt;/&lt;time&gt;.jpg</code></td><td>A JPEG thumbnail sprite advertised by DASH and HLS.</td><td><code>image/jpeg</code></td></tr>
+<tr><td><code>image_&lt;thumbnail-id&gt;/&lt;number&gt;.jpg</code></td><td>A numbered JPEG thumbnail sprite advertised by DASH and HLS.</td><td><code>image/jpeg</code></td></tr>
 </tbody>
 </table>
 </div>
@@ -1816,12 +1813,12 @@ emit these same relative URLs, players never construct them by hand.</p>
 </code></pre>
 <h3 id="thumbnail-sprites"><a class="header" href="#thumbnail-sprites">Thumbnail sprites</a></h3>
 <p>Add a thumbnail object to the asset descriptor to advertise a thumbnail sprite.
-A tile size of <code>4</code> creates a 4-by-4 sprite, and a step of <code>1000</code> samples one
-frame per second:</p>
+A tile size of <code>4</code> creates a 4-by-4 sprite whose frames follow the selected
+video source’s regular IDR cadence:</p>
 <pre><code class="language-text">/out/(asset:demo)/index.mpd
 /out/(asset:demo)/master.m3u8
 </code></pre>
-<p>The MPD addresses each sprite as <code>image_&lt;thumbnail-id&gt;/&lt;time&gt;.jpg</code>. The HLS
+<p>The MPD addresses each sprite as <code>image_&lt;thumbnail-id&gt;/&lt;number&gt;.jpg</code>. The HLS
 multivariant playlist advertises <code>image_&lt;thumbnail-id&gt;.m3u8</code>. A thumbnail that
 cannot select a video source is omitted from manifests and its image routes
 return <code>404</code>.</p>
@@ -2046,13 +2043,12 @@ Each thumbnail track has a stable <code>id</code>:</p>
   "id": "preview",
   "type": "thumbnail",
   "tile_size": 4,
-  "width": 640,
-  "step": 1000
+  "width": 640
 }
 </code></pre>
 <p><code>tile_size</code> is the number of thumbnails in each row and column, <code>width</code> is the
-full sprite width in pixels, and <code>step</code> is the interval between adjacent
-thumbnails in milliseconds.</p>
+full sprite width in pixels, and adjacent thumbnails follow the source’s IDR
+cadence.</p>
 <h2 id="boundaries"><a class="header" href="#boundaries">Boundaries</a></h2>
 <p>The optional <code>boundaries</code> array records splice points in milliseconds from the
 start of the presentation, for example for ad insertion. It is treated as a

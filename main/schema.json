@@ -147,11 +147,6 @@
         "id": {
           "type": "string"
         },
-        "step": {
-          "format": "uint32",
-          "minimum": 0,
-          "type": "integer"
-        },
         "tile_size": {
           "format": "uint32",
           "minimum": 0,
@@ -166,8 +161,7 @@
       "required": [
         "id",
         "tile_size",
-        "width",
-        "step"
+        "width"
       ],
       "type": "object"
     },

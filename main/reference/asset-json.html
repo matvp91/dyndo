@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "ayu";
-            window.path_to_searchindex_js = "../searchindex-c12fa3fa.js";
+            window.path_to_searchindex_js = "../searchindex-3cfcafc8.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-942fa83c.js"></script>
@@ -208,13 +208,12 @@ Each thumbnail track has a stable <code>id</code>:</p>
   "id": "preview",
   "type": "thumbnail",
   "tile_size": 4,
-  "width": 640,
-  "step": 1000
+  "width": 640
 }
 </code></pre>
 <p><code>tile_size</code> is the number of thumbnails in each row and column, <code>width</code> is the
-full sprite width in pixels, and <code>step</code> is the interval between adjacent
-thumbnails in milliseconds.</p>
+full sprite width in pixels, and adjacent thumbnails follow the source’s IDR
+cadence.</p>
 <h2 id="boundaries"><a class="header" href="#boundaries">Boundaries</a></h2>
 <p>The optional <code>boundaries</code> array records splice points in milliseconds from the
 start of the presentation, for example for ad insertion. It is treated as a
