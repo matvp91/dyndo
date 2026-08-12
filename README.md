@@ -14,35 +14,17 @@ while the original media stays untouched.
 
 - **Store media once.** Segment requests are byte-range reads from the original
   CMAF objects, not files copied into a second packaging layout.
-- **Change presentation metadata without rewriting media.** Correct a language,
-  assign a role, change rendition order, or add a subtitle by editing or
-  rebuilding a small descriptor.
-- **Keep URLs stable while metadata evolves.** Track IDs derive from source
-  paths rather than mutable labels such as language and role.
-- **Create delivery variants at request time.** Filters, segment lengths, DASH
-  periods, and HLS subtitle form can vary without producing another media
-  library.
-- **Keep sources immutable.** The server only reads headers and requested byte
+- **Change presentation without rewriting media.** Correct metadata, add a
+  subtitle, or choose delivery variants in a small descriptor or request URL.
+- **Keep URLs stable.** Track IDs derive from source paths, not mutable labels.
+- **Keep sources immutable.** The server reads only headers and requested byte
   ranges, which suits read-only filesystems and object storage.
-- **Keep indexing and delivery aligned.** The CLI writes the same compact
-  descriptor that the server reads, so presentation metadata has one source of
-  truth.
-- **Scale parsing with metadata, not file size.** dyndo derives its index from
-  bounded header reads instead of scanning or loading complete media objects.
+- **Scale with metadata, not file size.** dyndo derives its index from bounded
+  header reads instead of scanning complete media objects.
 
-## 📖 Documentation
+## Documentation
 
-Full documentation lives at **<https://matvp91.github.io/dyndo/>**:
-
-- **[Getting started](https://matvp91.github.io/dyndo/tutorial/getting-started.html)**
-  — build, index, and serve your first stream end to end.
-- **[How-to guides](https://matvp91.github.io/dyndo/how-to/index-sources.html)**
-  — index sources, add subtitles, run the server, serve from S3.
-- **[Reference](https://matvp91.github.io/dyndo/reference/cli.html)** — the CLI,
-  the server's routes and configuration, and the `asset.json` descriptor.
-- **[Explanation](https://matvp91.github.io/dyndo/explanation/thin-pointer.html)**
-  — storage-efficient dynamic packaging, the thin-pointer design, and
-  bounded-memory parsing.
+<https://matvp91.github.io/dyndo/>
 
 ## Install
 
@@ -76,13 +58,8 @@ http://localhost:8080/out/(asset:asset)/index.mpd      # DASH
 http://localhost:8080/out/(asset:asset)/master.m3u8    # HLS
 ```
 
-New here? The
-**[Getting started guide](https://matvp91.github.io/dyndo/tutorial/getting-started.html)**
-walks through the whole flow, including producing CMAF sources with ffmpeg.
-
 Prefer not to build at all? `dyndo-server` is published to Docker Hub as
-[`matvp91/dyndo-server`](https://hub.docker.com/r/matvp91/dyndo-server) — see
-**[Deploy with Docker](https://matvp91.github.io/dyndo/how-to/deploy-with-docker.html)**:
+[`matvp91/dyndo-server`](https://hub.docker.com/r/matvp91/dyndo-server):
 
 ```bash
 docker run --rm -p 8080:8080 -e DYNDO_FS__ROOT=/assets \
@@ -139,11 +116,8 @@ Common tasks are wrapped in the [`Makefile`](Makefile):
 Building the book needs [mdBook](https://rust-lang.github.io/mdBook/) — install
 the version pinned as `MDBOOK_VERSION` in
 [`.github/workflows/docs.yml`](.github/workflows/docs.yml)
-(`cargo install mdbook --version <that version>`) so local output matches what
-CI publishes. The guide's sources live in [`docs/`](docs/) and are published to
-GitHub Pages by the same workflow: [`/main/`](https://matvp91.github.io/dyndo/main/)
-tracks `main`, while each release remains available at
-`https://matvp91.github.io/dyndo/<version>/`.
+(`cargo install mdbook --version <that version>`) so local output matches CI.
+The guide sources are in [`docs/`](docs/).
 
 Tests run against small, committed header-only CMAF fixtures in the
 [`dyndo-core`](crates/dyndo-core/tests/fixtures),

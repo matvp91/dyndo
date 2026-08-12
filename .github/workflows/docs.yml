@@ -41,8 +41,8 @@ jobs:
           name: book
           path: docs/book
 
-  # Each published ref is available under its name: /main/ for the branch and
-  # /<version>/ for a v<version> tag. Pull requests only build the book.
+  # Main is available at /main/ and each release at /<version>/. The root
+  # redirect follows the latest release, never an in-progress main build.
   publish:
     name: publish archive
     if: github.event_name != 'pull_request'
@@ -91,12 +91,20 @@ jobs:
         env:
           ARCHIVE: ${{ runner.temp }}/pages
           VERSION: ${{ steps.version.outputs.value }}
+          SOURCE_REPOSITORY: https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git
         run: |
-          rm -rf "$ARCHIVE/next"
           mkdir -p "$ARCHIVE/$VERSION"
           rsync -a --delete docs/book/ "$ARCHIVE/$VERSION/"
           cp scripts/install.sh "$ARCHIVE/install.sh"
-          printf '<!doctype html><meta http-equiv="refresh" content="0; url=./main/">\n' > "$ARCHIVE/index.html"
+          if [[ "$GITHUB_REF_TYPE" == tag ]]; then
+            latest_tag="$(git ls-remote --tags --refs "$SOURCE_REPOSITORY" 'v*' \
+              | awk -F/ '{print $3}' \
+              | sort -V \
+              | tail -n1)"
+            if [[ "$GITHUB_REF_NAME" == "$latest_tag" ]]; then
+              printf '<!doctype html><meta http-equiv="refresh" content="0; url=./%s/">\n' "$VERSION" > "$ARCHIVE/index.html"
+            fi
+          fi
           touch "$ARCHIVE/.nojekyll"
       - name: Commit the Pages archive
         env:
