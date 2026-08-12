@@ -94,10 +94,6 @@ impl CmafKind {
         }
     }
 
-    pub fn is_text(&self) -> bool {
-        matches!(self, Self::Text(_))
-    }
-
     pub fn language_and_role_mut(&mut self) -> Option<(&mut LanguageTag, &mut Option<Role>)> {
         match self {
             Self::Video(_) => None,
