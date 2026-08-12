@@ -16,12 +16,9 @@ use self::segment::SegmentRoute;
 use crate::error::ServerError;
 
 async fn load_asset(op: &Operator, options: &Options) -> Result<Asset, ServerError> {
-    let mut asset = Asset::read(op, &format!("{}.json", options.asset()))
+    Asset::read(op, &format!("{}.json", options.asset()))
         .await
-        .map_err(|error| asset_error(options.asset(), error))?;
-    options.apply_to(&mut asset);
-
-    Ok(asset)
+        .map_err(|error| asset_error(options.asset(), error))
 }
 
 fn asset_error(asset: &str, error: AssetError) -> ServerError {

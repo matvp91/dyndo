@@ -62,7 +62,7 @@ segment request needs (the byte range to read for a given `<time>`). The `sidx`
 
 By default every `sidx` reference becomes one served segment. A generation's
 minimum segment length, together with the descriptor's optional
-[`segment_options.boundaries`](../reference/asset-json.md#segmentation), groups
+[`boundaries`](../reference/asset-json.md#boundaries), groups
 consecutive references into larger served segments at serve time — contiguous
 byte ranges merge into one — without touching the source file or the index
 itself. Offline generation receives that value through
@@ -75,9 +75,9 @@ falls — the two manifests and the segment routes always agree.
 One source type arrives at its segment index differently: a raw `.vtt` subtitle
 file has no boxes and no `sidx`, so there is nothing to resolve. When CMAF data is
 needed, dyndo packages a `wvtt` view and indexes *that* — the same box walk over
-bytes that never touch storage. Its fragments are cut where the asset's
-splice points and
-[`text_length`](../reference/asset-json.md#segmentation) say, rather than
+bytes that never touch storage. Its fragments are cut where the asset's splice
+points and the server request's
+[`text_length`](../reference/server/routes.md#segmentation-options) say, rather than
 recovered from a file, which is why those cuts are exact instead of snapped.
 
 Serving such a track to HLS resolves the segment from that index as usual, then

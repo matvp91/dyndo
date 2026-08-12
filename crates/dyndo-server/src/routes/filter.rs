@@ -320,7 +320,6 @@ mod tests {
 
     use dyndo_core::asset::ResolvedAsset;
     use dyndo_core::codec::{CodecConfig, WvttCodec};
-    use dyndo_core::segment_options::SegmentOptions;
     use dyndo_core::track::ResolvedTrack;
     use dyndo_core::track::cmaf::{CmafKind, InitSegment, ResolvedCmafTrack};
     use dyndo_core::track::metadata::{AudioMetadata, TextMetadata, VideoMetadata};
@@ -369,7 +368,7 @@ mod tests {
             .resolve([&video])
             .unwrap();
         ResolvedAsset::new(
-            SegmentOptions::default(),
+            Vec::new(),
             vec![
                 ResolvedTrack::Cmaf(video),
                 ResolvedTrack::Cmaf(audio),

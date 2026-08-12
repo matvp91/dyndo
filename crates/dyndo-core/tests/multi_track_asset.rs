@@ -18,7 +18,7 @@ async fn resolved_asset_contains_video_subtitle_and_thumbnail_tracks() {
         .write(
             "assets/movie/asset.json",
             r#"{
-                "segment_options":{"text_length":1000},
+                "boundaries":[1000],
                 "tracks":[
                     {"id":"video-main","path":"video.mp4","codec":"avc1.42c00a","type":"video","width":16,"height":16,"frame_rate":"4/1"},
                     {"id":"text-en","path":"subtitles/en.vtt","type":"webvtt","language":"en"},
@@ -53,7 +53,7 @@ async fn resolved_asset_contains_video_subtitle_and_thumbnail_tracks() {
         .unwrap();
     assert!(matches!(subtitles.format(), TimedTextFormat::WebVtt));
     let packaged_subtitles = subtitles
-        .package_wvtt(&asset.segment_options)
+        .package_wvtt(1_000, &asset.boundaries)
         .await
         .unwrap();
     let video_initialization = video

@@ -4,7 +4,6 @@ use dash_mpd::{
     AdaptationSet, AudioChannelConfiguration, MPD, Period, Representation, S, SegmentTemplate,
     SegmentTimeline,
 };
-use dyndo_core::segment_options::SegmentOptions;
 use dyndo_core::track::cmaf::{CmafKind, ResolvedCmafTrack, ServedSegment};
 use dyndo_core::track::thumbnail::ResolvedThumbnailTrack;
 
@@ -21,14 +20,15 @@ const MEDIA_TEMPLATE: &str = "$RepresentationID$/$Time$.m4s";
 pub(crate) fn build_mpd(
     tracks: &[ResolvedCmafTrack],
     thumbnails: &[ResolvedThumbnailTrack],
-    segment_options: &SegmentOptions,
+    min_length: u32,
+    boundaries: &[u32],
 ) -> MPD {
     let presentation_duration = presentation_duration(tracks);
     let groups = AdaptationGroup::group(tracks);
     let mut adaptations: Vec<AdaptationSet> = groups
         .iter()
         .enumerate()
-        .filter_map(|(id, group)| build_adaptation_set(id, group, segment_options))
+        .filter_map(|(id, group)| build_adaptation_set(id, group, min_length, boundaries))
         .collect();
     adaptations.extend(crate::thumbnail::build_adaptation_sets(
         groups.len(),
@@ -48,8 +48,7 @@ pub(crate) fn build_mpd(
         mpdtype: Some("static".to_string()),
         profiles: Some(DASH_PROFILE.to_string()),
         minBufferTime: Some(Duration::from_millis(u64::from(max_segment_duration(
-            tracks,
-            segment_options,
+            tracks, min_length, boundaries,
         )))),
         mediaPresentationDuration: Some(Duration::from_millis(u64::from(presentation_duration))),
         periods: periods.into_iter().collect(),
@@ -60,12 +59,13 @@ pub(crate) fn build_mpd(
 fn build_adaptation_set(
     id: usize,
     group: &AdaptationGroup<'_>,
-    segment_options: &SegmentOptions,
+    min_length: u32,
+    boundaries: &[u32],
 ) -> Option<AdaptationSet> {
     let representations: Vec<Representation> = group
         .members()
         .iter()
-        .filter_map(|track| build_representation(track, segment_options))
+        .filter_map(|track| build_representation(track, min_length, boundaries))
         .collect();
     if representations.is_empty() {
         return None;
@@ -86,9 +86,10 @@ fn build_adaptation_set(
 
 fn build_representation(
     track: &ResolvedCmafTrack,
-    segment_options: &SegmentOptions,
+    min_length: u32,
+    boundaries: &[u32],
 ) -> Option<Representation> {
-    let segments = track.served_segments(segment_options);
+    let segments = track.served_segments(min_length, boundaries);
     if segments.is_empty() {
         return None;
     }
@@ -183,16 +184,19 @@ fn maximum_duration(
         .max()
 }
 
-fn max_segment_duration(tracks: &[ResolvedCmafTrack], options: &SegmentOptions) -> u32 {
+fn max_segment_duration(tracks: &[ResolvedCmafTrack], min_length: u32, boundaries: &[u32]) -> u32 {
     tracks
         .iter()
         .filter(|track| matches!(track.kind(), CmafKind::Video(_) | CmafKind::Audio(_)))
         .flat_map(|track| {
-            track.served_segments(options).into_iter().map(|segment| {
-                let duration = u128::from(segment.unscaled_duration()) * 1_000;
-                let duration = duration.div_ceil(u128::from(track.timescale()));
-                u32::try_from(duration).unwrap_or(u32::MAX)
-            })
+            track
+                .served_segments(min_length, boundaries)
+                .into_iter()
+                .map(|segment| {
+                    let duration = u128::from(segment.unscaled_duration()) * 1_000;
+                    let duration = duration.div_ceil(u128::from(track.timescale()));
+                    u32::try_from(duration).unwrap_or(u32::MAX)
+                })
         })
         .max()
         .unwrap_or(0)

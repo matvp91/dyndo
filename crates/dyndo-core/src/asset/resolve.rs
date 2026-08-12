@@ -2,7 +2,6 @@ use futures_util::future::try_join_all;
 use opendal::Operator;
 
 use super::Asset;
-use crate::segment_options::SegmentOptions;
 use crate::track::cmaf::ResolvedCmafTrack;
 use crate::track::thumbnail::ResolvedThumbnailTrack;
 use crate::track::{CmafRepresentationError, ResolvedTrack, Track, TrackResolveError};
@@ -23,7 +22,7 @@ impl Asset {
         }
         tracks.extend(thumbnails);
 
-        Ok(ResolvedAsset::new(self.segment_options.clone(), tracks))
+        Ok(ResolvedAsset::new(self.boundaries.clone(), tracks))
     }
 
     /// Resolves one configured track by identifier.
@@ -73,24 +72,17 @@ impl Asset {
 /// An asset whose configured tracks have been resolved for runtime use.
 #[derive(Clone)]
 pub struct ResolvedAsset {
-    segment_options: SegmentOptions,
+    boundaries: Vec<u32>,
     tracks: Vec<ResolvedTrack>,
 }
 
 impl ResolvedAsset {
-    pub fn new(segment_options: SegmentOptions, tracks: Vec<ResolvedTrack>) -> Self {
-        Self {
-            segment_options,
-            tracks,
-        }
+    pub fn new(boundaries: Vec<u32>, tracks: Vec<ResolvedTrack>) -> Self {
+        Self { boundaries, tracks }
     }
 
-    pub fn segment_options(&self) -> &SegmentOptions {
-        &self.segment_options
-    }
-
-    pub fn segment_options_mut(&mut self) -> &mut SegmentOptions {
-        &mut self.segment_options
+    pub fn boundaries(&self) -> &[u32] {
+        &self.boundaries
     }
 
     pub fn tracks(&self) -> &[ResolvedTrack] {
@@ -112,12 +104,13 @@ impl ResolvedAsset {
     /// Builds CMAF representations for every source track in the asset.
     pub async fn cmaf_representations(
         &self,
+        text_length: u32,
     ) -> Result<Vec<ResolvedCmafTrack>, CmafRepresentationError> {
         let representations = self
             .tracks
             .iter()
             .filter(|track| track.thumbnail().is_none())
-            .map(|track| track.cmaf_representation(&self.segment_options));
+            .map(|track| track.cmaf_representation(text_length, &self.boundaries));
         try_join_all(representations).await
     }
 }

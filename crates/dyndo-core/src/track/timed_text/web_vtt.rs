@@ -4,7 +4,6 @@ use relative_path::{RelativePath, RelativePathBuf};
 
 use super::{ResolvedTimedTextTrack, TimedTextError, TimedTextFormat};
 use crate::packaging::PackageError;
-use crate::segment_options::SegmentOptions;
 use crate::text::Subtitle;
 use crate::track::cmaf::{CmafKind, ResolvedCmafTrack};
 use crate::track::metadata::TextMetadata;
@@ -44,18 +43,19 @@ impl ResolvedTimedTextTrack {
         ))
     }
 
-    fn package_bytes(&self, options: &SegmentOptions) -> Result<Bytes, PackageError> {
+    fn package_bytes(&self, text_length: u32, boundaries: &[u32]) -> Result<Bytes, PackageError> {
         self.subtitle
-            .to_wvtt(options.text_length, &options.boundaries)
+            .to_wvtt(text_length, boundaries)
             .map(Bytes::from)
     }
 
     /// Packages this source as temporary, in-memory CMAF media.
     pub async fn package_wvtt(
         &self,
-        options: &SegmentOptions,
+        text_length: u32,
+        boundaries: &[u32],
     ) -> Result<ResolvedCmafTrack, WebVttPackageError> {
-        let bytes = self.package_bytes(options)?;
+        let bytes = self.package_bytes(text_length, boundaries)?;
         ResolvedCmafTrack::from_cmaf_bytes(
             bytes,
             self.id().to_string(),
@@ -69,10 +69,12 @@ impl ResolvedTimedTextTrack {
     pub async fn served_web_vtt_segment(
         &self,
         time: u64,
-        options: &SegmentOptions,
+        min_length: u32,
+        text_length: u32,
+        boundaries: &[u32],
     ) -> Result<Option<String>, WebVttPackageError> {
-        let cmaf = self.package_wvtt(options).await?;
-        let Some(segment) = cmaf.served_segment(time, options) else {
+        let cmaf = self.package_wvtt(text_length, boundaries).await?;
+        let Some(segment) = cmaf.served_segment(time, min_length, boundaries) else {
             return Ok(None);
         };
 

@@ -1,6 +1,5 @@
 use std::borrow::Cow;
 
-use dyndo_core::asset::Asset;
 use serde::Deserialize;
 
 use crate::error::ServerError;
@@ -34,18 +33,16 @@ impl Options {
             .map_err(|error| ServerError::BadRequest(format!("invalid options: {error}")))
     }
 
-    pub(super) fn apply_to(&self, asset: &mut Asset) {
-        let options = &mut asset.segment_options;
-        if self.min_length != 0 {
-            options.min_length = self.min_length;
-        }
-        if self.text_length != 0 {
-            options.text_length = self.text_length;
-        }
-    }
-
     pub(super) fn asset(&self) -> &str {
         &self.asset
+    }
+
+    pub(super) fn min_length(&self) -> u32 {
+        self.min_length
+    }
+
+    pub(super) fn text_length(&self) -> u32 {
+        self.text_length
     }
 
     pub(super) fn dash_options(&self) -> dyndo_dash::options::DashOptions {
@@ -62,56 +59,13 @@ impl Options {
 
 #[cfg(test)]
 mod tests {
-    use dyndo_core::asset::Asset;
-    use dyndo_core::segment_options::SegmentOptions;
-
     use super::Options;
 
     #[test]
-    fn parse_reads_root_segment_options() {
+    fn parse_reads_delivery_options() {
         let options = Options::parse("asset:demo,min_length:1000,text_length:2000").unwrap();
 
         assert_eq!((options.min_length, options.text_length), (1_000, 2_000));
-    }
-
-    #[test]
-    fn apply_to_preserves_asset_values_when_options_are_empty() {
-        let options = Options::parse("asset:demo").unwrap();
-        let mut asset = Asset::default();
-        asset.segment_options = SegmentOptions {
-            min_length: 1_000,
-            text_length: 2_000,
-            boundaries: vec![3_000],
-        };
-
-        options.apply_to(&mut asset);
-
-        assert_eq!(
-            asset.segment_options,
-            SegmentOptions {
-                min_length: 1_000,
-                text_length: 2_000,
-                boundaries: vec![3_000],
-            }
-        );
-    }
-
-    #[test]
-    fn apply_to_overwrites_asset_values() {
-        let options = Options::parse("asset:demo,min_length:1000,text_length:2000").unwrap();
-        let mut asset = Asset::default();
-        asset.segment_options.boundaries = vec![3_000];
-
-        options.apply_to(&mut asset);
-
-        assert_eq!(
-            asset.segment_options,
-            SegmentOptions {
-                min_length: 1_000,
-                text_length: 2_000,
-                boundaries: vec![3_000],
-            }
-        );
     }
 
     #[test]

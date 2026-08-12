@@ -29,7 +29,7 @@ and `TimedTextTrack`.
 
 After resolution, `ResolvedTrack` preserves the configured track form. Its
 variants are `Cmaf`, `TimedText`, and `Thumbnail`. A `ResolvedAsset` contains
-the resolved tracks of one asset and its segment options. `CmafKind` remains
+the resolved tracks and splice boundaries of one asset. `CmafKind` remains
 `Video`, `Audio`, or `Text`; `TimedTextFormat` is `WebVtt` today and can gain
 `Imsc1` when supported. CMAF's `Text` kind is the container-level media
 category, independent of the timed-text document format.
@@ -43,7 +43,7 @@ Representation-specific types have one public home: CMAF types live in
 ## Assets, tracks, and discovery
 
 An **asset** is persisted configuration. `Asset` serializes directly to
-`asset.json`; it owns asset-wide segment options and a collection of `Track`
+`asset.json`; it owns asset-wide splice boundaries and a collection of `Track`
 values. Each track names its source form, gives it a stable identifier, and
 supplies metadata that is not necessarily present in the source file.
 
@@ -93,7 +93,7 @@ thumbnail is the exception: resolving one thumbnail must inspect candidate
 video sources because source selection is part of thumbnail resolution.
 
 There is no resolver service type. The loaded `Asset` already owns the asset
-path, track configuration, and segment options; the storage operator is the
+path, track configuration, and splice boundaries; the storage operator is the
 only additional input needed for resolution.
 
 ## Operation ownership

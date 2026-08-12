@@ -1,17 +1,20 @@
 use std::ops::Range;
 
 use super::{ResolvedCmafTrack, Segment};
-use crate::segment_options::SegmentOptions;
-
 impl ResolvedCmafTrack {
     /// Returns the addressable segments produced by the configured delivery policy.
-    pub fn served_segments(&self, options: &SegmentOptions) -> Vec<ServedSegment<'_>> {
-        ServedSegment::group(self.segments(), options.min_length, &options.boundaries)
+    pub fn served_segments(&self, min_length: u32, boundaries: &[u32]) -> Vec<ServedSegment<'_>> {
+        ServedSegment::group(self.segments(), min_length, boundaries)
     }
 
     /// Finds an addressable segment by its unscaled start time.
-    pub fn served_segment(&self, time: u64, options: &SegmentOptions) -> Option<ServedSegment<'_>> {
-        self.served_segments(options)
+    pub fn served_segment(
+        &self,
+        time: u64,
+        min_length: u32,
+        boundaries: &[u32],
+    ) -> Option<ServedSegment<'_>> {
+        self.served_segments(min_length, boundaries)
             .into_iter()
             .find(|segment| segment.unscaled_start_time() == time)
     }
@@ -174,7 +177,6 @@ mod tests {
 
     use super::{ResolvedCmafTrack, Segment, ServedSegment};
     use crate::codec::{CodecConfig, WvttCodec};
-    use crate::segment_options::SegmentOptions;
     use crate::track::cmaf::{CmafKind, InitSegment};
     use crate::track::metadata::TextMetadata;
 
@@ -287,12 +289,7 @@ mod tests {
     #[test]
     fn served_segment_finds_a_group_by_its_addressable_start_time() {
         let track = track(&[(0, 400, 0, 40), (400, 800, 40, 80), (800, 1_200, 80, 120)]);
-        let options = SegmentOptions {
-            min_length: 800,
-            ..Default::default()
-        };
-
-        let segment = track.served_segment(800, &options).unwrap();
+        let segment = track.served_segment(800, 800, &[]).unwrap();
 
         assert_eq!(segment.byte_range(), 80..120);
     }
@@ -300,12 +297,7 @@ mod tests {
     #[test]
     fn served_segment_rejects_a_source_time_hidden_by_grouping() {
         let track = track(&[(0, 400, 0, 40), (400, 800, 40, 80)]);
-        let options = SegmentOptions {
-            min_length: 800,
-            ..Default::default()
-        };
-
-        assert!(track.served_segment(400, &options).is_none());
+        assert!(track.served_segment(400, 800, &[]).is_none());
     }
 
     #[test]

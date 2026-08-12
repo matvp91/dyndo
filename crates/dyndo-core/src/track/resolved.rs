@@ -9,7 +9,6 @@ use super::thumbnail::ResolvedThumbnailTrack;
 use super::timed_text::{ResolvedTimedTextTrack, TimedTextError, WebVttPackageError};
 use super::{TrackFormat, TrackType};
 use crate::role::Role;
-use crate::segment_options::SegmentOptions;
 
 /// One configured asset track whose source or dependencies have been resolved.
 #[derive(Clone)]
@@ -154,11 +153,15 @@ impl ResolvedTrack {
     /// Builds the CMAF representation supported by this track.
     pub async fn cmaf_representation(
         &self,
-        options: &SegmentOptions,
+        text_length: u32,
+        boundaries: &[u32],
     ) -> Result<ResolvedCmafTrack, CmafRepresentationError> {
         match self {
             Self::Cmaf(track) => Ok(track.clone()),
-            Self::TimedText(track) => track.package_wvtt(options).await.map_err(Into::into),
+            Self::TimedText(track) => track
+                .package_wvtt(text_length, boundaries)
+                .await
+                .map_err(Into::into),
             Self::Thumbnail(_) => Err(CmafRepresentationError::UnsupportedTrack),
         }
     }

@@ -42,14 +42,15 @@ pub enum DashError {
 /// multi-period transformation fails, or XML serialization fails.
 pub async fn generate_mpd(
     asset: &ResolvedAsset,
+    min_length: u32,
+    text_length: u32,
     dash_options: &DashOptions,
 ) -> Result<String, DashError> {
-    let tracks = asset.cmaf_representations().await?;
+    let tracks = asset.cmaf_representations(text_length).await?;
     let thumbnails: Vec<_> = asset.thumbnails().cloned().collect();
-    let segment_options = asset.segment_options();
-    let mut mpd = builder::build_mpd(&tracks, &thumbnails, segment_options);
+    let mut mpd = builder::build_mpd(&tracks, &thumbnails, min_length, asset.boundaries());
     if dash_options.multi_period {
-        multi_period::split(&mut mpd, &segment_options.boundaries)?;
+        multi_period::split(&mut mpd, asset.boundaries())?;
     }
     if dash_options.compact {
         compact::compact(&mut mpd);

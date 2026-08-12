@@ -62,11 +62,9 @@ before parsing the Rison object.
 | `min_length` | `sml`, `segment_min_length` | integer | `0` | Minimum served segment length in milliseconds. Whole fragments are grouped until this length is reached. |
 | `text_length` | `stl`, `segment_text_length` | integer | `0` | Length of each segment of a subtitle track dyndo packages from a `.vtt`, in milliseconds. Exact, not a minimum. `0` cuts one only at the splice points. |
 
-Each of these overrides the matching option in the descriptor's
-[`segment_options`](../asset-json.md#segmentation) block. An option left at zero
-names nothing and leaves the asset's value standing, since a request cannot
-express the difference between an absent value and a zero one. Configure segment
-boundaries only in the descriptor.
+These options apply only to the request. Their default of zero serves each CMAF
+fragment separately and packages raw WebVTT without a regular grid. Configure
+splice [boundaries](../asset-json.md#boundaries) only in the descriptor.
 
 ### Output options
 
@@ -75,7 +73,7 @@ Two options affect DASH output:
 | Full key | Shorthand | Type | Default | Description |
 |---|---|---|---|---|
 | `compact` | `c` | boolean | `false` | Hoist segment-template data shared by DASH representations to their adaptation set. |
-| `multi_period` | `mp` | boolean | `false` | Open a `Period` at each [segment boundary](#segmentation-options) rather than describing the asset as one. |
+| `multi_period` | `mp` | boolean | `false` | Open a `Period` at each [asset boundary](../asset-json.md#boundaries) rather than describing the asset as one. |
 
 One option affects HLS output:
 

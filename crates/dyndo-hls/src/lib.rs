@@ -9,7 +9,6 @@ mod roles;
 use std::io;
 
 use dyndo_core::asset::ResolvedAsset;
-use dyndo_core::segment_options::SegmentOptions;
 use dyndo_core::track::cmaf::CmafKind;
 use dyndo_core::track::thumbnail::ResolvedThumbnailTrack;
 use dyndo_core::track::{CmafRepresentationError, ResolvedTrack};
@@ -35,9 +34,11 @@ pub enum HlsError {
 /// the resulting playlist is invalid.
 pub async fn generate_master_playlist(
     asset: &ResolvedAsset,
+    min_length: u32,
+    text_length: u32,
     hls_options: &HlsOptions,
 ) -> Result<String, HlsError> {
-    let tracks = asset.cmaf_representations().await?;
+    let tracks = asset.cmaf_representations(text_length).await?;
     let thumbnails: Vec<_> = asset.thumbnails().cloned().collect();
     let mut hls_options = *hls_options;
     hls_options.wvtt |= asset
@@ -45,8 +46,13 @@ pub async fn generate_master_playlist(
         .iter()
         .filter_map(ResolvedTrack::cmaf)
         .any(|track| matches!(track.kind(), CmafKind::Text(_)));
-    let playlist =
-        master::build_playlist(&tracks, &thumbnails, asset.segment_options(), &hls_options)?;
+    let playlist = master::build_playlist(
+        &tracks,
+        &thumbnails,
+        min_length,
+        asset.boundaries(),
+        &hls_options,
+    )?;
     serialize(|output| playlist.write_to(output))
 }
 
@@ -58,13 +64,15 @@ pub async fn generate_master_playlist(
 /// or the resulting playlist is invalid.
 pub async fn generate_media_playlist(
     track: &ResolvedTrack,
-    segment_options: &SegmentOptions,
+    min_length: u32,
+    text_length: u32,
+    boundaries: &[u32],
     hls_options: &HlsOptions,
 ) -> Result<String, HlsError> {
-    let cmaf = track.cmaf_representation(segment_options).await?;
+    let cmaf = track.cmaf_representation(text_length, boundaries).await?;
     let mut hls_options = *hls_options;
     hls_options.wvtt |= track.timed_text().is_none();
-    let playlist = media::build_playlist(&cmaf, segment_options, &hls_options);
+    let playlist = media::build_playlist(&cmaf, min_length, boundaries, &hls_options);
     serialize(|output| playlist.write_to(output))
 }
 

@@ -83,7 +83,7 @@ async fn read_or_new_preserves_the_asset_base_when_adding_a_track() {
 #[tokio::test]
 async fn read_deserializes_an_asset_from_storage() {
     let operator = memory_operator();
-    operator.write("assets/asset.json", r#"{"segment_options":{"min_length":1000},"tracks":[{"id":"text","path":"subtitles/en.vtt","type":"webvtt"},{"id":"preview","tile_size":4,"width":640,"step":1000,"type":"thumbnail"}]}"#).await.unwrap();
+    operator.write("assets/asset.json", r#"{"boundaries":[1000],"tracks":[{"id":"text","path":"subtitles/en.vtt","type":"webvtt"},{"id":"preview","tile_size":4,"width":640,"step":1000,"type":"thumbnail"}]}"#).await.unwrap();
 
     let asset = Asset::read(&operator, "assets/asset.json").await.unwrap();
 
@@ -95,6 +95,20 @@ async fn read_deserializes_an_asset_from_storage() {
         asset.find_thumbnail_track_by_id("preview"),
         Some(&ThumbnailTrack::new("preview".to_string(), 4, 640, 1_000))
     );
+    assert_eq!(asset.boundaries, [1_000]);
+}
+
+#[tokio::test]
+async fn read_rejects_legacy_segment_options() {
+    let operator = memory_operator();
+    operator
+        .write("asset.json", r#"{"segment_options":{},"tracks":[]}"#)
+        .await
+        .unwrap();
+
+    let result = Asset::read(&operator, "asset.json").await;
+
+    assert!(result.is_err());
 }
 
 #[tokio::test]

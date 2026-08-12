@@ -6,7 +6,6 @@ use axum::{
     routing::get,
 };
 use dyndo_core::asset::ResolvedAsset;
-use dyndo_core::segment_options::SegmentOptions;
 use dyndo_core::track::ResolvedTrack;
 use dyndo_dash::options::DashOptions;
 use dyndo_hls::options::HlsOptions;
@@ -59,12 +58,24 @@ impl ManifestRoute for Router<Operator> {
             ("index", "mpd") => {
                 let resolved = resolve_asset(&op, &asset, query.filter.as_ref()).await?;
                 let dash_options = options.dash_options();
-                dash(&resolved, &dash_options).await
+                dash(
+                    &resolved,
+                    options.min_length(),
+                    options.text_length(),
+                    &dash_options,
+                )
+                .await
             }
             ("master", "m3u8") => {
                 let resolved = resolve_asset(&op, &asset, query.filter.as_ref()).await?;
                 let hls_options = options.hls_options();
-                hls_master(&resolved, &hls_options).await
+                hls_master(
+                    &resolved,
+                    options.min_length(),
+                    options.text_length(),
+                    &hls_options,
+                )
+                .await
             }
             (resource, "m3u8") => {
                 let hls_options = options.hls_options();
@@ -72,7 +83,14 @@ impl ManifestRoute for Router<Operator> {
                 if track.thumbnail().is_some() {
                     hls_images(&track).await
                 } else {
-                    hls_media(&track, &asset.segment_options, &hls_options).await
+                    hls_media(
+                        &track,
+                        options.min_length(),
+                        options.text_length(),
+                        &asset.boundaries,
+                        &hls_options,
+                    )
+                    .await
                 }
             }
             _ => Err(not_found()),
@@ -82,26 +100,35 @@ impl ManifestRoute for Router<Operator> {
 
 pub(super) async fn dash(
     asset: &ResolvedAsset,
+    min_length: u32,
+    text_length: u32,
     options: &DashOptions,
 ) -> Result<Response, ServerError> {
-    let xml = dyndo_dash::generate_mpd(asset, options).await?;
+    let xml = dyndo_dash::generate_mpd(asset, min_length, text_length, options).await?;
     Ok(([(CONTENT_TYPE, DASH_CONTENT_TYPE)], xml).into_response())
 }
 
 pub(super) async fn hls_master(
     asset: &ResolvedAsset,
+    min_length: u32,
+    text_length: u32,
     options: &HlsOptions,
 ) -> Result<Response, ServerError> {
-    let playlist = dyndo_hls::generate_master_playlist(asset, options).await?;
+    let playlist =
+        dyndo_hls::generate_master_playlist(asset, min_length, text_length, options).await?;
     Ok(([(CONTENT_TYPE, HLS_CONTENT_TYPE)], playlist).into_response())
 }
 
 pub(super) async fn hls_media(
     track: &ResolvedTrack,
-    segment_options: &SegmentOptions,
+    min_length: u32,
+    text_length: u32,
+    boundaries: &[u32],
     options: &HlsOptions,
 ) -> Result<Response, ServerError> {
-    let playlist = dyndo_hls::generate_media_playlist(track, segment_options, options).await?;
+    let playlist =
+        dyndo_hls::generate_media_playlist(track, min_length, text_length, boundaries, options)
+            .await?;
     Ok(([(CONTENT_TYPE, HLS_CONTENT_TYPE)], playlist).into_response())
 }
 

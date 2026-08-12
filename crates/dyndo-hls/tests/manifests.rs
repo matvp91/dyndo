@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use dyndo_core::asset::ResolvedAsset;
 use dyndo_core::codec::{AacCodec, AvcCodec, CodecConfig};
-use dyndo_core::segment_options::SegmentOptions;
 use dyndo_core::track::ResolvedTrack;
 use dyndo_core::track::cmaf::{CmafKind, InitSegment, ResolvedCmafTrack, Segment};
 use dyndo_core::track::metadata::{AudioMetadata, TextMetadata, VideoMetadata};
@@ -101,16 +100,14 @@ fn rendition_tracks() -> Vec<ResolvedTrack> {
 }
 
 async fn generate(tracks: &[ResolvedTrack], hls_options: &HlsOptions) -> (String, Vec<String>) {
-    let segment_options = SegmentOptions {
-        text_length: 1_000,
-        ..SegmentOptions::default()
-    };
-    let asset = ResolvedAsset::new(segment_options.clone(), tracks.to_vec());
-    let master = generate_master_playlist(&asset, hls_options).await.unwrap();
+    let asset = ResolvedAsset::new(Vec::new(), tracks.to_vec());
+    let master = generate_master_playlist(&asset, 0, 1_000, hls_options)
+        .await
+        .unwrap();
     let mut media = Vec::new();
     for track in tracks {
         media.push(
-            generate_media_playlist(track, &segment_options, hls_options)
+            generate_media_playlist(track, 0, 1_000, asset.boundaries(), hls_options)
                 .await
                 .unwrap(),
         );
@@ -187,14 +184,14 @@ async fn generated_image_playlists_advertise_existing_thumbnail_sprites() {
     let alternate = ThumbnailTrack::new("alternate".to_string(), 2, 16, 500);
     let alternate = alternate.resolve(&tracks).unwrap();
     let asset = ResolvedAsset::new(
-        SegmentOptions::default(),
+        Vec::new(),
         vec![
             ResolvedTrack::Cmaf(tracks[0].clone()),
             ResolvedTrack::Thumbnail(preview),
             ResolvedTrack::Thumbnail(alternate),
         ],
     );
-    let master = generate_master_playlist(&asset, &HlsOptions::default())
+    let master = generate_master_playlist(&asset, 0, 0, &HlsOptions::default())
         .await
         .unwrap();
     let thumbnail = configured.resolve(&tracks).unwrap();

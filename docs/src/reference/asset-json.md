@@ -9,17 +9,14 @@ JSON Schema for the dyndo release that wrote the file, at
 
 ## Top-level structure
 
-A descriptor is an object with a `tracks` array and an optional block of segment
-options. The array contains CMAF source tracks, raw WebVTT source tracks, and
+A descriptor is an object with a `tracks` array and optional splice boundaries.
+The array contains CMAF source tracks, raw WebVTT source tracks, and
 derived thumbnail tracks:
 
 ```json
 {
   "$schema": "https://matvp91.github.io/dyndo/0.5.1/schema.json",
-  "segment_options": {
-    "min_length": 6000,
-    "boundaries": [683640]
-  },
+  "boundaries": [683640],
   "tracks": [ /* CMAF, VTT, and thumbnail track objects */ ]
 }
 ```
@@ -49,26 +46,17 @@ Each thumbnail track has a stable `id`:
 full sprite width in pixels, and `step` is the interval between adjacent
 thumbnails in milliseconds.
 
-## Segmentation
+## Boundaries
 
-The optional `segment_options` block records how the asset asks to be segmented. It is what the asset *asks for*, not a decision: a server request option overrides any option it names, and the descriptor is never written back. A block equal to the defaults is omitted from the file.
+The optional `boundaries` array records splice points in milliseconds from the
+start of the presentation, for example for ad insertion. It is treated as a
+set: order and duplicates do not matter. Each point is snapped per CMAF track to
+the first fragment boundary at or after it, so a segment never opens on content
+from before the splice point. Raw WebVTT tracks are cut at the listed times as
+they are packaged.
 
-| Field | Type | Default | Description |
-|---|---|---|---|
-| `min_length` | integer | `0` | Minimum served segment length, in **milliseconds**. Whole fragments are grouped until this length is reached; `0` serves every fragment as its own segment. |
-| `text_length` | integer | `0` | Length of each segment of a subtitle track dyndo packages from a `.vtt`. Unlike `min_length` this is exact, since dyndo fragments those tracks itself. `0` asks for no grid, leaving the splice points as the only cuts. |
-| `boundaries` | array of integers | `[]` | Splice points, in **milliseconds** from the start of the presentation, e.g. for ad insertion. A served segment never spans one, so a segment edge exists at every splice point. Treated as a set: order and duplicates don't matter. Each point is snapped per track to the first fragment boundary at or after it (audio fragment rasters cannot hit arbitrary millisecond positions), so a segment never opens on content from before the splice point. |
-
-Grouping is applied while generating manifests and serving segments; stored CMAF
-files are never modified.
-
-`boundaries` only changes video and audio output when a non-zero `min_length`
-groups multiple fragments — with the default of `0`, every fragment is already a
-served segment. Subtitle tracks are different: dyndo cuts them at the splice
-points as it packages them, whatever `min_length` says.
-
-Descriptors use only the field names shown above. Server request options accept
-additional shorthand and legacy spellings; see the
+The server's `min_length` and `text_length` request options choose the delivery
+grid for a particular request; they are not stored in the descriptor. See the
 [server routes reference](server/routes.md#segmentation-options).
 
 ## Track objects
@@ -138,8 +126,8 @@ ISO-BMFF), which is resolved and served like any other CMAF track, or a **raw
 
 > Both forms are served. A raw `.vtt` is parsed and packaged into a `wvtt` track
 > as it is read, so nothing is written beside it and the `.vtt` stays the source
-> of truth; its segments are cut where the asset's splice points and
-> [`text_length`](#segmentation) say. CMAF WebVTT tracks use `"type": "text"`
+> of truth; its segments are cut where the asset's splice points and the server
+> request's [`text_length`](server/routes.md#segmentation-options) say. CMAF WebVTT tracks use `"type": "text"`
 > and record their `wvtt` codec. Raw WebVTT tracks use `"type": "webvtt"` and do
 > not have a codec, because dyndo packages them only for CMAF output. HLS serves
 > raw VTT cues directly from a raw WebVTT source; CMAF `wvtt` sources are served
@@ -271,7 +259,7 @@ track:
 The descriptor is safe to edit, and re-running [`index`](./cli/index.md) will
 not undo your edits: tracks already in the descriptor keep their metadata as-is
 on a re-index. The fields intended for hand-editing are `language` and `role` on
-audio and text tracks, the top-level [segmentation fields](#segmentation), and
+audio and text tracks, the top-level [boundaries](#boundaries), and
 track order (which picks the HLS default audio rendition).
 
 Two things to keep in mind:

@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use dyndo_core::asset::ResolvedAsset;
 use dyndo_core::codec::{AacCodec, AvcCodec, CodecConfig, WvttCodec};
-use dyndo_core::segment_options::SegmentOptions;
 use dyndo_core::track::ResolvedTrack;
 use dyndo_core::track::cmaf::{CmafKind, InitSegment, ResolvedCmafTrack, Segment};
 use dyndo_core::track::metadata::{AudioMetadata, TextMetadata, VideoMetadata};
@@ -73,7 +72,9 @@ fn video_track(id: &str, width: u32, height: u32, bytes_per_segment: u64) -> Res
 async fn generate(
     tracks: &[ResolvedCmafTrack],
     thumbnail_tracks: &[ThumbnailTrack],
-    segment_options: &SegmentOptions,
+    min_length: u32,
+    text_length: u32,
+    boundaries: &[u32],
     dash_options: &DashOptions,
 ) -> String {
     let thumbnails: Vec<_> = thumbnail_tracks
@@ -82,8 +83,8 @@ async fn generate(
         .collect();
     let mut resolved_tracks: Vec<_> = tracks.iter().cloned().map(ResolvedTrack::Cmaf).collect();
     resolved_tracks.extend(thumbnails.into_iter().map(ResolvedTrack::Thumbnail));
-    let asset = ResolvedAsset::new(segment_options.clone(), resolved_tracks);
-    generate_mpd(&asset, dash_options)
+    let asset = ResolvedAsset::new(boundaries.to_vec(), resolved_tracks);
+    generate_mpd(&asset, min_length, text_length, dash_options)
         .await
         .unwrap()
         .lines()
@@ -101,7 +102,9 @@ async fn generated_two_segment_video_mpd_matches_the_golden_fixture() {
     let xml = generate(
         &[video_track("video-main", 16, 16, 100)],
         &[],
-        &SegmentOptions::default(),
+        0,
+        0,
+        &[],
         &DashOptions::default(),
     )
     .await;
@@ -114,7 +117,9 @@ async fn generated_compact_mpd_matches_the_golden_fixture() {
     let xml = generate(
         &[video_track("video-main", 16, 16, 100)],
         &[],
-        &SegmentOptions::default(),
+        0,
+        0,
+        &[],
         &DashOptions {
             compact: true,
             ..DashOptions::default()
@@ -130,7 +135,9 @@ async fn generated_thumbnail_mpd_addresses_sprites_by_start_time() {
     let xml = generate(
         &[video_track("video-main", 16, 16, 100)],
         &[thumbnail()],
-        &SegmentOptions::default(),
+        0,
+        0,
+        &[],
         &DashOptions::default(),
     )
     .await;
@@ -145,10 +152,9 @@ async fn generated_multi_period_mpd_matches_the_golden_fixture() {
     let xml = generate(
         &[video_track("video-main", 16, 16, 100)],
         &[],
-        &SegmentOptions {
-            boundaries: vec![1_000],
-            ..SegmentOptions::default()
-        },
+        0,
+        0,
+        &[1_000],
         &DashOptions {
             multi_period: true,
             ..DashOptions::default()
@@ -164,10 +170,9 @@ async fn generated_multi_period_mpd_slides_templates_by_the_millisecond_boundary
     let xml = generate(
         &[video_track("video-main", 16, 16, 100)],
         &[thumbnail()],
-        &SegmentOptions {
-            boundaries: vec![750],
-            ..SegmentOptions::default()
-        },
+        0,
+        0,
+        &[750],
         &DashOptions {
             multi_period: true,
             ..DashOptions::default()
@@ -185,10 +190,9 @@ async fn generated_multi_period_mpd_references_a_boundary_crossing_thumbnail_spr
     let xml = generate(
         &[video_track("video-main", 16, 16, 100)],
         &[thumbnail()],
-        &SegmentOptions {
-            boundaries: vec![1_000],
-            ..SegmentOptions::default()
-        },
+        0,
+        0,
+        &[1_000],
         &DashOptions {
             multi_period: true,
             ..DashOptions::default()
@@ -227,13 +231,7 @@ async fn generated_grouped_rendition_mpd_matches_the_golden_fixture() {
             25,
         ),
     ];
-    let xml = generate(
-        &tracks,
-        &[],
-        &SegmentOptions::default(),
-        &DashOptions::default(),
-    )
-    .await;
+    let xml = generate(&tracks, &[], 0, 0, &[], &DashOptions::default()).await;
 
     assert_eq!(xml, include_str!("fixtures/grouped.mpd").trim_end());
 }

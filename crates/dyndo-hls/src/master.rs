@@ -1,4 +1,3 @@
-use dyndo_core::segment_options::SegmentOptions;
 use dyndo_core::track::cmaf::{CmafKind, ResolvedCmafTrack, ServedSegment};
 use dyndo_core::track::metadata::VideoMetadata;
 use dyndo_core::track::thumbnail::ResolvedThumbnailTrack;
@@ -14,13 +13,14 @@ const SUBTITLES_GROUP_ID: &str = "subtitles";
 pub(crate) fn build_playlist(
     tracks: &[ResolvedCmafTrack],
     thumbnails: &[ResolvedThumbnailTrack],
-    segment_options: &SegmentOptions,
+    min_length: u32,
+    boundaries: &[u32],
     hls_options: &HlsOptions,
 ) -> Result<MasterPlaylist, HlsError> {
-    let renditions = Renditions::summarize(tracks, segment_options, hls_options);
+    let renditions = Renditions::summarize(tracks, min_length, boundaries, hls_options);
     Ok(MasterPlaylist {
         version: None,
-        variants: build_variant_streams(tracks, segment_options, &renditions)?,
+        variants: build_variant_streams(tracks, min_length, boundaries, &renditions)?,
         session_data: Vec::new(),
         session_key: Vec::new(),
         start: None,
@@ -49,17 +49,15 @@ fn image_streams(thumbnails: &[ResolvedThumbnailTrack]) -> Vec<ExtTag> {
 
 fn build_variant_streams(
     tracks: &[ResolvedCmafTrack],
-    segment_options: &SegmentOptions,
+    min_length: u32,
+    boundaries: &[u32],
     renditions: &Renditions,
 ) -> Result<Vec<VariantStream>, HlsError> {
     tracks
         .iter()
         .filter_map(|track| match track.kind() {
             CmafKind::Video(video) => Some(build_variant_stream(
-                track,
-                video,
-                segment_options,
-                renditions,
+                track, video, min_length, boundaries, renditions,
             )),
             CmafKind::Audio(_) | CmafKind::Text(_) => None,
         })
@@ -69,10 +67,11 @@ fn build_variant_streams(
 fn build_variant_stream(
     track: &ResolvedCmafTrack,
     video: &VideoMetadata,
-    segment_options: &SegmentOptions,
+    min_length: u32,
+    boundaries: &[u32],
     renditions: &Renditions,
 ) -> Result<VariantStream, HlsError> {
-    let segments = track.served_segments(segment_options);
+    let segments = track.served_segments(min_length, boundaries);
     Ok(VariantStream {
         is_i_frame: false,
         uri: format!("{}.m3u8", track.id()),

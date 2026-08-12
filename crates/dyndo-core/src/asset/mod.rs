@@ -3,7 +3,6 @@ use relative_path::{RelativePath, RelativePathBuf};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::segment_options::SegmentOptions;
 use crate::track::thumbnail::ThumbnailTrack;
 use crate::track::{ResolvedTrack, SourceTrack, Track};
 
@@ -37,9 +36,9 @@ pub struct Asset {
     #[serde(skip)]
     #[schemars(skip)]
     path: RelativePathBuf,
-    /// How the asset asks to be segmented, for requests that do not say.
-    #[serde(default, skip_serializing_if = "is_default")]
-    pub segment_options: SegmentOptions,
+    /// Splice points, in milliseconds from the presentation start.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub boundaries: Vec<u32>,
     pub tracks: Vec<Track>,
 }
 
@@ -48,7 +47,7 @@ impl Default for Asset {
         Self {
             schema: asset_schema_url(),
             path: RelativePathBuf::default(),
-            segment_options: SegmentOptions::default(),
+            boundaries: Vec::new(),
             tracks: Vec::new(),
         }
     }
@@ -56,10 +55,6 @@ impl Default for Asset {
 
 fn asset_schema_url() -> String {
     ASSET_SCHEMA_URL.to_owned()
-}
-
-fn is_default<T: Default + PartialEq>(value: &T) -> bool {
-    *value == T::default()
 }
 
 impl Asset {

@@ -1,5 +1,4 @@
 use dyndo_core::role::Role;
-use dyndo_core::segment_options::SegmentOptions;
 use dyndo_core::track::cmaf::{CmafKind, ResolvedCmafTrack, ServedSegment};
 use language_tags::LanguageTag;
 use m3u8_rs::{AlternativeMedia, AlternativeMediaType};
@@ -18,7 +17,8 @@ pub(crate) struct Renditions {
 impl Renditions {
     pub(crate) fn summarize(
         tracks: &[ResolvedCmafTrack],
-        segment_options: &SegmentOptions,
+        min_length: u32,
+        boundaries: &[u32],
         hls_options: &HlsOptions,
     ) -> Self {
         let mut codecs = Vec::new();
@@ -42,7 +42,7 @@ impl Renditions {
             if hls_options.wvtt || !matches!(track.kind(), CmafKind::Text(_)) {
                 push_unique(&mut codecs, track.codec().rfc6381());
             }
-            let segments = track.served_segments(segment_options);
+            let segments = track.served_segments(min_length, boundaries);
             bitrates.0 = bitrates.0.max(ServedSegment::maximum_bitrate(&segments));
             bitrates.1 = bitrates.1.max(ServedSegment::average_bitrate(&segments));
         }

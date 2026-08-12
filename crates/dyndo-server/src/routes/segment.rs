@@ -40,9 +40,29 @@ impl SegmentRoute for Router<Operator> {
         let asset = load_asset(&op, &options).await?;
 
         match (file_name, extension) {
-            ("init", "mp4") => initialization(&op, &asset, &track_id).await,
-            (time, "m4s") => media(&op, &asset, &track_id, segment_time(time, &file)?).await,
-            (time, "vtt") => text(&op, &asset, &track_id, segment_time(time, &file)?).await,
+            ("init", "mp4") => initialization(&op, &asset, options.text_length(), &track_id).await,
+            (time, "m4s") => {
+                media(
+                    &op,
+                    &asset,
+                    options.min_length(),
+                    options.text_length(),
+                    &track_id,
+                    segment_time(time, &file)?,
+                )
+                .await
+            }
+            (time, "vtt") => {
+                text(
+                    &op,
+                    &asset,
+                    options.min_length(),
+                    options.text_length(),
+                    &track_id,
+                    segment_time(time, &file)?,
+                )
+                .await
+            }
             (time, "jpg") => thumbnail(&op, &asset, &track_id, segment_time(time, &file)?).await,
             _ => Err(not_found()),
         }
@@ -57,10 +77,11 @@ fn segment_time(name: &str, file: &str) -> Result<u64, ServerError> {
 pub(super) async fn initialization(
     op: &Operator,
     asset: &Asset,
+    text_length: u32,
     track_id: &str,
 ) -> Result<Response, ServerError> {
     let track = resolve_track(op, asset, track_id, None).await?;
-    let cmaf = cmaf_representation(&track, asset).await?;
+    let cmaf = cmaf_representation(&track, text_length, &asset.boundaries).await?;
     let bytes = cmaf
         .read_range(op, cmaf.init_segment().byte_range())
         .await?;
@@ -71,13 +92,15 @@ pub(super) async fn initialization(
 pub(super) async fn media(
     op: &Operator,
     asset: &Asset,
+    min_length: u32,
+    text_length: u32,
     track_id: &str,
     time: u64,
 ) -> Result<Response, ServerError> {
     let track = resolve_track(op, asset, track_id, None).await?;
-    let cmaf = cmaf_representation(&track, asset).await?;
+    let cmaf = cmaf_representation(&track, text_length, &asset.boundaries).await?;
     let segment = cmaf
-        .served_segment(time, &asset.segment_options)
+        .served_segment(time, min_length, &asset.boundaries)
         .ok_or_else(|| ServerError::NotFound(format!("segment {time} for track {track_id}")))?;
     let bytes = cmaf.read_range(op, segment.byte_range()).await?;
 
@@ -87,6 +110,8 @@ pub(super) async fn media(
 pub(super) async fn text(
     op: &Operator,
     asset: &Asset,
+    min_length: u32,
+    text_length: u32,
     track_id: &str,
     time: u64,
 ) -> Result<Response, ServerError> {
@@ -95,7 +120,7 @@ pub(super) async fn text(
         .timed_text()
         .ok_or_else(|| ServerError::NotFound(format!("track {track_id}")))?;
     let text = timed_text
-        .served_web_vtt_segment(time, &asset.segment_options)
+        .served_web_vtt_segment(time, min_length, text_length, &asset.boundaries)
         .await
         .map_err(CmafRepresentationError::from)?
         .ok_or_else(|| ServerError::NotFound(format!("segment {time} for track {track_id}")))?;
@@ -105,10 +130,11 @@ pub(super) async fn text(
 
 async fn cmaf_representation(
     track: &ResolvedTrack,
-    asset: &Asset,
+    text_length: u32,
+    boundaries: &[u32],
 ) -> Result<ResolvedCmafTrack, ServerError> {
     track
-        .cmaf_representation(&asset.segment_options)
+        .cmaf_representation(text_length, boundaries)
         .await
         .map_err(Into::into)
 }

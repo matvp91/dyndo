@@ -13,7 +13,8 @@ source forms work:
 > CMAF packaging happens only when an operation needs it, so a `.vtt` you edit
 > is served edited on the next request — no re-indexing and no repackaging step.
 > How the packaged track is cut is set by
-> [`segment_options.text_length` and `boundaries`](../reference/asset-json.md#segmentation).
+> [`boundaries`](../reference/asset-json.md#boundaries) and the server's
+> [`text_length`](../reference/server/routes.md#segmentation-options).
 
 How a track is *delivered* then depends on the protocol. DASH always references
 packaged `wvtt` segments. HLS references plain WebVTT documents, because that is
@@ -75,7 +76,7 @@ A WebVTT file declares no language of its own, so set it here — without
 has no `codec`: dyndo packages it as `wvtt` for DASH and returns the parsed VTT
 cues directly for HLS.
 
-By default the whole subtitle becomes one segment, cut only at the asset's splice points. Set `text_length` in the descriptor or the server request when you want a regular grid:
+By default the whole subtitle becomes one segment, cut only at the asset's splice points. Set the server request's `text_length` when you want a regular grid:
 
 ```bash
 curl "http://localhost:8080/out/(asset:asset,text_length:4000)/index.mpd"
