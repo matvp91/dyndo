@@ -7,6 +7,7 @@ use super::cmaf::{CmafError, ResolvedCmafTrack};
 use super::metadata::{AudioMetadata, TextMetadata, VideoMetadata};
 use super::thumbnail::ResolvedThumbnailTrack;
 use super::timed_text::{ResolvedTimedTextTrack, TimedTextError, WebVttPackageError};
+use super::{TrackFormat, TrackType};
 use crate::role::Role;
 use crate::segment_options::SegmentOptions;
 
@@ -48,11 +49,21 @@ impl ResolvedTrack {
         }
     }
 
-    pub fn asset_type(&self) -> &'static str {
+    /// Returns the playback category of this track.
+    pub fn track_type(&self) -> TrackType {
         match self {
-            Self::Cmaf(track) => track.kind().content_type(),
-            Self::TimedText(track) => track.format().asset_type(),
-            Self::Thumbnail(_) => "thumbnail",
+            Self::Cmaf(track) => track.kind().track_type(),
+            Self::TimedText(_) => TrackType::Text,
+            Self::Thumbnail(_) => TrackType::Thumbnail,
+        }
+    }
+
+    /// Returns the stored or generated form of this track.
+    pub fn format(&self) -> TrackFormat {
+        match self {
+            Self::Cmaf(_) => TrackFormat::Cmaf,
+            Self::TimedText(track) => track.format().track_format(),
+            Self::Thumbnail(_) => TrackFormat::Thumbnail,
         }
     }
 

@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::codec::CodecConfig;
 use crate::role::Role;
+use crate::track::TrackType;
 use crate::track::metadata::{AudioMetadata, TextMetadata, VideoMetadata};
 
 mod boxes;
@@ -42,12 +43,17 @@ pub enum CmafKind {
 }
 
 impl CmafKind {
-    pub fn content_type(&self) -> &'static str {
+    /// Returns the playback category of this CMAF track.
+    pub const fn track_type(&self) -> TrackType {
         match self {
-            Self::Video(_) => "video",
-            Self::Audio(_) => "audio",
-            Self::Text(_) => "text",
+            Self::Video(_) => TrackType::Video,
+            Self::Audio(_) => TrackType::Audio,
+            Self::Text(_) => TrackType::Text,
         }
+    }
+
+    pub fn content_type(&self) -> &'static str {
+        self.track_type().as_str()
     }
 
     pub fn mime_type(&self) -> &'static str {

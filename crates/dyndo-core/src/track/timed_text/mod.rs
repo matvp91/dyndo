@@ -3,7 +3,7 @@ use relative_path::{RelativePath, RelativePathBuf};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::metadata::TextMetadata;
+use super::{TrackFormat, metadata::TextMetadata};
 use crate::text::{Subtitle, WebVttParseError};
 
 mod web_vtt;
@@ -62,9 +62,17 @@ impl TimedTextFormat {
         }
     }
 
-    pub fn asset_type(&self) -> &'static str {
+    /// Returns the serialized source discriminator used in `asset.json`.
+    pub const fn asset_type(&self) -> &'static str {
         match self {
             Self::WebVtt(_) => "webvtt",
+        }
+    }
+
+    /// Returns the format used to expose this timed-text source as a track.
+    pub const fn track_format(&self) -> TrackFormat {
+        match self {
+            Self::WebVtt(_) => TrackFormat::WebVtt,
         }
     }
 

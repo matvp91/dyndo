@@ -102,6 +102,7 @@ impl Comparison {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Attribute {
     Type,
+    Format,
     Id,
     Codec,
     FrameRate,
@@ -119,6 +120,7 @@ impl Attribute {
     fn parse(name: &str) -> Option<Self> {
         match name {
             "type" => Some(Self::Type),
+            "format" => Some(Self::Format),
             "id" => Some(Self::Id),
             "codec" => Some(Self::Codec),
             "frame_rate" => Some(Self::FrameRate),
@@ -148,7 +150,8 @@ impl Attribute {
 
     fn text(self, track: &ResolvedTrack) -> Option<Cow<'_, str>> {
         match self {
-            Self::Type => Some(Cow::Borrowed(track.asset_type())),
+            Self::Type => Some(Cow::Borrowed(track.track_type().as_str())),
+            Self::Format => Some(Cow::Borrowed(track.format().as_str())),
             Self::Id => Some(Cow::Borrowed(track.id())),
             Self::Codec => track.codec().map(Cow::Owned),
             Self::FrameRate => track
@@ -184,9 +187,13 @@ impl Attribute {
             Self::Channels => track.audio_metadata().map(|kind| u64::from(kind.channels)),
             Self::TileSize => thumbnail.map(|track| u64::from(track.tile_size())),
             Self::Step => thumbnail.map(|track| u64::from(track.step())),
-            Self::Type | Self::Id | Self::Codec | Self::FrameRate | Self::Language | Self::Role => {
-                None
-            }
+            Self::Type
+            | Self::Format
+            | Self::Id
+            | Self::Codec
+            | Self::FrameRate
+            | Self::Language
+            | Self::Role => None,
         }
     }
 }
@@ -316,8 +323,9 @@ mod tests {
     use dyndo_core::segment_options::SegmentOptions;
     use dyndo_core::track::ResolvedTrack;
     use dyndo_core::track::cmaf::{CmafKind, InitSegment, ResolvedCmafTrack};
-    use dyndo_core::track::metadata::{AudioMetadata, VideoMetadata};
+    use dyndo_core::track::metadata::{AudioMetadata, TextMetadata, VideoMetadata};
     use dyndo_core::track::thumbnail::ThumbnailTrack;
+    use dyndo_core::track::timed_text::ResolvedTimedTextTrack;
 
     use super::Filter;
 
@@ -349,6 +357,14 @@ mod tests {
                 role: None,
             }),
         );
+        let cmaf_text = cmaf("cmaf-text", CmafKind::Text(TextMetadata::default()));
+        let web_vtt = ResolvedTimedTextTrack::from_web_vtt_text(
+            "webvtt".to_string(),
+            "webvtt.vtt".into(),
+            TextMetadata::default(),
+            "WEBVTT\n\n00:00:00.000 --> 00:00:01.000\nText\n",
+        )
+        .unwrap();
         let thumbnail = ThumbnailTrack::new("preview".to_string(), 4, 640, 1_000)
             .resolve([&video])
             .unwrap();
@@ -357,6 +373,8 @@ mod tests {
             vec![
                 ResolvedTrack::Cmaf(video),
                 ResolvedTrack::Cmaf(audio),
+                ResolvedTrack::Cmaf(cmaf_text),
+                ResolvedTrack::TimedText(web_vtt),
                 ResolvedTrack::Thumbnail(thumbnail),
             ],
         )
@@ -387,12 +405,48 @@ mod tests {
     }
 
     #[test]
-    fn apply_returns_an_error_when_no_track_matches() {
+    fn apply_keeps_cmaf_and_webvtt_text_tracks() {
         let mut asset = asset();
 
-        let result = Filter::parse("type==text").unwrap().apply(&mut asset);
+        Filter::parse("type==text")
+            .unwrap()
+            .apply(&mut asset)
+            .unwrap();
 
-        assert!(result.is_err());
+        let ids: Vec<_> = asset.tracks().iter().map(ResolvedTrack::id).collect();
+
+        assert_eq!(ids, ["cmaf-text", "webvtt"]);
+    }
+
+    #[test]
+    fn apply_excludes_cmaf_and_webvtt_text_tracks_by_type() {
+        let mut asset = asset();
+
+        Filter::parse("type!=text")
+            .unwrap()
+            .apply(&mut asset)
+            .unwrap();
+
+        assert!(
+            asset
+                .tracks()
+                .iter()
+                .all(|track| track.track_type().as_str() != "text")
+        );
+    }
+
+    #[test]
+    fn apply_filters_raw_webvtt_tracks_by_format() {
+        let mut asset = asset();
+
+        Filter::parse("format==webvtt")
+            .unwrap()
+            .apply(&mut asset)
+            .unwrap();
+
+        let ids: Vec<_> = asset.tracks().iter().map(ResolvedTrack::id).collect();
+
+        assert_eq!(ids, ["webvtt"]);
     }
 
     #[test]

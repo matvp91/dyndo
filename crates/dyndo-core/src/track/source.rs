@@ -85,6 +85,7 @@ impl SourceTrack {
         }
     }
 
+    /// Returns the serialized source discriminator used in `asset.json`.
     pub fn asset_type(&self) -> &'static str {
         match self {
             Self::Cmaf(track) => track.kind.content_type(),

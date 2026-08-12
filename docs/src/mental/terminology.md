@@ -60,15 +60,24 @@ It determines the source form from the input: `.vtt` is discovered as raw
 WebVTT; other supported inputs are discovered as CMAF. Discovery creates the
 stable source identifier that is then recorded in the asset.
 
-The word **type** has two deliberate meanings in the system:
+The `type` property in `asset.json` is a serialized source discriminator. It
+selects the resolver: `webvtt` means a raw WebVTT document, whereas `video`,
+`audio`, and `text` mean CMAF sources. It is not the playback type used by a
+resolved track.
 
-- A serialized track type is the source or thumbnail form written in
-  `asset.json`: `video`, `audio`, `text`, `webvtt`, or `thumbnail`.
-- A CMAF media kind is the container category of a CMAF track: `video`,
-  `audio`, or `text`.
+Every `ResolvedTrack` has a playback **type** and a source **format**:
 
-For example, `webvtt` is a timed-text document format, while CMAF `text` is the
-container category used when that document is packaged with the `wvtt` codec.
+| Resolved track | Type | Format |
+|---|---|---|
+| CMAF video | `video` | `cmaf` |
+| CMAF audio | `audio` | `cmaf` |
+| CMAF text | `text` | `cmaf` |
+| Raw WebVTT | `text` | `webvtt` |
+| Thumbnail | `thumbnail` | `thumbnail` |
+
+`TimedTextFormat` describes a timed-text document format such as WebVTT. It
+maps to the broader track format while keeping every timed-text source in the
+`text` playback type.
 
 ## Resolution and filtering
 
