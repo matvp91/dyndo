@@ -129,7 +129,7 @@ fn encode_frame_as_jpeg(
         time_base,
         time,
     )?;
-    encode_jpeg(&decoder_context, &frame, width, height)
+    encode_jpeg(Some(decoder_context.bit_rate), &frame, width, height)
 }
 
 fn decode_frame(
@@ -182,8 +182,8 @@ fn frame_time(frame: &AVFrame, time_base: AVRational) -> Option<u64> {
     u64::try_from(milliseconds).ok()
 }
 
-fn encode_jpeg(
-    decoder: &AVCodecContext,
+pub(super) fn encode_jpeg(
+    bit_rate: Option<i64>,
     frame: &AVFrame,
     width: i32,
     height: i32,
@@ -196,7 +196,9 @@ fn encode_jpeg(
         .copied()
         .ok_or(FrameExtractorError::Extraction)?;
     let mut encoder_context = AVCodecContext::new(&encoder);
-    encoder_context.set_bit_rate(decoder.bit_rate);
+    if let Some(bit_rate) = bit_rate {
+        encoder_context.set_bit_rate(bit_rate);
+    }
     encoder_context.set_width(width);
     encoder_context.set_height(height);
     encoder_context.set_time_base(AVRational { num: 1, den: 1 });
