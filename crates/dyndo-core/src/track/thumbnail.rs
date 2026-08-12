@@ -90,7 +90,7 @@ impl ResolvedThumbnailTrack {
 
     /// Returns the interval between regular IDR frames, in milliseconds.
     pub fn frame_duration(&self) -> u64 {
-        self.source.idr_cadence()
+        SpriteGenerator::cadence(&self.source)
     }
 
     /// Returns the duration covered by one thumbnail sprite, in milliseconds.

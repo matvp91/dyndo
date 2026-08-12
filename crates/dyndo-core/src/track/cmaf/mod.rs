@@ -14,7 +14,6 @@ use crate::track::TrackType;
 use crate::track::metadata::{AudioMetadata, TextMetadata, VideoMetadata};
 
 mod boxes;
-mod cadence;
 mod inspect;
 mod segments;
 mod served;
