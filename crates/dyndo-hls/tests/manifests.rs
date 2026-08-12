@@ -60,15 +60,28 @@ fn track(
 }
 
 fn video_track() -> ResolvedCmafTrack {
-    track(
-        "video-main",
+    video_track_with_segments(2)
+}
+
+fn video_track_with_segments(segment_count: u64) -> ResolvedCmafTrack {
+    let init = Arc::new(InitSegment::new(avc_codec(), 1_000, 0, 100));
+    let segments = (0..segment_count)
+        .map(|index| {
+            let start = index * 1_000;
+            Segment::new(Arc::clone(&init), start, start + 1_000, 100, 200)
+        })
+        .collect();
+
+    ResolvedCmafTrack::new(
+        "video-main".into(),
+        "video-main.mp4".into(),
         CmafKind::Video(VideoMetadata {
             width: 16,
             height: 16,
             frame_rate: "4/1".into(),
         }),
-        avc_codec(),
-        100,
+        init,
+        segments,
     )
 }
 
@@ -201,7 +214,7 @@ async fn generated_image_playlists_advertise_existing_thumbnail_sprites() {
         "#EXT-X-IMAGE-STREAM-INF:BANDWIDTH=64,CODECS=\"jpeg\",RESOLUTION=8x8,URI=\"preview.m3u8\""
     ));
     assert!(master.contains(
-        "#EXT-X-IMAGE-STREAM-INF:BANDWIDTH=128,CODECS=\"jpeg\",RESOLUTION=8x8,URI=\"alternate.m3u8\""
+        "#EXT-X-IMAGE-STREAM-INF:BANDWIDTH=64,CODECS=\"jpeg\",RESOLUTION=8x8,URI=\"alternate.m3u8\""
     ));
     assert_eq!(
         images,
@@ -221,14 +234,14 @@ async fn generated_image_playlists_advertise_existing_thumbnail_sprites() {
 
 #[test]
 fn generated_image_playlist_shortens_the_final_sprite() {
-    let track = video_track();
+    let track = video_track_with_segments(5);
     let configured = thumbnail();
     let thumbnail = configured.resolve(std::slice::from_ref(&track)).unwrap();
     let playlist = generate_image_playlist(&thumbnail).unwrap();
 
     assert!(playlist.contains(concat!(
-        "#EXT-X-TILES:RESOLUTION=8x8,LAYOUT=2x2,DURATION=0.400\n",
-        "#EXTINF:0.4,\n",
-        "preview/1600.jpg\n",
+        "#EXT-X-TILES:RESOLUTION=8x8,LAYOUT=2x2,DURATION=1.000\n",
+        "#EXTINF:1,\n",
+        "preview/1.jpg\n",
     )));
 }

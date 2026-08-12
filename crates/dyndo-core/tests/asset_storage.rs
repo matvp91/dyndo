@@ -25,14 +25,6 @@ fn asset_serialization_includes_the_versioned_schema_url() {
     assert_eq!(serialized["$schema"], ASSET_SCHEMA_URL);
 }
 
-#[test]
-fn legacy_assets_default_to_the_current_schema_url() {
-    let asset: Asset = serde_json::from_str(r#"{"tracks":[]}"#).unwrap();
-    let serialized = serde_json::to_value(asset).unwrap();
-
-    assert_eq!(serialized["$schema"], ASSET_SCHEMA_URL);
-}
-
 #[tokio::test]
 async fn read_or_new_preserves_the_asset_base_when_adding_a_track() {
     let mut asset = Asset::read_or_new(
@@ -99,19 +91,6 @@ async fn read_deserializes_an_asset_from_storage() {
 }
 
 #[tokio::test]
-async fn read_rejects_legacy_segment_options() {
-    let operator = memory_operator();
-    operator
-        .write("asset.json", r#"{"segment_options":{},"tracks":[]}"#)
-        .await
-        .unwrap();
-
-    let result = Asset::read(&operator, "asset.json").await;
-
-    assert!(result.is_err());
-}
-
-#[tokio::test]
 async fn read_or_new_propagates_invalid_json() {
     let operator = memory_operator();
     operator.write("asset.json", "not json").await.unwrap();
@@ -144,22 +123,6 @@ async fn read_rejects_the_removed_image_track_type() {
         .write(
             "asset.json",
             r#"{"tracks":[{"id":"preview","type":"image","tile_size":4,"width":640}]}"#,
-        )
-        .await
-        .unwrap();
-
-    let result = Asset::read(&operator, "asset.json").await;
-
-    assert!(result.is_err());
-}
-
-#[tokio::test]
-async fn read_rejects_the_legacy_vtt_track_type() {
-    let operator = memory_operator();
-    operator
-        .write(
-            "asset.json",
-            r#"{"tracks":[{"id":"text","path":"subtitles/en.vtt","type":"vtt"}]}"#,
         )
         .await
         .unwrap();

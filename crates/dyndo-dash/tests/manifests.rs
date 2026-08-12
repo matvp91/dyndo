@@ -131,7 +131,7 @@ async fn generated_compact_mpd_matches_the_golden_fixture() {
 }
 
 #[tokio::test]
-async fn generated_thumbnail_mpd_addresses_sprites_by_start_time() {
+async fn generated_thumbnail_mpd_addresses_sprites_by_number() {
     let xml = generate(
         &[video_track("video-main", 16, 16, 100)],
         &[thumbnail()],
@@ -143,7 +143,7 @@ async fn generated_thumbnail_mpd_addresses_sprites_by_start_time() {
     .await;
 
     assert!(xml.contains(
-        "media=\"preview/$Time$.jpg\" timescale=\"1000\" presentationTimeOffset=\"0\"><SegmentTimeline><S t=\"0\" d=\"4000\"/></SegmentTimeline>"
+        "media=\"preview/$Number$.jpg\" startNumber=\"0\" timescale=\"1000\" presentationTimeOffset=\"0\"><SegmentTimeline><S t=\"0\" d=\"4000\"/></SegmentTimeline>"
     ));
 }
 
@@ -201,7 +201,7 @@ async fn generated_multi_period_mpd_references_a_boundary_crossing_thumbnail_spr
     .await;
 
     assert!(xml.contains(
-        "contentType=\"image\" mimeType=\"image/jpeg\"><SupplementalProperty schemeIdUri=\"urn:mpeg:dash:period-connectivity:2015\" value=\"0\"/><Representation id=\"preview\" bandwidth=\"64\" width=\"16\" height=\"16\"><EssentialProperty schemeIdUri=\"http://dashif.org/guidelines/thumbnail_tile\" value=\"2x2\"/><SegmentTemplate media=\"preview/$Time$.jpg\" timescale=\"1000\" presentationTimeOffset=\"1000\"><SegmentTimeline><S t=\"0\" d=\"4000\"/></SegmentTimeline>"
+        "contentType=\"image\" mimeType=\"image/jpeg\"><SupplementalProperty schemeIdUri=\"urn:mpeg:dash:period-connectivity:2015\" value=\"0\"/><Representation id=\"preview\" bandwidth=\"64\" width=\"16\" height=\"16\"><EssentialProperty schemeIdUri=\"http://dashif.org/guidelines/thumbnail_tile\" value=\"2x2\"/><SegmentTemplate media=\"preview/$Number$.jpg\" startNumber=\"0\" timescale=\"1000\" presentationTimeOffset=\"1000\"><SegmentTimeline><S t=\"0\" d=\"4000\"/></SegmentTimeline>"
     ));
 }
 
