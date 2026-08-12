@@ -75,11 +75,22 @@ impl<'a> SpritePlan<'a> {
                 "source is not video".to_owned(),
             ));
         };
-        let tile_height = tile_width * video.height / video.width;
-        let width = tile_width * tile_size;
-        let height = tile_height * tile_size;
-        let tile_count = tile_size * tile_size;
-        let first = (number * tile_count) as usize;
+        if tile_width == 0 || tile_size == 0 || video.width == 0 || video.height == 0 {
+            return Err(SpriteGeneratorError::Invalid(
+                "dimensions must be greater than zero".to_owned(),
+            ));
+        }
+        let invalid = || SpriteGeneratorError::Invalid("dimensions are too large".to_owned());
+        let tile_height =
+            u32::try_from(u64::from(tile_width) * u64::from(video.height) / u64::from(video.width))
+                .map_err(|_| invalid())?;
+        let width = tile_width.checked_mul(tile_size).ok_or_else(invalid)?;
+        let height = tile_height.checked_mul(tile_size).ok_or_else(invalid)?;
+        let tile_count = tile_size.checked_mul(tile_size).ok_or_else(invalid)?;
+        let first = number
+            .checked_mul(tile_count)
+            .and_then(|first| usize::try_from(first).ok())
+            .ok_or_else(invalid)?;
         let segments: Vec<_> = track
             .cadence_aligned_segments()
             .skip(first)

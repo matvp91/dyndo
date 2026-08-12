@@ -28,7 +28,7 @@ impl ThumbnailTrack {
         &self,
         tracks: impl IntoIterator<Item = &'a ResolvedCmafTrack>,
     ) -> Option<ResolvedThumbnailTrack> {
-        let source = select_source(self.width / self.tile_size, tracks)?;
+        let source = select_source(self.width / self.tile_size.max(1), tracks)?;
 
         Some(ResolvedThumbnailTrack {
             id: self.id.clone(),
@@ -79,16 +79,20 @@ impl ResolvedThumbnailTrack {
         let CmafKind::Video(video) = self.source.kind() else {
             unreachable!("thumbnail source must be video");
         };
+        if video.width == 0 {
+            return 0;
+        }
         let height = u64::from(self.width()) * u64::from(video.height) / u64::from(video.width);
+        if self.tile_size() == 0 {
+            return height as u32;
+        }
         (height - height % u64::from(self.tile_size())) as u32
     }
 
     /// Returns the dimensions of one thumbnail tile.
     pub fn tile_dimensions(&self) -> (u32, u32) {
-        (
-            self.width() / self.tile_size,
-            self.height() / self.tile_size,
-        )
+        let tile_size = self.tile_size.max(1);
+        (self.width() / tile_size, self.height() / tile_size)
     }
 
     /// Returns the interval between regular IDR frames, in milliseconds.
