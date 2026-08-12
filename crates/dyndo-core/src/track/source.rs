@@ -4,8 +4,7 @@ use relative_path::{RelativePath, RelativePathBuf};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::cmaf::{CmafKind, CmafTrack};
-use super::metadata::{AudioMetadata, VideoMetadata};
+use super::cmaf::CmafTrack;
 use super::resolved::{ResolvedTrack, TrackResolveError};
 use super::timed_text::TimedTextTrack;
 use crate::role::Role;
@@ -30,54 +29,6 @@ impl SourceTrack {
         match self {
             Self::Cmaf(track) => &track.path,
             Self::TimedText(track) => &track.path,
-        }
-    }
-
-    pub fn codec(&self) -> Option<&str> {
-        match self {
-            Self::Cmaf(track) => Some(&track.codec),
-            Self::TimedText(_) => None,
-        }
-    }
-
-    pub fn cmaf_kind(&self) -> Option<&CmafKind> {
-        match self {
-            Self::Cmaf(track) => Some(&track.kind),
-            Self::TimedText(_) => None,
-        }
-    }
-
-    pub fn video_metadata(&self) -> Option<&VideoMetadata> {
-        match self {
-            Self::Cmaf(CmafTrack {
-                kind: CmafKind::Video(metadata),
-                ..
-            }) => Some(metadata),
-            Self::Cmaf(_) | Self::TimedText(_) => None,
-        }
-    }
-
-    pub fn audio_metadata(&self) -> Option<&AudioMetadata> {
-        match self {
-            Self::Cmaf(CmafTrack {
-                kind: CmafKind::Audio(metadata),
-                ..
-            }) => Some(metadata),
-            Self::Cmaf(_) | Self::TimedText(_) => None,
-        }
-    }
-
-    pub fn language(&self) -> Option<&LanguageTag> {
-        match self {
-            Self::Cmaf(track) => track.kind.language(),
-            Self::TimedText(track) => Some(&track.format.text().language),
-        }
-    }
-
-    pub fn role(&self) -> Option<Role> {
-        match self {
-            Self::Cmaf(track) => track.kind.role(),
-            Self::TimedText(track) => track.format.text().role,
         }
     }
 

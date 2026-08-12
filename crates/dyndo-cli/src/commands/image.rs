@@ -39,7 +39,13 @@ pub(crate) async fn run(op: &Operator, args: ImageArgs) -> Result<(), Box<dyn st
 fn highest_video_source(asset: &Asset) -> Option<&SourceTrack> {
     asset
         .source_tracks()
-        .filter_map(|track| track.video_metadata().map(|video| (track, video)))
+        .filter_map(|source| match source {
+            SourceTrack::Cmaf(track) => match &track.kind {
+                CmafKind::Video(video) => Some((source, video)),
+                CmafKind::Audio(_) | CmafKind::Text(_) => None,
+            },
+            SourceTrack::TimedText(_) => None,
+        })
         .max_by_key(|(_, video)| {
             (
                 u64::from(video.width) * u64::from(video.height),
