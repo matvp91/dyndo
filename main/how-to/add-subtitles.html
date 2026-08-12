@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "ayu";
-            window.path_to_searchindex_js = "../searchindex-3cfcafc8.js";
+            window.path_to_searchindex_js = "../searchindex-a43f8fa2.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-942fa83c.js"></script>
@@ -248,7 +248,7 @@ cues directly for HLS.</p>
 <p>By default an HLS rendition for a raw WebVTT source points at WebVTT documents
 — one <code>.vtt</code> per segment, no <code>EXT-X-MAP</code>, cue timestamps absolute:</p>
 <pre><code class="language-text">#EXTINF:4.000,
-text_5b9fbdae-2717-5f58-80ed-4f067605a5e6/0.vtt
+5b9fbdae-2717-5f58-80ed-4f067605a5e6/0.vtt
 </code></pre>
 <p>To point it at packaged <code>wvtt</code> segments instead, pass <code>wvtt</code> in the request options:</p>
 <pre><code class="language-bash">curl "http://localhost:8080/out/(asset:asset,wvtt:!t)/master.m3u8"

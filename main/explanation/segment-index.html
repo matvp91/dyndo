@@ -35,7 +35,7 @@
             const path_to_root = "../";
             const default_light_theme = "light";
             const default_dark_theme = "ayu";
-            window.path_to_searchindex_js = "../searchindex-3cfcafc8.js";
+            window.path_to_searchindex_js = "../searchindex-a43f8fa2.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-942fa83c.js"></script>
@@ -263,7 +263,7 @@ not the size of the media, so an 800 MB source is parsed from roughly the same
 ~10 KB header region as an 8 MB one. The <code>mdat</code> body is never fetched during
 indexing or manifest generation.</p>
 <h2 id="reading-a-segment"><a class="header" href="#reading-a-segment">Reading a segment</a></h2>
-<p>When a player later requests <code>&lt;type&gt;_&lt;track-id&gt;/&lt;time&gt;.m4s</code>, dyndo re-derives the index the
+<p>When a player later requests <code>&lt;track-id&gt;/&lt;time&gt;.m4s</code>, dyndo re-derives the index the
 same way, finds the segment whose cumulative start time equals <code>&lt;time&gt;</code>, and
 issues a single byte-range read for that segment’s <code>offset..offset+size</code>. Init
 segments (<code>init.mp4</code>) are the <code>ftyp</code>+<code>moov</code> range at the front of the file. In

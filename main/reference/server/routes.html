@@ -35,7 +35,7 @@
             const path_to_root = "../../";
             const default_light_theme = "light";
             const default_dark_theme = "ayu";
-            window.path_to_searchindex_js = "../../searchindex-3cfcafc8.js";
+            window.path_to_searchindex_js = "../../searchindex-a43f8fa2.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../../toc-942fa83c.js"></script>
@@ -425,26 +425,25 @@ configured storage backend.</p>
 <tbody>
 <tr><td><code>index.mpd</code></td><td>The DASH manifest (MPD).</td><td><code>application/dash+xml</code></td></tr>
 <tr><td><code>master.m3u8</code></td><td>The HLS multivariant playlist.</td><td><code>application/vnd.apple.mpegurl</code></td></tr>
-<tr><td><code>&lt;type&gt;_&lt;track-id&gt;.m3u8</code></td><td>One track’s HLS media playlist.</td><td><code>application/vnd.apple.mpegurl</code></td></tr>
-<tr><td><code>image_&lt;thumbnail-id&gt;.m3u8</code></td><td>An HLS thumbnail image media playlist.</td><td><code>application/vnd.apple.mpegurl</code></td></tr>
-<tr><td><code>&lt;type&gt;_&lt;track-id&gt;/init.mp4</code></td><td>A track’s CMAF initialization segment.</td><td><code>video/mp4</code>, <code>audio/mp4</code>, or <code>application/mp4</code></td></tr>
-<tr><td><code>&lt;type&gt;_&lt;track-id&gt;/&lt;time&gt;.m4s</code></td><td>The media segment starting at presentation <code>&lt;time&gt;</code>.</td><td><code>video/mp4</code>, <code>audio/mp4</code>, or <code>application/mp4</code></td></tr>
-<tr><td><code>text_&lt;track-id&gt;/&lt;time&gt;.vtt</code></td><td>The same segment of a text track, as a WebVTT document.</td><td><code>text/vtt</code></td></tr>
-<tr><td><code>image_&lt;thumbnail-id&gt;/&lt;number&gt;.jpg</code></td><td>A numbered JPEG thumbnail sprite advertised by DASH and HLS.</td><td><code>image/jpeg</code></td></tr>
+<tr><td><code>&lt;track-id&gt;.m3u8</code></td><td>One track’s HLS media playlist.</td><td><code>application/vnd.apple.mpegurl</code></td></tr>
+<tr><td><code>&lt;thumbnail-id&gt;.m3u8</code></td><td>An HLS thumbnail image media playlist.</td><td><code>application/vnd.apple.mpegurl</code></td></tr>
+<tr><td><code>&lt;track-id&gt;/init.mp4</code></td><td>A track’s CMAF initialization segment.</td><td><code>video/mp4</code>, <code>audio/mp4</code>, or <code>application/mp4</code></td></tr>
+<tr><td><code>&lt;track-id&gt;/&lt;time&gt;.m4s</code></td><td>The media segment starting at presentation <code>&lt;time&gt;</code>.</td><td><code>video/mp4</code>, <code>audio/mp4</code>, or <code>application/mp4</code></td></tr>
+<tr><td><code>&lt;track-id&gt;/&lt;time&gt;.vtt</code></td><td>The same segment of a text track, as a WebVTT document.</td><td><code>text/vtt</code></td></tr>
+<tr><td><code>&lt;thumbnail-id&gt;/&lt;number&gt;.jpg</code></td><td>A numbered JPEG thumbnail sprite advertised by DASH and HLS.</td><td><code>image/jpeg</code></td></tr>
 </tbody>
 </table>
 </div>
 <p><code>&lt;track-id&gt;</code> is a track’s <code>id</code> exactly as recorded in the descriptor (for
-example <code>6b745be5-2791-5d95-8ce5-8f8bde29e2fe</code>). Manifests prefix it with the
-track type (<code>video</code>, <code>audio</code>, or <code>text</code>) when addressing a track; HLS image
-playlists use the <code>image</code> prefix with a thumbnail’s own <code>id</code>. Because manifests
-emit these same relative URLs, players never construct them by hand.</p>
+example <code>6b745be5-2791-5d95-8ce5-8f8bde29e2fe</code>). <code>&lt;thumbnail-id&gt;</code> is the
+thumbnail’s own <code>id</code>. Because manifests emit these same relative URLs, players
+never construct them by hand.</p>
 <p>A full set of requests for one asset:</p>
 <pre><code class="language-text">/out/(asset:demo)/index.mpd
 /out/(asset:demo)/master.m3u8
-/out/(asset:demo)/video_6b745be5-2791-5d95-8ce5-8f8bde29e2fe.m3u8
-/out/(asset:demo)/video_6b745be5-2791-5d95-8ce5-8f8bde29e2fe/init.mp4
-/out/(asset:demo)/video_6b745be5-2791-5d95-8ce5-8f8bde29e2fe/0.m4s
+/out/(asset:demo)/6b745be5-2791-5d95-8ce5-8f8bde29e2fe.m3u8
+/out/(asset:demo)/6b745be5-2791-5d95-8ce5-8f8bde29e2fe/init.mp4
+/out/(asset:demo)/6b745be5-2791-5d95-8ce5-8f8bde29e2fe/0.m4s
 </code></pre>
 <h3 id="thumbnail-sprites"><a class="header" href="#thumbnail-sprites">Thumbnail sprites</a></h3>
 <p>Add a thumbnail object to the asset descriptor to advertise a thumbnail sprite.
@@ -453,14 +452,13 @@ video source’s regular IDR cadence:</p>
 <pre><code class="language-text">/out/(asset:demo)/index.mpd
 /out/(asset:demo)/master.m3u8
 </code></pre>
-<p>The MPD addresses each sprite as <code>image_&lt;thumbnail-id&gt;/&lt;number&gt;.jpg</code>. The HLS
-multivariant playlist advertises <code>image_&lt;thumbnail-id&gt;.m3u8</code>. A thumbnail that
+<p>The MPD addresses each sprite as <code>&lt;thumbnail-id&gt;/&lt;number&gt;.jpg</code>. The HLS
+multivariant playlist advertises <code>&lt;thumbnail-id&gt;.m3u8</code>. A thumbnail that
 cannot select a video source is omitted from manifests and its image routes
 return <code>404</code>.</p>
 <h2 id="segments-are-protocol-independent"><a class="header" href="#segments-are-protocol-independent">Segments are protocol-independent</a></h2>
 <p>There is no <code>dash</code> or <code>hls</code> component anywhere in a segment path. Both manifests
-reference the same <code>&lt;type&gt;_&lt;track-id&gt;/init.mp4</code> and
-<code>&lt;type&gt;_&lt;track-id&gt;/&lt;time&gt;.m4s</code> URLs, and a
+reference the same <code>&lt;track-id&gt;/init.mp4</code> and <code>&lt;track-id&gt;/&lt;time&gt;.m4s</code> URLs, and a
 request for one returns the same CMAF bytes regardless of which manifest sent
 the player there. Only <code>index.mpd</code> and the <code>.m3u8</code> resources are
 protocol-specific. See
@@ -469,8 +467,8 @@ for why.</p>
 <h2 id="text-segment-representations"><a class="header" href="#text-segment-representations">Text segment representations</a></h2>
 <p>A raw WebVTT source has two runtime representations with the same segment
 boundaries and durations.</p>
-<pre><code class="language-text">/out/(asset:demo)/text_3b519953-…/0.m4s   → packaged wvtt bytes
-/out/(asset:demo)/text_3b519953-…/0.vtt   → the WebVTT document those bytes hold
+<pre><code class="language-text">/out/(asset:demo)/3b519953-…/0.m4s   → packaged wvtt bytes
+/out/(asset:demo)/3b519953-…/0.vtt   → the WebVTT document those bytes hold
 </code></pre>
 <p>A <code>.vtt</code> request selects cues directly from the parsed WebVTT source. The
 document carries the absolute timestamps the source used and no
@@ -478,8 +476,8 @@ document carries the absolute timestamps the source used and no
 <p>Which one a player asks for is the manifest’s business: DASH always references
 <code>.m4s</code>, while HLS references <code>.vtt</code> for a raw WebVTT source unless the request
 passes <a href="#output-options"><code>wvtt</code></a>. HLS always references <code>.m4s</code> for a CMAF <code>wvtt</code>
-source. <code>text_&lt;track-id&gt;/init.mp4</code> stays available for the track either way, and
-is simply not referenced by a WebVTT rendition — a WebVTT segment needs no
+source. <code>&lt;track-id&gt;/init.mp4</code> stays available for the track either way, and is
+simply not referenced by a WebVTT rendition — a WebVTT segment needs no
 initialization.</p>
 <p>A <code>.vtt</code> response is available only for a raw WebVTT source. dyndo does not
 unpackage CMAF <code>wvtt</code> media into a WebVTT document.</p>
@@ -491,7 +489,7 @@ track’s segment list for the request’s segmentation options, then walks it
 accumulating durations from the track’s earliest presentation time until it
 finds an exact match.</p>
 <p>A track whose <code>sidx</code> reports an earliest presentation time of <code>0</code> therefore
-starts at <code>&lt;type&gt;_&lt;track-id&gt;/0.m4s</code>, and each subsequent segment starts at the running
+starts at <code>&lt;track-id&gt;/0.m4s</code>, and each subsequent segment starts at the running
 sum of the preceding durations. These are exactly the <code>$Time$</code> values in the
 DASH <code>SegmentTimeline</code> and the URIs in the HLS media playlists.</p>
 <p>Because segmentation options change where segment edges fall, a <code>&lt;time&gt;</code> is only
