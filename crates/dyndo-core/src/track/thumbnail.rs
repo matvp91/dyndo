@@ -112,17 +112,24 @@ impl ResolvedThumbnailTrack {
             .max(1)
     }
 
-    /// Generates thumbnail sprite `number`.
+    /// Generates one-based thumbnail sprite `number`.
     ///
     /// # Errors
     ///
-    /// Returns an error when a frame cannot be read, decoded, composed, or encoded.
+    /// Returns an error when `number` is zero or a frame cannot be read, decoded, composed, or
+    /// encoded.
     pub async fn jpeg(&self, op: &Operator, number: u32) -> Result<Bytes, ThumbnailError> {
         Sprite::new(op, &self.source, self.tile_dimensions().0, self.tile_size())
-            .jpeg(number)
+            .jpeg(sprite_index(number)?)
             .await
             .map_err(|error| ThumbnailError(error.to_string()))
     }
+}
+
+fn sprite_index(number: u32) -> Result<u32, ThumbnailError> {
+    number
+        .checked_sub(1)
+        .ok_or_else(|| ThumbnailError("thumbnail numbers start at 1".to_owned()))
 }
 
 fn select_source<'a>(
@@ -214,5 +221,15 @@ mod tests {
         let thumbnail = configured.resolve([&source]).unwrap();
 
         assert_eq!(thumbnail.source().id(), "720");
+    }
+
+    #[test]
+    fn sprite_index_converts_one_based_thumbnail_numbers() {
+        assert_eq!(super::sprite_index(1).unwrap(), 0);
+    }
+
+    #[test]
+    fn sprite_index_rejects_zero() {
+        assert!(super::sprite_index(0).is_err());
     }
 }

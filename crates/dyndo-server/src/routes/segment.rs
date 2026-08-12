@@ -67,6 +67,9 @@ impl SegmentRoute for Router<Operator> {
                 let number = number
                     .parse()
                     .map_err(|_| ServerError::NotFound(file.clone()))?;
+                if number == 0 {
+                    return Err(not_found());
+                }
                 thumbnail(&op, &asset, &track_id, number).await
             }
             _ => Err(not_found()),

@@ -241,7 +241,7 @@ configured storage backend.
 | `<track-id>/init.mp4` | A track's CMAF initialization segment. | `video/mp4`, `audio/mp4`, or `application/mp4` |
 | `<track-id>/<time>.m4s` | The media segment starting at presentation `<time>`. | `video/mp4`, `audio/mp4`, or `application/mp4` |
 | `<track-id>/<time>.vtt` | The same segment of a text track, as a WebVTT document. | `text/vtt` |
-| `<thumbnail-id>/<number>.jpg` | A numbered JPEG thumbnail sprite advertised by DASH and HLS. | `image/jpeg` |
+| `<thumbnail-id>/<number>.jpg` | A one-based numbered JPEG thumbnail sprite advertised by DASH and HLS. | `image/jpeg` |
 
 `<track-id>` is a track's `id` exactly as recorded in the descriptor (for
 example `6b745be5-2791-5d95-8ce5-8f8bde29e2fe`). `<thumbnail-id>` is the

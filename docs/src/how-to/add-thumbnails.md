@@ -65,7 +65,7 @@ property. The HLS multivariant playlist gains an image-stream reference like:
 ```
 
 The image media playlist points at JPEG sprites such as
-`preview/0.jpg`. Both protocols reference the same generated JPEG
+`preview/1.jpg`. Both protocols reference the same generated JPEG
 sprites; requesting a sprite does not write it to storage.
 
 ## Select thumbnail configurations per request

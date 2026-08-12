@@ -69,6 +69,33 @@ fn video_track(id: &str, width: u32, height: u32, bytes_per_segment: u64) -> Res
     )
 }
 
+fn video_track_with_segment_count(segment_count: u32) -> ResolvedCmafTrack {
+    let init = Arc::new(InitSegment::new(avc_codec(), 1_000, 0, 100));
+    let segments = (0..segment_count)
+        .map(|index| {
+            let start = u64::from(index) * 1_000;
+            Segment::new(
+                Arc::clone(&init),
+                start,
+                start + 1_000,
+                100 + start,
+                1_100 + start,
+            )
+        })
+        .collect();
+    ResolvedCmafTrack::new(
+        "video-main".to_string(),
+        "video-main.mp4".into(),
+        CmafKind::Video(VideoMetadata {
+            width: 16,
+            height: 16,
+            frame_rate: "4/1".into(),
+        }),
+        init,
+        segments,
+    )
+}
+
 async fn generate(
     tracks: &[ResolvedCmafTrack],
     thumbnail_tracks: &[ThumbnailTrack],
@@ -143,7 +170,7 @@ async fn generated_thumbnail_mpd_addresses_sprites_by_number() {
     .await;
 
     assert!(xml.contains(
-        "media=\"preview/$Number$.jpg\" startNumber=\"0\" timescale=\"1000\" presentationTimeOffset=\"0\"><SegmentTimeline><S t=\"0\" d=\"4000\"/></SegmentTimeline>"
+        "media=\"preview/$Number$.jpg\" startNumber=\"1\" timescale=\"1000\" presentationTimeOffset=\"0\"><SegmentTimeline><S t=\"0\" d=\"4000\"/></SegmentTimeline>"
     ));
 }
 
@@ -186,7 +213,7 @@ async fn generated_multi_period_mpd_slides_templates_by_the_millisecond_boundary
 }
 
 #[tokio::test]
-async fn generated_multi_period_mpd_references_a_boundary_crossing_thumbnail_sprite_twice() {
+async fn generated_multi_period_mpd_preserves_a_boundary_crossing_thumbnail_number() {
     let xml = generate(
         &[video_track("video-main", 16, 16, 100)],
         &[thumbnail()],
@@ -201,7 +228,27 @@ async fn generated_multi_period_mpd_references_a_boundary_crossing_thumbnail_spr
     .await;
 
     assert!(xml.contains(
-        "contentType=\"image\" mimeType=\"image/jpeg\"><SupplementalProperty schemeIdUri=\"urn:mpeg:dash:period-connectivity:2015\" value=\"0\"/><Representation id=\"preview\" bandwidth=\"64\" width=\"16\" height=\"16\"><EssentialProperty schemeIdUri=\"http://dashif.org/guidelines/thumbnail_tile\" value=\"2x2\"/><SegmentTemplate media=\"preview/$Number$.jpg\" startNumber=\"0\" timescale=\"1000\" presentationTimeOffset=\"1000\"><SegmentTimeline><S t=\"0\" d=\"4000\"/></SegmentTimeline>"
+        "contentType=\"image\" mimeType=\"image/jpeg\"><SupplementalProperty schemeIdUri=\"urn:mpeg:dash:period-connectivity:2015\" value=\"0\"/><Representation id=\"preview\" bandwidth=\"64\" width=\"16\" height=\"16\"><EssentialProperty schemeIdUri=\"http://dashif.org/guidelines/thumbnail_tile\" value=\"2x2\"/><SegmentTemplate media=\"preview/$Number$.jpg\" startNumber=\"1\" timescale=\"1000\" presentationTimeOffset=\"1000\"><SegmentTimeline><S t=\"0\" d=\"4000\"/></SegmentTimeline>"
+    ));
+}
+
+#[tokio::test]
+async fn generated_multi_period_mpd_uses_the_global_number_for_a_later_overlapping_sprite() {
+    let xml = generate(
+        &[video_track_with_segment_count(100)],
+        &[thumbnail()],
+        0,
+        0,
+        &[90_000],
+        &DashOptions {
+            multi_period: true,
+            ..DashOptions::default()
+        },
+    )
+    .await;
+
+    assert!(xml.contains(
+        "<AdaptationSet id=\"1\" contentType=\"image\" mimeType=\"image/jpeg\"><SupplementalProperty schemeIdUri=\"urn:mpeg:dash:period-connectivity:2015\" value=\"0\"/><Representation id=\"preview\" bandwidth=\"64\" width=\"16\" height=\"16\"><EssentialProperty schemeIdUri=\"http://dashif.org/guidelines/thumbnail_tile\" value=\"2x2\"/><SegmentTemplate media=\"preview/$Number$.jpg\" startNumber=\"23\" timescale=\"1000\" presentationTimeOffset=\"90000\"><SegmentTimeline><S t=\"88000\" d=\"4000\" r=\"2\"/></SegmentTimeline>"
     ));
 }
 

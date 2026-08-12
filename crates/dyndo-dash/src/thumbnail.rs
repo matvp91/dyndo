@@ -50,7 +50,7 @@ fn build_adaptation_set(
             }],
             SegmentTemplate: Some(SegmentTemplate {
                 media: Some(format!("{}/$Number$.jpg", thumbnail.id())),
-                startNumber: Some(0),
+                startNumber: Some(1),
                 timescale: Some(TIMESCALE),
                 presentationTimeOffset: Some(0),
                 SegmentTimeline: Some(SegmentTimeline {

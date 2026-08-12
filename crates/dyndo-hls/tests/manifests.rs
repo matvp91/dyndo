@@ -226,7 +226,7 @@ async fn generated_image_playlists_advertise_existing_thumbnail_sprites() {
             "#EXT-X-IMAGES-ONLY\n",
             "#EXT-X-TILES:RESOLUTION=8x8,LAYOUT=2x2,DURATION=1.000\n",
             "#EXTINF:2,\n",
-            "preview/0.jpg\n",
+            "preview/1.jpg\n",
             "#EXT-X-ENDLIST\n",
         )
     );
@@ -242,6 +242,6 @@ fn generated_image_playlist_shortens_the_final_sprite() {
     assert!(playlist.contains(concat!(
         "#EXT-X-TILES:RESOLUTION=8x8,LAYOUT=2x2,DURATION=1.000\n",
         "#EXTINF:1,\n",
-        "preview/1.jpg\n",
+        "preview/2.jpg\n",
     )));
 }
