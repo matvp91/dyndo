@@ -97,7 +97,7 @@ indexing or manifest generation.
 
 ## Reading a segment
 
-When a player later requests `<type>_<track-id>/<time>.m4s`, dyndo re-derives the index the
+When a player later requests `<track-id>/<time>.m4s`, dyndo re-derives the index the
 same way, finds the segment whose cumulative start time equals `<time>`, and
 issues a single byte-range read for that segment's `offset..offset+size`. Init
 segments (`init.mp4`) are the `ftyp`+`moov` range at the front of the file. In

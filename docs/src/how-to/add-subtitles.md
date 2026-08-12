@@ -89,7 +89,7 @@ By default an HLS rendition for a raw WebVTT source points at WebVTT documents
 
 ```text
 #EXTINF:4.000,
-text_5b9fbdae-2717-5f58-80ed-4f067605a5e6/0.vtt
+5b9fbdae-2717-5f58-80ed-4f067605a5e6/0.vtt
 ```
 
 To point it at packaged `wvtt` segments instead, pass `wvtt` in the request options:
