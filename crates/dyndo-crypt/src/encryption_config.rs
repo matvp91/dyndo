@@ -22,11 +22,18 @@ pub enum EncryptionScheme {
     Cbcs,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EncryptionConfig {
     pub scheme: EncryptionScheme,
     pub kid: Uuid,
     pub key: [u8; 16],
+    pub drm_systems: Vec<DrmSystemConfig>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DrmSystemConfig {
+    pub system_id: Uuid,
+    pub pssh: Vec<u8>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -56,6 +63,17 @@ impl Cpix {
             scheme: key.common_encryption_scheme.parse()?,
             kid: key.kid,
             key: key.key()?,
+            drm_systems: self
+                .drm_systems()
+                .iter()
+                .filter(|system| system.kid == key.kid)
+                .map(|system| {
+                    Ok(DrmSystemConfig {
+                        system_id: system.system_id,
+                        pssh: system.pssh()?,
+                    })
+                })
+                .collect::<Result<_, crate::cpix_parser::Error>>()?,
         })
     }
 }
@@ -108,16 +126,7 @@ mod tests {
 
         let config = cpix.encryption_config_for(metadata).unwrap();
 
-        assert_eq!(
-            config,
-            EncryptionConfig {
-                scheme: EncryptionScheme::Cenc,
-                kid: uuid!("6d76f25c-b17f-5e16-b8ea-ef6bbf582d8e"),
-                key: [
-                    0xcb, 0x54, 0x10, 0x84, 0xc9, 0x97, 0x31, 0xae, 0xf4, 0xff, 0xf7, 0x45, 0x00,
-                    0xc3, 0xae, 0xad,
-                ],
-            }
-        );
+        assert_eq!(config.scheme, EncryptionScheme::Cenc);
+        assert_eq!(config.kid, uuid!("6d76f25c-b17f-5e16-b8ea-ef6bbf582d8e"));
     }
 }

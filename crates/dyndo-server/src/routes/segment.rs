@@ -6,6 +6,7 @@ use axum::{
     routing::get,
 };
 use dyndo_core::asset::Asset;
+use dyndo_core::track::cmaf::EncryptedCmafTrack;
 use dyndo_core::track::cmaf::ResolvedCmafTrack;
 use dyndo_core::track::{CmafRepresentationError, ResolvedTrack};
 use opendal::Operator;
@@ -90,9 +91,17 @@ pub(super) async fn initialization(
 ) -> Result<Response, ServerError> {
     let track = resolve_track(op, asset, track_id, None).await?;
     let cmaf = cmaf_representation(&track, text_length, &asset.boundaries).await?;
-    let bytes = cmaf
-        .read_range(op, cmaf.init_segment().byte_range())
-        .await?;
+    let bytes = match asset.resolve_cpix(op).await? {
+        Some(cpix) => {
+            EncryptedCmafTrack::resolve(cmaf.clone(), &cpix)?
+                .initialization(op)
+                .await?
+        }
+        None => {
+            cmaf.read_range(op, cmaf.init_segment().byte_range())
+                .await?
+        }
+    };
 
     Ok(([(CONTENT_TYPE, cmaf.metadata().mime_type())], bytes).into_response())
 }

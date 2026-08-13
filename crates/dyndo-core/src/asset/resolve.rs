@@ -12,13 +12,7 @@ use crate::track::{CmafRepresentationError, ResolvedTrack, Track, TrackResolveEr
 impl Asset {
     /// Resolves every configured track in this asset.
     pub async fn resolve(&self, operator: &Operator) -> Result<ResolvedAsset, AssetResolveError> {
-        let cpix = match self.cpix_path() {
-            Some(path) => {
-                let bytes = operator.read(path.as_str()).await?;
-                Some(Arc::new(CpixParser::parse_bytes(&bytes.to_bytes())?))
-            }
-            None => None,
-        };
+        let cpix = self.resolve_cpix(operator).await?.map(Arc::new);
         let mut tracks = self.resolve_source_tracks(operator).await?;
         let mut thumbnails = Vec::new();
 
@@ -37,6 +31,17 @@ impl Asset {
             tracks,
             cpix,
         })
+    }
+
+    pub async fn resolve_cpix(
+        &self,
+        operator: &Operator,
+    ) -> Result<Option<Cpix>, AssetResolveError> {
+        let Some(path) = self.cpix_path() else {
+            return Ok(None);
+        };
+        let bytes = operator.read(path.as_str()).await?;
+        Ok(Some(CpixParser::parse_bytes(&bytes.to_bytes())?))
     }
 
     /// Resolves one configured track by identifier.

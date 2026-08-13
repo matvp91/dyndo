@@ -6,7 +6,7 @@ use uuid::Uuid;
 pub enum Error {
     #[error("malformed CPIX document")]
     Xml(#[from] quick_xml::DeError),
-    #[error("content key is not valid base64")]
+    #[error("CPIX value is not valid base64")]
     Base64(#[from] base64::DecodeError),
     #[error("content key is {0} bytes, expected 16")]
     KeyLength(usize),
@@ -30,6 +30,8 @@ pub struct Cpix {
     pub content_id: Option<String>,
     #[serde(rename = "ContentKeyList", alias = "cpix:ContentKeyList", default)]
     content_key_list: ContentKeyList,
+    #[serde(rename = "DRMSystemList", alias = "cpix:DRMSystemList", default)]
+    drm_system_list: DrmSystemList,
     #[serde(
         rename = "ContentKeyUsageRuleList",
         alias = "cpix:ContentKeyUsageRuleList",
@@ -45,6 +47,10 @@ impl Cpix {
 
     pub fn rules(&self) -> &[ContentKeyUsageRule] {
         &self.usage_rule_list.rules
+    }
+
+    pub fn drm_systems(&self) -> &[DrmSystem] {
+        &self.drm_system_list.systems
     }
 }
 
@@ -62,6 +68,28 @@ struct ContentKeyUsageRuleList {
         default
     )]
     rules: Vec<ContentKeyUsageRule>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct DrmSystemList {
+    #[serde(rename = "DRMSystem", alias = "cpix:DRMSystem", default)]
+    systems: Vec<DrmSystem>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DrmSystem {
+    #[serde(rename = "@kid")]
+    pub kid: Uuid,
+    #[serde(rename = "@systemId")]
+    pub system_id: Uuid,
+    #[serde(rename = "PSSH", alias = "cpix:PSSH")]
+    pssh: String,
+}
+
+impl DrmSystem {
+    pub fn pssh(&self) -> Result<Vec<u8>, Error> {
+        Ok(BASE64_STANDARD.decode(self.pssh.trim())?)
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -155,5 +183,13 @@ mod tests {
         let hd = rules[2].video_filter.as_ref().unwrap();
         assert_eq!(hd.min_pixels, Some(442_369));
         assert_eq!(hd.max_pixels, Some(2_073_600));
+
+        let drm_systems = cpix.drm_systems();
+        assert_eq!(drm_systems.len(), 3);
+        assert_eq!(
+            drm_systems[0].system_id,
+            uuid!("edef8ba9-79d6-4ace-a3c8-27dcd51d21ed")
+        );
+        assert_eq!(&drm_systems[0].pssh().unwrap()[4..8], b"pssh");
     }
 }
