@@ -48,6 +48,8 @@
       const video = document.getElementById('video');
       const player = video.ui.getControls().getPlayer();
 
+      Object.assign(window, { player, shaka });
+
       player.configure({
         drm: {
           servers: {
