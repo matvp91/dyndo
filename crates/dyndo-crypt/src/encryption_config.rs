@@ -125,7 +125,7 @@ mod tests {
     fn resolves_hd_video_encryption_config() {
         let cpix = CpixParser::parse(include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../assets/cpix.xml"
+            "/../../assets/cpix_ml.xml"
         )))
         .unwrap();
         let metadata = TrackMetadata::Video {
