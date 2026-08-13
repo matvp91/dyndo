@@ -18,6 +18,10 @@ impl CpixParser {
     pub fn parse(xml: &str) -> Result<Cpix, Error> {
         Ok(quick_xml::de::from_str(xml)?)
     }
+
+    pub fn parse_bytes(xml: &[u8]) -> Result<Cpix, Error> {
+        Ok(quick_xml::de::from_reader(xml)?)
+    }
 }
 
 #[derive(Debug, Deserialize)]

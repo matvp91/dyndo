@@ -39,6 +39,10 @@ pub struct Asset {
     /// Splice points, in milliseconds from the presentation start.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub boundaries: Vec<u32>,
+    /// CPIX document path, relative to this descriptor's directory.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(with = "Option<String>")]
+    pub cpix_path: Option<RelativePathBuf>,
     pub tracks: Vec<Track>,
 }
 
@@ -48,6 +52,7 @@ impl Default for Asset {
             schema: asset_schema_url(),
             path: RelativePathBuf::default(),
             boundaries: Vec::new(),
+            cpix_path: None,
             tracks: Vec::new(),
         }
     }
@@ -89,6 +94,15 @@ impl Asset {
             .parent()
             .unwrap_or(RelativePath::new(""))
             .join(track.source_path())
+    }
+
+    pub fn cpix_path(&self) -> Option<RelativePathBuf> {
+        self.cpix_path.as_ref().map(|path| {
+            self.path
+                .parent()
+                .unwrap_or(RelativePath::new(""))
+                .join(path)
+        })
     }
 
     pub fn find_source_track_by_id(&self, id: &str) -> Option<&SourceTrack> {

@@ -75,7 +75,7 @@ async fn read_or_new_preserves_the_asset_base_when_adding_a_track() {
 #[tokio::test]
 async fn read_deserializes_an_asset_from_storage() {
     let operator = memory_operator();
-    operator.write("assets/asset.json", r#"{"boundaries":[1000],"tracks":[{"id":"text","path":"subtitles/en.vtt","type":"webvtt"},{"id":"preview","tile_size":4,"width":640,"type":"thumbnail"}]}"#).await.unwrap();
+    operator.write("assets/asset.json", r#"{"boundaries":[1000],"cpix_path":"keys/cpix.xml","tracks":[{"id":"text","path":"subtitles/en.vtt","type":"webvtt"},{"id":"preview","tile_size":4,"width":640,"type":"thumbnail"}]}"#).await.unwrap();
 
     let asset = Asset::read(&operator, "assets/asset.json").await.unwrap();
 
@@ -88,6 +88,37 @@ async fn read_deserializes_an_asset_from_storage() {
         Some(&ThumbnailTrack::new("preview".to_string(), 4, 640))
     );
     assert_eq!(asset.boundaries, [1_000]);
+    assert_eq!(
+        asset.cpix_path,
+        Some(RelativePathBuf::from("keys/cpix.xml"))
+    );
+}
+
+#[tokio::test]
+async fn resolve_loads_cpix_relative_to_the_asset() {
+    let operator = memory_operator();
+    operator
+        .write(
+            "assets/asset.json",
+            r#"{"cpix_path":"keys/cpix.xml","tracks":[]}"#,
+        )
+        .await
+        .unwrap();
+    operator
+        .write(
+            "assets/keys/cpix.xml",
+            r#"<CPIX contentId="test-content"/>"#,
+        )
+        .await
+        .unwrap();
+    let asset = Asset::read(&operator, "assets/asset.json").await.unwrap();
+
+    let resolved = asset.resolve(&operator).await.unwrap();
+
+    assert_eq!(
+        resolved.cpix().and_then(|cpix| cpix.content_id.as_deref()),
+        Some("test-content")
+    );
 }
 
 #[tokio::test]

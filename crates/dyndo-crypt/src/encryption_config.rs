@@ -1,4 +1,3 @@
-use dyndo_core::track::cmaf::CmafMetadata;
 use uuid::Uuid;
 
 use crate::cpix_parser::{ContentKeyUsageRule, Cpix};
@@ -15,8 +14,6 @@ pub enum Error {
     MissingKey(Uuid),
     #[error("unsupported common encryption scheme {0}")]
     UnsupportedScheme(String),
-    #[error("text tracks cannot be encrypted")]
-    UnsupportedTrack,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -32,15 +29,17 @@ pub struct EncryptionConfig {
     pub key: [u8; 16],
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TrackMetadata {
+    Audio,
+    Video { width: u32, height: u32 },
+}
+
 impl Cpix {
     pub fn encryption_config_for(
         &self,
-        metadata: &CmafMetadata,
+        metadata: TrackMetadata,
     ) -> Result<EncryptionConfig, Error> {
-        if matches!(metadata, CmafMetadata::Text(_)) {
-            return Err(Error::UnsupportedTrack);
-        }
-
         let mut rules = self.rules().iter().filter(|rule| rule.matches(metadata));
         let rule = rules.next().ok_or(Error::NoMatchingRule)?;
         if rules.next().is_some() {
@@ -74,25 +73,22 @@ impl std::str::FromStr for EncryptionScheme {
 }
 
 impl ContentKeyUsageRule {
-    fn matches(&self, metadata: &CmafMetadata) -> bool {
+    fn matches(&self, metadata: TrackMetadata) -> bool {
         match metadata {
-            CmafMetadata::Audio(_) => self.audio_filter.is_some(),
-            CmafMetadata::Video(video) => {
-                let pixels = u64::from(video.width) * u64::from(video.height);
+            TrackMetadata::Audio => self.audio_filter.is_some(),
+            TrackMetadata::Video { width, height } => {
+                let pixels = u64::from(width) * u64::from(height);
                 self.video_filter.as_ref().is_some_and(|filter| {
                     filter.min_pixels.is_none_or(|min| pixels >= min)
                         && filter.max_pixels.is_none_or(|max| pixels <= max)
                 })
             }
-            CmafMetadata::Text(_) => false,
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use dyndo_core::track::cmaf::CmafMetadata;
-    use dyndo_core::track::metadata::VideoMetadata;
     use uuid::uuid;
 
     use super::*;
@@ -105,13 +101,12 @@ mod tests {
             "/../../assets/cpix.xml"
         )))
         .unwrap();
-        let metadata = CmafMetadata::Video(VideoMetadata {
+        let metadata = TrackMetadata::Video {
             width: 1_920,
             height: 1_080,
-            frame_rate: "25/1".to_string(),
-        });
+        };
 
-        let config = cpix.encryption_config_for(&metadata).unwrap();
+        let config = cpix.encryption_config_for(metadata).unwrap();
 
         assert_eq!(
             config,

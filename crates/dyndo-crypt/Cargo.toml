@@ -6,7 +6,6 @@ rust-version.workspace = true
 
 [dependencies]
 base64 = "0.22"
-dyndo-core = { path = "../dyndo-core" }
 quick-xml = { version = "0.41", features = ["serialize"] }
 serde = { version = "1", features = ["derive"] }
 thiserror = "2"

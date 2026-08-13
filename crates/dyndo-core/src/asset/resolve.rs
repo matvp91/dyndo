@@ -1,3 +1,6 @@
+use std::sync::Arc;
+
+use dyndo_crypt::cpix_parser::{Cpix, CpixParser};
 use futures_util::future::try_join_all;
 use opendal::Operator;
 
@@ -9,6 +12,13 @@ use crate::track::{CmafRepresentationError, ResolvedTrack, Track, TrackResolveEr
 impl Asset {
     /// Resolves every configured track in this asset.
     pub async fn resolve(&self, operator: &Operator) -> Result<ResolvedAsset, AssetResolveError> {
+        let cpix = match self.cpix_path() {
+            Some(path) => {
+                let bytes = operator.read(path.as_str()).await?;
+                Some(Arc::new(CpixParser::parse_bytes(&bytes.to_bytes())?))
+            }
+            None => None,
+        };
         let mut tracks = self.resolve_source_tracks(operator).await?;
         let mut thumbnails = Vec::new();
 
@@ -22,7 +32,11 @@ impl Asset {
         }
         tracks.extend(thumbnails);
 
-        Ok(ResolvedAsset::new(self.boundaries.clone(), tracks))
+        Ok(ResolvedAsset {
+            boundaries: self.boundaries.clone(),
+            tracks,
+            cpix,
+        })
     }
 
     /// Resolves one configured track by identifier.
@@ -74,11 +88,16 @@ impl Asset {
 pub struct ResolvedAsset {
     boundaries: Vec<u32>,
     tracks: Vec<ResolvedTrack>,
+    cpix: Option<Arc<Cpix>>,
 }
 
 impl ResolvedAsset {
     pub fn new(boundaries: Vec<u32>, tracks: Vec<ResolvedTrack>) -> Self {
-        Self { boundaries, tracks }
+        Self {
+            boundaries,
+            tracks,
+            cpix: None,
+        }
     }
 
     pub fn boundaries(&self) -> &[u32] {
@@ -87,6 +106,10 @@ impl ResolvedAsset {
 
     pub fn tracks(&self) -> &[ResolvedTrack] {
         &self.tracks
+    }
+
+    pub fn cpix(&self) -> Option<&Cpix> {
+        self.cpix.as_deref()
     }
 
     pub fn track(&self, id: &str) -> Option<&ResolvedTrack> {
@@ -117,6 +140,10 @@ impl ResolvedAsset {
 
 #[derive(Debug, thiserror::Error)]
 pub enum AssetResolveError {
+    #[error(transparent)]
+    Storage(#[from] opendal::Error),
+    #[error(transparent)]
+    Cpix(#[from] dyndo_crypt::cpix_parser::Error),
     #[error(transparent)]
     Track(#[from] TrackResolveError),
     #[error("thumbnail track {id} has no suitable video source")]

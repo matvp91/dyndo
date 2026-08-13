@@ -15,11 +15,13 @@ use crate::track::metadata::{AudioMetadata, TextMetadata, VideoMetadata};
 
 mod boxes;
 mod cadence;
+mod encrypted;
 mod inspect;
 mod segments;
 mod served;
 
 pub use boxes::CmafBoxesError;
+pub use encrypted::{CmafEncryptionError, EncryptedCmafTrack};
 pub use segments::{InitSegment, Segment};
 pub use served::ServedSegment;
 

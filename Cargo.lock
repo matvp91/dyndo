@@ -719,6 +719,7 @@ name = "dyndo-core"
 version = "0.5.7"
 dependencies = [
  "bytes",
+ "dyndo-crypt",
  "futures-util",
  "language-tags",
  "mp4-atom",
@@ -739,7 +740,6 @@ name = "dyndo-crypt"
 version = "0.5.7"
 dependencies = [
  "base64",
- "dyndo-core",
  "quick-xml 0.41.0",
  "serde",
  "thiserror 2.0.20",
