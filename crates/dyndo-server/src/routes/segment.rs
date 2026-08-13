@@ -94,7 +94,7 @@ pub(super) async fn initialization(
         .read_range(op, cmaf.init_segment().byte_range())
         .await?;
 
-    Ok(([(CONTENT_TYPE, cmaf.kind().mime_type())], bytes).into_response())
+    Ok(([(CONTENT_TYPE, cmaf.metadata().mime_type())], bytes).into_response())
 }
 
 pub(super) async fn media(
@@ -112,7 +112,7 @@ pub(super) async fn media(
         .ok_or_else(|| ServerError::NotFound(format!("segment {time} for track {track_id}")))?;
     let bytes = cmaf.read_range(op, segment.byte_range()).await?;
 
-    Ok(([(CONTENT_TYPE, cmaf.kind().mime_type())], bytes).into_response())
+    Ok(([(CONTENT_TYPE, cmaf.metadata().mime_type())], bytes).into_response())
 }
 
 pub(super) async fn text(

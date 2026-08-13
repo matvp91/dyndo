@@ -3,7 +3,7 @@ use opendal::Operator;
 use relative_path::RelativePath;
 use uuid::Uuid;
 
-use super::cmaf::{CmafError, CmafKind, ResolvedCmafTrack};
+use super::cmaf::{CmafError, CmafMetadata, ResolvedCmafTrack};
 use super::metadata::{AudioMetadata, TextMetadata, VideoMetadata};
 use super::thumbnail::ResolvedThumbnailTrack;
 use super::timed_text::{ResolvedTimedTextTrack, TimedTextError, WebVttPackageError};
@@ -51,7 +51,7 @@ impl ResolvedTrack {
     /// Returns the playback category of this track.
     pub fn track_type(&self) -> TrackType {
         match self {
-            Self::Cmaf(track) => track.kind().track_type(),
+            Self::Cmaf(track) => track.metadata().track_type(),
             Self::TimedText(_) => TrackType::Text,
             Self::Thumbnail(_) => TrackType::Thumbnail,
         }
@@ -75,9 +75,9 @@ impl ResolvedTrack {
 
     pub fn video_metadata(&self) -> Option<&VideoMetadata> {
         match self {
-            Self::Cmaf(track) => match track.kind() {
-                CmafKind::Video(metadata) => Some(metadata),
-                CmafKind::Audio(_) | CmafKind::Text(_) => None,
+            Self::Cmaf(track) => match track.metadata() {
+                CmafMetadata::Video(metadata) => Some(metadata),
+                CmafMetadata::Audio(_) | CmafMetadata::Text(_) => None,
             },
             Self::TimedText(_) | Self::Thumbnail(_) => None,
         }
@@ -85,9 +85,9 @@ impl ResolvedTrack {
 
     pub fn audio_metadata(&self) -> Option<&AudioMetadata> {
         match self {
-            Self::Cmaf(track) => match track.kind() {
-                CmafKind::Audio(metadata) => Some(metadata),
-                CmafKind::Video(_) | CmafKind::Text(_) => None,
+            Self::Cmaf(track) => match track.metadata() {
+                CmafMetadata::Audio(metadata) => Some(metadata),
+                CmafMetadata::Video(_) | CmafMetadata::Text(_) => None,
             },
             Self::TimedText(_) | Self::Thumbnail(_) => None,
         }
@@ -95,27 +95,27 @@ impl ResolvedTrack {
 
     pub fn text_metadata(&self) -> Option<&TextMetadata> {
         match self {
-            Self::Cmaf(track) => match track.kind() {
-                CmafKind::Text(metadata) => Some(metadata),
-                CmafKind::Video(_) | CmafKind::Audio(_) => None,
+            Self::Cmaf(track) => match track.metadata() {
+                CmafMetadata::Text(metadata) => Some(metadata),
+                CmafMetadata::Video(_) | CmafMetadata::Audio(_) => None,
             },
-            Self::TimedText(track) => Some(track.text_metadata()),
+            Self::TimedText(track) => Some(track.metadata()),
             Self::Thumbnail(_) => None,
         }
     }
 
     pub fn language(&self) -> Option<&LanguageTag> {
         match self {
-            Self::Cmaf(track) => track.kind().language(),
-            Self::TimedText(track) => Some(&track.text_metadata().language),
+            Self::Cmaf(track) => track.metadata().language(),
+            Self::TimedText(track) => Some(&track.metadata().language),
             Self::Thumbnail(_) => None,
         }
     }
 
     pub fn role(&self) -> Option<Role> {
         match self {
-            Self::Cmaf(track) => track.kind().role(),
-            Self::TimedText(track) => track.text_metadata().role,
+            Self::Cmaf(track) => track.metadata().role(),
+            Self::TimedText(track) => track.metadata().role,
             Self::Thumbnail(_) => None,
         }
     }

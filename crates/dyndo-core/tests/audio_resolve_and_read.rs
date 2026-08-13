@@ -1,7 +1,7 @@
 use std::ops::Range;
 
 use dyndo_core::track::ResolvedTrack;
-use dyndo_core::track::cmaf::CmafKind;
+use dyndo_core::track::cmaf::CmafMetadata;
 use opendal::{Operator, services::Memory};
 use relative_path::RelativePath;
 
@@ -31,8 +31,8 @@ async fn aac_resolve_and_read_remains_a_small_secondary_media_smoke_test() {
         .unwrap();
 
     assert!(matches!(
-        track.kind(),
-        CmafKind::Audio(kind) if (kind.sample_rate, kind.channels) == (8_000, 1)
+        track.metadata(),
+        CmafMetadata::Audio(metadata) if (metadata.sample_rate, metadata.channels) == (8_000, 1)
     ));
     assert_eq!(track.codec().rfc6381(), "mp4a.40.2");
     assert_eq!(

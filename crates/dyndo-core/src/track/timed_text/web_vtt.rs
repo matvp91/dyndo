@@ -5,7 +5,7 @@ use relative_path::{RelativePath, RelativePathBuf};
 use super::{ResolvedTimedTextTrack, TimedTextError, TimedTextFormat};
 use crate::packaging::PackageError;
 use crate::text::Subtitle;
-use crate::track::cmaf::{CmafKind, ResolvedCmafTrack};
+use crate::track::cmaf::{CmafMetadata, ResolvedCmafTrack};
 use crate::track::metadata::TextMetadata;
 
 #[derive(Debug, thiserror::Error)]
@@ -59,7 +59,7 @@ impl ResolvedTimedTextTrack {
         ResolvedCmafTrack::from_cmaf_bytes(
             bytes,
             self.id().to_string(),
-            CmafKind::Text(self.text_metadata().clone()),
+            CmafMetadata::Text(self.metadata().clone()),
         )
         .await
         .map_err(Into::into)

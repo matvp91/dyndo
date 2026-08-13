@@ -1,7 +1,7 @@
 use dyndo_core::asset::Asset;
 use dyndo_core::track::ResolvedTrack;
 use dyndo_core::track::SourceTrack;
-use dyndo_core::track::cmaf::CmafKind;
+use dyndo_core::track::cmaf::CmafMetadata;
 use dyndo_core::track::timed_text::TimedTextFormat;
 use opendal::{Operator, services::Memory};
 use relative_path::RelativePath;
@@ -44,7 +44,7 @@ async fn web_vtt_track_packages_cmaf_on_demand_and_serves_vtt_directly() {
     assert!(matches!(vtt.format(), TimedTextFormat::WebVtt));
     let packaged = vtt.package_wvtt(1_000, &boundaries).await.unwrap();
 
-    assert!(matches!(packaged.kind(), CmafKind::Text(_)));
+    assert!(matches!(packaged.metadata(), CmafMetadata::Text(_)));
     assert_eq!(packaged.source_path(), None);
     assert_eq!(packaged.codec().rfc6381(), "wvtt");
     assert_eq!(packaged.segments().len(), 4);

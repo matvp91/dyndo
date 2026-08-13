@@ -4,7 +4,7 @@ use dash_mpd::{
     AdaptationSet, AudioChannelConfiguration, MPD, Period, Representation, S, SegmentTemplate,
     SegmentTimeline,
 };
-use dyndo_core::track::cmaf::{CmafKind, ResolvedCmafTrack, ServedSegment};
+use dyndo_core::track::cmaf::{CmafMetadata, ResolvedCmafTrack, ServedSegment};
 use dyndo_core::track::thumbnail::ResolvedThumbnailTrack;
 
 use crate::adaptation_group::AdaptationGroup;
@@ -102,18 +102,18 @@ fn build_representation(
         ..Default::default()
     };
 
-    match track.kind() {
-        CmafKind::Video(video) => {
+    match track.metadata() {
+        CmafMetadata::Video(video) => {
             representation.width = Some(u64::from(video.width));
             representation.height = Some(u64::from(video.height));
             representation.frameRate = Some(video.frame_rate.clone());
         }
-        CmafKind::Audio(audio) => {
+        CmafMetadata::Audio(audio) => {
             representation.audioSamplingRate = Some(audio.sample_rate.to_string());
             representation.AudioChannelConfiguration =
                 vec![build_audio_channel_configuration(audio.channels)];
         }
-        CmafKind::Text(_) => {}
+        CmafMetadata::Text(_) => {}
     }
 
     Some(representation)
@@ -168,18 +168,24 @@ fn build_segment_timeline(segments: &[ServedSegment<'_>]) -> SegmentTimeline {
 }
 
 fn presentation_duration(tracks: &[ResolvedCmafTrack]) -> u32 {
-    maximum_duration(tracks, |kind| matches!(kind, CmafKind::Video(_))).unwrap_or_else(|| {
-        maximum_duration(tracks, |kind| matches!(kind, CmafKind::Audio(_))).unwrap_or(0)
+    maximum_duration(tracks, |metadata| {
+        matches!(metadata, CmafMetadata::Video(_))
+    })
+    .unwrap_or_else(|| {
+        maximum_duration(tracks, |metadata| {
+            matches!(metadata, CmafMetadata::Audio(_))
+        })
+        .unwrap_or(0)
     })
 }
 
 fn maximum_duration(
     tracks: &[ResolvedCmafTrack],
-    include: impl Fn(&CmafKind) -> bool,
+    include: impl Fn(&CmafMetadata) -> bool,
 ) -> Option<u32> {
     tracks
         .iter()
-        .filter(|track| include(track.kind()))
+        .filter(|track| include(track.metadata()))
         .map(ResolvedCmafTrack::duration)
         .max()
 }
@@ -187,7 +193,12 @@ fn maximum_duration(
 fn max_segment_duration(tracks: &[ResolvedCmafTrack], min_length: u32, boundaries: &[u32]) -> u32 {
     tracks
         .iter()
-        .filter(|track| matches!(track.kind(), CmafKind::Video(_) | CmafKind::Audio(_)))
+        .filter(|track| {
+            matches!(
+                track.metadata(),
+                CmafMetadata::Video(_) | CmafMetadata::Audio(_)
+            )
+        })
         .flat_map(|track| {
             track
                 .served_segments(min_length, boundaries)

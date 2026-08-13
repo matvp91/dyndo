@@ -99,7 +99,7 @@ impl ResolvedTimedTextTrack {
         &self.format
     }
 
-    pub fn text_metadata(&self) -> &TextMetadata {
+    pub fn metadata(&self) -> &TextMetadata {
         &self.metadata
     }
 }

@@ -4,7 +4,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::image::Sprite;
-use crate::track::cmaf::{CmafKind, ResolvedCmafTrack};
+use crate::track::cmaf::{CmafMetadata, ResolvedCmafTrack};
 
 /// A thumbnail track generated from source video when requested.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -76,7 +76,7 @@ impl ResolvedThumbnailTrack {
 
     /// Returns the height of the complete thumbnail sprite.
     pub fn height(&self) -> u32 {
-        let CmafKind::Video(video) = self.source.kind() else {
+        let CmafMetadata::Video(video) = self.source.metadata() else {
             unreachable!("thumbnail source must be video");
         };
         if video.width == 0 {
@@ -140,7 +140,7 @@ fn select_source<'a>(
     let mut largest = None;
 
     for track in tracks {
-        let CmafKind::Video(video) = track.kind() else {
+        let CmafMetadata::Video(video) = track.metadata() else {
             continue;
         };
         let video_width = video.width;
@@ -163,14 +163,14 @@ mod tests {
 
     use super::ThumbnailTrack;
     use crate::codec::{CodecConfig, WvttCodec};
-    use crate::track::cmaf::{CmafKind, InitSegment, ResolvedCmafTrack};
+    use crate::track::cmaf::{CmafMetadata, InitSegment, ResolvedCmafTrack};
     use crate::track::metadata::VideoMetadata;
 
     fn video(id: &str, width: u32, height: u32) -> ResolvedCmafTrack {
         ResolvedCmafTrack::new(
             id.to_string(),
             format!("{id}.mp4").into(),
-            CmafKind::Video(VideoMetadata {
+            CmafMetadata::Video(VideoMetadata {
                 width,
                 height,
                 frame_rate: "25/1".to_string(),

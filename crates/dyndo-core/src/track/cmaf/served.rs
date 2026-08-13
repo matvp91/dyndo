@@ -177,7 +177,7 @@ mod tests {
 
     use super::{ResolvedCmafTrack, Segment, ServedSegment};
     use crate::codec::{CodecConfig, WvttCodec};
-    use crate::track::cmaf::{CmafKind, InitSegment};
+    use crate::track::cmaf::{CmafMetadata, InitSegment};
     use crate::track::metadata::TextMetadata;
 
     fn init_segment() -> Arc<InitSegment> {
@@ -207,7 +207,7 @@ mod tests {
         ResolvedCmafTrack::new(
             "text".to_string(),
             "text.mp4".into(),
-            CmafKind::Text(TextMetadata::default()),
+            CmafMetadata::Text(TextMetadata::default()),
             init,
             segments,
         )
