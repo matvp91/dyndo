@@ -1,7 +1,6 @@
-use crate::encryption_config::EncryptionConfig;
-
-use super::mp4::{Mp4Box, find_box, find_child, grow_box, read_box};
 use super::Error;
+use super::mp4::{Mp4Box, find_box, find_child, grow_box, read_box};
+use crate::drm::EncryptionConfig;
 
 pub(super) struct InitSegmentEncryptor<'a> {
     config: &'a EncryptionConfig,
@@ -28,7 +27,8 @@ impl<'a> InitSegmentEncryptor<'a> {
         let sinf = sinf(format, self.config);
         let pssh: Vec<u8> = self
             .config
-            .drm_systems
+            .protection
+            .systems
             .iter()
             .flat_map(|system| system.pssh.iter().copied())
             .collect();
@@ -66,7 +66,7 @@ fn sinf(format: [u8; 4], config: &EncryptionConfig) -> Vec<u8> {
     let schm = mp4_box(*b"schm", &schm_body);
 
     let mut tenc_body = Vec::from([0, 0, 0, 0, 0, 0, 1, 8]);
-    tenc_body.extend_from_slice(config.kid.as_bytes());
+    tenc_body.extend_from_slice(config.protection.kid.as_bytes());
     let tenc = mp4_box(*b"tenc", &tenc_body);
     let schi = mp4_box(*b"schi", &tenc);
 

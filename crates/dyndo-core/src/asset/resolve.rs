@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
-use dyndo_drm::cpix_parser::{Cpix, CpixParser};
 use futures_util::future::try_join_all;
 use opendal::Operator;
 
 use super::Asset;
+use crate::drm::{Cpix, CpixParser};
 use crate::track::cmaf::ResolvedCmafTrack;
 use crate::track::thumbnail::ResolvedThumbnailTrack;
 use crate::track::{CmafRepresentationError, ResolvedTrack, Track, TrackResolveError};
@@ -134,11 +134,20 @@ impl ResolvedAsset {
         &self,
         text_length: u32,
     ) -> Result<Vec<ResolvedCmafTrack>, CmafRepresentationError> {
+        let cpix = self.cpix();
         let representations = self
             .tracks
             .iter()
             .filter(|track| track.thumbnail().is_none())
-            .map(|track| track.cmaf_representation(text_length, &self.boundaries));
+            .map(|track| async move {
+                let representation = track
+                    .cmaf_representation(text_length, &self.boundaries)
+                    .await?;
+                match cpix {
+                    Some(cpix) => representation.with_protection(cpix).map_err(Into::into),
+                    None => Ok(representation),
+                }
+            });
         try_join_all(representations).await
     }
 }
@@ -148,7 +157,7 @@ pub enum AssetResolveError {
     #[error(transparent)]
     Storage(#[from] opendal::Error),
     #[error(transparent)]
-    Cpix(#[from] dyndo_drm::cpix_parser::Error),
+    Cpix(#[from] crate::drm::CpixError),
     #[error(transparent)]
     Track(#[from] TrackResolveError),
     #[error("thumbnail track {id} has no suitable video source")]

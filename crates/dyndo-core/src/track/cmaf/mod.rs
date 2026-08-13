@@ -15,13 +15,14 @@ use crate::track::metadata::{AudioMetadata, TextMetadata, VideoMetadata};
 
 mod boxes;
 mod cadence;
-mod encrypted;
+mod encryption;
 mod inspect;
+mod protected;
 mod segments;
 mod served;
 
 pub use boxes::CmafBoxesError;
-pub use encrypted::{CmafEncryptionError, EncryptedCmafTrack};
+pub use protected::CmafEncryptionError;
 pub use segments::{InitSegment, Segment};
 pub use served::ServedSegment;
 
@@ -98,6 +99,7 @@ enum CmafBacking {
 #[derive(Clone)]
 pub struct ResolvedCmafTrack {
     inner: Arc<ResolvedCmafTrackInner>,
+    encryptor: Option<encryption::Encryptor>,
 }
 
 struct ResolvedCmafTrackInner {
@@ -124,6 +126,7 @@ impl ResolvedCmafTrack {
                 init_segment,
                 segments,
             }),
+            encryptor: None,
         }
     }
 
@@ -142,6 +145,7 @@ impl ResolvedCmafTrack {
                 init_segment,
                 segments,
             }),
+            encryptor: None,
         }
     }
 

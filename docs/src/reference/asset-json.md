@@ -24,7 +24,10 @@ WebVTT source tracks, and derived thumbnail tracks:
 
 `cpix_path` points to the CPIX document used for content encryption. Like track
 source paths, it is relative to the descriptor's directory. When omitted, the
-asset is served without encryption.
+asset is served without encryption. Core resolves the matching CPIX usage rule
+once for each CMAF representation. DASH and HLS receive only the resulting
+content-protection metadata; encryption keys are retained inside core for
+on-demand segment encryption.
 
 Track order is preserved as written and is **significant**: within the HLS audio
 group, the default rendition is the first `main`-role track, or the first audio

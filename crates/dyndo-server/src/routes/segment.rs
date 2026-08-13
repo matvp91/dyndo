@@ -6,7 +6,6 @@ use axum::{
     routing::get,
 };
 use dyndo_core::asset::Asset;
-use dyndo_core::track::cmaf::EncryptedCmafTrack;
 use dyndo_core::track::cmaf::ResolvedCmafTrack;
 use dyndo_core::track::{CmafRepresentationError, ResolvedTrack};
 use opendal::Operator;
@@ -90,18 +89,11 @@ pub(super) async fn initialization(
     track_id: &str,
 ) -> Result<Response, ServerError> {
     let track = resolve_track(op, asset, track_id, None).await?;
-    let cmaf = cmaf_representation(&track, text_length, &asset.boundaries).await?;
-    let bytes = match asset.resolve_cpix(op).await? {
-        Some(cpix) => {
-            EncryptedCmafTrack::resolve(cmaf.clone(), &cpix)?
-                .initialization(op)
-                .await?
-        }
-        None => {
-            cmaf.read_range(op, cmaf.init_segment().byte_range())
-                .await?
-        }
+    let mut cmaf = cmaf_representation(&track, text_length, &asset.boundaries).await?;
+    if let Some(cpix) = asset.resolve_cpix(op).await? {
+        cmaf = cmaf.with_protection(&cpix)?;
     };
+    let bytes = cmaf.read_initialization(op).await?;
 
     Ok(([(CONTENT_TYPE, cmaf.metadata().mime_type())], bytes).into_response())
 }
@@ -115,19 +107,14 @@ pub(super) async fn media(
     time: u64,
 ) -> Result<Response, ServerError> {
     let track = resolve_track(op, asset, track_id, None).await?;
-    let cmaf = cmaf_representation(&track, text_length, &asset.boundaries).await?;
+    let mut cmaf = cmaf_representation(&track, text_length, &asset.boundaries).await?;
+    if let Some(cpix) = asset.resolve_cpix(op).await? {
+        cmaf = cmaf.with_protection(&cpix)?;
+    }
     let segment = cmaf
         .served_segment(time, min_length, &asset.boundaries)
         .ok_or_else(|| ServerError::NotFound(format!("segment {time} for track {track_id}")))?;
-    let range = segment.byte_range();
-    let bytes = match asset.resolve_cpix(op).await? {
-        Some(cpix) => {
-            EncryptedCmafTrack::resolve(cmaf.clone(), &cpix)?
-                .media(op, range)
-                .await?
-        }
-        None => cmaf.read_range(op, range).await?,
-    };
+    let bytes = cmaf.read_media(op, &segment).await?;
 
     Ok(([(CONTENT_TYPE, cmaf.metadata().mime_type())], bytes).into_response())
 }

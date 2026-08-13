@@ -6,10 +6,10 @@ use dash_mpd::{
     AdaptationSet, AudioChannelConfiguration, CencPssh, ContentProtection, MPD, Period,
     Representation, S, SegmentTemplate, SegmentTimeline,
 };
+use dyndo_core::drm::Protection;
+use dyndo_core::time::Time;
 use dyndo_core::track::cmaf::{CmafMetadata, ResolvedCmafTrack, ServedSegment};
 use dyndo_core::track::thumbnail::ResolvedThumbnailTrack;
-use dyndo_drm::cpix_parser::Cpix;
-use dyndo_drm::encryption_config::{EncryptionConfig, TrackMetadata};
 
 use crate::adaptation_group::AdaptationGroup;
 use crate::roles;
@@ -26,17 +26,13 @@ pub(crate) fn build_mpd(
     thumbnails: &[ResolvedThumbnailTrack],
     min_length: u32,
     boundaries: &[u32],
-    cpix: Option<&Cpix>,
-) -> Result<MPD, dyndo_drm::encryption_config::Error> {
+) -> MPD {
     let presentation_duration = presentation_duration(tracks);
     let groups = AdaptationGroup::group(tracks);
     let mut adaptations: Vec<AdaptationSet> = groups
         .iter()
         .enumerate()
-        .map(|(id, group)| build_adaptation_set(id, group, min_length, boundaries, cpix))
-        .collect::<Result<Vec<_>, _>>()?
-        .into_iter()
-        .flatten()
+        .filter_map(|(id, group)| build_adaptation_set(id, group, min_length, boundaries))
         .collect();
     adaptations.extend(crate::thumbnail::build_adaptation_sets(
         groups.len(),
@@ -51,7 +47,7 @@ pub(crate) fn build_mpd(
         ..Default::default()
     });
 
-    Ok(MPD {
+    MPD {
         xmlns: Some(DASH_XMLNS.to_string()),
         mpdtype: Some("static".to_string()),
         profiles: Some(DASH_PROFILE.to_string()),
@@ -61,7 +57,7 @@ pub(crate) fn build_mpd(
         mediaPresentationDuration: Some(Duration::from_millis(u64::from(presentation_duration))),
         periods: periods.into_iter().collect(),
         ..Default::default()
-    })
+    }
 }
 
 fn build_adaptation_set(
@@ -69,21 +65,17 @@ fn build_adaptation_set(
     group: &AdaptationGroup<'_>,
     min_length: u32,
     boundaries: &[u32],
-    cpix: Option<&Cpix>,
-) -> Result<Option<AdaptationSet>, dyndo_drm::encryption_config::Error> {
+) -> Option<AdaptationSet> {
     let representations: Vec<Representation> = group
         .members()
         .iter()
-        .map(|track| build_representation(track, min_length, boundaries, cpix))
-        .collect::<Result<Vec<_>, _>>()?
-        .into_iter()
-        .flatten()
+        .filter_map(|track| build_representation(track, min_length, boundaries))
         .collect();
     if representations.is_empty() {
-        return Ok(None);
+        return None;
     }
 
-    Ok(Some(AdaptationSet {
+    Some(AdaptationSet {
         id: Some(id.to_string()),
         contentType: Some(group.track_type().as_str().to_string()),
         mimeType: Some(group.mime_type().to_string()),
@@ -93,18 +85,17 @@ fn build_adaptation_set(
         Accessibility: roles::accessibility(group.track_type(), group.role()),
         representations,
         ..Default::default()
-    }))
+    })
 }
 
 fn build_representation(
     track: &ResolvedCmafTrack,
     min_length: u32,
     boundaries: &[u32],
-    cpix: Option<&Cpix>,
-) -> Result<Option<Representation>, dyndo_drm::encryption_config::Error> {
+) -> Option<Representation> {
     let segments = track.served_segments(min_length, boundaries);
     if segments.is_empty() {
-        return Ok(None);
+        return None;
     }
 
     let mut representation = Representation {
@@ -120,44 +111,36 @@ fn build_representation(
             representation.width = Some(u64::from(video.width));
             representation.height = Some(u64::from(video.height));
             representation.frameRate = Some(video.frame_rate.clone());
-            if let Some(cpix) = cpix {
-                let config = cpix.encryption_config_for(TrackMetadata::Video {
-                    width: video.width,
-                    height: video.height,
-                })?;
-                representation.ContentProtection = content_protection(&config);
-            }
         }
         CmafMetadata::Audio(audio) => {
             representation.audioSamplingRate = Some(audio.sample_rate.to_string());
             representation.AudioChannelConfiguration =
                 vec![build_audio_channel_configuration(audio.channels)];
-            if let Some(cpix) = cpix {
-                let config = cpix.encryption_config_for(TrackMetadata::Audio)?;
-                representation.ContentProtection = content_protection(&config);
-            }
         }
         CmafMetadata::Text(_) => {}
     }
 
-    Ok(Some(representation))
+    if let Some(protection) = track.protection() {
+        representation.ContentProtection = content_protection(protection);
+    }
+    Some(representation)
 }
 
-fn content_protection(config: &EncryptionConfig) -> Vec<ContentProtection> {
-    let mut protection = vec![ContentProtection {
+fn content_protection(protection: &Protection) -> Vec<ContentProtection> {
+    let mut entries = vec![ContentProtection {
         schemeIdUri: "urn:mpeg:dash:mp4protection:2011".to_string(),
-        value: Some(config.scheme.as_str().to_string()),
-        default_KID: Some(config.kid.to_string()),
+        value: Some(protection.scheme().as_str().to_string()),
+        default_KID: Some(protection.key_id().to_string()),
         ..Default::default()
     }];
-    protection.extend(config.drm_systems.iter().map(|system| ContentProtection {
-        schemeIdUri: format!("urn:uuid:{}", system.system_id),
+    entries.extend(protection.systems().iter().map(|system| ContentProtection {
+        schemeIdUri: format!("urn:uuid:{}", system.system_id()),
         cenc_pssh: vec![CencPssh {
-            content: Some(BASE64_STANDARD.encode(&system.pssh)),
+            content: Some(BASE64_STANDARD.encode(system.pssh())),
         }],
         ..Default::default()
     }));
-    protection
+    entries
 }
 
 fn build_audio_channel_configuration(channels: u16) -> AudioChannelConfiguration {
@@ -245,9 +228,11 @@ fn max_segment_duration(tracks: &[ResolvedCmafTrack], min_length: u32, boundarie
                 .served_segments(min_length, boundaries)
                 .into_iter()
                 .map(|segment| {
-                    let duration = u128::from(segment.unscaled_duration()) * 1_000;
-                    let duration = duration.div_ceil(u128::from(track.timescale()));
-                    u32::try_from(duration).unwrap_or(u32::MAX)
+                    u32::try_from(Time::milliseconds_ceil(
+                        segment.unscaled_duration(),
+                        track.timescale(),
+                    ))
+                    .unwrap_or(u32::MAX)
                 })
         })
         .max()

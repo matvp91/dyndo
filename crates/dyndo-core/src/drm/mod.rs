@@ -1,11 +1,15 @@
-use uuid::Uuid;
+//! CPIX parsing and resolved content-protection policy.
 
-use crate::cpix_parser::{ContentKeyUsageRule, Cpix};
+mod cpix;
+
+use cpix::ContentKeyUsageRule;
+pub use cpix::{Cpix, CpixParser, Error as CpixError};
+use uuid::Uuid;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error(transparent)]
-    Key(#[from] crate::cpix_parser::Error),
+    Key(#[from] cpix::Error),
     #[error("no CPIX usage rule matches the track")]
     NoMatchingRule,
     #[error("multiple CPIX usage rules match the track")]
@@ -32,27 +36,56 @@ impl EncryptionScheme {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct EncryptionConfig {
-    pub scheme: EncryptionScheme,
-    pub kid: Uuid,
-    pub key: [u8; 16],
-    pub drm_systems: Vec<DrmSystemConfig>,
+pub struct Protection {
+    pub(crate) scheme: EncryptionScheme,
+    pub(crate) kid: Uuid,
+    pub(crate) systems: Vec<ProtectionSystem>,
+}
+
+impl Protection {
+    pub const fn scheme(&self) -> EncryptionScheme {
+        self.scheme
+    }
+
+    pub const fn key_id(&self) -> Uuid {
+        self.kid
+    }
+
+    pub fn systems(&self) -> &[ProtectionSystem] {
+        &self.systems
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DrmSystemConfig {
-    pub system_id: Uuid,
-    pub pssh: Vec<u8>,
+pub struct ProtectionSystem {
+    pub(crate) system_id: Uuid,
+    pub(crate) pssh: Vec<u8>,
+}
+
+impl ProtectionSystem {
+    pub const fn system_id(&self) -> Uuid {
+        self.system_id
+    }
+
+    pub fn pssh(&self) -> &[u8] {
+        &self.pssh
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct EncryptionConfig {
+    pub(crate) protection: Protection,
+    pub(crate) key: [u8; 16],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TrackMetadata {
+pub(crate) enum TrackMetadata {
     Audio,
     Video { width: u32, height: u32 },
 }
 
 impl Cpix {
-    pub fn encryption_config_for(
+    pub(crate) fn encryption_config_for(
         &self,
         metadata: TrackMetadata,
     ) -> Result<EncryptionConfig, Error> {
@@ -69,20 +102,22 @@ impl Cpix {
             .ok_or(Error::MissingKey(rule.kid))?;
 
         Ok(EncryptionConfig {
-            scheme: key.common_encryption_scheme.parse()?,
-            kid: key.kid,
-            key: key.key()?,
-            drm_systems: self
-                .drm_systems()
-                .iter()
-                .filter(|system| system.kid == key.kid)
-                .map(|system| {
-                    Ok(DrmSystemConfig {
-                        system_id: system.system_id,
-                        pssh: system.pssh()?,
+            protection: Protection {
+                scheme: key.common_encryption_scheme.parse()?,
+                kid: key.kid,
+                systems: self
+                    .drm_systems()
+                    .iter()
+                    .filter(|system| system.kid == key.kid)
+                    .map(|system| {
+                        Ok(ProtectionSystem {
+                            system_id: system.system_id,
+                            pssh: system.pssh()?,
+                        })
                     })
-                })
-                .collect::<Result<_, crate::cpix_parser::Error>>()?,
+                    .collect::<Result<_, cpix::Error>>()?,
+            },
+            key: key.key()?,
         })
     }
 }
@@ -118,14 +153,14 @@ impl ContentKeyUsageRule {
 mod tests {
     use uuid::uuid;
 
+    use super::CpixParser;
     use super::*;
-    use crate::cpix_parser::CpixParser;
 
     #[test]
     fn resolves_hd_video_encryption_config() {
         let cpix = CpixParser::parse(include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../assets/cpix_ml.xml"
+            "/../../assets/cpix_mk.xml"
         )))
         .unwrap();
         let metadata = TrackMetadata::Video {
@@ -135,7 +170,10 @@ mod tests {
 
         let config = cpix.encryption_config_for(metadata).unwrap();
 
-        assert_eq!(config.scheme, EncryptionScheme::Cenc);
-        assert_eq!(config.kid, uuid!("6d76f25c-b17f-5e16-b8ea-ef6bbf582d8e"));
+        assert_eq!(config.protection.scheme(), EncryptionScheme::Cenc);
+        assert_eq!(
+            config.protection.key_id(),
+            uuid!("6d76f25c-b17f-5e16-b8ea-ef6bbf582d8e")
+        );
     }
 }

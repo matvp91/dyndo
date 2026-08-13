@@ -3,7 +3,7 @@ use opendal::Operator;
 use relative_path::RelativePath;
 use uuid::Uuid;
 
-use super::cmaf::{CmafError, CmafMetadata, ResolvedCmafTrack};
+use super::cmaf::{CmafEncryptionError, CmafError, CmafMetadata, ResolvedCmafTrack};
 use super::metadata::{AudioMetadata, TextMetadata, VideoMetadata};
 use super::thumbnail::ResolvedThumbnailTrack;
 use super::timed_text::{ResolvedTimedTextTrack, TimedTextError, WebVttPackageError};
@@ -179,6 +179,8 @@ pub enum TrackResolveError {
 pub enum CmafRepresentationError {
     #[error(transparent)]
     WebVtt(#[from] WebVttPackageError),
+    #[error(transparent)]
+    Encryption(#[from] CmafEncryptionError),
     #[error("track has no CMAF representation")]
     UnsupportedTrack,
 }

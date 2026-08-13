@@ -3,6 +3,7 @@
 mod master;
 mod media;
 pub mod options;
+mod protection;
 mod renditions;
 mod roles;
 
@@ -64,7 +65,17 @@ pub async fn generate_media_playlist(
 ) -> Result<String, HlsError> {
     let plain_vtt = track.timed_text().is_some() && !hls_options.wvtt;
     let cmaf = track.cmaf_representation(text_length, boundaries).await?;
-    let playlist = media::build_playlist(&cmaf, min_length, boundaries, plain_vtt);
+    generate_cmaf_media_playlist(&cmaf, min_length, boundaries, plain_vtt)
+}
+
+/// Generates a static HLS media playlist for an already resolved CMAF representation.
+pub fn generate_cmaf_media_playlist(
+    cmaf: &dyndo_core::track::cmaf::ResolvedCmafTrack,
+    min_length: u32,
+    boundaries: &[u32],
+    plain_vtt: bool,
+) -> Result<String, HlsError> {
+    let playlist = media::build_playlist(cmaf, min_length, boundaries, plain_vtt);
     serialize(|output| playlist.write_to(output))
 }
 

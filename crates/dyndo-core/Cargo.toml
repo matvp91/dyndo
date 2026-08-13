@@ -5,12 +5,16 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+aes = "0.8"
+base64 = "0.22"
 bytes = "1"
-dyndo-drm = { path = "../dyndo-drm" }
+ctr = "0.9"
 futures-util = "0.3"
+getrandom = "0.2"
 language-tags = { version = "0.3.2", features = ["serde"] }
 mp4-atom = { version = "0.12.1", features = ["tokio"] }
 opendal = { version = "0.58.0", default-features = false }
+quick-xml = { version = "0.41", features = ["serialize"] }
 relative-path = { version = "2.0.1", features = ["serde"] }
 rsmpeg = { version = "0.18", default-features = false, features = ["ffmpeg8", "link_system_ffmpeg"] }
 schemars = "1.2.1"

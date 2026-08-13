@@ -1,13 +1,16 @@
+mod syntax;
+
+use syntax::Context;
+
 use super::Error;
 use super::sample::{Subsample, SubsampleOrganizer};
-use crate::codec::h264::Context;
 
-pub(super) struct H264SubsampleMapper {
+pub(super) struct AvcSubsampleMapper {
     nal_length_size: usize,
     context: Context,
 }
 
-impl H264SubsampleMapper {
+impl AvcSubsampleMapper {
     pub(super) fn new(
         nal_length_size: u8,
         sequence_parameter_sets: &[Vec<u8>],

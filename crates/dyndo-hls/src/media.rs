@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use dyndo_core::time::Time;
 use dyndo_core::track::cmaf::{ResolvedCmafTrack, ServedSegment};
 use dyndo_core::track::thumbnail::ResolvedThumbnailTrack;
 use m3u8_rs::{ExtTag, Map, MediaPlaylist, MediaPlaylistType, MediaSegment};
@@ -109,13 +110,21 @@ fn build_segment(
 ) -> MediaSegment {
     let extension = if plain_vtt { "vtt" } else { "m4s" };
     let start_time = segment.unscaled_start_time();
+    let keys = if first {
+        crate::protection::keys(track.protection())
+    } else {
+        Vec::new()
+    };
+    let mut keys = keys.into_iter();
+    let key = keys.next();
+    let unknown_tags = keys.map(crate::protection::key_tag).collect();
     MediaSegment {
         uri: format!("{}/{start_time}.{extension}", track.id()),
         duration: media_duration(segment.unscaled_duration(), track.timescale()),
         title: None,
         byte_range: None,
         discontinuity: false,
-        key: None,
+        key,
         map: (first && !plain_vtt).then(|| Map {
             uri: format!("{}/init.mp4", track.id()),
             byte_range: None,
@@ -123,20 +132,16 @@ fn build_segment(
         }),
         program_date_time: None,
         daterange: None,
-        unknown_tags: Vec::new(),
+        unknown_tags,
     }
 }
 
 fn media_duration(unscaled_duration: u64, timescale: u32) -> f32 {
-    let duration =
-        (u128::from(unscaled_duration) * 1_000 + u128::from(timescale) / 2) / u128::from(timescale);
-    u64::try_from(duration).unwrap_or(u64::MAX) as f32 / 1_000.0
+    Time::milliseconds_rounded(unscaled_duration, timescale) as f32 / 1_000.0
 }
 
 fn rounded_duration_seconds(unscaled_duration: u64, timescale: u32) -> u64 {
-    let duration = u128::from(unscaled_duration);
-    let timescale = u128::from(timescale);
-    u64::try_from((duration + timescale / 2) / timescale).unwrap_or(u64::MAX)
+    Time::seconds_rounded(unscaled_duration, timescale)
 }
 
 fn seconds(milliseconds: u64) -> String {

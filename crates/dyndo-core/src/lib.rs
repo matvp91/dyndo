@@ -2,6 +2,7 @@
 
 pub mod asset;
 pub mod codec;
+pub mod drm;
 pub mod image;
 pub mod packaging;
 pub mod role;

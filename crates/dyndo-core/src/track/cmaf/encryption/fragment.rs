@@ -1,24 +1,21 @@
 use mp4_atom::{Saio, Saiz, Senc, SencBoxVersion, Tfhd, Trun};
 
-use crate::encryption_config::EncryptionConfig;
-
+use super::Error;
 use super::mp4::{
     Mp4Box, add_delta, add_signed, decode_atom, encode_atom, find_box, find_child, grow_box,
 };
-use super::sample::{SampleEncryption, SampleEncryptionInfo, SampleEncryptor};
-use super::Error;
+use super::sample::{SampleEncryptionInfo, SampleEncryptor};
+use crate::codec::CodecConfig;
+use crate::drm::EncryptionConfig;
 
 pub(super) struct FragmentEncryptor {
     samples: SampleEncryptor,
 }
 
 impl FragmentEncryptor {
-    pub(super) fn new(
-        config: &EncryptionConfig,
-        sample_encryption: &SampleEncryption,
-    ) -> Result<Self, Error> {
+    pub(super) fn new(config: &EncryptionConfig, codec: &CodecConfig) -> Result<Self, Error> {
         Ok(Self {
-            samples: SampleEncryptor::new(config.key, sample_encryption)?,
+            samples: SampleEncryptor::new(config.key, codec)?,
         })
     }
 
@@ -107,7 +104,10 @@ impl FragmentEncryptor {
                 .checked_add(u64::try_from(index).map_err(|_| Error::TooLarge)?)
                 .ok_or(Error::TooLarge)?
                 .to_be_bytes();
-            sample_info.push(self.samples.encrypt(&mut bytes[sample_start..sample_end], iv)?);
+            sample_info.push(
+                self.samples
+                    .encrypt(&mut bytes[sample_start..sample_end], iv)?,
+            );
             sample_start = sample_end;
         }
         Ok(sample_info)

@@ -1,7 +1,9 @@
 use dyndo_core::track::cmaf::{CmafMetadata, ResolvedCmafTrack, ServedSegment};
 use dyndo_core::track::metadata::VideoMetadata;
 use dyndo_core::track::thumbnail::ResolvedThumbnailTrack;
-use m3u8_rs::{ClosedCaptionGroupId, ExtTag, MasterPlaylist, Resolution, VariantStream};
+use m3u8_rs::{
+    ClosedCaptionGroupId, ExtTag, MasterPlaylist, Resolution, SessionKey, VariantStream,
+};
 
 use crate::HlsError;
 use crate::options::HlsOptions;
@@ -22,12 +24,25 @@ pub(crate) fn build_playlist(
         version: None,
         variants: build_variant_streams(tracks, min_length, boundaries, &renditions)?,
         session_data: Vec::new(),
-        session_key: Vec::new(),
+        session_key: session_keys(tracks),
         start: None,
         independent_segments: true,
         alternatives: Renditions::media_entries(tracks),
         unknown_tags: image_streams(thumbnails),
     })
+}
+
+fn session_keys(tracks: &[ResolvedCmafTrack]) -> Vec<SessionKey> {
+    let mut keys = Vec::new();
+    for key in tracks
+        .iter()
+        .flat_map(|track| crate::protection::keys(track.protection()))
+    {
+        if !keys.contains(&key) {
+            keys.push(key);
+        }
+    }
+    keys.into_iter().map(SessionKey).collect()
 }
 
 fn image_streams(thumbnails: &[ResolvedThumbnailTrack]) -> Vec<ExtTag> {

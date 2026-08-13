@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use dyndo_core::asset::ResolvedAsset;
 use dyndo_core::codec::{AacCodec, AvcCodec, CodecConfig, WvttCodec};
+use dyndo_core::drm::CpixParser;
 use dyndo_core::track::ResolvedTrack;
 use dyndo_core::track::cmaf::{CmafMetadata, InitSegment, ResolvedCmafTrack, Segment};
 use dyndo_core::track::metadata::{AudioMetadata, TextMetadata, VideoMetadata};
@@ -137,6 +138,19 @@ async fn generated_two_segment_video_mpd_matches_the_golden_fixture() {
     .await;
 
     assert_eq!(xml, include_str!("fixtures/video.mpd").trim_end());
+}
+
+#[tokio::test]
+async fn protected_video_mpd_uses_resolved_content_protection() {
+    let cpix = CpixParser::parse(include_str!("../../../assets/cpix_mk.xml")).unwrap();
+    let track = video_track("video-main", 16, 16, 100)
+        .with_protection(&cpix)
+        .unwrap();
+    let xml = generate(&[track], &[], 0, 0, &[], &DashOptions::default()).await;
+
+    assert!(xml.contains("schemeIdUri=\"urn:mpeg:dash:mp4protection:2011\" value=\"cenc\""));
+    assert!(xml.contains("cenc:default_KID=\"abba271e-8bcf-552b-bd2e-86a434a9a5d9\""));
+    assert!(xml.contains("schemeIdUri=\"urn:uuid:edef8ba9-79d6-4ace-a3c8-27dcd51d21ed\""));
 }
 
 #[tokio::test]

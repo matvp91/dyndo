@@ -82,6 +82,8 @@ impl ManifestRoute for Router<Operator> {
                     hls_images(&track).await
                 } else {
                     hls_media(
+                        &op,
+                        &asset,
                         &track,
                         options.min_length(),
                         options.text_length(),
@@ -118,15 +120,21 @@ pub(super) async fn hls_master(
 }
 
 pub(super) async fn hls_media(
+    op: &Operator,
+    asset: &dyndo_core::asset::Asset,
     track: &ResolvedTrack,
     min_length: u32,
     text_length: u32,
     boundaries: &[u32],
     options: &HlsOptions,
 ) -> Result<Response, ServerError> {
+    let plain_vtt = track.timed_text().is_some() && !options.wvtt;
+    let mut cmaf = track.cmaf_representation(text_length, boundaries).await?;
+    if let Some(cpix) = asset.resolve_cpix(op).await? {
+        cmaf = cmaf.with_protection(&cpix)?;
+    }
     let playlist =
-        dyndo_hls::generate_media_playlist(track, min_length, text_length, boundaries, options)
-            .await?;
+        dyndo_hls::generate_cmaf_media_playlist(&cmaf, min_length, boundaries, plain_vtt)?;
     Ok(([(CONTENT_TYPE, HLS_CONTENT_TYPE)], playlist).into_response())
 }
 

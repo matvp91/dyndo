@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use dyndo_core::asset::ResolvedAsset;
 use dyndo_core::codec::{AacCodec, AvcCodec, CodecConfig};
+use dyndo_core::drm::CpixParser;
 use dyndo_core::track::ResolvedTrack;
 use dyndo_core::track::cmaf::{CmafMetadata, InitSegment, ResolvedCmafTrack, Segment};
 use dyndo_core::track::metadata::{AudioMetadata, TextMetadata, VideoMetadata};
@@ -147,6 +148,19 @@ async fn generated_two_segment_video_manifests_match_the_golden_fixtures() {
             include_str!("fixtures/video/video-main.m3u8"),
         )
     );
+}
+
+#[tokio::test]
+async fn protected_video_manifests_signal_cenc_for_the_resolved_drm_system() {
+    let cpix = CpixParser::parse(include_str!("../../../assets/cpix_mk.xml")).unwrap();
+    let track = video_track().with_protection(&cpix).unwrap();
+    let (master, media) = generate(&[ResolvedTrack::Cmaf(track)], &HlsOptions::default()).await;
+
+    for playlist in [&master, &media[0]] {
+        assert!(playlist.contains("METHOD=SAMPLE-AES-CTR"));
+        assert!(playlist.contains("KEYFORMAT=\"urn:uuid:edef8ba9-79d6-4ace-a3c8-27dcd51d21ed\""));
+        assert!(playlist.contains("URI=\"data:text/plain;base64,"));
+    }
 }
 
 #[tokio::test]

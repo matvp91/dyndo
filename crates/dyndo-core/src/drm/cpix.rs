@@ -155,7 +155,7 @@ mod tests {
     fn parses_demo_document() {
         let xml = include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../../assets/cpix_ml.xml"
+            "/../../assets/cpix_mk.xml"
         ));
         let cpix = CpixParser::parse(xml).unwrap();
 

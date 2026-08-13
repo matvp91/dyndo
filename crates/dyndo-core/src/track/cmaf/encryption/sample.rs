@@ -2,19 +2,10 @@ use aes::Aes128;
 use ctr::cipher::{KeyIvInit, StreamCipher};
 
 use super::Error;
-use super::h264::H264SubsampleMapper;
+use super::avc::AvcSubsampleMapper;
+use crate::codec::CodecConfig;
 
 type Aes128Ctr = ctr::Ctr128BE<Aes128>;
-
-#[derive(Clone)]
-pub enum SampleEncryption {
-    FullSample,
-    Avc {
-        nal_length_size: u8,
-        sequence_parameter_sets: Vec<Vec<u8>>,
-        picture_parameter_sets: Vec<Vec<u8>>,
-    },
-}
 
 pub(super) struct SampleEncryptionInfo {
     pub(super) iv: [u8; 8],
@@ -33,22 +24,19 @@ pub(super) struct SampleEncryptor {
 
 enum SampleMapper {
     FullSample,
-    Avc(H264SubsampleMapper),
+    Avc(AvcSubsampleMapper),
 }
 
 impl SampleEncryptor {
-    pub(super) fn new(key: [u8; 16], method: &SampleEncryption) -> Result<Self, Error> {
-        let mapper = match method {
-            SampleEncryption::FullSample => SampleMapper::FullSample,
-            SampleEncryption::Avc {
-                nal_length_size,
-                sequence_parameter_sets,
-                picture_parameter_sets,
-            } => SampleMapper::Avc(H264SubsampleMapper::new(
-                *nal_length_size,
-                sequence_parameter_sets,
-                picture_parameter_sets,
+    pub(super) fn new(key: [u8; 16], codec: &CodecConfig) -> Result<Self, Error> {
+        let mapper = match codec {
+            CodecConfig::Aac(_) => SampleMapper::FullSample,
+            CodecConfig::Avc(codec) => SampleMapper::Avc(AvcSubsampleMapper::new(
+                codec.nal_length_size(),
+                codec.sequence_parameter_sets(),
+                codec.picture_parameter_sets(),
             )?),
+            _ => return Err(Error::UnsupportedCodec),
         };
         Ok(Self { key, mapper })
     }
