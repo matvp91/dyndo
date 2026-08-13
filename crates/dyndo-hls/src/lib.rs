@@ -39,7 +39,8 @@ pub async fn generate_master_playlist(
     hls_options: &HlsOptions,
 ) -> Result<String, HlsError> {
     let tracks = asset.cmaf_representations(text_length).await?;
-    let thumbnails: Vec<_> = asset.thumbnails().cloned().collect();
+    let tracks: Vec<_> = tracks.iter().map(AsRef::as_ref).collect();
+    let thumbnails: Vec<_> = asset.thumbnails().collect();
     let playlist = master::build_playlist(
         &tracks,
         &thumbnails,
@@ -65,7 +66,7 @@ pub async fn generate_media_playlist(
 ) -> Result<String, HlsError> {
     let plain_vtt = track.timed_text().is_some() && !hls_options.wvtt;
     let cmaf = track.cmaf_representation(text_length, boundaries).await?;
-    generate_cmaf_media_playlist(&cmaf, min_length, boundaries, plain_vtt)
+    generate_cmaf_media_playlist(cmaf.as_ref(), min_length, boundaries, plain_vtt)
 }
 
 /// Generates a static HLS media playlist for an already resolved CMAF representation.

@@ -10,7 +10,7 @@ mod source;
 pub mod thumbnail;
 pub mod timed_text;
 
-pub use resolved::{CmafRepresentationError, ResolvedTrack, TrackResolveError};
+pub use resolved::{CmafRepresentation, CmafRepresentationError, ResolvedTrack, TrackResolveError};
 pub use source::SourceTrack;
 
 /// The playback category of a resolved track.

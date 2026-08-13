@@ -6,7 +6,6 @@ use axum::{
     routing::get,
 };
 use dyndo_core::asset::Asset;
-use dyndo_core::track::cmaf::ResolvedCmafTrack;
 use dyndo_core::track::{CmafRepresentationError, ResolvedTrack};
 use opendal::Operator;
 
@@ -89,10 +88,8 @@ pub(super) async fn initialization(
     track_id: &str,
 ) -> Result<Response, ServerError> {
     let track = resolve_track(op, asset, track_id, None).await?;
-    let mut cmaf = cmaf_representation(&track, text_length, &asset.boundaries).await?;
-    if let Some(cpix) = asset.resolve_cpix(op).await? {
-        cmaf = cmaf.with_protection(&cpix)?;
-    };
+    let cmaf = cmaf_representation(&track, text_length, &asset.boundaries).await?;
+    let cmaf = cmaf.as_ref();
     let bytes = cmaf.read_initialization(op).await?;
 
     Ok(([(CONTENT_TYPE, cmaf.metadata().mime_type())], bytes).into_response())
@@ -107,10 +104,8 @@ pub(super) async fn media(
     time: u64,
 ) -> Result<Response, ServerError> {
     let track = resolve_track(op, asset, track_id, None).await?;
-    let mut cmaf = cmaf_representation(&track, text_length, &asset.boundaries).await?;
-    if let Some(cpix) = asset.resolve_cpix(op).await? {
-        cmaf = cmaf.with_protection(&cpix)?;
-    }
+    let cmaf = cmaf_representation(&track, text_length, &asset.boundaries).await?;
+    let cmaf = cmaf.as_ref();
     let segment = cmaf
         .served_segment(time, min_length, &asset.boundaries)
         .ok_or_else(|| ServerError::NotFound(format!("segment {time} for track {track_id}")))?;
@@ -140,11 +135,11 @@ pub(super) async fn text(
     Ok(([(CONTENT_TYPE, "text/vtt")], text).into_response())
 }
 
-async fn cmaf_representation(
-    track: &ResolvedTrack,
+async fn cmaf_representation<'a>(
+    track: &'a ResolvedTrack,
     text_length: u32,
     boundaries: &[u32],
-) -> Result<ResolvedCmafTrack, ServerError> {
+) -> Result<dyndo_core::track::CmafRepresentation<'a>, ServerError> {
     track
         .cmaf_representation(text_length, boundaries)
         .await

@@ -26,7 +26,7 @@ impl<'a> AdaptationGroup<'a> {
         }
     }
 
-    pub(super) fn group(tracks: &'a [ResolvedCmafTrack]) -> Vec<Self> {
+    pub(super) fn group(tracks: &'a [&'a ResolvedCmafTrack]) -> Vec<Self> {
         let mut groups: Vec<Self> = Vec::new();
 
         for track in tracks {

@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use language_tags::LanguageTag;
 use opendal::Operator;
 use relative_path::RelativePath;
@@ -13,9 +15,25 @@ use crate::role::Role;
 /// One configured asset track whose source or dependencies have been resolved.
 #[derive(Clone)]
 pub enum ResolvedTrack {
-    Cmaf(ResolvedCmafTrack),
+    /// Shared because derived thumbnail tracks retain their selected CMAF source.
+    Cmaf(Arc<ResolvedCmafTrack>),
     TimedText(ResolvedTimedTextTrack),
     Thumbnail(ResolvedThumbnailTrack),
+}
+
+/// A stored CMAF track borrowed from an asset or a temporary packaged representation.
+pub enum CmafRepresentation<'a> {
+    Resolved(&'a ResolvedCmafTrack),
+    Packaged(Box<ResolvedCmafTrack>),
+}
+
+impl AsRef<ResolvedCmafTrack> for CmafRepresentation<'_> {
+    fn as_ref(&self) -> &ResolvedCmafTrack {
+        match self {
+            Self::Resolved(track) => track,
+            Self::Packaged(track) => track,
+        }
+    }
 }
 
 impl ResolvedTrack {
@@ -36,6 +54,7 @@ impl ResolvedTrack {
 
         ResolvedCmafTrack::discover(op, path, id)
             .await
+            .map(Arc::new)
             .map(Self::Cmaf)
             .map_err(Into::into)
     }
@@ -122,7 +141,7 @@ impl ResolvedTrack {
 
     pub fn cmaf(&self) -> Option<&ResolvedCmafTrack> {
         match self {
-            Self::Cmaf(track) => Some(track),
+            Self::Cmaf(track) => Some(track.as_ref()),
             Self::TimedText(_) | Self::Thumbnail(_) => None,
         }
     }
@@ -155,12 +174,14 @@ impl ResolvedTrack {
         &self,
         text_length: u32,
         boundaries: &[u32],
-    ) -> Result<ResolvedCmafTrack, CmafRepresentationError> {
+    ) -> Result<CmafRepresentation<'_>, CmafRepresentationError> {
         match self {
-            Self::Cmaf(track) => Ok(track.clone()),
+            Self::Cmaf(track) => Ok(CmafRepresentation::Resolved(track.as_ref())),
             Self::TimedText(track) => track
                 .package_wvtt(text_length, boundaries)
                 .await
+                .map(Box::new)
+                .map(CmafRepresentation::Packaged)
                 .map_err(Into::into),
             Self::Thumbnail(_) => Err(CmafRepresentationError::UnsupportedTrack),
         }
@@ -171,6 +192,8 @@ impl ResolvedTrack {
 pub enum TrackResolveError {
     #[error(transparent)]
     Cmaf(#[from] CmafError),
+    #[error(transparent)]
+    Encryption(#[from] CmafEncryptionError),
     #[error(transparent)]
     TimedText(#[from] TimedTextError),
 }

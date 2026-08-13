@@ -50,6 +50,7 @@ async fn read_or_new_preserves_the_asset_base_when_adding_a_track() {
         .resolve(
             &operator,
             RelativePath::new("assets/movie/subtitles/en.vtt"),
+            None,
         )
         .await
         .unwrap();

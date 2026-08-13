@@ -22,8 +22,8 @@ const INITIALIZATION_TEMPLATE: &str = "$RepresentationID$/init.mp4";
 const MEDIA_TEMPLATE: &str = "$RepresentationID$/$Time$.m4s";
 
 pub(crate) fn build_mpd(
-    tracks: &[ResolvedCmafTrack],
-    thumbnails: &[ResolvedThumbnailTrack],
+    tracks: &[&ResolvedCmafTrack],
+    thumbnails: &[&ResolvedThumbnailTrack],
     min_length: u32,
     boundaries: &[u32],
 ) -> MPD {
@@ -191,7 +191,7 @@ fn build_segment_timeline(segments: &[ServedSegment<'_>]) -> SegmentTimeline {
     SegmentTimeline { segments: entries }
 }
 
-fn presentation_duration(tracks: &[ResolvedCmafTrack]) -> u32 {
+fn presentation_duration(tracks: &[&ResolvedCmafTrack]) -> u32 {
     maximum_duration(tracks, |metadata| {
         matches!(metadata, CmafMetadata::Video(_))
     })
@@ -204,17 +204,17 @@ fn presentation_duration(tracks: &[ResolvedCmafTrack]) -> u32 {
 }
 
 fn maximum_duration(
-    tracks: &[ResolvedCmafTrack],
+    tracks: &[&ResolvedCmafTrack],
     include: impl Fn(&CmafMetadata) -> bool,
 ) -> Option<u32> {
     tracks
         .iter()
         .filter(|track| include(track.metadata()))
-        .map(ResolvedCmafTrack::duration)
+        .map(|track| track.duration())
         .max()
 }
 
-fn max_segment_duration(tracks: &[ResolvedCmafTrack], min_length: u32, boundaries: &[u32]) -> u32 {
+fn max_segment_duration(tracks: &[&ResolvedCmafTrack], min_length: u32, boundaries: &[u32]) -> u32 {
     tracks
         .iter()
         .filter(|track| {

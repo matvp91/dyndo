@@ -7,6 +7,11 @@ use crate::drm::{Cpix, Protection, TrackMetadata};
 
 impl ResolvedCmafTrack {
     pub fn with_protection(mut self, cpix: &Cpix) -> Result<Self, CmafEncryptionError> {
+        self.protect(cpix)?;
+        Ok(self)
+    }
+
+    pub(crate) fn protect(&mut self, cpix: &Cpix) -> Result<(), CmafEncryptionError> {
         let metadata = match self.metadata() {
             CmafMetadata::Audio(_) => Some(TrackMetadata::Audio),
             CmafMetadata::Video(video) => TrackMetadata::Video {
@@ -17,12 +22,12 @@ impl ResolvedCmafTrack {
             CmafMetadata::Text(_) => None,
         };
         let Some(metadata) = metadata else {
-            return Ok(self);
+            return Ok(());
         };
         let config = cpix.encryption_config_for(metadata)?;
         let encryptor = Encryptor::new(config, self.codec())?;
         self.encryptor = Some(encryptor);
-        Ok(self)
+        Ok(())
     }
 
     pub fn protection(&self) -> Option<&Protection> {

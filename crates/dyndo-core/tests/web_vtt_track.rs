@@ -25,7 +25,7 @@ async fn resolved_text_metadata_is_available_for_web_vtt_and_wvtt() {
     let ResolvedTrack::TimedText(timed_text) = timed_text else {
         panic!("expected a WebVTT source track");
     };
-    let wvtt = ResolvedTrack::Cmaf(timed_text.package_wvtt(0, &[]).await.unwrap());
+    let wvtt = ResolvedTrack::Cmaf(timed_text.package_wvtt(0, &[]).await.unwrap().into());
 
     assert!(wvtt.text_metadata().is_some());
 }
@@ -84,7 +84,7 @@ async fn asset_rejects_packaged_web_vtt_as_a_source_track() {
         panic!("expected a WebVTT source track");
     };
     let packaged = timed_text.package_wvtt(0, &[]).await.unwrap();
-    let packaged = ResolvedTrack::Cmaf(packaged);
+    let packaged = ResolvedTrack::Cmaf(packaged.into());
     let mut asset = Asset::read_or_new(&operator, RelativePath::new("asset.json"))
         .await
         .unwrap();
@@ -124,7 +124,7 @@ async fn track_type_overrides_the_source_file_extension() {
     )
     .unwrap();
 
-    let result = track.resolve(&operator, path).await;
+    let result = track.resolve(&operator, path, None).await;
 
     assert!(result.is_err());
 }

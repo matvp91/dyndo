@@ -13,8 +13,8 @@ const AUDIO_GROUP_ID: &str = "audio";
 const SUBTITLES_GROUP_ID: &str = "subtitles";
 
 pub(crate) fn build_playlist(
-    tracks: &[ResolvedCmafTrack],
-    thumbnails: &[ResolvedThumbnailTrack],
+    tracks: &[&ResolvedCmafTrack],
+    thumbnails: &[&ResolvedThumbnailTrack],
     min_length: u32,
     boundaries: &[u32],
     hls_options: &HlsOptions,
@@ -32,7 +32,7 @@ pub(crate) fn build_playlist(
     })
 }
 
-fn session_keys(tracks: &[ResolvedCmafTrack]) -> Vec<SessionKey> {
+fn session_keys(tracks: &[&ResolvedCmafTrack]) -> Vec<SessionKey> {
     let mut keys = Vec::new();
     for key in tracks
         .iter()
@@ -45,7 +45,7 @@ fn session_keys(tracks: &[ResolvedCmafTrack]) -> Vec<SessionKey> {
     keys.into_iter().map(SessionKey).collect()
 }
 
-fn image_streams(thumbnails: &[ResolvedThumbnailTrack]) -> Vec<ExtTag> {
+fn image_streams(thumbnails: &[&ResolvedThumbnailTrack]) -> Vec<ExtTag> {
     thumbnails
         .iter()
         .map(|thumbnail| {
@@ -63,7 +63,7 @@ fn image_streams(thumbnails: &[ResolvedThumbnailTrack]) -> Vec<ExtTag> {
 }
 
 fn build_variant_streams(
-    tracks: &[ResolvedCmafTrack],
+    tracks: &[&ResolvedCmafTrack],
     min_length: u32,
     boundaries: &[u32],
     renditions: &Renditions,

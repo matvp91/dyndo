@@ -10,7 +10,7 @@ const TILE_SCHEME: &str = "http://dashif.org/guidelines/thumbnail_tile";
 
 pub(crate) fn build_adaptation_sets(
     id: usize,
-    thumbnails: &[ResolvedThumbnailTrack],
+    thumbnails: &[&ResolvedThumbnailTrack],
     presentation_duration: u32,
 ) -> Vec<AdaptationSet> {
     thumbnails

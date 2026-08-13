@@ -105,11 +105,12 @@ async fn generate(
     boundaries: &[u32],
     dash_options: &DashOptions,
 ) -> String {
+    let sources: Vec<_> = tracks.iter().cloned().map(Arc::new).collect();
     let thumbnails: Vec<_> = thumbnail_tracks
         .iter()
-        .filter_map(|thumbnail| thumbnail.resolve(tracks))
+        .filter_map(|thumbnail| thumbnail.resolve(sources.iter().cloned()))
         .collect();
-    let mut resolved_tracks: Vec<_> = tracks.iter().cloned().map(ResolvedTrack::Cmaf).collect();
+    let mut resolved_tracks: Vec<_> = sources.into_iter().map(ResolvedTrack::Cmaf).collect();
     resolved_tracks.extend(thumbnails.into_iter().map(ResolvedTrack::Thumbnail));
     let asset = ResolvedAsset::new(boundaries.to_vec(), resolved_tracks);
     generate_mpd(&asset, min_length, text_length, dash_options)

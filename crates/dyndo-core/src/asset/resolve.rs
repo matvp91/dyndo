@@ -5,20 +5,26 @@ use opendal::Operator;
 
 use super::Asset;
 use crate::drm::{Cpix, CpixParser};
-use crate::track::cmaf::ResolvedCmafTrack;
 use crate::track::thumbnail::ResolvedThumbnailTrack;
-use crate::track::{CmafRepresentationError, ResolvedTrack, Track, TrackResolveError};
+use crate::track::{
+    CmafRepresentation, CmafRepresentationError, ResolvedTrack, Track, TrackResolveError,
+};
 
 impl Asset {
     /// Resolves every configured track in this asset.
     pub async fn resolve(&self, operator: &Operator) -> Result<ResolvedAsset, AssetResolveError> {
         let cpix = self.resolve_cpix(operator).await?.map(Arc::new);
-        let mut tracks = self.resolve_source_tracks(operator).await?;
+        let mut tracks = self
+            .resolve_source_tracks(operator, cpix.as_deref())
+            .await?;
         let mut thumbnails = Vec::new();
 
         for thumbnail in self.thumbnail_tracks() {
             let resolved = thumbnail
-                .resolve(tracks.iter().filter_map(ResolvedTrack::cmaf))
+                .resolve(tracks.iter().filter_map(|track| match track {
+                    ResolvedTrack::Cmaf(track) => Some(Arc::clone(track)),
+                    ResolvedTrack::TimedText(_) | ResolvedTrack::Thumbnail(_) => None,
+                }))
                 .ok_or_else(|| AssetResolveError::MissingThumbnailSource {
                     id: thumbnail.id.clone(),
                 })?;
@@ -57,16 +63,21 @@ impl Asset {
         match track {
             Track::Source(source) => {
                 let path = self.track_path(source);
+                let cpix = self.resolve_cpix(operator).await?;
                 source
-                    .resolve(operator, &path)
+                    .resolve(operator, &path, cpix.as_ref())
                     .await
                     .map(Some)
                     .map_err(Into::into)
             }
             Track::Thumbnail(thumbnail) => {
-                let sources = self.resolve_source_tracks(operator).await?;
+                let cpix = self.resolve_cpix(operator).await?;
+                let sources = self.resolve_source_tracks(operator, cpix.as_ref()).await?;
                 thumbnail
-                    .resolve(sources.iter().filter_map(ResolvedTrack::cmaf))
+                    .resolve(sources.iter().filter_map(|track| match track {
+                        ResolvedTrack::Cmaf(track) => Some(Arc::clone(track)),
+                        ResolvedTrack::TimedText(_) | ResolvedTrack::Thumbnail(_) => None,
+                    }))
                     .map(ResolvedTrack::Thumbnail)
                     .map(Some)
                     .ok_or_else(|| AssetResolveError::MissingThumbnailSource {
@@ -79,10 +90,11 @@ impl Asset {
     async fn resolve_source_tracks(
         &self,
         operator: &Operator,
+        cpix: Option<&Cpix>,
     ) -> Result<Vec<ResolvedTrack>, TrackResolveError> {
         let resolutions = self.source_tracks().map(|track| {
             let path = self.track_path(track);
-            async move { track.resolve(operator, &path).await }
+            async move { track.resolve(operator, &path, cpix).await }
         });
         try_join_all(resolutions).await
     }
@@ -133,21 +145,12 @@ impl ResolvedAsset {
     pub async fn cmaf_representations(
         &self,
         text_length: u32,
-    ) -> Result<Vec<ResolvedCmafTrack>, CmafRepresentationError> {
-        let cpix = self.cpix();
+    ) -> Result<Vec<CmafRepresentation<'_>>, CmafRepresentationError> {
         let representations = self
             .tracks
             .iter()
             .filter(|track| track.thumbnail().is_none())
-            .map(|track| async move {
-                let representation = track
-                    .cmaf_representation(text_length, &self.boundaries)
-                    .await?;
-                match cpix {
-                    Some(cpix) => representation.with_protection(cpix).map_err(Into::into),
-                    None => Ok(representation),
-                }
-            });
+            .map(|track| track.cmaf_representation(text_length, &self.boundaries));
         try_join_all(representations).await
     }
 }

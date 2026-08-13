@@ -328,14 +328,14 @@ mod tests {
     }
 
     fn asset() -> ResolvedAsset {
-        let video = cmaf(
+        let video = Arc::new(cmaf(
             "video",
             CmafMetadata::Video(VideoMetadata {
                 width: 1_920,
                 height: 1_080,
                 frame_rate: "25/1".to_string(),
             }),
-        );
+        ));
         let audio = cmaf(
             "audio",
             CmafMetadata::Audio(AudioMetadata {
@@ -354,14 +354,14 @@ mod tests {
         )
         .unwrap();
         let thumbnail = ThumbnailTrack::new("preview".to_string(), 4, 640)
-            .resolve([&video])
+            .resolve([Arc::clone(&video)])
             .unwrap();
         ResolvedAsset::new(
             Vec::new(),
             vec![
                 ResolvedTrack::Cmaf(video),
-                ResolvedTrack::Cmaf(audio),
-                ResolvedTrack::Cmaf(cmaf_text),
+                ResolvedTrack::Cmaf(audio.into()),
+                ResolvedTrack::Cmaf(cmaf_text.into()),
                 ResolvedTrack::TimedText(web_vtt),
                 ResolvedTrack::Thumbnail(thumbnail),
             ],

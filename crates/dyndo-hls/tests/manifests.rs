@@ -88,7 +88,7 @@ fn video_track_with_segments(segment_count: u64) -> ResolvedCmafTrack {
 
 fn rendition_tracks() -> Vec<ResolvedTrack> {
     vec![
-        ResolvedTrack::Cmaf(video_track()),
+        ResolvedTrack::Cmaf(video_track().into()),
         ResolvedTrack::Cmaf(track(
             "audio-en",
             CmafMetadata::Audio(AudioMetadata {
@@ -99,7 +99,7 @@ fn rendition_tracks() -> Vec<ResolvedTrack> {
             }),
             aac_codec(),
             50,
-        )),
+        ).into()),
         ResolvedTrack::TimedText(ResolvedTimedTextTrack::from_web_vtt_text(
             "text-en".to_string(),
             "text-en.vtt".into(),
@@ -136,7 +136,7 @@ fn thumbnail() -> ThumbnailTrack {
 #[tokio::test]
 async fn generated_two_segment_video_manifests_match_the_golden_fixtures() {
     let (master, media) = generate(
-        &[ResolvedTrack::Cmaf(video_track())],
+        &[ResolvedTrack::Cmaf(video_track().into())],
         &HlsOptions::default(),
     )
     .await;
@@ -154,7 +154,8 @@ async fn generated_two_segment_video_manifests_match_the_golden_fixtures() {
 async fn protected_video_manifests_signal_cenc_for_the_resolved_drm_system() {
     let cpix = CpixParser::parse(include_str!("../../../assets/cpix_mk.xml")).unwrap();
     let track = video_track().with_protection(&cpix).unwrap();
-    let (master, media) = generate(&[ResolvedTrack::Cmaf(track)], &HlsOptions::default()).await;
+    let (master, media) =
+        generate(&[ResolvedTrack::Cmaf(track.into())], &HlsOptions::default()).await;
 
     for playlist in [&master, &media[0]] {
         assert!(playlist.contains("METHOD=SAMPLE-AES-CTR"));
@@ -205,15 +206,15 @@ async fn generated_packaged_wvtt_renditions_match_the_golden_fixtures() {
 
 #[tokio::test]
 async fn generated_image_playlists_advertise_existing_thumbnail_sprites() {
-    let tracks = [video_track()];
+    let tracks = [Arc::new(video_track())];
     let configured = thumbnail();
-    let preview = configured.resolve(&tracks).unwrap();
+    let preview = configured.resolve(tracks.iter().cloned()).unwrap();
     let alternate = ThumbnailTrack::new("alternate".to_string(), 2, 16);
-    let alternate = alternate.resolve(&tracks).unwrap();
+    let alternate = alternate.resolve(tracks.iter().cloned()).unwrap();
     let asset = ResolvedAsset::new(
         Vec::new(),
         vec![
-            ResolvedTrack::Cmaf(tracks[0].clone()),
+            ResolvedTrack::Cmaf(Arc::clone(&tracks[0])),
             ResolvedTrack::Thumbnail(preview),
             ResolvedTrack::Thumbnail(alternate),
         ],
@@ -221,7 +222,7 @@ async fn generated_image_playlists_advertise_existing_thumbnail_sprites() {
     let master = generate_master_playlist(&asset, 0, 0, &HlsOptions::default())
         .await
         .unwrap();
-    let thumbnail = configured.resolve(&tracks).unwrap();
+    let thumbnail = configured.resolve(tracks.iter().cloned()).unwrap();
     let images = generate_image_playlist(&thumbnail).unwrap();
 
     assert!(master.contains(
@@ -248,9 +249,9 @@ async fn generated_image_playlists_advertise_existing_thumbnail_sprites() {
 
 #[test]
 fn generated_image_playlist_shortens_the_final_sprite() {
-    let track = video_track_with_segments(5);
+    let track = Arc::new(video_track_with_segments(5));
     let configured = thumbnail();
-    let thumbnail = configured.resolve(std::slice::from_ref(&track)).unwrap();
+    let thumbnail = configured.resolve([track]).unwrap();
     let playlist = generate_image_playlist(&thumbnail).unwrap();
 
     assert!(playlist.contains(concat!(
