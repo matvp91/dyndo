@@ -11,7 +11,7 @@ workspace = true
 base64 = "0.22"
 dash-mpd = { version = "0.20", default-features = false }
 dyndo-core = { path = "../dyndo-core" }
-dyndo-crypt = { path = "../dyndo-crypt" }
+dyndo-drm = { path = "../dyndo-drm" }
 quick-xml = { version = "0.40", features = ["serialize"] }
 serde = "1"
 thiserror = "2"

@@ -19,7 +19,7 @@ pub enum DashError {
     #[error(transparent)]
     CmafRepresentation(#[from] CmafRepresentationError),
     #[error(transparent)]
-    EncryptionConfig(#[from] dyndo_crypt::encryption_config::Error),
+    EncryptionConfig(#[from] dyndo_drm::encryption_config::Error),
     #[error("multi-period splitting requires at most one MPD Period")]
     MultiPeriodSource,
     #[error(

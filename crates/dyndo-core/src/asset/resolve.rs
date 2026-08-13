@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use dyndo_crypt::cpix_parser::{Cpix, CpixParser};
+use dyndo_drm::cpix_parser::{Cpix, CpixParser};
 use futures_util::future::try_join_all;
 use opendal::Operator;
 
@@ -148,7 +148,7 @@ pub enum AssetResolveError {
     #[error(transparent)]
     Storage(#[from] opendal::Error),
     #[error(transparent)]
-    Cpix(#[from] dyndo_crypt::cpix_parser::Error),
+    Cpix(#[from] dyndo_drm::cpix_parser::Error),
     #[error(transparent)]
     Track(#[from] TrackResolveError),
     #[error("thumbnail track {id} has no suitable video source")]

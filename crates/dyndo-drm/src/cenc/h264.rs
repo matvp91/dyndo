@@ -1,73 +1,72 @@
-use ctr::cipher::StreamCipher;
 use h264_reader::Context;
 use h264_reader::nal::slice::SliceHeader;
 use h264_reader::nal::{Nal, RefNal};
 use h264_reader::rbsp::{BitRead, BitReaderError, Numeric, Primitive};
 
-use super::{Aes128Ctr, Error, Subsample, SubsampleOrganizer};
+use super::Error;
+use super::sample::{Subsample, SubsampleOrganizer};
 
-pub(super) fn encrypt_sample(
-    sample: &mut [u8],
-    nal_length_size: u8,
-    sequence_parameter_sets: &[Vec<u8>],
-    picture_parameter_sets: &[Vec<u8>],
-    cipher: &mut Aes128Ctr,
-) -> Result<Vec<Subsample>, Error> {
-    let length_size = usize::from(nal_length_size);
-    if !(1..=4).contains(&length_size) {
-        return Err(Error::InvalidMedia);
-    }
+pub(super) struct H264SubsampleMapper {
+    nal_length_size: usize,
+    context: Context,
+}
 
-    let context = context(sequence_parameter_sets, picture_parameter_sets)?;
-    let mut organizer = SubsampleOrganizer::default();
-    let mut offset = 0_usize;
-    while offset < sample.len() {
-        let length_end = offset.checked_add(length_size).ok_or(Error::TooLarge)?;
-        let encoded_length = sample.get(offset..length_end).ok_or(Error::InvalidMedia)?;
-        let nal_size = encoded_length
-            .iter()
-            .fold(0_usize, |size, byte| (size << 8) | usize::from(*byte));
-        if nal_size == 0 {
+impl H264SubsampleMapper {
+    pub(super) fn new(
+        nal_length_size: u8,
+        sequence_parameter_sets: &[Vec<u8>],
+        picture_parameter_sets: &[Vec<u8>],
+    ) -> Result<Self, Error> {
+        let nal_length_size = usize::from(nal_length_size);
+        if !(1..=4).contains(&nal_length_size) {
             return Err(Error::InvalidMedia);
         }
-        let nal_end = length_end
-            .checked_add(nal_size)
-            .filter(|end| *end <= sample.len())
-            .ok_or(Error::InvalidMedia)?;
-        let nal = &sample[length_end..nal_end];
-        let nal_type = nal[0] & 0x1f;
-        let clear = if matches!(nal_type, 1 | 5) {
-            length_size
-                .checked_add(1 + slice_header_size(&context, nal)?)
-                .ok_or(Error::TooLarge)?
-        } else {
-            length_size.checked_add(nal_size).ok_or(Error::TooLarge)?
-        };
-        let encrypted = length_size
-            .checked_add(nal_size)
-            .and_then(|total| total.checked_sub(clear))
-            .ok_or(Error::InvalidMedia)?;
-        organizer.add(clear, encrypted)?;
-        offset = nal_end;
+        Ok(Self {
+            nal_length_size,
+            context: context(sequence_parameter_sets, picture_parameter_sets)?,
+        })
     }
 
-    let subsamples = organizer.finish()?;
-    let mut offset = 0_usize;
-    for subsample in &subsamples {
-        offset = offset
-            .checked_add(usize::from(subsample.clear))
-            .ok_or(Error::TooLarge)?;
-        let encrypted_end = offset
-            .checked_add(subsample.encrypted as usize)
-            .filter(|end| *end <= sample.len())
-            .ok_or(Error::InvalidMedia)?;
-        cipher.apply_keystream(&mut sample[offset..encrypted_end]);
-        offset = encrypted_end;
+    pub(super) fn map(&mut self, sample: &[u8]) -> Result<Vec<Subsample>, Error> {
+        let mut organizer = SubsampleOrganizer::default();
+        let mut offset = 0_usize;
+        while offset < sample.len() {
+            let length_end = offset
+                .checked_add(self.nal_length_size)
+                .ok_or(Error::TooLarge)?;
+            let encoded_length = sample.get(offset..length_end).ok_or(Error::InvalidMedia)?;
+            let nal_size = encoded_length
+                .iter()
+                .fold(0_usize, |size, byte| (size << 8) | usize::from(*byte));
+            if nal_size == 0 {
+                return Err(Error::InvalidMedia);
+            }
+            let nal_end = length_end
+                .checked_add(nal_size)
+                .filter(|end| *end <= sample.len())
+                .ok_or(Error::InvalidMedia)?;
+            let nal = &sample[length_end..nal_end];
+            let nal_type = nal[0] & 0x1f;
+            let clear = if matches!(nal_type, 1 | 5) {
+                self.nal_length_size
+                    .checked_add(1 + slice_header_size(&self.context, nal)?)
+                    .ok_or(Error::TooLarge)?
+            } else {
+                self.nal_length_size
+                    .checked_add(nal_size)
+                    .ok_or(Error::TooLarge)?
+            };
+            let encrypted = self
+                .nal_length_size
+                .checked_add(nal_size)
+                .and_then(|total| total.checked_sub(clear))
+                .ok_or(Error::InvalidMedia)?;
+            organizer.add(clear, encrypted)?;
+            offset = nal_end;
+        }
+
+        organizer.finish()
     }
-    if offset != sample.len() {
-        return Err(Error::InvalidMedia);
-    }
-    Ok(subsamples)
 }
 
 fn context(sps: &[Vec<u8>], pps: &[Vec<u8>]) -> Result<Context, Error> {

@@ -8,8 +8,8 @@ use dash_mpd::{
 };
 use dyndo_core::track::cmaf::{CmafMetadata, ResolvedCmafTrack, ServedSegment};
 use dyndo_core::track::thumbnail::ResolvedThumbnailTrack;
-use dyndo_crypt::cpix_parser::Cpix;
-use dyndo_crypt::encryption_config::{EncryptionConfig, TrackMetadata};
+use dyndo_drm::cpix_parser::Cpix;
+use dyndo_drm::encryption_config::{EncryptionConfig, TrackMetadata};
 
 use crate::adaptation_group::AdaptationGroup;
 use crate::roles;
@@ -27,7 +27,7 @@ pub(crate) fn build_mpd(
     min_length: u32,
     boundaries: &[u32],
     cpix: Option<&Cpix>,
-) -> Result<MPD, dyndo_crypt::encryption_config::Error> {
+) -> Result<MPD, dyndo_drm::encryption_config::Error> {
     let presentation_duration = presentation_duration(tracks);
     let groups = AdaptationGroup::group(tracks);
     let mut adaptations: Vec<AdaptationSet> = groups
@@ -70,7 +70,7 @@ fn build_adaptation_set(
     min_length: u32,
     boundaries: &[u32],
     cpix: Option<&Cpix>,
-) -> Result<Option<AdaptationSet>, dyndo_crypt::encryption_config::Error> {
+) -> Result<Option<AdaptationSet>, dyndo_drm::encryption_config::Error> {
     let representations: Vec<Representation> = group
         .members()
         .iter()
@@ -101,7 +101,7 @@ fn build_representation(
     min_length: u32,
     boundaries: &[u32],
     cpix: Option<&Cpix>,
-) -> Result<Option<Representation>, dyndo_crypt::encryption_config::Error> {
+) -> Result<Option<Representation>, dyndo_drm::encryption_config::Error> {
     let segments = track.served_segments(min_length, boundaries);
     if segments.is_empty() {
         return Ok(None);

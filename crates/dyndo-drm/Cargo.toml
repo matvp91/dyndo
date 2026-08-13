@@ -1,5 +1,5 @@
 [package]
-name = "dyndo-crypt"
+name = "dyndo-drm"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

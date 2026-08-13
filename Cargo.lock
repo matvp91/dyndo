@@ -764,7 +764,7 @@ name = "dyndo-core"
 version = "0.5.7"
 dependencies = [
  "bytes",
- "dyndo-crypt",
+ "dyndo-drm",
  "futures-util",
  "language-tags",
  "mp4-atom",
@@ -781,7 +781,22 @@ dependencies = [
 ]
 
 [[package]]
-name = "dyndo-crypt"
+name = "dyndo-dash"
+version = "0.5.7"
+dependencies = [
+ "base64",
+ "dash-mpd",
+ "dyndo-core",
+ "dyndo-drm",
+ "mp4-atom",
+ "quick-xml 0.40.1",
+ "serde",
+ "thiserror 2.0.20",
+ "tokio",
+]
+
+[[package]]
+name = "dyndo-drm"
 version = "0.5.7"
 dependencies = [
  "aes",
@@ -794,21 +809,6 @@ dependencies = [
  "serde",
  "thiserror 2.0.20",
  "uuid",
-]
-
-[[package]]
-name = "dyndo-dash"
-version = "0.5.7"
-dependencies = [
- "base64",
- "dash-mpd",
- "dyndo-core",
- "dyndo-crypt",
- "mp4-atom",
- "quick-xml 0.40.1",
- "serde",
- "thiserror 2.0.20",
- "tokio",
 ]
 
 [[package]]
