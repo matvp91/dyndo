@@ -1,11 +1,15 @@
 use std::time::Duration;
 
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use dash_mpd::{
-    AdaptationSet, AudioChannelConfiguration, MPD, Period, Representation, S, SegmentTemplate,
-    SegmentTimeline,
+    AdaptationSet, AudioChannelConfiguration, CencPssh, ContentProtection, MPD, Period,
+    Representation, S, SegmentTemplate, SegmentTimeline,
 };
 use dyndo_core::track::cmaf::{CmafMetadata, ResolvedCmafTrack, ServedSegment};
 use dyndo_core::track::thumbnail::ResolvedThumbnailTrack;
+use dyndo_crypt::cpix_parser::Cpix;
+use dyndo_crypt::encryption_config::{EncryptionConfig, TrackMetadata};
 
 use crate::adaptation_group::AdaptationGroup;
 use crate::roles;
@@ -22,13 +26,17 @@ pub(crate) fn build_mpd(
     thumbnails: &[ResolvedThumbnailTrack],
     min_length: u32,
     boundaries: &[u32],
-) -> MPD {
+    cpix: Option<&Cpix>,
+) -> Result<MPD, dyndo_crypt::encryption_config::Error> {
     let presentation_duration = presentation_duration(tracks);
     let groups = AdaptationGroup::group(tracks);
     let mut adaptations: Vec<AdaptationSet> = groups
         .iter()
         .enumerate()
-        .filter_map(|(id, group)| build_adaptation_set(id, group, min_length, boundaries))
+        .map(|(id, group)| build_adaptation_set(id, group, min_length, boundaries, cpix))
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .flatten()
         .collect();
     adaptations.extend(crate::thumbnail::build_adaptation_sets(
         groups.len(),
@@ -43,7 +51,7 @@ pub(crate) fn build_mpd(
         ..Default::default()
     });
 
-    MPD {
+    Ok(MPD {
         xmlns: Some(DASH_XMLNS.to_string()),
         mpdtype: Some("static".to_string()),
         profiles: Some(DASH_PROFILE.to_string()),
@@ -53,7 +61,7 @@ pub(crate) fn build_mpd(
         mediaPresentationDuration: Some(Duration::from_millis(u64::from(presentation_duration))),
         periods: periods.into_iter().collect(),
         ..Default::default()
-    }
+    })
 }
 
 fn build_adaptation_set(
@@ -61,17 +69,21 @@ fn build_adaptation_set(
     group: &AdaptationGroup<'_>,
     min_length: u32,
     boundaries: &[u32],
-) -> Option<AdaptationSet> {
+    cpix: Option<&Cpix>,
+) -> Result<Option<AdaptationSet>, dyndo_crypt::encryption_config::Error> {
     let representations: Vec<Representation> = group
         .members()
         .iter()
-        .filter_map(|track| build_representation(track, min_length, boundaries))
+        .map(|track| build_representation(track, min_length, boundaries, cpix))
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .flatten()
         .collect();
     if representations.is_empty() {
-        return None;
+        return Ok(None);
     }
 
-    Some(AdaptationSet {
+    Ok(Some(AdaptationSet {
         id: Some(id.to_string()),
         contentType: Some(group.track_type().as_str().to_string()),
         mimeType: Some(group.mime_type().to_string()),
@@ -81,17 +93,18 @@ fn build_adaptation_set(
         Accessibility: roles::accessibility(group.track_type(), group.role()),
         representations,
         ..Default::default()
-    })
+    }))
 }
 
 fn build_representation(
     track: &ResolvedCmafTrack,
     min_length: u32,
     boundaries: &[u32],
-) -> Option<Representation> {
+    cpix: Option<&Cpix>,
+) -> Result<Option<Representation>, dyndo_crypt::encryption_config::Error> {
     let segments = track.served_segments(min_length, boundaries);
     if segments.is_empty() {
-        return None;
+        return Ok(None);
     }
 
     let mut representation = Representation {
@@ -107,16 +120,44 @@ fn build_representation(
             representation.width = Some(u64::from(video.width));
             representation.height = Some(u64::from(video.height));
             representation.frameRate = Some(video.frame_rate.clone());
+            if let Some(cpix) = cpix {
+                let config = cpix.encryption_config_for(TrackMetadata::Video {
+                    width: video.width,
+                    height: video.height,
+                })?;
+                representation.ContentProtection = content_protection(&config);
+            }
         }
         CmafMetadata::Audio(audio) => {
             representation.audioSamplingRate = Some(audio.sample_rate.to_string());
             representation.AudioChannelConfiguration =
                 vec![build_audio_channel_configuration(audio.channels)];
+            if let Some(cpix) = cpix {
+                let config = cpix.encryption_config_for(TrackMetadata::Audio)?;
+                representation.ContentProtection = content_protection(&config);
+            }
         }
         CmafMetadata::Text(_) => {}
     }
 
-    Some(representation)
+    Ok(Some(representation))
+}
+
+fn content_protection(config: &EncryptionConfig) -> Vec<ContentProtection> {
+    let mut protection = vec![ContentProtection {
+        schemeIdUri: "urn:mpeg:dash:mp4protection:2011".to_string(),
+        value: Some(config.scheme.as_str().to_string()),
+        default_KID: Some(config.kid.to_string()),
+        ..Default::default()
+    }];
+    protection.extend(config.drm_systems.iter().map(|system| ContentProtection {
+        schemeIdUri: format!("urn:uuid:{}", system.system_id),
+        cenc_pssh: vec![CencPssh {
+            content: Some(BASE64_STANDARD.encode(&system.pssh)),
+        }],
+        ..Default::default()
+    }));
+    protection
 }
 
 fn build_audio_channel_configuration(channels: u16) -> AudioChannelConfiguration {

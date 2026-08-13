@@ -22,6 +22,15 @@ pub enum EncryptionScheme {
     Cbcs,
 }
 
+impl EncryptionScheme {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Cenc => "cenc",
+            Self::Cbcs => "cbcs",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EncryptionConfig {
     pub scheme: EncryptionScheme,

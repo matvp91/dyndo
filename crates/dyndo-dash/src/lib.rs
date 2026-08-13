@@ -18,6 +18,8 @@ use serde::Serialize;
 pub enum DashError {
     #[error(transparent)]
     CmafRepresentation(#[from] CmafRepresentationError),
+    #[error(transparent)]
+    EncryptionConfig(#[from] dyndo_crypt::encryption_config::Error),
     #[error("multi-period splitting requires at most one MPD Period")]
     MultiPeriodSource,
     #[error(
@@ -48,7 +50,13 @@ pub async fn generate_mpd(
 ) -> Result<String, DashError> {
     let tracks = asset.cmaf_representations(text_length).await?;
     let thumbnails: Vec<_> = asset.thumbnails().cloned().collect();
-    let mut mpd = builder::build_mpd(&tracks, &thumbnails, min_length, asset.boundaries());
+    let mut mpd = builder::build_mpd(
+        &tracks,
+        &thumbnails,
+        min_length,
+        asset.boundaries(),
+        asset.cpix(),
+    )?;
     if dash_options.multi_period {
         multi_period::split(&mut mpd, asset.boundaries())?;
     }

@@ -5,7 +5,12 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+aes = "0.8"
 base64 = "0.22"
+ctr = "0.9"
+getrandom = "0.2"
+h264-reader = "0.8"
+mp4-atom = "0.12.1"
 quick-xml = { version = "0.41", features = ["serialize"] }
 serde = { version = "1", features = ["derive"] }
 thiserror = "2"

@@ -119,7 +119,15 @@ pub(super) async fn media(
     let segment = cmaf
         .served_segment(time, min_length, &asset.boundaries)
         .ok_or_else(|| ServerError::NotFound(format!("segment {time} for track {track_id}")))?;
-    let bytes = cmaf.read_range(op, segment.byte_range()).await?;
+    let range = segment.byte_range();
+    let bytes = match asset.resolve_cpix(op).await? {
+        Some(cpix) => {
+            EncryptedCmafTrack::resolve(cmaf.clone(), &cpix)?
+                .media(op, range)
+                .await?
+        }
+        None => cmaf.read_range(op, range).await?,
+    };
 
     Ok(([(CONTENT_TYPE, cmaf.metadata().mime_type())], bytes).into_response())
 }
