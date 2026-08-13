@@ -1,10 +1,3 @@
-//! Minimal CPIX (DASH-IF Content Protection Information Exchange) parser.
-//!
-//! Parses the subset we need to encrypt segments on the fly: plain-value
-//! content keys and the usage rules that map them to tracks. Deserialization
-//! follows the dash-mpd-rs style: serde structs mirroring the document via
-//! quick-xml, with `alias` covering the customary namespace prefixes.
-
 use base64::prelude::{BASE64_STANDARD, Engine as _};
 use serde::Deserialize;
 use uuid::Uuid;
