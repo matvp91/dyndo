@@ -1,6 +1,6 @@
 use dyndo_core::asset::Asset;
 use dyndo_core::track::ResolvedTrack;
-use dyndo_core::track::cmaf::CmafKind;
+use dyndo_core::track::cmaf::CmafMetadata;
 use dyndo_core::track::timed_text::TimedTextFormat;
 use opendal::{Operator, services::Memory};
 
@@ -61,7 +61,7 @@ async fn resolved_asset_contains_video_subtitle_and_thumbnail_tracks() {
         .await
         .unwrap();
 
-    assert!(matches!(video.kind(), CmafKind::Video(_)));
+    assert!(matches!(video.metadata(), CmafMetadata::Video(_)));
     assert_eq!(
         video_initialization.as_ref(),
         &VIDEO_FIXTURE[..video.init_segment().byte_range().end as usize]

@@ -6,7 +6,7 @@ use relative_path::RelativePath;
 
 use super::boxes::{self, Boxes};
 use super::segments::{build_init_segment, build_segments};
-use super::{CmafError, CmafKind, CmafTrack, ResolvedCmafTrack};
+use super::{CmafError, CmafMetadata, CmafTrack, ResolvedCmafTrack};
 use crate::codec::{
     AacCodec, Ac3Codec, Av1Codec, AvcCodec, CodecConfig, Eac3Codec, HevcCodec, WvttCodec,
 };
@@ -19,7 +19,7 @@ impl CmafTrack {
         op: &Operator,
         path: &RelativePath,
     ) -> Result<ResolvedCmafTrack, CmafError> {
-        ResolvedCmafTrack::from_stored_cmaf(op, path, self.id.clone(), Some(self.kind.clone()))
+        ResolvedCmafTrack::from_stored_cmaf(op, path, self.id.clone(), Some(self.metadata.clone()))
             .await
     }
 }
@@ -37,44 +37,56 @@ impl ResolvedCmafTrack {
         op: &Operator,
         path: &RelativePath,
         id: String,
-        configured_kind: Option<CmafKind>,
+        configured_metadata: Option<CmafMetadata>,
     ) -> Result<Self, CmafError> {
         let boxes = boxes::scan(op, path.as_str()).await?;
-        let (kind, init_segment, segments) = inspect(&boxes, configured_kind)?;
+        let (metadata, init_segment, segments) = inspect(&boxes, configured_metadata)?;
 
-        Ok(Self::new(id, path.to_owned(), kind, init_segment, segments))
+        Ok(Self::new(
+            id,
+            path.to_owned(),
+            metadata,
+            init_segment,
+            segments,
+        ))
     }
 
     /// Creates resolved CMAF media backed by serialized bytes.
     pub(crate) async fn from_cmaf_bytes(
         bytes: Bytes,
         id: String,
-        configured_kind: CmafKind,
+        configured_metadata: CmafMetadata,
     ) -> Result<Self, CmafError> {
         let boxes = boxes::scan_bytes(bytes.clone()).await?;
-        let (kind, init_segment, segments) = inspect(&boxes, Some(configured_kind))?;
+        let (metadata, init_segment, segments) = inspect(&boxes, Some(configured_metadata))?;
 
-        Ok(Self::from_memory(id, bytes, kind, init_segment, segments))
+        Ok(Self::from_memory(
+            id,
+            bytes,
+            metadata,
+            init_segment,
+            segments,
+        ))
     }
 }
 
 fn inspect(
     boxes: &Boxes,
-    configured_kind: Option<CmafKind>,
+    configured_metadata: Option<CmafMetadata>,
 ) -> Result<
     (
-        CmafKind,
+        CmafMetadata,
         std::sync::Arc<super::InitSegment>,
         Vec<super::Segment>,
     ),
     CmafError,
 > {
     let init_segment = build_init_segment(boxes, build_codec(boxes)?);
-    let discovered_kind = build_kind(boxes)?;
+    let discovered_metadata = build_metadata(boxes)?;
     let segments = build_segments(boxes, &init_segment)?;
 
     Ok((
-        configured_kind.unwrap_or(discovered_kind),
+        configured_metadata.unwrap_or(discovered_metadata),
         init_segment,
         segments,
     ))
@@ -95,15 +107,15 @@ fn build_codec(boxes: &Boxes) -> Result<CodecConfig, CmafError> {
     }
 }
 
-fn build_kind(boxes: &Boxes) -> Result<CmafKind, CmafError> {
+fn build_metadata(boxes: &Boxes) -> Result<CmafMetadata, CmafError> {
     let handler = boxes.moov.trak[0].mdia.hdlr.handler;
 
     if handler == FourCC::new(b"vide") {
-        build_video_metadata(boxes).map(CmafKind::Video)
+        build_video_metadata(boxes).map(CmafMetadata::Video)
     } else if handler == FourCC::new(b"soun") {
-        build_audio_metadata(boxes).map(CmafKind::Audio)
+        build_audio_metadata(boxes).map(CmafMetadata::Audio)
     } else if handler == FourCC::new(b"text") {
-        Ok(CmafKind::Text(build_text_metadata(boxes)))
+        Ok(CmafMetadata::Text(build_text_metadata(boxes)))
     } else {
         Err(CmafError::UnsupportedTrackHandler)
     }

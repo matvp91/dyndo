@@ -1,5 +1,5 @@
 use dyndo_core::role::Role;
-use dyndo_core::track::cmaf::{CmafKind, ResolvedCmafTrack, ServedSegment};
+use dyndo_core::track::cmaf::{CmafMetadata, ResolvedCmafTrack, ServedSegment};
 use language_tags::LanguageTag;
 use m3u8_rs::{AlternativeMedia, AlternativeMediaType};
 
@@ -28,18 +28,18 @@ impl Renditions {
         let mut subtitle_bitrates = (0, 0);
 
         for track in tracks {
-            let bitrates = match track.kind() {
-                CmafKind::Video(_) => continue,
-                CmafKind::Audio(_) => {
+            let bitrates = match track.metadata() {
+                CmafMetadata::Video(_) => continue,
+                CmafMetadata::Audio(_) => {
                     has_audio = true;
                     &mut audio_bitrates
                 }
-                CmafKind::Text(_) => {
+                CmafMetadata::Text(_) => {
                     has_subtitles = true;
                     &mut subtitle_bitrates
                 }
             };
-            if hls_options.wvtt || !matches!(track.kind(), CmafKind::Text(_)) {
+            if hls_options.wvtt || !matches!(track.metadata(), CmafMetadata::Text(_)) {
                 push_unique(&mut codecs, track.codec().rfc6381());
             }
             let segments = track.served_segments(min_length, boundaries);
@@ -79,16 +79,16 @@ fn build_media_entry(
     track: &ResolvedCmafTrack,
     default_audio_id: Option<&str>,
 ) -> Option<AlternativeMedia> {
-    let (media_type, group_id, language, role, channels) = match track.kind() {
-        CmafKind::Video(_) => return None,
-        CmafKind::Audio(audio) => (
+    let (media_type, group_id, language, role, channels) = match track.metadata() {
+        CmafMetadata::Video(_) => return None,
+        CmafMetadata::Audio(audio) => (
             AlternativeMediaType::Audio,
             "audio",
             &audio.language,
             audio.role,
             Some(audio.channels.to_string()),
         ),
-        CmafKind::Text(text) => (
+        CmafMetadata::Text(text) => (
             AlternativeMediaType::Subtitles,
             "subtitles",
             &text.language,
@@ -118,11 +118,11 @@ fn default_audio_id(tracks: &[ResolvedCmafTrack]) -> Option<&str> {
     tracks
         .iter()
         .find(|track| {
-            matches!(track.kind(), CmafKind::Audio(audio) if audio.role == Some(Role::Main))
+            matches!(track.metadata(), CmafMetadata::Audio(audio) if audio.role == Some(Role::Main))
         })
         .or_else(|| {
             tracks.iter().find(
-                |track| matches!(track.kind(), CmafKind::Audio(audio) if audio.role.is_none()),
+                |track| matches!(track.metadata(), CmafMetadata::Audio(audio) if audio.role.is_none()),
             )
         })
         .map(ResolvedCmafTrack::id)
@@ -146,10 +146,10 @@ fn selection_tuple_is_unique(tracks: &[ResolvedCmafTrack], track: &ResolvedCmafT
 }
 
 fn selection_tuple(track: &ResolvedCmafTrack) -> Option<(bool, &LanguageTag, Option<Role>)> {
-    match track.kind() {
-        CmafKind::Video(_) => None,
-        CmafKind::Audio(audio) => Some((true, &audio.language, audio.role)),
-        CmafKind::Text(text) => Some((false, &text.language, text.role)),
+    match track.metadata() {
+        CmafMetadata::Video(_) => None,
+        CmafMetadata::Audio(audio) => Some((true, &audio.language, audio.role)),
+        CmafMetadata::Text(text) => Some((false, &text.language, text.role)),
     }
 }
 

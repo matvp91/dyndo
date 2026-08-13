@@ -3,7 +3,7 @@ use opendal::Operator;
 
 use super::frame_decoder::FrameDecoder;
 use super::sprite_encoder::{SpriteEncoder, SpriteLayout};
-use crate::track::cmaf::{CmafKind, ResolvedCmafTrack, Segment};
+use crate::track::cmaf::{CmafMetadata, ResolvedCmafTrack, Segment};
 
 /// An error encountered while generating a thumbnail sprite.
 #[derive(Debug, thiserror::Error)]
@@ -70,7 +70,7 @@ impl<'a> SpritePlan<'a> {
         tile_width: u32,
         tile_size: u32,
     ) -> Result<Self, SpriteGeneratorError> {
-        let CmafKind::Video(video) = track.kind() else {
+        let CmafMetadata::Video(video) = track.metadata() else {
             return Err(SpriteGeneratorError::Invalid(
                 "source is not video".to_owned(),
             ));

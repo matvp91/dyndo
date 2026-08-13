@@ -1,7 +1,7 @@
 use std::ops::Range;
 
 use dyndo_core::track::ResolvedTrack;
-use dyndo_core::track::cmaf::CmafKind;
+use dyndo_core::track::cmaf::CmafMetadata;
 use opendal::{Operator, services::Memory};
 use relative_path::RelativePath;
 
@@ -35,8 +35,8 @@ async fn video_resolve_and_read_returns_the_indexed_portions_of_a_fragmented_mp4
         .unwrap();
 
     assert!(matches!(
-        track.kind(),
-        CmafKind::Video(kind) if (kind.width, kind.height, kind.frame_rate.as_str()) == (16, 16, "4/1")
+        track.metadata(),
+        CmafMetadata::Video(metadata) if (metadata.width, metadata.height, metadata.frame_rate.as_str()) == (16, 16, "4/1")
     ));
     assert_eq!(track.id(), "76666358-6bba-5805-9a37-a18e055e9ea8");
     assert_eq!(track.source_path(), Some(path));

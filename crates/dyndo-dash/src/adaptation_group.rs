@@ -1,6 +1,6 @@
 use dyndo_core::role::Role;
 use dyndo_core::track::TrackType;
-use dyndo_core::track::cmaf::{CmafKind, ResolvedCmafTrack};
+use dyndo_core::track::cmaf::{CmafMetadata, ResolvedCmafTrack};
 
 pub(super) struct AdaptationGroup<'a> {
     key: String,
@@ -13,13 +13,13 @@ pub(super) struct AdaptationGroup<'a> {
 
 impl<'a> AdaptationGroup<'a> {
     fn new(key: String, track: &'a ResolvedCmafTrack) -> Self {
-        let language = track.kind().language().map(ToString::to_string);
-        let role = track.kind().role();
+        let language = track.metadata().language().map(ToString::to_string);
+        let role = track.metadata().role();
 
         Self {
             key,
-            track_type: track.kind().track_type(),
-            mime_type: track.kind().mime_type(),
+            track_type: track.metadata().track_type(),
+            mime_type: track.metadata().mime_type(),
             language,
             role,
             members: vec![track],
@@ -65,11 +65,11 @@ impl<'a> AdaptationGroup<'a> {
 fn adaptation_set_key(track: &ResolvedCmafTrack) -> String {
     let codec = track.codec().rfc6381();
     let sample_entry = sample_entry(&codec);
-    match track.kind() {
-        CmafKind::Video(_) => {
+    match track.metadata() {
+        CmafMetadata::Video(_) => {
             format!("video:{sample_entry}:{}", track.timescale())
         }
-        CmafKind::Audio(audio) => format!(
+        CmafMetadata::Audio(audio) => format!(
             "audio:{sample_entry}:{}:{}:{}:{}:{}",
             track.timescale(),
             audio.language,
@@ -77,7 +77,7 @@ fn adaptation_set_key(track: &ResolvedCmafTrack) -> String {
             audio.sample_rate,
             audio.channels
         ),
-        CmafKind::Text(text) => format!(
+        CmafMetadata::Text(text) => format!(
             "text:{sample_entry}:{}:{}:{}",
             track.timescale(),
             text.language,

@@ -149,7 +149,7 @@ impl Attribute {
             Self::Codec => track.codec().map(Cow::Owned),
             Self::FrameRate => track
                 .video_metadata()
-                .map(|kind| Cow::Borrowed(kind.frame_rate.as_str())),
+                .map(|metadata| Cow::Borrowed(metadata.frame_rate.as_str())),
             Self::Language => track
                 .language()
                 .map(|language| Cow::Borrowed(language.as_str())),
@@ -163,16 +163,18 @@ impl Attribute {
         match self {
             Self::Width => track
                 .video_metadata()
-                .map(|kind| u64::from(kind.width))
+                .map(|metadata| u64::from(metadata.width))
                 .or_else(|| thumbnail.map(|track| u64::from(track.width()))),
             Self::Height => track
                 .video_metadata()
-                .map(|kind| u64::from(kind.height))
+                .map(|metadata| u64::from(metadata.height))
                 .or_else(|| thumbnail.map(|track| u64::from(track.height()))),
             Self::SampleRate => track
                 .audio_metadata()
-                .map(|kind| u64::from(kind.sample_rate)),
-            Self::Channels => track.audio_metadata().map(|kind| u64::from(kind.channels)),
+                .map(|metadata| u64::from(metadata.sample_rate)),
+            Self::Channels => track
+                .audio_metadata()
+                .map(|metadata| u64::from(metadata.channels)),
             Self::TileSize => thumbnail.map(|track| u64::from(track.tile_size())),
             Self::Type
             | Self::Format
@@ -308,18 +310,18 @@ mod tests {
     use dyndo_core::asset::ResolvedAsset;
     use dyndo_core::codec::{CodecConfig, WvttCodec};
     use dyndo_core::track::ResolvedTrack;
-    use dyndo_core::track::cmaf::{CmafKind, InitSegment, ResolvedCmafTrack};
+    use dyndo_core::track::cmaf::{CmafMetadata, InitSegment, ResolvedCmafTrack};
     use dyndo_core::track::metadata::{AudioMetadata, TextMetadata, VideoMetadata};
     use dyndo_core::track::thumbnail::ThumbnailTrack;
     use dyndo_core::track::timed_text::ResolvedTimedTextTrack;
 
     use super::Filter;
 
-    fn cmaf(id: &str, kind: CmafKind) -> ResolvedCmafTrack {
+    fn cmaf(id: &str, metadata: CmafMetadata) -> ResolvedCmafTrack {
         ResolvedCmafTrack::new(
             id.to_string(),
             format!("{id}.mp4").into(),
-            kind,
+            metadata,
             Arc::new(InitSegment::new(CodecConfig::Wvtt(WvttCodec), 1_000, 0, 0)),
             Vec::new(),
         )
@@ -328,7 +330,7 @@ mod tests {
     fn asset() -> ResolvedAsset {
         let video = cmaf(
             "video",
-            CmafKind::Video(VideoMetadata {
+            CmafMetadata::Video(VideoMetadata {
                 width: 1_920,
                 height: 1_080,
                 frame_rate: "25/1".to_string(),
@@ -336,14 +338,14 @@ mod tests {
         );
         let audio = cmaf(
             "audio",
-            CmafKind::Audio(AudioMetadata {
+            CmafMetadata::Audio(AudioMetadata {
                 sample_rate: 48_000,
                 channels: 2,
                 language: "eng".parse().unwrap(),
                 role: None,
             }),
         );
-        let cmaf_text = cmaf("cmaf-text", CmafKind::Text(TextMetadata::default()));
+        let cmaf_text = cmaf("cmaf-text", CmafMetadata::Text(TextMetadata::default()));
         let web_vtt = ResolvedTimedTextTrack::from_web_vtt_text(
             "webvtt".to_string(),
             "webvtt.vtt".into(),

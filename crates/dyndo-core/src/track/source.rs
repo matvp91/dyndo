@@ -34,7 +34,7 @@ impl SourceTrack {
 
     pub fn language_and_role_mut(&mut self) -> Option<(&mut LanguageTag, &mut Option<Role>)> {
         match self {
-            Self::Cmaf(track) => track.kind.language_and_role_mut(),
+            Self::Cmaf(track) => track.metadata.language_and_role_mut(),
             Self::TimedText(track) => {
                 Some((&mut track.metadata.language, &mut track.metadata.role))
             }
@@ -67,13 +67,13 @@ impl SourceTrack {
                 id: track.id().to_string(),
                 path,
                 format: track.format().clone(),
-                metadata: track.text_metadata().clone(),
+                metadata: track.metadata().clone(),
             })),
             ResolvedTrack::Cmaf(track) => Some(Self::Cmaf(CmafTrack {
                 id: track.id().to_string(),
                 path,
                 codec: track.codec().rfc6381(),
-                kind: track.kind().clone(),
+                metadata: track.metadata().clone(),
             })),
             ResolvedTrack::Thumbnail(_) => None,
         }

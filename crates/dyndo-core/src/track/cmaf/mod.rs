@@ -32,18 +32,18 @@ pub struct CmafTrack {
     pub(super) path: RelativePathBuf,
     pub codec: String,
     #[serde(flatten)]
-    pub kind: CmafKind,
+    pub metadata: CmafMetadata,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "type", rename_all = "lowercase")]
-pub enum CmafKind {
+pub enum CmafMetadata {
     Video(VideoMetadata),
     Audio(AudioMetadata),
     Text(TextMetadata),
 }
 
-impl CmafKind {
+impl CmafMetadata {
     /// Returns the playback category of this CMAF track.
     pub const fn track_type(&self) -> TrackType {
         match self {
@@ -101,7 +101,7 @@ pub struct ResolvedCmafTrack {
 struct ResolvedCmafTrackInner {
     id: String,
     backing: CmafBacking,
-    kind: CmafKind,
+    metadata: CmafMetadata,
     init_segment: Arc<InitSegment>,
     segments: Vec<Segment>,
 }
@@ -110,7 +110,7 @@ impl ResolvedCmafTrack {
     pub fn new(
         id: String,
         source_path: RelativePathBuf,
-        kind: CmafKind,
+        metadata: CmafMetadata,
         init_segment: Arc<InitSegment>,
         segments: Vec<Segment>,
     ) -> Self {
@@ -118,7 +118,7 @@ impl ResolvedCmafTrack {
             inner: Arc::new(ResolvedCmafTrackInner {
                 id,
                 backing: CmafBacking::Stored { path: source_path },
-                kind,
+                metadata,
                 init_segment,
                 segments,
             }),
@@ -128,7 +128,7 @@ impl ResolvedCmafTrack {
     fn from_memory(
         id: String,
         bytes: Bytes,
-        kind: CmafKind,
+        metadata: CmafMetadata,
         init_segment: Arc<InitSegment>,
         segments: Vec<Segment>,
     ) -> Self {
@@ -136,7 +136,7 @@ impl ResolvedCmafTrack {
             inner: Arc::new(ResolvedCmafTrackInner {
                 id,
                 backing: CmafBacking::Memory { bytes },
-                kind,
+                metadata,
                 init_segment,
                 segments,
             }),
@@ -155,8 +155,8 @@ impl ResolvedCmafTrack {
         }
     }
 
-    pub fn kind(&self) -> &CmafKind {
-        &self.inner.kind
+    pub fn metadata(&self) -> &CmafMetadata {
+        &self.inner.metadata
     }
 
     pub fn segments(&self) -> &[Segment] {
