@@ -124,9 +124,10 @@ pub(super) async fn hls_media(
     boundaries: &[u32],
     options: &HlsOptions,
 ) -> Result<Response, ServerError> {
+    let plain_vtt = track.timed_text().is_some() && !options.wvtt;
+    let cmaf = track.cmaf_representation(text_length, boundaries).await?;
     let playlist =
-        dyndo_hls::generate_media_playlist(track, min_length, text_length, boundaries, options)
-            .await?;
+        dyndo_hls::generate_cmaf_media_playlist(cmaf.as_ref(), min_length, boundaries, plain_vtt)?;
     Ok(([(CONTENT_TYPE, HLS_CONTENT_TYPE)], playlist).into_response())
 }
 

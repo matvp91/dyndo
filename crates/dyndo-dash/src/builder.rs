@@ -1,9 +1,13 @@
 use std::time::Duration;
 
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use dash_mpd::{
-    AdaptationSet, AudioChannelConfiguration, MPD, Period, Representation, S, SegmentTemplate,
-    SegmentTimeline,
+    AdaptationSet, AudioChannelConfiguration, CencPssh, ContentProtection, MPD, Period,
+    Representation, S, SegmentTemplate, SegmentTimeline,
 };
+use dyndo_core::drm::Protection;
+use dyndo_core::time::Time;
 use dyndo_core::track::cmaf::{CmafMetadata, ResolvedCmafTrack, ServedSegment};
 use dyndo_core::track::thumbnail::ResolvedThumbnailTrack;
 
@@ -18,8 +22,8 @@ const INITIALIZATION_TEMPLATE: &str = "$RepresentationID$/init.mp4";
 const MEDIA_TEMPLATE: &str = "$RepresentationID$/$Time$.m4s";
 
 pub(crate) fn build_mpd(
-    tracks: &[ResolvedCmafTrack],
-    thumbnails: &[ResolvedThumbnailTrack],
+    tracks: &[&ResolvedCmafTrack],
+    thumbnails: &[&ResolvedThumbnailTrack],
     min_length: u32,
     boundaries: &[u32],
 ) -> MPD {
@@ -116,7 +120,27 @@ fn build_representation(
         CmafMetadata::Text(_) => {}
     }
 
+    if let Some(protection) = track.protection() {
+        representation.ContentProtection = content_protection(protection);
+    }
     Some(representation)
+}
+
+fn content_protection(protection: &Protection) -> Vec<ContentProtection> {
+    let mut entries = vec![ContentProtection {
+        schemeIdUri: "urn:mpeg:dash:mp4protection:2011".to_string(),
+        value: Some(protection.scheme().as_str().to_string()),
+        default_KID: Some(protection.key_id().to_string()),
+        ..Default::default()
+    }];
+    entries.extend(protection.systems().iter().map(|system| ContentProtection {
+        schemeIdUri: format!("urn:uuid:{}", system.system_id()),
+        cenc_pssh: vec![CencPssh {
+            content: Some(BASE64_STANDARD.encode(system.pssh())),
+        }],
+        ..Default::default()
+    }));
+    entries
 }
 
 fn build_audio_channel_configuration(channels: u16) -> AudioChannelConfiguration {
@@ -167,7 +191,7 @@ fn build_segment_timeline(segments: &[ServedSegment<'_>]) -> SegmentTimeline {
     SegmentTimeline { segments: entries }
 }
 
-fn presentation_duration(tracks: &[ResolvedCmafTrack]) -> u32 {
+fn presentation_duration(tracks: &[&ResolvedCmafTrack]) -> u32 {
     maximum_duration(tracks, |metadata| {
         matches!(metadata, CmafMetadata::Video(_))
     })
@@ -180,17 +204,17 @@ fn presentation_duration(tracks: &[ResolvedCmafTrack]) -> u32 {
 }
 
 fn maximum_duration(
-    tracks: &[ResolvedCmafTrack],
+    tracks: &[&ResolvedCmafTrack],
     include: impl Fn(&CmafMetadata) -> bool,
 ) -> Option<u32> {
     tracks
         .iter()
         .filter(|track| include(track.metadata()))
-        .map(ResolvedCmafTrack::duration)
+        .map(|track| track.duration())
         .max()
 }
 
-fn max_segment_duration(tracks: &[ResolvedCmafTrack], min_length: u32, boundaries: &[u32]) -> u32 {
+fn max_segment_duration(tracks: &[&ResolvedCmafTrack], min_length: u32, boundaries: &[u32]) -> u32 {
     tracks
         .iter()
         .filter(|track| {
@@ -204,9 +228,11 @@ fn max_segment_duration(tracks: &[ResolvedCmafTrack], min_length: u32, boundarie
                 .served_segments(min_length, boundaries)
                 .into_iter()
                 .map(|segment| {
-                    let duration = u128::from(segment.unscaled_duration()) * 1_000;
-                    let duration = duration.div_ceil(u128::from(track.timescale()));
-                    u32::try_from(duration).unwrap_or(u32::MAX)
+                    u32::try_from(Time::milliseconds_ceil(
+                        segment.unscaled_duration(),
+                        track.timescale(),
+                    ))
+                    .unwrap_or(u32::MAX)
                 })
         })
         .max()

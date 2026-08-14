@@ -57,7 +57,7 @@ impl Segment {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InitSegment {
     codec: CodecConfig,
     timescale: u32,

@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use super::cmaf::CmafTrack;
 use super::resolved::{ResolvedTrack, TrackResolveError};
 use super::timed_text::TimedTextTrack;
+use crate::drm::Cpix;
 use crate::role::Role;
 
 /// A track backed by a file stored with an asset.
@@ -46,13 +47,16 @@ impl SourceTrack {
         &self,
         op: &Operator,
         path: &RelativePath,
+        cpix: Option<&Cpix>,
     ) -> Result<ResolvedTrack, TrackResolveError> {
         match self {
-            Self::Cmaf(track) => track
-                .resolve(op, path)
-                .await
-                .map(ResolvedTrack::Cmaf)
-                .map_err(Into::into),
+            Self::Cmaf(track) => {
+                let mut track = track.resolve(op, path).await?;
+                if let Some(cpix) = cpix {
+                    track.protect(cpix)?;
+                }
+                Ok(ResolvedTrack::Cmaf(Arc::new(track)))
+            }
             Self::TimedText(track) => track
                 .resolve(op, path)
                 .await
@@ -79,3 +83,4 @@ impl SourceTrack {
         }
     }
 }
+use std::sync::Arc;

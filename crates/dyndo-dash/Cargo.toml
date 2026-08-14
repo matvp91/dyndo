@@ -8,6 +8,7 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
+base64 = "0.22"
 dash-mpd = { version = "0.20", default-features = false }
 dyndo-core = { path = "../dyndo-core" }
 quick-xml = { version = "0.40", features = ["serialize"] }

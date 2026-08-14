@@ -1,7 +1,9 @@
 use dyndo_core::track::cmaf::{CmafMetadata, ResolvedCmafTrack, ServedSegment};
 use dyndo_core::track::metadata::VideoMetadata;
 use dyndo_core::track::thumbnail::ResolvedThumbnailTrack;
-use m3u8_rs::{ClosedCaptionGroupId, ExtTag, MasterPlaylist, Resolution, VariantStream};
+use m3u8_rs::{
+    ClosedCaptionGroupId, ExtTag, MasterPlaylist, Resolution, SessionKey, VariantStream,
+};
 
 use crate::HlsError;
 use crate::options::HlsOptions;
@@ -11,8 +13,8 @@ const AUDIO_GROUP_ID: &str = "audio";
 const SUBTITLES_GROUP_ID: &str = "subtitles";
 
 pub(crate) fn build_playlist(
-    tracks: &[ResolvedCmafTrack],
-    thumbnails: &[ResolvedThumbnailTrack],
+    tracks: &[&ResolvedCmafTrack],
+    thumbnails: &[&ResolvedThumbnailTrack],
     min_length: u32,
     boundaries: &[u32],
     hls_options: &HlsOptions,
@@ -22,7 +24,7 @@ pub(crate) fn build_playlist(
         version: None,
         variants: build_variant_streams(tracks, min_length, boundaries, &renditions)?,
         session_data: Vec::new(),
-        session_key: Vec::new(),
+        session_key: session_keys(tracks),
         start: None,
         independent_segments: true,
         alternatives: Renditions::media_entries(tracks),
@@ -30,7 +32,20 @@ pub(crate) fn build_playlist(
     })
 }
 
-fn image_streams(thumbnails: &[ResolvedThumbnailTrack]) -> Vec<ExtTag> {
+fn session_keys(tracks: &[&ResolvedCmafTrack]) -> Vec<SessionKey> {
+    let mut keys = Vec::new();
+    for key in tracks
+        .iter()
+        .flat_map(|track| crate::protection::keys(track.protection()))
+    {
+        if !keys.contains(&key) {
+            keys.push(key);
+        }
+    }
+    keys.into_iter().map(SessionKey).collect()
+}
+
+fn image_streams(thumbnails: &[&ResolvedThumbnailTrack]) -> Vec<ExtTag> {
     thumbnails
         .iter()
         .map(|thumbnail| {
@@ -48,7 +63,7 @@ fn image_streams(thumbnails: &[ResolvedThumbnailTrack]) -> Vec<ExtTag> {
 }
 
 fn build_variant_streams(
-    tracks: &[ResolvedCmafTrack],
+    tracks: &[&ResolvedCmafTrack],
     min_length: u32,
     boundaries: &[u32],
     renditions: &Renditions,

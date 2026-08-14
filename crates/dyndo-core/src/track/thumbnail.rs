@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use bytes::Bytes;
 use opendal::Operator;
 use schemars::JsonSchema;
@@ -24,9 +26,9 @@ impl ThumbnailTrack {
     }
 
     /// Resolves this thumbnail configuration against available CMAF tracks.
-    pub fn resolve<'a>(
+    pub fn resolve(
         &self,
-        tracks: impl IntoIterator<Item = &'a ResolvedCmafTrack>,
+        tracks: impl IntoIterator<Item = Arc<ResolvedCmafTrack>>,
     ) -> Option<ResolvedThumbnailTrack> {
         let source = select_source(self.width / self.tile_size.max(1), tracks)?;
 
@@ -34,7 +36,7 @@ impl ThumbnailTrack {
             id: self.id.clone(),
             tile_size: self.tile_size,
             width: self.width,
-            source: source.clone(),
+            source,
         })
     }
 }
@@ -50,11 +52,10 @@ pub struct ResolvedThumbnailTrack {
     id: String,
     tile_size: u32,
     width: u32,
-    source: ResolvedCmafTrack,
+    source: Arc<ResolvedCmafTrack>,
 }
 
 impl ResolvedThumbnailTrack {
-    /// Returns the video track selected to produce this thumbnail sprite.
     pub fn source(&self) -> &ResolvedCmafTrack {
         &self.source
     }
@@ -74,7 +75,6 @@ impl ResolvedThumbnailTrack {
         self.width
     }
 
-    /// Returns the height of the complete thumbnail sprite.
     pub fn height(&self) -> u32 {
         let CmafMetadata::Video(video) = self.source.metadata() else {
             unreachable!("thumbnail source must be video");
@@ -91,7 +91,7 @@ impl ResolvedThumbnailTrack {
 
     /// Returns the dimensions of one thumbnail tile.
     pub fn tile_dimensions(&self) -> (u32, u32) {
-        let tile_size = self.tile_size.max(1);
+        let tile_size = self.tile_size().max(1);
         (self.width() / tile_size, self.height() / tile_size)
     }
 
@@ -132,10 +132,10 @@ fn sprite_index(number: u32) -> Result<u32, ThumbnailError> {
         .ok_or_else(|| ThumbnailError("thumbnail numbers start at 1".to_owned()))
 }
 
-fn select_source<'a>(
+fn select_source(
     width: u32,
-    tracks: impl IntoIterator<Item = &'a ResolvedCmafTrack>,
-) -> Option<&'a ResolvedCmafTrack> {
+    tracks: impl IntoIterator<Item = Arc<ResolvedCmafTrack>>,
+) -> Option<Arc<ResolvedCmafTrack>> {
     let mut smallest_suitable = None;
     let mut largest = None;
 
@@ -144,11 +144,16 @@ fn select_source<'a>(
             continue;
         };
         let video_width = video.width;
-        if largest.is_none_or(|(_, largest_width)| video_width > largest_width) {
-            largest = Some((track, video_width));
+        if largest
+            .as_ref()
+            .is_none_or(|(_, largest_width)| video_width > *largest_width)
+        {
+            largest = Some((Arc::clone(&track), video_width));
         }
         if video_width >= width
-            && smallest_suitable.is_none_or(|(_, smallest_width)| video_width < smallest_width)
+            && smallest_suitable
+                .as_ref()
+                .is_none_or(|(_, smallest_width)| video_width < *smallest_width)
         {
             smallest_suitable = Some((track, video_width));
         }
@@ -166,8 +171,8 @@ mod tests {
     use crate::track::cmaf::{CmafMetadata, InitSegment, ResolvedCmafTrack};
     use crate::track::metadata::VideoMetadata;
 
-    fn video(id: &str, width: u32, height: u32) -> ResolvedCmafTrack {
-        ResolvedCmafTrack::new(
+    fn video(id: &str, width: u32, height: u32) -> Arc<ResolvedCmafTrack> {
+        Arc::new(ResolvedCmafTrack::new(
             id.to_string(),
             format!("{id}.mp4").into(),
             CmafMetadata::Video(VideoMetadata {
@@ -177,7 +182,7 @@ mod tests {
             }),
             Arc::new(InitSegment::new(CodecConfig::Wvtt(WvttCodec), 1_000, 0, 0)),
             Vec::new(),
-        )
+        ))
     }
 
     fn track(tile_size: u32, width: u32) -> ThumbnailTrack {
@@ -189,7 +194,7 @@ mod tests {
         let tracks = [video("720", 1_280, 720), video("1080", 1_920, 1_080)];
         let track = track(2, 1_080);
 
-        let thumbnail = track.resolve(&tracks).unwrap();
+        let thumbnail = track.resolve(tracks).unwrap();
 
         assert_eq!(thumbnail.source().id(), "720");
     }
@@ -199,7 +204,7 @@ mod tests {
         let tracks = [video("720", 1_280, 720), video("1080", 1_920, 1_080)];
         let track = track(4, 8_000);
 
-        let thumbnail = track.resolve(&tracks).unwrap();
+        let thumbnail = track.resolve(tracks).unwrap();
 
         assert_eq!(thumbnail.source().id(), "1080");
     }
@@ -208,7 +213,7 @@ mod tests {
     fn thumbnail_preserves_its_track_settings() {
         let configured = track(4, 640);
         let track = video("720", 1_280, 720);
-        let thumbnail = configured.resolve([&track]).unwrap();
+        let thumbnail = configured.resolve([track]).unwrap();
 
         assert_eq!(thumbnail.width(), 640);
     }
@@ -218,7 +223,7 @@ mod tests {
         let configured = ThumbnailTrack::new("thumbnail".to_string(), 0, 0);
         let source = video("720", 1_280, 720);
 
-        let thumbnail = configured.resolve([&source]).unwrap();
+        let thumbnail = configured.resolve([source]).unwrap();
 
         assert_eq!(thumbnail.source().id(), "720");
     }

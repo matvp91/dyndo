@@ -4,7 +4,7 @@ use axum::{
 };
 use dyndo_core::asset::{AssetError, AssetResolveError};
 use dyndo_core::track::CmafRepresentationError;
-use dyndo_core::track::cmaf::CmafReadError;
+use dyndo_core::track::cmaf::{CmafEncryptionError, CmafReadError};
 use dyndo_core::track::thumbnail::ThumbnailError;
 use dyndo_dash::DashError;
 use dyndo_hls::HlsError;
@@ -23,6 +23,8 @@ pub enum ServerError {
     CmafRepresentation(#[from] CmafRepresentationError),
     #[error(transparent)]
     CmafRead(#[from] CmafReadError),
+    #[error(transparent)]
+    CmafEncryption(#[from] CmafEncryptionError),
     #[error(transparent)]
     Thumbnail(#[from] ThumbnailError),
     #[error(transparent)]
@@ -47,6 +49,7 @@ impl ServerError {
             | Self::AssetResolve(_)
             | Self::CmafRepresentation(_)
             | Self::CmafRead(_)
+            | Self::CmafEncryption(_)
             | Self::Thumbnail(_)
             | Self::Dash(_)
             | Self::Hls(_) => StatusCode::INTERNAL_SERVER_ERROR,

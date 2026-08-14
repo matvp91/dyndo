@@ -154,11 +154,10 @@ fn split_template(
 
 fn slid_presentation_time_offset(template: &SegmentTemplate, boundary_ms: u32) -> u64 {
     let timescale = template.timescale.unwrap_or_default();
-    let offset = u128::from(boundary_ms) * u128::from(timescale) / 1_000;
     template
         .presentationTimeOffset
         .unwrap_or_default()
-        .saturating_add(u64::try_from(offset).unwrap_or(u64::MAX))
+        .saturating_add(Time::ticks_from_milliseconds(boundary_ms, timescale))
 }
 
 fn slice_timeline(

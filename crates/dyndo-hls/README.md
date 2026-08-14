@@ -6,6 +6,8 @@ and image media playlists for thumbnail sprites. It knows about HLS and nothing
 else — reading CMAF and modelling the descriptor belong to
 [`dyndo-core`](../dyndo-core/README.md), and
 [`m3u8-rs`](https://crates.io/crates/m3u8-rs) supplies the playlist model.
+For CENC-protected tracks it maps core's resolved protection metadata into
+`SAMPLE-AES-CTR` session keys and media-playlist key tags.
 
 [`dyndo-server`](../dyndo-server/README.md) calls this crate's builders to generate playlists on demand.
 

@@ -1,20 +1,30 @@
+use std::sync::Arc;
+
 use futures_util::future::try_join_all;
 use opendal::Operator;
 
 use super::Asset;
-use crate::track::cmaf::ResolvedCmafTrack;
+use crate::drm::{Cpix, CpixParser};
 use crate::track::thumbnail::ResolvedThumbnailTrack;
-use crate::track::{CmafRepresentationError, ResolvedTrack, Track, TrackResolveError};
+use crate::track::{
+    CmafRepresentation, CmafRepresentationError, ResolvedTrack, Track, TrackResolveError,
+};
 
 impl Asset {
     /// Resolves every configured track in this asset.
     pub async fn resolve(&self, operator: &Operator) -> Result<ResolvedAsset, AssetResolveError> {
-        let mut tracks = self.resolve_source_tracks(operator).await?;
+        let cpix = self.resolve_cpix(operator).await?.map(Arc::new);
+        let mut tracks = self
+            .resolve_source_tracks(operator, cpix.as_deref())
+            .await?;
         let mut thumbnails = Vec::new();
 
         for thumbnail in self.thumbnail_tracks() {
             let resolved = thumbnail
-                .resolve(tracks.iter().filter_map(ResolvedTrack::cmaf))
+                .resolve(tracks.iter().filter_map(|track| match track {
+                    ResolvedTrack::Cmaf(track) => Some(Arc::clone(track)),
+                    ResolvedTrack::TimedText(_) | ResolvedTrack::Thumbnail(_) => None,
+                }))
                 .ok_or_else(|| AssetResolveError::MissingThumbnailSource {
                     id: thumbnail.id.clone(),
                 })?;
@@ -22,7 +32,22 @@ impl Asset {
         }
         tracks.extend(thumbnails);
 
-        Ok(ResolvedAsset::new(self.boundaries.clone(), tracks))
+        Ok(ResolvedAsset {
+            boundaries: self.boundaries.clone(),
+            tracks,
+            cpix,
+        })
+    }
+
+    pub async fn resolve_cpix(
+        &self,
+        operator: &Operator,
+    ) -> Result<Option<Cpix>, AssetResolveError> {
+        let Some(path) = self.cpix_path() else {
+            return Ok(None);
+        };
+        let bytes = operator.read(path.as_str()).await?;
+        Ok(Some(CpixParser::parse_bytes(&bytes.to_bytes())?))
     }
 
     /// Resolves one configured track by identifier.
@@ -38,16 +63,21 @@ impl Asset {
         match track {
             Track::Source(source) => {
                 let path = self.track_path(source);
+                let cpix = self.resolve_cpix(operator).await?;
                 source
-                    .resolve(operator, &path)
+                    .resolve(operator, &path, cpix.as_ref())
                     .await
                     .map(Some)
                     .map_err(Into::into)
             }
             Track::Thumbnail(thumbnail) => {
-                let sources = self.resolve_source_tracks(operator).await?;
+                let cpix = self.resolve_cpix(operator).await?;
+                let sources = self.resolve_source_tracks(operator, cpix.as_ref()).await?;
                 thumbnail
-                    .resolve(sources.iter().filter_map(ResolvedTrack::cmaf))
+                    .resolve(sources.iter().filter_map(|track| match track {
+                        ResolvedTrack::Cmaf(track) => Some(Arc::clone(track)),
+                        ResolvedTrack::TimedText(_) | ResolvedTrack::Thumbnail(_) => None,
+                    }))
                     .map(ResolvedTrack::Thumbnail)
                     .map(Some)
                     .ok_or_else(|| AssetResolveError::MissingThumbnailSource {
@@ -60,10 +90,11 @@ impl Asset {
     async fn resolve_source_tracks(
         &self,
         operator: &Operator,
+        cpix: Option<&Cpix>,
     ) -> Result<Vec<ResolvedTrack>, TrackResolveError> {
         let resolutions = self.source_tracks().map(|track| {
             let path = self.track_path(track);
-            async move { track.resolve(operator, &path).await }
+            async move { track.resolve(operator, &path, cpix).await }
         });
         try_join_all(resolutions).await
     }
@@ -74,11 +105,16 @@ impl Asset {
 pub struct ResolvedAsset {
     boundaries: Vec<u32>,
     tracks: Vec<ResolvedTrack>,
+    cpix: Option<Arc<Cpix>>,
 }
 
 impl ResolvedAsset {
     pub fn new(boundaries: Vec<u32>, tracks: Vec<ResolvedTrack>) -> Self {
-        Self { boundaries, tracks }
+        Self {
+            boundaries,
+            tracks,
+            cpix: None,
+        }
     }
 
     pub fn boundaries(&self) -> &[u32] {
@@ -87,6 +123,10 @@ impl ResolvedAsset {
 
     pub fn tracks(&self) -> &[ResolvedTrack] {
         &self.tracks
+    }
+
+    pub fn cpix(&self) -> Option<&Cpix> {
+        self.cpix.as_deref()
     }
 
     pub fn track(&self, id: &str) -> Option<&ResolvedTrack> {
@@ -105,7 +145,7 @@ impl ResolvedAsset {
     pub async fn cmaf_representations(
         &self,
         text_length: u32,
-    ) -> Result<Vec<ResolvedCmafTrack>, CmafRepresentationError> {
+    ) -> Result<Vec<CmafRepresentation<'_>>, CmafRepresentationError> {
         let representations = self
             .tracks
             .iter()
@@ -117,6 +157,10 @@ impl ResolvedAsset {
 
 #[derive(Debug, thiserror::Error)]
 pub enum AssetResolveError {
+    #[error(transparent)]
+    Storage(#[from] opendal::Error),
+    #[error(transparent)]
+    Cpix(#[from] crate::drm::CpixError),
     #[error(transparent)]
     Track(#[from] TrackResolveError),
     #[error("thumbnail track {id} has no suitable video source")]

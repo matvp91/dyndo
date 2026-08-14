@@ -5,6 +5,9 @@ DASH manifest generation for [`dyndo`](../../README.md): it turns an
 DASH and nothing else — reading CMAF and modelling the descriptor belong to
 [`dyndo-core`](../dyndo-core/README.md), and
 [`dash-mpd`](https://crates.io/crates/dash-mpd) supplies the XML model.
+For protected tracks it maps the manifest-safe protection metadata resolved by
+core into DASH `ContentProtection` descriptors; it never parses CPIX or handles
+content keys.
 
 [`dyndo-server`](../dyndo-server/README.md) calls this crate's builder to generate manifests on demand.
 

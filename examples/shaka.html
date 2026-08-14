@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/shaka-player@5.2.4/dist/controls.css">
+  <style>
+    :root {
+      font-family: system-ui, sans-serif;
+    }
+
+    body {
+      box-sizing: border-box;
+      margin: 0 auto;
+      max-width: 48rem;
+      padding: 1rem;
+    }
+
+    [data-shaka-player-container] {
+      background: #000;
+      width: 100%;
+    }
+
+    video {
+      display: block;
+      width: 100%;
+    }
+
+    #video-container {
+      aspect-ratio: 16 / 9;
+    }
+  </style>
+  <script defer src="https://cdn.jsdelivr.net/npm/shaka-player@5.2.4/dist/shaka-player.ui.js"></script>
+</head>
+
+<body>
+  <div id="video-container" data-shaka-player-container>
+    <video id="video" data-shaka-player playsinline></video>
+  </div>
+  <script>
+    const manifestUri =
+      'http://127.0.0.1:8080/out/(a:asset,sml:3000,c:!t,mp:!t)/index.mpd';
+    const licenseServer =
+      'https://cwip-shaka-proxy.appspot.com/no_auth';
+
+    document.addEventListener('shaka-ui-loaded', async () => {
+      const video = document.getElementById('video');
+      const player = video.ui.getControls().getPlayer();
+
+      Object.assign(window, { player, shaka });
+
+      player.configure({
+        drm: {
+          servers: {
+            'com.widevine.alpha': licenseServer,
+          },
+        },
+      });
+
+      player.addEventListener('error', (event) => {
+        console.error(event.detail);
+      });
+
+      try {
+        await player.load(manifestUri);
+      } catch (error) {
+        console.error(error);
+      }
+    });
+
+    document.addEventListener('shaka-ui-load-failed', () => {
+      console.error('Shaka Player UI failed to initialize.');
+    });
+  </script>
+</body>
+
+</html>

@@ -15,11 +15,14 @@ use crate::track::metadata::{AudioMetadata, TextMetadata, VideoMetadata};
 
 mod boxes;
 mod cadence;
+mod encryption;
 mod inspect;
+mod protected;
 mod segments;
 mod served;
 
 pub use boxes::CmafBoxesError;
+pub use protected::CmafEncryptionError;
 pub use segments::{InitSegment, Segment};
 pub use served::ServedSegment;
 
@@ -95,15 +98,12 @@ enum CmafBacking {
 /// Parsed and indexed CMAF media backed by storage or memory.
 #[derive(Clone)]
 pub struct ResolvedCmafTrack {
-    inner: Arc<ResolvedCmafTrackInner>,
-}
-
-struct ResolvedCmafTrackInner {
     id: String,
     backing: CmafBacking,
     metadata: CmafMetadata,
     init_segment: Arc<InitSegment>,
     segments: Vec<Segment>,
+    encryptor: Option<encryption::Encryptor>,
 }
 
 impl ResolvedCmafTrack {
@@ -115,13 +115,12 @@ impl ResolvedCmafTrack {
         segments: Vec<Segment>,
     ) -> Self {
         Self {
-            inner: Arc::new(ResolvedCmafTrackInner {
-                id,
-                backing: CmafBacking::Stored { path: source_path },
-                metadata,
-                init_segment,
-                segments,
-            }),
+            id,
+            backing: CmafBacking::Stored { path: source_path },
+            metadata,
+            init_segment,
+            segments,
+            encryptor: None,
         }
     }
 
@@ -133,38 +132,37 @@ impl ResolvedCmafTrack {
         segments: Vec<Segment>,
     ) -> Self {
         Self {
-            inner: Arc::new(ResolvedCmafTrackInner {
-                id,
-                backing: CmafBacking::Memory { bytes },
-                metadata,
-                init_segment,
-                segments,
-            }),
+            id,
+            backing: CmafBacking::Memory { bytes },
+            metadata,
+            init_segment,
+            segments,
+            encryptor: None,
         }
     }
 
     pub fn id(&self) -> &str {
-        &self.inner.id
+        &self.id
     }
 
     /// Returns the source path when this representation is backed by storage.
     pub fn source_path(&self) -> Option<&RelativePath> {
-        match &self.inner.backing {
+        match &self.backing {
             CmafBacking::Stored { path } => Some(path),
             CmafBacking::Memory { .. } => None,
         }
     }
 
     pub fn metadata(&self) -> &CmafMetadata {
-        &self.inner.metadata
+        &self.metadata
     }
 
     pub fn segments(&self) -> &[Segment] {
-        &self.inner.segments
+        &self.segments
     }
 
     pub fn init_segment(&self) -> &InitSegment {
-        &self.inner.init_segment
+        &self.init_segment
     }
 
     pub fn codec(&self) -> &CodecConfig {
@@ -176,14 +174,11 @@ impl ResolvedCmafTrack {
     }
 
     pub fn unscaled_earliest_presentation_time(&self) -> Option<u64> {
-        self.inner
-            .segments
-            .first()
-            .map(Segment::unscaled_start_time)
+        self.segments.first().map(Segment::unscaled_start_time)
     }
 
     pub fn duration(&self) -> u32 {
-        let Some((first, remaining)) = self.inner.segments.split_first() else {
+        let Some((first, remaining)) = self.segments.split_first() else {
             return 0;
         };
         let last = remaining.last().unwrap_or(first);
@@ -197,7 +192,7 @@ impl ResolvedCmafTrack {
         op: &Operator,
         range: Range<u64>,
     ) -> Result<Bytes, CmafReadError> {
-        match &self.inner.backing {
+        match &self.backing {
             CmafBacking::Stored { path } => {
                 Ok(op.read_with(path.as_str()).range(range).await?.to_bytes())
             }

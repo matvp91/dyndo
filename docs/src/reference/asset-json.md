@@ -9,17 +9,25 @@ JSON Schema for the dyndo release that wrote the file, at
 
 ## Top-level structure
 
-A descriptor is an object with a `tracks` array and optional splice boundaries.
-The array contains CMAF source tracks, raw WebVTT source tracks, and
-derived thumbnail tracks:
+A descriptor is an object with a `tracks` array, optional splice boundaries,
+and an optional CPIX document path. The array contains CMAF source tracks, raw
+WebVTT source tracks, and derived thumbnail tracks:
 
 ```json
 {
   "$schema": "https://matvp91.github.io/dyndo/0.5.1/schema.json",
   "boundaries": [683640],
+  "cpix_path": "keys/cpix.xml",
   "tracks": [ /* CMAF, VTT, and thumbnail track objects */ ]
 }
 ```
+
+`cpix_path` points to the CPIX document used for content encryption. Like track
+source paths, it is relative to the descriptor's directory. When omitted, the
+asset is served without encryption. Core resolves the matching CPIX usage rule
+once for each CMAF representation. DASH and HLS receive only the resulting
+content-protection metadata; encryption keys are retained inside core for
+on-demand segment encryption.
 
 Track order is preserved as written and is **significant**: within the HLS audio
 group, the default rendition is the first `main`-role track, or the first audio

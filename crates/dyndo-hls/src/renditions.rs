@@ -16,7 +16,7 @@ pub(crate) struct Renditions {
 
 impl Renditions {
     pub(crate) fn summarize(
-        tracks: &[ResolvedCmafTrack],
+        tracks: &[&ResolvedCmafTrack],
         min_length: u32,
         boundaries: &[u32],
         hls_options: &HlsOptions,
@@ -65,7 +65,7 @@ impl Renditions {
         codecs
     }
 
-    pub(crate) fn media_entries(tracks: &[ResolvedCmafTrack]) -> Vec<AlternativeMedia> {
+    pub(crate) fn media_entries(tracks: &[&ResolvedCmafTrack]) -> Vec<AlternativeMedia> {
         let default_audio_id = default_audio_id(tracks);
         tracks
             .iter()
@@ -75,7 +75,7 @@ impl Renditions {
 }
 
 fn build_media_entry(
-    tracks: &[ResolvedCmafTrack],
+    tracks: &[&ResolvedCmafTrack],
     track: &ResolvedCmafTrack,
     default_audio_id: Option<&str>,
 ) -> Option<AlternativeMedia> {
@@ -114,7 +114,7 @@ fn build_media_entry(
     })
 }
 
-fn default_audio_id(tracks: &[ResolvedCmafTrack]) -> Option<&str> {
+fn default_audio_id<'a>(tracks: &'a [&'a ResolvedCmafTrack]) -> Option<&'a str> {
     tracks
         .iter()
         .find(|track| {
@@ -125,16 +125,16 @@ fn default_audio_id(tracks: &[ResolvedCmafTrack]) -> Option<&str> {
                 |track| matches!(track.metadata(), CmafMetadata::Audio(audio) if audio.role.is_none()),
             )
         })
-        .map(ResolvedCmafTrack::id)
+        .map(|track| track.id())
 }
 
-fn selection_tuple_is_unique(tracks: &[ResolvedCmafTrack], track: &ResolvedCmafTrack) -> bool {
+fn selection_tuple_is_unique(tracks: &[&ResolvedCmafTrack], track: &ResolvedCmafTrack) -> bool {
     let Some((is_audio, language, role)) = selection_tuple(track) else {
         return false;
     };
     tracks
         .iter()
-        .filter_map(selection_tuple)
+        .filter_map(|track| selection_tuple(track))
         .filter(|candidate| {
             candidate.0 == is_audio
                 && candidate.1 == language

@@ -47,7 +47,8 @@ pub async fn generate_mpd(
     dash_options: &DashOptions,
 ) -> Result<String, DashError> {
     let tracks = asset.cmaf_representations(text_length).await?;
-    let thumbnails: Vec<_> = asset.thumbnails().cloned().collect();
+    let tracks: Vec<_> = tracks.iter().map(AsRef::as_ref).collect();
+    let thumbnails: Vec<_> = asset.thumbnails().collect();
     let mut mpd = builder::build_mpd(&tracks, &thumbnails, min_length, asset.boundaries());
     if dash_options.multi_period {
         multi_period::split(&mut mpd, asset.boundaries())?;
