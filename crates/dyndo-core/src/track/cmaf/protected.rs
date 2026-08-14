@@ -57,7 +57,14 @@ impl ResolvedCmafTrack {
     ) -> Result<Bytes, CmafEncryptionError> {
         let media = self.read_range(operator, segment.byte_range()).await?;
         match &self.encryptor {
-            Some(encryptor) => Ok(encryptor.encrypt_media(&media, self.codec())?.into()),
+            Some(encryptor) => {
+                let encryptor = encryptor.clone();
+                let codec = self.codec().clone();
+                let encrypted =
+                    tokio::task::spawn_blocking(move || encryptor.encrypt_media(&media, &codec))
+                        .await??;
+                Ok(encrypted.into())
+            }
             None => Ok(media),
         }
     }
@@ -69,6 +76,8 @@ pub enum CmafEncryptionError {
     Config(#[from] crate::drm::Error),
     #[error(transparent)]
     Read(#[from] CmafReadError),
+    #[error("CMAF encryption task failed")]
+    Task(#[from] tokio::task::JoinError),
     #[error("CMAF encryption failed: {0}")]
     Encrypt(String),
 }
