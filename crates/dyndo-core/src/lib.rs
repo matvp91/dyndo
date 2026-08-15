@@ -9,5 +9,4 @@ pub mod segment_index;
 pub mod role;
 pub mod storage;
 pub mod track;
-pub mod track_resolver;
 pub mod segment;
