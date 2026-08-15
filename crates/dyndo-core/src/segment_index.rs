@@ -14,14 +14,10 @@ pub struct SegmentIndex {
 
 #[derive(Debug, Error)]
 pub enum SegmentIndexError {
-    #[error("failed to read segment index")]
-    ReadFailed,
-    #[error("sidx timescale is zero")]
-    ZeroTimescale,
-    #[error("segment byte range overflows")]
-    ByteRangeOverflow,
-    #[error("segment time range overflows")]
-    TimeOverflow,
+    #[error("failed to read MP4: {0}")]
+    Mp4(#[from] mp4_atom::Error),
+    #[error("invalid segment index: {0}")]
+    InvalidSidx(String),
 }
 
 impl SegmentIndex {
@@ -39,15 +35,9 @@ impl Mp4Readable for SegmentIndex {
 
     async fn from_reader(reader: &mut (impl AsyncRead + Unpin)) -> Result<Self, Self::Error> {
         let mut reader = Mp4BoxReader::new(reader.compat());
-        let _: Moov = reader
-            .read_box()
-            .await
-            .map_err(|_| SegmentIndexError::ReadFailed)?;
+        let _: Moov = reader.read_box().await?;
         let init_range = 0..reader.position();
-        let sidx = reader
-            .read_box::<Sidx>()
-            .await
-            .map_err(|_| SegmentIndexError::ReadFailed)?;
+        let sidx = reader.read_box::<Sidx>().await?;
         let sidx_end_offset = reader.position();
 
         Ok(Self {
@@ -62,22 +52,34 @@ fn parse_sidx_references(
     sidx_end_offset: u64,
 ) -> Result<Vec<Segment>, SegmentIndexError> {
     if sidx.timescale == 0 {
-        return Err(SegmentIndexError::ZeroTimescale);
+        return Err(SegmentIndexError::InvalidSidx(
+            "timescale cannot be zero".into(),
+        ));
     }
 
     let mut unscaled_start_time = sidx.earliest_presentation_time;
     let mut start_byte = sidx_end_offset
         .checked_add(sidx.first_offset)
-        .ok_or(SegmentIndexError::ByteRangeOverflow)?;
+        .ok_or_else(|| {
+            SegmentIndexError::InvalidSidx("first offset overflows the byte range".into())
+        })?;
     let mut segments = Vec::with_capacity(sidx.references.len());
 
-    for reference in &sidx.references {
+    for (index, reference) in sidx.references.iter().enumerate() {
         let unscaled_end_time = unscaled_start_time
             .checked_add(u64::from(reference.subsegment_duration))
-            .ok_or(SegmentIndexError::TimeOverflow)?;
+            .ok_or_else(|| {
+                SegmentIndexError::InvalidSidx(format!(
+                    "segment {index} time range overflows"
+                ))
+            })?;
         let end_byte = start_byte
             .checked_add(u64::from(reference.reference_size))
-            .ok_or(SegmentIndexError::ByteRangeOverflow)?;
+            .ok_or_else(|| {
+                SegmentIndexError::InvalidSidx(format!(
+                    "segment {index} byte range overflows"
+                ))
+            })?;
 
         segments.push(Segment::new(
             unscaled_start_time,
