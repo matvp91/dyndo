@@ -1,5 +1,6 @@
 pub mod asset;
 pub mod codec_config;
+pub mod delivery_index;
 pub mod frame_rate;
 pub mod media_time;
 pub mod mp4_box_reader;

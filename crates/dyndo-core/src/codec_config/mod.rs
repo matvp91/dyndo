@@ -2,6 +2,7 @@ mod aac;
 mod avc;
 mod eac3;
 mod hevc;
+mod text;
 
 use std::{fmt, str::FromStr};
 
@@ -11,6 +12,7 @@ pub use eac3::{Ac3Codec, Eac3Codec};
 pub use hevc::HevcCodec;
 use mp4_atom::Codec;
 use serde::{Deserialize, Serialize};
+pub use text::WvttCodec;
 use thiserror::Error;
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -21,6 +23,7 @@ pub enum CodecConfig {
     Aac(AacCodec),
     Ac3(Ac3Codec),
     Eac3(Eac3Codec),
+    Wvtt(WvttCodec),
 }
 
 #[derive(Debug, Error)]
@@ -40,6 +43,7 @@ impl CodecConfig {
             Codec::Mp4a(atom) => Ok(Self::Aac(AacCodec::from_atom(atom))),
             Codec::Ac3(_) => Ok(Self::Ac3(Ac3Codec)),
             Codec::Eac3(_) => Ok(Self::Eac3(Eac3Codec)),
+            Codec::Wvtt(_) => Ok(Self::Wvtt(WvttCodec)),
             _ => Err(CodecConfigError::UnsupportedAtom),
         }
     }
@@ -53,6 +57,7 @@ impl fmt::Display for CodecConfig {
             Self::Aac(codec) => codec.fmt(formatter),
             Self::Ac3(codec) => codec.fmt(formatter),
             Self::Eac3(codec) => codec.fmt(formatter),
+            Self::Wvtt(codec) => codec.fmt(formatter),
         }
     }
 }
@@ -64,6 +69,7 @@ impl FromStr for CodecConfig {
         match value {
             "ac-3" => Ok(Self::Ac3(Ac3Codec)),
             "ec-3" => Ok(Self::Eac3(Eac3Codec)),
+            "wvtt" => Ok(Self::Wvtt(WvttCodec)),
             _ if value.starts_with("avc1.") => value.parse().map(Self::Avc),
             _ if value.starts_with("hvc1.") || value.starts_with("hev1.") => {
                 value.parse().map(Self::Hevc)
