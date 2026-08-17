@@ -1,16 +1,18 @@
 use futures_util::io::AsyncRead;
 use language_tags::LanguageTag;
-use mp4_atom::{Codec, FourCC, Moof, Moov, Traf, Trak};
+use mp4_atom::{Codec, FourCC, Moof, Moov, Trak};
 use relative_path::{RelativePath, RelativePathBuf};
 use thiserror::Error;
 use tokio_util::compat::FuturesAsyncReadCompatExt;
 
 use super::{
-    AudioMetadata, CmafAudioTrack, CmafTrack, CmafTextTrack, CmafVideoTrack, TextMetadata,
-    Track, VideoMetadata, WebVttTextTrack,
+    AudioMetadata, CmafAudioTrack, CmafTextTrack, CmafTrack, CmafVideoTrack, TextMetadata, Track,
+    VideoMetadata, WebVttTextTrack,
 };
 use crate::{
-    codec_config::CodecConfig, frame_rate::FrameRate, mp4_box_reader::Mp4BoxReader,
+    codec_config::CodecConfig,
+    frame_rate::FrameRate,
+    mp4_box_reader::Mp4BoxReader,
     mp4_readable::Mp4Readable,
     storage::{Storage, StorageError},
 };
@@ -80,7 +82,12 @@ impl DiscoveredCmafTrack {
 
         match track.mdia.hdlr.handler {
             handler if handler == FourCC::new(b"vide") => Ok(Self::Video(map_video(
-                path, codec_config, codec, moov, first_moof, track,
+                path,
+                codec_config,
+                codec,
+                moov,
+                first_moof,
+                track,
             )?)),
             handler if handler == FourCC::new(b"soun") => {
                 Ok(Self::Audio(map_audio(path, codec_config, codec, track)?))
@@ -207,11 +214,7 @@ fn audio_properties(codec: &Codec) -> Result<(u32, u16), DiscoverError> {
     Ok((u32::from(audio.sample_rate.integer()), audio.channel_count))
 }
 
-fn frame_rate(
-    moov: &Moov,
-    moof: &Moof,
-    track: &Trak,
-) -> Result<FrameRate, DiscoverError> {
+fn frame_rate(moov: &Moov, moof: &Moof, track: &Trak) -> Result<FrameRate, DiscoverError> {
     let track_id = track.tkhd.track_id;
     let timescale = track.mdia.mdhd.timescale;
 
@@ -232,7 +235,8 @@ fn frame_rate(
         })?;
 
     let default_duration = traf.tfhd.default_sample_duration.or_else(|| {
-        moov.mvex.as_ref()?
+        moov.mvex
+            .as_ref()?
             .trex
             .iter()
             .find(|trex| trex.track_id == track_id)

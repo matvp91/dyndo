@@ -1,4 +1,4 @@
-use std::{ops::Range, sync::Arc};
+use std::{ops::Range, sync::Arc, time::Duration};
 
 /// The initialization section shared by all source segments in an index.
 #[derive(Debug, PartialEq, Eq)]
@@ -36,8 +36,8 @@ impl InitSegment {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Segment {
     init_segment: Arc<InitSegment>,
-    start: u64,
-    end: u64,
+    start_ticks: u64,
+    end_ticks: u64,
     byte_range: Range<u64>,
 }
 
@@ -45,14 +45,14 @@ impl Segment {
     /// Creates a source segment associated with its initialization context.
     pub fn new(
         init_segment: Arc<InitSegment>,
-        start: u64,
-        end: u64,
+        start_ticks: u64,
+        end_ticks: u64,
         byte_range: Range<u64>,
     ) -> Self {
         Self {
             init_segment,
-            start,
-            end,
+            start_ticks,
+            end_ticks,
             byte_range,
         }
     }
@@ -63,18 +63,33 @@ impl Segment {
     }
 
     /// Returns the native timeline tick at which this segment starts.
-    pub fn start(&self) -> u64 {
-        self.start
+    pub fn start_ticks(&self) -> u64 {
+        self.start_ticks
+    }
+
+    /// Returns the presentation time at which this segment starts.
+    pub fn start_time(&self) -> Duration {
+        self.presentation_time(self.start_ticks)
     }
 
     /// Returns the native timeline tick at which this segment ends.
-    pub fn end(&self) -> u64 {
-        self.end
+    pub fn end_ticks(&self) -> u64 {
+        self.end_ticks
+    }
+
+    /// Returns the presentation time at which this segment ends.
+    pub fn end_time(&self) -> Duration {
+        self.presentation_time(self.end_ticks)
     }
 
     /// Returns this segment's duration in native timeline ticks.
-    pub fn duration(&self) -> u64 {
-        self.end.saturating_sub(self.start)
+    pub fn duration_ticks(&self) -> u64 {
+        self.end_ticks.saturating_sub(self.start_ticks)
+    }
+
+    /// Returns this segment's presentation duration.
+    pub fn duration_time(&self) -> Duration {
+        self.presentation_time(self.duration_ticks())
     }
 
     /// Returns the source byte range containing this segment.
@@ -90,7 +105,7 @@ impl Segment {
 
     /// Returns this segment's bitrate in bits per second.
     pub fn bitrate(&self) -> u64 {
-        let duration = self.duration();
+        let duration = self.duration_ticks();
         if duration == 0 {
             return 0;
         }
@@ -104,10 +119,17 @@ impl Segment {
     pub fn combined(&self, last: &Self) -> Self {
         Self {
             init_segment: Arc::clone(&self.init_segment),
-            start: self.start,
-            end: last.end,
+            start_ticks: self.start_ticks,
+            end_ticks: last.end_ticks,
             byte_range: self.byte_range.start..last.byte_range.end,
         }
+    }
+
+    fn presentation_time(&self, timestamp: u64) -> Duration {
+        let timescale = u64::from(self.init_segment.timescale());
+
+        Duration::from_secs(timestamp / timescale)
+            + Duration::from_nanos(timestamp % timescale * 1_000_000_000 / timescale)
     }
 }
 
@@ -118,11 +140,11 @@ mod tests {
     use super::{InitSegment, Segment};
 
     #[test]
-    fn duration_is_the_difference_between_end_and_start() {
+    fn duration_ticks_is_the_difference_between_end_and_start() {
         let init_segment = Arc::new(InitSegment::new(0..100, 1_000));
         let segment = Segment::new(init_segment, 500, 1_500, 100..200);
 
-        assert_eq!(segment.duration(), 1_000);
+        assert_eq!(segment.duration_ticks(), 1_000);
     }
 
     #[test]

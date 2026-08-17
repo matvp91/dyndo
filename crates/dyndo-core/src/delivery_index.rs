@@ -1,4 +1,4 @@
-use std::ops::Range;
+use std::{ops::Range, time::Duration};
 
 use crate::{segment::Segment, segment_index::SegmentIndex};
 
@@ -11,20 +11,20 @@ pub struct DeliveryIndex {
 
 impl DeliveryIndex {
     /// Groups source segments until a delivery segment reaches `min_duration`
-    /// milliseconds or reaches a splice boundary.
-    pub fn new(source: &SegmentIndex, min_duration: u32, boundaries: &[u32]) -> Self {
+    /// or reaches a splice boundary.
+    pub fn new(source: &SegmentIndex, min_duration: Duration, boundaries: &[Duration]) -> Self {
         let init_segment = source.init_segment();
         let init_range = init_segment.byte_range();
         let timescale = init_segment.timescale();
         let source_segments = source.segments();
-        let Some(first) = source_segments.first() else {
+        if source_segments.is_empty() {
             return Self {
                 init_range,
                 timescale,
                 segments: Vec::new(),
             };
-        };
-        let cuts = boundary_cuts(source_segments, boundaries, timescale);
+        }
+        let cuts = boundary_cuts(source_segments, boundaries);
         let mut segments = Vec::new();
         let mut start = 0;
         let mut next_cut = 0;
@@ -36,7 +36,7 @@ impl DeliveryIndex {
 
             let mut end = start + 1;
             while end < source_segments.len()
-                && !has_reached_duration(source_segments, start, end, min_duration, timescale)
+                && !has_reached_duration(source_segments, start, end, min_duration)
                 && (next_cut == cuts.len() || end != cuts[next_cut])
             {
                 end += 1;
@@ -61,6 +61,11 @@ impl DeliveryIndex {
     /// Returns the number of native media timeline ticks per second.
     pub fn timescale(&self) -> u32 {
         self.timescale
+    }
+
+    /// Returns the native timeline tick for DASH's `presentationTimeOffset`.
+    pub fn presentation_time_offset(&self) -> Option<u64> {
+        self.segments.first().map(Segment::start_ticks)
     }
 
     /// Returns the addressable media segments in presentation order.
@@ -88,14 +93,14 @@ impl DeliveryIndex {
         self.segments.iter()
     }
 
-    /// Finds the addressable media segment at the supplied native timeline tick.
-    pub fn find(&self, start: u64) -> Option<&Segment> {
+    /// Finds the addressable media segment at the supplied presentation time.
+    pub fn find(&self, start_time: Duration) -> Option<&Segment> {
         let index = self
             .segments
-            .partition_point(|segment| segment.start() < start);
+            .partition_point(|segment| segment.start_time() < start_time);
         let segment = self.get(index)?;
 
-        (segment.start() == start).then_some(segment)
+        (segment.start_time() == start_time).then_some(segment)
     }
 
     /// Returns the highest bitrate among the addressable media segments.
@@ -114,7 +119,7 @@ impl DeliveryIndex {
                 .fold((0_u128, 0_u128), |(bytes, duration), segment| {
                     (
                         bytes + u128::from(segment.byte_size()),
-                        duration + u128::from(segment.duration()),
+                        duration + u128::from(segment.duration_ticks()),
                     )
                 });
 
@@ -128,14 +133,10 @@ impl DeliveryIndex {
     }
 }
 
-fn boundary_cuts(segments: &[Segment], boundaries: &[u32], timescale: u32) -> Vec<usize> {
+fn boundary_cuts(segments: &[Segment], boundaries: &[Duration]) -> Vec<usize> {
     let mut cuts: Vec<_> = boundaries
         .iter()
-        .map(|&boundary| {
-            segments.partition_point(|segment| {
-                u128::from(segment.start()) * 1_000 < u128::from(boundary) * u128::from(timescale)
-            })
-        })
+        .map(|&boundary| segments.partition_point(|segment| segment.start_time() < boundary))
         .collect();
     cuts.sort_unstable();
     cuts.dedup();
@@ -146,19 +147,17 @@ fn has_reached_duration(
     segments: &[Segment],
     start: usize,
     end: usize,
-    min_duration: u32,
-    timescale: u32,
+    min_duration: Duration,
 ) -> bool {
-    let duration = segments[end - 1]
-        .end()
-        .saturating_sub(segments[start].start());
-
-    u128::from(duration) * 1_000 >= u128::from(min_duration) * u128::from(timescale)
+    segments[end - 1]
+        .end_time()
+        .saturating_sub(segments[start].start_time())
+        >= min_duration
 }
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
+    use std::{sync::Arc, time::Duration};
 
     use super::{DeliveryIndex, Segment, SegmentIndex};
     use crate::segment::InitSegment;
@@ -182,14 +181,18 @@ mod tests {
         SegmentIndex::for_test(init_segment, segments)
     }
 
-    fn durations(index: &DeliveryIndex) -> Vec<u64> {
-        index.iter().map(Segment::duration).collect()
+    fn duration(millis: u64) -> Duration {
+        Duration::from_millis(millis)
+    }
+
+    fn tick_durations(index: &DeliveryIndex) -> Vec<u64> {
+        index.iter().map(Segment::duration_ticks).collect()
     }
 
     #[test]
     fn new_returns_no_segments_when_the_source_is_empty() {
         let index = index(&[]);
-        let delivery_index = DeliveryIndex::new(&index, 1_000, &[]);
+        let delivery_index = DeliveryIndex::new(&index, duration(1_000), &[]);
 
         assert!(delivery_index.is_empty());
     }
@@ -197,7 +200,7 @@ mod tests {
     #[test]
     fn new_keeps_the_initialization_range_when_the_source_is_empty() {
         let index = index(&[]);
-        let delivery_index = DeliveryIndex::new(&index, 1_000, &[]);
+        let delivery_index = DeliveryIndex::new(&index, duration(1_000), &[]);
 
         assert_eq!(delivery_index.init_range(), 0..100);
     }
@@ -205,7 +208,7 @@ mod tests {
     #[test]
     fn new_keeps_the_timescale_when_the_source_is_empty() {
         let index = index_with_timescale(&[], 90_000);
-        let delivery_index = DeliveryIndex::new(&index, 1_000, &[]);
+        let delivery_index = DeliveryIndex::new(&index, duration(1_000), &[]);
 
         assert_eq!(delivery_index.timescale(), 90_000);
     }
@@ -213,25 +216,25 @@ mod tests {
     #[test]
     fn new_keeps_each_source_segment_when_minimum_duration_is_zero() {
         let index = index(&[(0, 500, 0, 50), (500, 1_000, 50, 100)]);
-        let delivery_index = DeliveryIndex::new(&index, 0, &[]);
+        let delivery_index = DeliveryIndex::new(&index, Duration::ZERO, &[]);
 
-        assert_eq!(durations(&delivery_index), [500, 500]);
+        assert_eq!(tick_durations(&delivery_index), [500, 500]);
     }
 
     #[test]
     fn new_accumulates_source_segments_until_the_minimum_duration() {
         let index = index(&[(0, 400, 0, 40), (400, 800, 40, 80), (800, 1_200, 80, 120)]);
-        let delivery_index = DeliveryIndex::new(&index, 800, &[]);
+        let delivery_index = DeliveryIndex::new(&index, duration(800), &[]);
 
-        assert_eq!(durations(&delivery_index), [800, 400]);
+        assert_eq!(tick_durations(&delivery_index), [800, 400]);
     }
 
     #[test]
     fn new_compares_minimum_duration_using_the_source_timescale() {
         let index = index_with_timescale(&[(0, 45_000, 0, 40), (45_000, 90_000, 40, 80)], 90_000);
-        let delivery_index = DeliveryIndex::new(&index, 1_000, &[]);
+        let delivery_index = DeliveryIndex::new(&index, duration(1_000), &[]);
 
-        assert_eq!(durations(&delivery_index), [90_000]);
+        assert_eq!(tick_durations(&delivery_index), [90_000]);
     }
 
     #[test]
@@ -241,9 +244,9 @@ mod tests {
             (500, 1_000, 50, 100),
             (1_000, 1_500, 100, 150),
         ]);
-        let delivery_index = DeliveryIndex::new(&index, 1_500, &[1_000]);
+        let delivery_index = DeliveryIndex::new(&index, duration(1_500), &[duration(1_000)]);
 
-        assert_eq!(durations(&delivery_index), [1_000, 500]);
+        assert_eq!(tick_durations(&delivery_index), [1_000, 500]);
     }
 
     #[test]
@@ -253,9 +256,13 @@ mod tests {
             (500, 1_000, 50, 100),
             (1_000, 1_500, 100, 150),
         ]);
-        let delivery_index = DeliveryIndex::new(&index, 1_500, &[1_000, 1_000, 500]);
+        let delivery_index = DeliveryIndex::new(
+            &index,
+            duration(1_500),
+            &[duration(1_000), duration(1_000), duration(500)],
+        );
 
-        assert_eq!(durations(&delivery_index), [500, 500, 500]);
+        assert_eq!(tick_durations(&delivery_index), [500, 500, 500]);
     }
 
     #[test]
@@ -263,7 +270,7 @@ mod tests {
         let delivery_index = {
             let index = index(&[(0, 500, 12, 32), (500, 1_000, 32, 80)]);
 
-            DeliveryIndex::new(&index, 1_000, &[])
+            DeliveryIndex::new(&index, duration(1_000), &[])
         };
 
         assert_eq!(delivery_index.get(0).unwrap().byte_range(), 12..80);
@@ -272,15 +279,18 @@ mod tests {
     #[test]
     fn find_returns_the_segment_at_its_start_time() {
         let index = index(&[(0, 500, 0, 50), (500, 1_000, 50, 100)]);
-        let delivery_index = DeliveryIndex::new(&index, 500, &[]);
+        let delivery_index = DeliveryIndex::new(&index, duration(500), &[]);
 
-        assert_eq!(delivery_index.find(500).unwrap().byte_range(), 50..100);
+        assert_eq!(
+            delivery_index.find(duration(500)).unwrap().byte_range(),
+            50..100
+        );
     }
 
     #[test]
     fn max_bitrate_returns_the_largest_delivery_segment_bitrate() {
         let index = index(&[(0, 1_000, 0, 100), (1_000, 2_000, 100, 300)]);
-        let delivery_index = DeliveryIndex::new(&index, 0, &[]);
+        let delivery_index = DeliveryIndex::new(&index, Duration::ZERO, &[]);
 
         assert_eq!(delivery_index.max_bitrate(), 1_600);
     }
@@ -288,7 +298,7 @@ mod tests {
     #[test]
     fn avg_bitrate_weights_delivery_segments_by_duration() {
         let index = index(&[(0, 1_000, 0, 100), (1_000, 3_000, 100, 500)]);
-        let delivery_index = DeliveryIndex::new(&index, 0, &[]);
+        let delivery_index = DeliveryIndex::new(&index, Duration::ZERO, &[]);
 
         assert_eq!(delivery_index.avg_bitrate(), 1_334);
     }

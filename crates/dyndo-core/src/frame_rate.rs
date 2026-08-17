@@ -1,9 +1,10 @@
 use std::{fmt, str::FromStr};
 
 use serde::{Deserialize, Serialize};
+use schemars::JsonSchema;
 use thiserror::Error;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 #[serde(try_from = "String", into = "String")]
 pub struct FrameRate {
     numerator: u32,
@@ -81,7 +82,8 @@ mod tests {
 
     #[test]
     fn frame_rate_should_deserialize_from_a_ratio() {
-        let frame_rate = serde_json::from_str("\"25/1\"").expect("frame rate should deserialize");
+        let frame_rate: FrameRate =
+            serde_json::from_str("\"25/1\"").expect("frame rate should deserialize");
 
         assert_eq!(
             frame_rate,

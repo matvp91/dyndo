@@ -75,7 +75,7 @@ fn parse_sidx_references(
     sidx_end_offset: u64,
     init_segment: Arc<InitSegment>,
 ) -> Result<Vec<Segment>, SegmentIndexError> {
-    let mut unscaled_start_time = sidx.earliest_presentation_time;
+    let mut start_ticks = sidx.earliest_presentation_time;
     let mut start_byte = sidx_end_offset
         .checked_add(sidx.first_offset)
         .ok_or_else(|| {
@@ -84,7 +84,7 @@ fn parse_sidx_references(
     let mut segments = Vec::with_capacity(sidx.references.len());
 
     for (index, reference) in sidx.references.iter().enumerate() {
-        let unscaled_end_time = unscaled_start_time
+        let end_ticks = start_ticks
             .checked_add(u64::from(reference.subsegment_duration))
             .ok_or_else(|| {
                 SegmentIndexError::InvalidSidx(format!("segment {index} time range overflows"))
@@ -97,12 +97,12 @@ fn parse_sidx_references(
 
         segments.push(Segment::new(
             Arc::clone(&init_segment),
-            unscaled_start_time,
-            unscaled_end_time,
+            start_ticks,
+            end_ticks,
             start_byte..end_byte,
         ));
 
-        unscaled_start_time = unscaled_end_time;
+        start_ticks = end_ticks;
         start_byte = end_byte;
     }
 

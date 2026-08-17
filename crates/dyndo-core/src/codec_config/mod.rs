@@ -11,11 +11,12 @@ pub use avc::AvcCodec;
 pub use eac3::{Ac3Codec, Eac3Codec};
 pub use hevc::HevcCodec;
 use mp4_atom::Codec;
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 pub use text::WvttCodec;
 use thiserror::Error;
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 #[serde(try_from = "String", into = "String")]
 pub enum CodecConfig {
     Avc(AvcCodec),
