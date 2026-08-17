@@ -1,17 +1,31 @@
 use futures_util::io::AsyncRead;
 use language_tags::LanguageTag;
 use mp4_atom::{Codec, FourCC, Moof, Moov, Sidx, Trak};
-use relative_path::RelativePathBuf;
+use relative_path::{RelativePath, RelativePathBuf};
+use thiserror::Error;
 use tokio_util::compat::FuturesAsyncReadCompatExt;
 
-use super::track_discover::DiscoverError;
 use super::{AudioMetadata, CmafTrack, TextMetadata, TextTrack, Track, VideoMetadata};
 use crate::{
     codec_config::CodecConfig, frame_rate::FrameRate, mp4_box_reader::Mp4BoxReader,
-    mp4_readable::Mp4Readable, segment_index::SegmentIndex,
+    mp4_readable::Mp4Readable, segment_index::SegmentIndex, storage::Storage,
 };
 
-pub(super) struct DiscoveredCmafTrack {
+#[derive(Debug, Error)]
+pub enum DiscoverError {
+    #[error("failed to access source: {0}")]
+    Storage(#[from] crate::storage::StorageError),
+    #[error("failed to read source: {0}")]
+    Source(#[from] opendal::Error),
+    #[error("failed to read MP4: {0}")]
+    Mp4(#[from] mp4_atom::Error),
+    #[error("invalid segment index: {0}")]
+    SegmentIndex(#[from] crate::segment_index::SegmentIndexError),
+    #[error("invalid CMAF track: {0}")]
+    InvalidCmaf(String),
+}
+
+pub struct DiscoveredCmafTrack {
     codec: CodecConfig,
     bitrate: u64,
     metadata: CmafTrackMetadata,
@@ -24,6 +38,16 @@ enum CmafTrackMetadata {
 }
 
 impl DiscoveredCmafTrack {
+    pub async fn discover(source_path: &RelativePath) -> Result<Self, DiscoverError> {
+        let mut reader = Storage::source_op()?
+            .reader(source_path.as_str())
+            .await?
+            .into_futures_async_read(..)
+            .await?;
+
+        Self::from_reader(&mut reader).await
+    }
+
     fn from_boxes(moov: &Moov, first_moof: &Moof, bitrate: u64) -> Result<Self, DiscoverError> {
         let [track] = moov.trak.as_slice() else {
             return Err(DiscoverError::InvalidCmaf(
@@ -62,7 +86,7 @@ impl DiscoveredCmafTrack {
         })
     }
 
-    pub(super) fn into_track(self, path: RelativePathBuf) -> Track {
+    pub fn into_track(self, path: RelativePathBuf) -> Track {
         match self.metadata {
             CmafTrackMetadata::Video(metadata) => Track::Video(CmafTrack {
                 path,

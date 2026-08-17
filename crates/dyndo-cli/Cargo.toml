@@ -1,0 +1,21 @@
+[package]
+name = "dyndo-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "dyndo"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+dyndo-core = { path = "../dyndo-core" }
+language-tags = "0.3.2"
+opendal = { version = "0.58", default-features = false, features = ["services-fs"] }
+relative-path = "2.0.1"
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }

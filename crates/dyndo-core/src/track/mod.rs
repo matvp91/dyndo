@@ -1,11 +1,10 @@
 mod discovered_cmaf_track;
-mod track_discover;
 
+pub use discovered_cmaf_track::{DiscoverError, DiscoveredCmafTrack};
 use language_tags::LanguageTag;
 use relative_path::RelativePathBuf;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-pub use track_discover::{DiscoverError, TrackDiscover};
 
 use crate::{codec_config::CodecConfig, frame_rate::FrameRate, role::Role};
 
