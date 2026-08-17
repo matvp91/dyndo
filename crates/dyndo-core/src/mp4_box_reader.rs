@@ -3,31 +3,37 @@ use std::{
     task::{Context, Poll},
 };
 
-use mp4_atom::{AsyncReadAtom, AsyncReadFrom, Atom, Error, Header};
+use mp4_atom::{AsyncReadAtom, AsyncReadFrom, Atom, Error as AtomError, Header};
 use tokio::io::{AsyncRead, AsyncReadExt, ReadBuf};
 
-pub(crate) struct Mp4BoxReader<R> {
+use crate::mp4_readable::Mp4ReadableError;
+
+/// An asynchronous MP4 box reader that tracks its position in the source.
+pub struct Mp4BoxReader<R> {
     reader: PositionReader<R>,
 }
 
 impl<R: AsyncRead + Unpin> Mp4BoxReader<R> {
-    pub(crate) fn new(reader: R) -> Self {
+    /// Creates an MP4 box reader over `reader`.
+    pub fn new(reader: R) -> Self {
         Self {
             reader: PositionReader::new(reader),
         }
     }
 
-    pub(crate) fn position(&self) -> u64 {
+    /// Returns the current byte offset in the source.
+    pub fn position(&self) -> u64 {
         self.reader.position()
     }
 
-    pub(crate) async fn read_box<T: AsyncReadAtom + Atom>(&mut self) -> Result<T, Error> {
+    /// Reads the next box of type `T`, skipping boxes of other types.
+    pub async fn read_box<T: AsyncReadAtom + Atom>(&mut self) -> Result<T, Mp4ReadableError> {
         loop {
             let header = Header::read_from(&mut self.reader).await?;
-            let size = header.size.ok_or(Error::InvalidSize)?;
+            let size = header.size.ok_or(AtomError::InvalidSize)?;
 
             if header.kind == T::KIND {
-                return T::read_atom(&header, &mut self.reader).await;
+                return Ok(T::read_atom(&header, &mut self.reader).await?);
             }
 
             skip(&mut self.reader, size).await?;
@@ -35,10 +41,10 @@ impl<R: AsyncRead + Unpin> Mp4BoxReader<R> {
     }
 }
 
-async fn skip(reader: &mut (impl AsyncRead + Unpin), size: usize) -> Result<(), Error> {
+async fn skip(reader: &mut (impl AsyncRead + Unpin), size: usize) -> Result<(), AtomError> {
     let copied = tokio::io::copy(&mut reader.take(size as u64), &mut tokio::io::sink()).await?;
     if copied != size as u64 {
-        return Err(Error::OutOfBounds);
+        return Err(AtomError::OutOfBounds);
     }
 
     Ok(())

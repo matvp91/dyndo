@@ -1,6 +1,7 @@
 mod any_cmaf_track;
+mod cmaf_metadata;
 
-pub use any_cmaf_track::{AnyCmafTrack, DiscoverError};
+pub use any_cmaf_track::AnyCmafTrack;
 use language_tags::LanguageTag;
 use relative_path::RelativePathBuf;
 use schemars::JsonSchema;

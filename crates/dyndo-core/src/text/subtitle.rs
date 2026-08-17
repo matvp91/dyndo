@@ -104,6 +104,7 @@ mod tests {
     use std::time::Duration;
 
     use super::{Cue, Subtitle};
+    use crate::segment_timeline::SegmentTimeline;
 
     fn duration(milliseconds: u64) -> Duration {
         Duration::from_millis(milliseconds)
