@@ -25,19 +25,19 @@ pub enum DiscoverError {
     InvalidCmaf(String),
 }
 
-pub struct DiscoveredCmafTrack {
+pub struct AnyCmafTrack {
     codec: CodecConfig,
     bitrate: u64,
-    metadata: CmafTrackMetadata,
+    metadata: CmafMetadata,
 }
 
-enum CmafTrackMetadata {
+enum CmafMetadata {
     Video(VideoMetadata),
     Audio(AudioMetadata),
     Text(TextMetadata),
 }
 
-impl DiscoveredCmafTrack {
+impl AnyCmafTrack {
     pub async fn discover(source_path: &RelativePath) -> Result<Self, DiscoverError> {
         let mut reader = Storage::source_op()?
             .reader(source_path.as_str())
@@ -64,13 +64,13 @@ impl DiscoveredCmafTrack {
         })?;
         let metadata = match track.mdia.hdlr.handler {
             handler if handler == FourCC::new(b"vide") => {
-                CmafTrackMetadata::Video(map_video(codec, moov, first_moof, track)?)
+                CmafMetadata::Video(map_video(codec, moov, first_moof, track)?)
             }
             handler if handler == FourCC::new(b"soun") => {
-                CmafTrackMetadata::Audio(map_audio(codec, track)?)
+                CmafMetadata::Audio(map_audio(codec, track)?)
             }
             handler if handler == FourCC::new(b"text") || handler == FourCC::new(b"subt") => {
-                CmafTrackMetadata::Text(map_text(track)?)
+                CmafMetadata::Text(map_text(track)?)
             }
             handler => {
                 return Err(DiscoverError::InvalidCmaf(format!(
@@ -88,19 +88,19 @@ impl DiscoveredCmafTrack {
 
     pub fn into_track(self, path: RelativePathBuf) -> Track {
         match self.metadata {
-            CmafTrackMetadata::Video(metadata) => Track::Video(CmafTrack {
+            CmafMetadata::Video(metadata) => Track::Video(CmafTrack {
                 path,
                 codec: self.codec,
                 bitrate: self.bitrate,
                 metadata,
             }),
-            CmafTrackMetadata::Audio(metadata) => Track::Audio(CmafTrack {
+            CmafMetadata::Audio(metadata) => Track::Audio(CmafTrack {
                 path,
                 codec: self.codec,
                 bitrate: self.bitrate,
                 metadata,
             }),
-            CmafTrackMetadata::Text(metadata) => Track::Text(TextTrack::Cmaf(CmafTrack {
+            CmafMetadata::Text(metadata) => Track::Text(TextTrack::Cmaf(CmafTrack {
                 path,
                 codec: self.codec,
                 bitrate: self.bitrate,
@@ -110,7 +110,7 @@ impl DiscoveredCmafTrack {
     }
 }
 
-impl Mp4Readable for DiscoveredCmafTrack {
+impl Mp4Readable for AnyCmafTrack {
     type Error = DiscoverError;
 
     async fn from_reader(reader: &mut (impl AsyncRead + Unpin)) -> Result<Self, Self::Error> {

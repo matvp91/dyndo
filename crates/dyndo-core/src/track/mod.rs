@@ -1,6 +1,6 @@
-mod discovered_cmaf_track;
+mod any_cmaf_track;
 
-pub use discovered_cmaf_track::{DiscoverError, DiscoveredCmafTrack};
+pub use any_cmaf_track::{AnyCmafTrack, DiscoverError};
 use language_tags::LanguageTag;
 use relative_path::RelativePathBuf;
 use schemars::JsonSchema;
@@ -58,9 +58,9 @@ pub struct CmafTrack<M> {
     pub metadata: M,
 }
 
-pub type CmafVideoTrack = CmafTrack<VideoMetadata>;
-pub type CmafAudioTrack = CmafTrack<AudioMetadata>;
-pub type CmafTextTrack = CmafTrack<TextMetadata>;
+pub type VideoCmafTrack = CmafTrack<VideoMetadata>;
+pub type AudioCmafTrack = CmafTrack<AudioMetadata>;
+pub type TextCmafTrack = CmafTrack<TextMetadata>;
 
 impl CmafTrack<VideoMetadata> {
     pub fn id(&self) -> String {
@@ -110,7 +110,7 @@ pub struct SidecarTextTrack {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 #[serde(untagged)]
 pub enum TextTrack {
-    Cmaf(CmafTextTrack),
+    Cmaf(TextCmafTrack),
     Sidecar(SidecarTextTrack),
 }
 
@@ -132,9 +132,9 @@ impl TextTrack {
 #[serde(tag = "type")]
 pub enum Track {
     #[serde(rename = "video")]
-    Video(CmafVideoTrack),
+    Video(VideoCmafTrack),
     #[serde(rename = "audio")]
-    Audio(CmafAudioTrack),
+    Audio(AudioCmafTrack),
     #[serde(rename = "text")]
     Text(TextTrack),
     #[serde(rename = "thumbnail")]

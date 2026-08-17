@@ -2,7 +2,7 @@ use clap::Args;
 use dyndo_core::{
     asset::{Asset, AssetError},
     role::Role,
-    track::{DiscoveredCmafTrack, SidecarTextTrack, TextMetadata, TextTrack, Track},
+    track::{AnyCmafTrack, SidecarTextTrack, TextMetadata, TextTrack, Track},
 };
 use language_tags::LanguageTag;
 use opendal::ErrorKind;
@@ -60,7 +60,7 @@ async fn discover_track(
     asset_relative_path: RelativePathBuf,
 ) -> Result<Track, Box<dyn std::error::Error>> {
     match source_path.extension() {
-        Some("mp4") => Ok(DiscoveredCmafTrack::discover(source_path)
+        Some("mp4") => Ok(AnyCmafTrack::discover(source_path)
             .await?
             .into_track(asset_relative_path)),
         Some("vtt") | Some("imsc") => Ok(Track::Text(TextTrack::Sidecar(SidecarTextTrack {
