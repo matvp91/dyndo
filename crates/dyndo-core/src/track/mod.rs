@@ -63,6 +63,43 @@ pub type CmafVideoTrack = CmafTrack<VideoMetadata>;
 pub type CmafAudioTrack = CmafTrack<AudioMetadata>;
 pub type CmafTextTrack = CmafTrack<TextMetadata>;
 
+impl CmafTrack<VideoMetadata> {
+    pub fn id(&self) -> String {
+        format!(
+            "{}_{}_{}",
+            self.codec.family(),
+            self.metadata.height,
+            self.bitrate
+        )
+    }
+}
+
+impl CmafTrack<AudioMetadata> {
+    pub fn id(&self) -> String {
+        let metadata = &self.metadata;
+
+        match metadata.role {
+            Some(role) => format!(
+                "{}_{}_{}_{}_{}_{}",
+                self.codec.family(),
+                metadata.sample_rate,
+                metadata.channels,
+                metadata.language,
+                role,
+                self.bitrate
+            ),
+            None => format!(
+                "{}_{}_{}_{}_{}",
+                self.codec.family(),
+                metadata.sample_rate,
+                metadata.channels,
+                metadata.language,
+                self.bitrate
+            ),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 pub struct SidecarTextTrack {
     #[schemars(with = "String")]
@@ -78,6 +115,20 @@ pub enum TextTrack {
     Sidecar(SidecarTextTrack),
 }
 
+impl TextTrack {
+    pub fn id(&self) -> String {
+        let metadata = match self {
+            Self::Cmaf(track) => &track.metadata,
+            Self::Sidecar(track) => &track.metadata,
+        };
+
+        match metadata.role {
+            Some(role) => format!("text_{}_{}", metadata.language, role),
+            None => format!("text_{}", metadata.language),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 #[serde(tag = "type")]
 pub enum Track {
@@ -89,6 +140,17 @@ pub enum Track {
     Text(TextTrack),
     #[serde(rename = "thumbnail")]
     Thumbnail(ThumbnailTrack),
+}
+
+impl Track {
+    pub fn id(&self) -> String {
+        match self {
+            Self::Video(track) => track.id(),
+            Self::Audio(track) => track.id(),
+            Self::Text(track) => track.id(),
+            Self::Thumbnail(track) => track.id.clone(),
+        }
+    }
 }
 
 fn language_und() -> LanguageTag {
