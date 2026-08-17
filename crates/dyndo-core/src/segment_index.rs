@@ -38,10 +38,18 @@ impl SegmentIndex {
         }
         let init_segment = Arc::new(InitSegment::new(init_range, sidx.timescale));
 
-        Ok(Self {
-            init_segment: Arc::clone(&init_segment),
-            segments: parse_sidx_references(&sidx, sidx_end_offset, init_segment)?,
-        })
+        Ok(Self::new(
+            Arc::clone(&init_segment),
+            parse_sidx_references(&sidx, sidx_end_offset, init_segment)?,
+        ))
+    }
+
+    /// Creates an index from an initialization context and source segments.
+    pub fn new(init_segment: Arc<InitSegment>, segments: Vec<Segment>) -> Self {
+        Self {
+            init_segment,
+            segments,
+        }
     }
 
     /// Returns the initialization context shared by all source segments.
@@ -73,16 +81,6 @@ impl SegmentIndex {
         let bits = bytes * 8;
         let scaled_bits = bits * u128::from(self.init_segment.timescale());
         u64::try_from(scaled_bits.div_ceil(duration)).unwrap_or(u64::MAX)
-    }
-}
-
-#[cfg(test)]
-impl SegmentIndex {
-    pub(crate) fn for_test(init_segment: Arc<InitSegment>, segments: Vec<Segment>) -> Self {
-        Self {
-            init_segment,
-            segments,
-        }
     }
 }
 

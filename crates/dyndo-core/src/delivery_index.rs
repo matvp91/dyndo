@@ -163,7 +163,7 @@ mod tests {
             })
             .collect();
 
-        SegmentIndex::for_test(init_segment, segments)
+        SegmentIndex::new(init_segment, segments)
     }
 
     fn duration(millis: u64) -> Duration {

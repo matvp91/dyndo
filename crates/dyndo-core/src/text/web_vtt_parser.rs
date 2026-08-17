@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use super::{Cue, Subtitle};
 
 const TIMING_ARROW: &str = "-->";
@@ -17,8 +19,8 @@ pub enum WebVttParseError {
     #[error("malformed timestamp {0:?}")]
     MalformedTimestamp(String),
     /// A cue ended before it started.
-    #[error("cue at {0}ms ends before it starts")]
-    NegativeDuration(u32),
+    #[error("cue at {0:?} ends before it starts")]
+    NegativeDuration(Duration),
 }
 
 impl WebVttParser {
@@ -79,7 +81,7 @@ fn parse_block(block: &[&str]) -> Result<Option<Cue>, WebVttParseError> {
     }))
 }
 
-fn parse_timing(line: &str) -> Result<(u32, u32), WebVttParseError> {
+fn parse_timing(line: &str) -> Result<(Duration, Duration), WebVttParseError> {
     let (start, end) = line
         .split_once(TIMING_ARROW)
         .expect("callers only pass timing lines");
@@ -93,7 +95,7 @@ fn parse_timing(line: &str) -> Result<(u32, u32), WebVttParseError> {
     Ok((start, end))
 }
 
-fn parse_timestamp(timestamp: &str) -> Result<u32, WebVttParseError> {
+fn parse_timestamp(timestamp: &str) -> Result<Duration, WebVttParseError> {
     let malformed = || WebVttParseError::MalformedTimestamp(timestamp.to_string());
 
     let (clock, millis) = timestamp.split_once('.').ok_or_else(malformed)?;
@@ -117,14 +119,22 @@ fn parse_timestamp(timestamp: &str) -> Result<u32, WebVttParseError> {
         return Err(malformed());
     }
 
-    hours
+    let milliseconds = u64::from(hours)
         .checked_mul(3_600_000)
-        .and_then(|hours| hours.checked_add(minutes * 60_000 + seconds * 1_000 + millis))
-        .ok_or_else(malformed)
+        .and_then(|hours| {
+            hours.checked_add(
+                u64::from(minutes) * 60_000 + u64::from(seconds) * 1_000 + u64::from(millis),
+            )
+        })
+        .ok_or_else(malformed)?;
+
+    Ok(Duration::from_millis(milliseconds))
 }
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use super::{Cue, WebVttParseError, WebVttParser};
 
     #[test]
@@ -138,13 +148,13 @@ mod tests {
             subtitle.cues,
             vec![
                 Cue {
-                    start: 500,
-                    end: 1_000,
+                    start: Duration::from_millis(500),
+                    end: Duration::from_millis(1_000),
                     text: "One\nline two".into(),
                 },
                 Cue {
-                    start: 2_000,
-                    end: 3_000,
+                    start: Duration::from_millis(2_000),
+                    end: Duration::from_millis(3_000),
                     text: "Two".into(),
                 },
             ]
@@ -161,8 +171,8 @@ mod tests {
         assert_eq!(
             subtitle.cues,
             vec![Cue {
-                start: 0,
-                end: 1_000,
+                start: Duration::ZERO,
+                end: Duration::from_millis(1_000),
                 text: "Kept".into(),
             }]
         );
@@ -188,6 +198,9 @@ mod tests {
         let error =
             WebVttParser::parse("WEBVTT\n\n00:00:02.000 --> 00:00:01.000\nText\n").unwrap_err();
 
-        assert!(matches!(error, WebVttParseError::NegativeDuration(2_000)));
+        assert!(matches!(
+            error,
+            WebVttParseError::NegativeDuration(duration) if duration == Duration::from_secs(2)
+        ));
     }
 }
