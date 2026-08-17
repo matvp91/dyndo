@@ -1,6 +1,7 @@
-mod discover;
+mod discovered_cmaf_track;
+mod track_discover;
 
-pub use discover::DiscoverError;
+pub use track_discover::{DiscoverError, TrackDiscover};
 use language_tags::LanguageTag;
 use relative_path::RelativePathBuf;
 use schemars::JsonSchema;
@@ -55,26 +56,29 @@ pub type CmafAudioTrack = CmafTrack<AudioMetadata>;
 pub type CmafTextTrack = CmafTrack<TextMetadata>;
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
-pub struct RawTrack<M> {
+pub struct SidecarTextTrack {
     #[schemars(with = "String")]
     pub path: RelativePathBuf,
     #[serde(flatten)]
-    pub metadata: M,
+    pub metadata: TextMetadata,
 }
 
-pub type WebVttTextTrack = RawTrack<TextMetadata>;
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
+#[serde(untagged)]
+pub enum TextTrack {
+    Cmaf(CmafTextTrack),
+    Sidecar(SidecarTextTrack),
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 #[serde(tag = "type")]
 pub enum Track {
     #[serde(rename = "video")]
-    CmafVideo(CmafVideoTrack),
+    Video(CmafVideoTrack),
     #[serde(rename = "audio")]
-    CmafAudio(CmafAudioTrack),
+    Audio(CmafAudioTrack),
     #[serde(rename = "text")]
-    CmafText(CmafTextTrack),
-    #[serde(rename = "webvtt")]
-    WebVttText(WebVttTextTrack),
+    Text(TextTrack),
     #[serde(rename = "thumbnail")]
     Thumbnail(ImageMetadata),
 }

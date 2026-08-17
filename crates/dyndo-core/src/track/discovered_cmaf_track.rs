@@ -1,70 +1,33 @@
 use futures_util::io::AsyncRead;
 use language_tags::LanguageTag;
 use mp4_atom::{Codec, FourCC, Moof, Moov, Trak};
-use relative_path::{RelativePath, RelativePathBuf};
-use thiserror::Error;
+use relative_path::RelativePathBuf;
 use tokio_util::compat::FuturesAsyncReadCompatExt;
 
 use super::{
-    AudioMetadata, CmafAudioTrack, CmafTextTrack, CmafTrack, CmafVideoTrack, TextMetadata, Track,
-    VideoMetadata, WebVttTextTrack,
+    AudioMetadata, CmafTrack, TextMetadata, TextTrack, Track, VideoMetadata,
 };
 use crate::{
     codec_config::CodecConfig,
     frame_rate::FrameRate,
     mp4_box_reader::Mp4BoxReader,
     mp4_readable::Mp4Readable,
-    storage::{Storage, StorageError},
 };
+use super::track_discover::DiscoverError;
 
-#[derive(Debug, Error)]
-pub enum DiscoverError {
-    #[error("unsupported track format")]
-    UnsupportedFormat,
-    #[error("failed to access source: {0}")]
-    Storage(#[from] StorageError),
-    #[error("failed to read source: {0}")]
-    Source(#[from] opendal::Error),
-    #[error("failed to read MP4: {0}")]
-    Mp4(#[from] mp4_atom::Error),
-    #[error("invalid CMAF track: {0}")]
-    InvalidCmaf(String),
+pub(super) struct DiscoveredCmafTrack {
+    codec: CodecConfig,
+    metadata: CmafTrackMetadata,
 }
 
-impl Track {
-    pub async fn discover(path: &RelativePath) -> Result<Self, DiscoverError> {
-        let mut reader = Storage::source_op()?
-            .reader(path.as_str())
-            .await?
-            .into_futures_async_read(..)
-            .await?;
-
-        match path.extension() {
-            Some("mp4") => {
-                let track = DiscoveredCmafTrack::from_reader(&mut reader).await?;
-
-                Ok(track.into_track(path.as_str().into()))
-            }
-            Some("vtt") => Ok(Self::WebVttText(WebVttTextTrack {
-                path: path.as_str().into(),
-                metadata: TextMetadata {
-                    language: super::language_und(),
-                    role: None,
-                },
-            })),
-            _ => Err(DiscoverError::UnsupportedFormat),
-        }
-    }
-}
-
-enum DiscoveredCmafTrack {
-    Video(CmafVideoTrack),
-    Audio(CmafAudioTrack),
-    Text(CmafTextTrack),
+enum CmafTrackMetadata {
+    Video(VideoMetadata),
+    Audio(AudioMetadata),
+    Text(TextMetadata),
 }
 
 impl DiscoveredCmafTrack {
-    fn new(moov: &Moov, first_moof: &Moof) -> Result<Self, DiscoverError> {
+    fn from_boxes(moov: &Moov, first_moof: &Moof) -> Result<Self, DiscoverError> {
         let [track] = moov.trak.as_slice() else {
             return Err(DiscoverError::InvalidCmaf(
                 "initialization segment must contain exactly one track".into(),
@@ -78,41 +41,48 @@ impl DiscoveredCmafTrack {
         let codec_config = CodecConfig::from_atom(codec).map_err(|_| {
             DiscoverError::InvalidCmaf("track has an unsupported codec configuration".into())
         })?;
-        let path = RelativePathBuf::from("");
-
-        match track.mdia.hdlr.handler {
-            handler if handler == FourCC::new(b"vide") => Ok(Self::Video(map_video(
-                path,
-                codec_config,
-                codec,
-                moov,
-                first_moof,
-                track,
-            )?)),
+        let metadata = match track.mdia.hdlr.handler {
+            handler if handler == FourCC::new(b"vide") => {
+                CmafTrackMetadata::Video(map_video(codec, moov, first_moof, track)?)
+            }
             handler if handler == FourCC::new(b"soun") => {
-                Ok(Self::Audio(map_audio(path, codec_config, codec, track)?))
+                CmafTrackMetadata::Audio(map_audio(codec, track)?)
             }
             handler if handler == FourCC::new(b"text") || handler == FourCC::new(b"subt") => {
-                Ok(Self::Text(map_text(path, codec_config, track)?))
+                CmafTrackMetadata::Text(map_text(track)?)
             }
-            handler => Err(DiscoverError::InvalidCmaf(format!(
-                "unsupported track handler: {handler}"
-            ))),
-        }
+            handler => {
+                return Err(DiscoverError::InvalidCmaf(format!(
+                    "unsupported track handler: {handler}"
+                )));
+            }
+        };
+
+        Ok(Self {
+            codec: codec_config,
+            metadata,
+        })
     }
 
-    fn into_track(self, path: RelativePathBuf) -> Track {
-        match self {
-            Self::Video(track) => Track::CmafVideo(with_path(track, path)),
-            Self::Audio(track) => Track::CmafAudio(with_path(track, path)),
-            Self::Text(track) => Track::CmafText(with_path(track, path)),
+    pub(super) fn into_track(self, path: RelativePathBuf) -> Track {
+        match self.metadata {
+            CmafTrackMetadata::Video(metadata) => Track::Video(CmafTrack {
+                path,
+                codec: self.codec,
+                metadata,
+            }),
+            CmafTrackMetadata::Audio(metadata) => Track::Audio(CmafTrack {
+                path,
+                codec: self.codec,
+                metadata,
+            }),
+            CmafTrackMetadata::Text(metadata) => Track::Text(TextTrack::Cmaf(CmafTrack {
+                path,
+                codec: self.codec,
+                metadata,
+            })),
         }
     }
-}
-
-fn with_path<M>(mut track: CmafTrack<M>, path: RelativePathBuf) -> CmafTrack<M> {
-    track.path = path;
-    track
 }
 
 impl Mp4Readable for DiscoveredCmafTrack {
@@ -123,64 +93,44 @@ impl Mp4Readable for DiscoveredCmafTrack {
         let moov = reader.read_box::<Moov>().await?;
         let first_moof = reader.read_box::<Moof>().await?;
 
-        Self::new(&moov, &first_moof)
+        Self::from_boxes(&moov, &first_moof)
     }
 }
 
 fn map_video(
-    path: RelativePathBuf,
-    codec_config: CodecConfig,
     codec: &Codec,
     moov: &Moov,
     first_moof: &Moof,
     track: &Trak,
-) -> Result<CmafVideoTrack, DiscoverError> {
+) -> Result<VideoMetadata, DiscoverError> {
     let (width, height) = video_dimensions(codec)?;
     let frame_rate = frame_rate(moov, first_moof, track)?;
 
-    Ok(CmafTrack {
-        path,
-        codec: codec_config,
-        metadata: VideoMetadata {
-            width,
-            height,
-            frame_rate,
-        },
+    Ok(VideoMetadata {
+        width,
+        height,
+        frame_rate,
     })
 }
 
 fn map_audio(
-    path: RelativePathBuf,
-    codec_config: CodecConfig,
     codec: &Codec,
     track: &Trak,
-) -> Result<CmafAudioTrack, DiscoverError> {
+) -> Result<AudioMetadata, DiscoverError> {
     let (sample_rate, channels) = audio_properties(codec)?;
 
-    Ok(CmafTrack {
-        path,
-        codec: codec_config,
-        metadata: AudioMetadata {
-            sample_rate,
-            channels,
-            language: language(track)?,
-            role: None,
-        },
+    Ok(AudioMetadata {
+        sample_rate,
+        channels,
+        language: language(track)?,
+        role: None,
     })
 }
 
-fn map_text(
-    path: RelativePathBuf,
-    codec_config: CodecConfig,
-    track: &Trak,
-) -> Result<CmafTextTrack, DiscoverError> {
-    Ok(CmafTrack {
-        path,
-        codec: codec_config,
-        metadata: TextMetadata {
-            language: language(track)?,
-            role: None,
-        },
+fn map_text(track: &Trak) -> Result<TextMetadata, DiscoverError> {
+    Ok(TextMetadata {
+        language: language(track)?,
+        role: None,
     })
 }
 
