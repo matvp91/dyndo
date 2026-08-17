@@ -1,11 +1,11 @@
 mod discovered_cmaf_track;
 mod track_discover;
 
-pub use track_discover::{DiscoverError, TrackDiscover};
 use language_tags::LanguageTag;
 use relative_path::RelativePathBuf;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+pub use track_discover::{DiscoverError, TrackDiscover};
 
 use crate::{codec_config::CodecConfig, frame_rate::FrameRate, role::Role};
 
@@ -43,10 +43,18 @@ pub struct ImageMetadata {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
+pub struct ThumbnailTrack {
+    pub id: String,
+    #[serde(flatten)]
+    pub metadata: ImageMetadata,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 pub struct CmafTrack<M> {
     #[schemars(with = "String")]
     pub path: RelativePathBuf,
     pub codec: CodecConfig,
+    pub bitrate: u64,
     #[serde(flatten)]
     pub metadata: M,
 }
@@ -80,7 +88,7 @@ pub enum Track {
     #[serde(rename = "text")]
     Text(TextTrack),
     #[serde(rename = "thumbnail")]
-    Thumbnail(ImageMetadata),
+    Thumbnail(ThumbnailTrack),
 }
 
 fn language_und() -> LanguageTag {

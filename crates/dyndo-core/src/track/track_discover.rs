@@ -16,6 +16,8 @@ pub enum DiscoverError {
     Source(#[from] opendal::Error),
     #[error("failed to read MP4: {0}")]
     Mp4(#[from] mp4_atom::Error),
+    #[error("invalid segment index: {0}")]
+    SegmentIndex(#[from] crate::segment_index::SegmentIndexError),
     #[error("invalid CMAF track: {0}")]
     InvalidCmaf(String),
 }
@@ -35,15 +37,13 @@ impl TrackDiscover {
 
                 Ok(track.into_track(source_path.as_str().into()))
             }
-            Some("vtt") | Some("imsc") => Ok(Track::Text(TextTrack::Sidecar(
-                SidecarTextTrack {
-                    path: source_path.as_str().into(),
-                    metadata: TextMetadata {
-                        language: super::language_und(),
-                        role: None,
-                    },
+            Some("vtt") | Some("imsc") => Ok(Track::Text(TextTrack::Sidecar(SidecarTextTrack {
+                path: source_path.as_str().into(),
+                metadata: TextMetadata {
+                    language: super::language_und(),
+                    role: None,
                 },
-            ))),
+            }))),
             _ => Err(DiscoverError::UnsupportedFormat),
         }
     }

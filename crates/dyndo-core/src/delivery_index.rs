@@ -6,6 +6,7 @@ use crate::{segment::Segment, segment_index::SegmentIndex};
 pub struct DeliveryIndex {
     init_range: Range<u64>,
     timescale: u32,
+    avg_bitrate: u64,
     segments: Vec<Segment>,
 }
 
@@ -16,11 +17,13 @@ impl DeliveryIndex {
         let init_segment = source.init_segment();
         let init_range = init_segment.byte_range();
         let timescale = init_segment.timescale();
+        let avg_bitrate = source.avg_bitrate();
         let source_segments = source.segments();
         if source_segments.is_empty() {
             return Self {
                 init_range,
                 timescale,
+                avg_bitrate,
                 segments: Vec::new(),
             };
         }
@@ -49,6 +52,7 @@ impl DeliveryIndex {
         Self {
             init_range,
             timescale,
+            avg_bitrate,
             segments,
         }
     }
@@ -108,28 +112,9 @@ impl DeliveryIndex {
         self.iter().map(Segment::bitrate).max().unwrap_or(0)
     }
 
-    /// Returns total delivery bits divided by total delivery duration.
+    /// Returns the source media's average bitrate.
     pub fn avg_bitrate(&self) -> u64 {
-        let Some(first) = self.segments.first() else {
-            return 0;
-        };
-        let (bytes, duration) =
-            self.segments
-                .iter()
-                .fold((0_u128, 0_u128), |(bytes, duration), segment| {
-                    (
-                        bytes + u128::from(segment.byte_size()),
-                        duration + u128::from(segment.duration_ticks()),
-                    )
-                });
-
-        if duration == 0 {
-            return 0;
-        }
-
-        let bits = bytes * 8;
-        let scaled_bits = bits * u128::from(first.init_segment().timescale());
-        u64::try_from(scaled_bits.div_ceil(duration)).unwrap_or(u64::MAX)
+        self.avg_bitrate
     }
 }
 

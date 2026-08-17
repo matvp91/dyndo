@@ -36,6 +36,17 @@ pub enum CodecConfigError {
 }
 
 impl CodecConfig {
+    pub const fn family(&self) -> &'static str {
+        match self {
+            Self::Avc(_) => "avc",
+            Self::Hevc(_) => "hevc",
+            Self::Aac(_) => "aac",
+            Self::Ac3(_) => "ac3",
+            Self::Eac3(_) => "eac3",
+            Self::Wvtt(_) => "wvtt",
+        }
+    }
+
     pub fn from_atom(atom: &Codec) -> Result<Self, CodecConfigError> {
         match atom {
             Codec::Avc1(atom) => Ok(Self::Avc(AvcCodec::from_atom(atom))),

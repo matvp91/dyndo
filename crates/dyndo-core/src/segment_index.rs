@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{ops::Range, sync::Arc};
 
 use futures_util::io::AsyncRead;
 use mp4_atom::{Moov, Sidx};
@@ -26,6 +26,24 @@ pub enum SegmentIndexError {
 }
 
 impl SegmentIndex {
+    pub(crate) fn from_sidx(
+        init_range: Range<u64>,
+        sidx: Sidx,
+        sidx_end_offset: u64,
+    ) -> Result<Self, SegmentIndexError> {
+        if sidx.timescale == 0 {
+            return Err(SegmentIndexError::InvalidSidx(
+                "timescale cannot be zero".into(),
+            ));
+        }
+        let init_segment = Arc::new(InitSegment::new(init_range, sidx.timescale));
+
+        Ok(Self {
+            init_segment: Arc::clone(&init_segment),
+            segments: parse_sidx_references(&sidx, sidx_end_offset, init_segment)?,
+        })
+    }
+
     /// Returns the initialization context shared by all source segments.
     pub fn init_segment(&self) -> &InitSegment {
         &self.init_segment
@@ -34,6 +52,27 @@ impl SegmentIndex {
     /// Returns the source media segments in presentation order.
     pub fn segments(&self) -> &[Segment] {
         &self.segments
+    }
+
+    /// Returns total media bits divided by total media duration.
+    pub fn avg_bitrate(&self) -> u64 {
+        let (bytes, duration) =
+            self.segments
+                .iter()
+                .fold((0_u128, 0_u128), |(bytes, duration), segment| {
+                    (
+                        bytes + u128::from(segment.byte_size()),
+                        duration + u128::from(segment.duration_ticks()),
+                    )
+                });
+
+        if duration == 0 {
+            return 0;
+        }
+
+        let bits = bytes * 8;
+        let scaled_bits = bits * u128::from(self.init_segment.timescale());
+        u64::try_from(scaled_bits.div_ceil(duration)).unwrap_or(u64::MAX)
     }
 }
 
@@ -56,17 +95,8 @@ impl Mp4Readable for SegmentIndex {
         let init_range = 0..reader.position();
         let sidx = reader.read_box::<Sidx>().await?;
         let sidx_end_offset = reader.position();
-        if sidx.timescale == 0 {
-            return Err(SegmentIndexError::InvalidSidx(
-                "timescale cannot be zero".into(),
-            ));
-        }
-        let init_segment = Arc::new(InitSegment::new(init_range, sidx.timescale));
 
-        Ok(Self {
-            init_segment: Arc::clone(&init_segment),
-            segments: parse_sidx_references(&sidx, sidx_end_offset, init_segment)?,
-        })
+        Self::from_sidx(init_range, sidx, sidx_end_offset)
     }
 }
 

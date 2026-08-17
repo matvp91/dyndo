@@ -1,22 +1,19 @@
 use futures_util::io::AsyncRead;
 use language_tags::LanguageTag;
-use mp4_atom::{Codec, FourCC, Moof, Moov, Trak};
+use mp4_atom::{Codec, FourCC, Moof, Moov, Sidx, Trak};
 use relative_path::RelativePathBuf;
 use tokio_util::compat::FuturesAsyncReadCompatExt;
 
-use super::{
-    AudioMetadata, CmafTrack, TextMetadata, TextTrack, Track, VideoMetadata,
-};
-use crate::{
-    codec_config::CodecConfig,
-    frame_rate::FrameRate,
-    mp4_box_reader::Mp4BoxReader,
-    mp4_readable::Mp4Readable,
-};
 use super::track_discover::DiscoverError;
+use super::{AudioMetadata, CmafTrack, TextMetadata, TextTrack, Track, VideoMetadata};
+use crate::{
+    codec_config::CodecConfig, frame_rate::FrameRate, mp4_box_reader::Mp4BoxReader,
+    mp4_readable::Mp4Readable, segment_index::SegmentIndex,
+};
 
 pub(super) struct DiscoveredCmafTrack {
     codec: CodecConfig,
+    bitrate: u64,
     metadata: CmafTrackMetadata,
 }
 
@@ -27,7 +24,7 @@ enum CmafTrackMetadata {
 }
 
 impl DiscoveredCmafTrack {
-    fn from_boxes(moov: &Moov, first_moof: &Moof) -> Result<Self, DiscoverError> {
+    fn from_boxes(moov: &Moov, first_moof: &Moof, bitrate: u64) -> Result<Self, DiscoverError> {
         let [track] = moov.trak.as_slice() else {
             return Err(DiscoverError::InvalidCmaf(
                 "initialization segment must contain exactly one track".into(),
@@ -60,6 +57,7 @@ impl DiscoveredCmafTrack {
 
         Ok(Self {
             codec: codec_config,
+            bitrate,
             metadata,
         })
     }
@@ -69,16 +67,19 @@ impl DiscoveredCmafTrack {
             CmafTrackMetadata::Video(metadata) => Track::Video(CmafTrack {
                 path,
                 codec: self.codec,
+                bitrate: self.bitrate,
                 metadata,
             }),
             CmafTrackMetadata::Audio(metadata) => Track::Audio(CmafTrack {
                 path,
                 codec: self.codec,
+                bitrate: self.bitrate,
                 metadata,
             }),
             CmafTrackMetadata::Text(metadata) => Track::Text(TextTrack::Cmaf(CmafTrack {
                 path,
                 codec: self.codec,
+                bitrate: self.bitrate,
                 metadata,
             })),
         }
@@ -91,9 +92,13 @@ impl Mp4Readable for DiscoveredCmafTrack {
     async fn from_reader(reader: &mut (impl AsyncRead + Unpin)) -> Result<Self, Self::Error> {
         let mut reader = Mp4BoxReader::new(reader.compat());
         let moov = reader.read_box::<Moov>().await?;
+        let init_range = 0..reader.position();
+        let sidx = reader.read_box::<Sidx>().await?;
+        let sidx_end_offset = reader.position();
+        let segment_index = SegmentIndex::from_sidx(init_range, sidx, sidx_end_offset)?;
         let first_moof = reader.read_box::<Moof>().await?;
 
-        Self::from_boxes(&moov, &first_moof)
+        Self::from_boxes(&moov, &first_moof, segment_index.avg_bitrate())
     }
 }
 
@@ -113,10 +118,7 @@ fn map_video(
     })
 }
 
-fn map_audio(
-    codec: &Codec,
-    track: &Trak,
-) -> Result<AudioMetadata, DiscoverError> {
+fn map_audio(codec: &Codec, track: &Trak) -> Result<AudioMetadata, DiscoverError> {
     let (sample_rate, channels) = audio_properties(codec)?;
 
     Ok(AudioMetadata {
