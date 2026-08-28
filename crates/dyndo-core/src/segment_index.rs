@@ -6,7 +6,7 @@ use crate::{
     mp4_box_reader::Mp4BoxReader,
     mp4_readable::{Mp4Readable, Mp4ReadableError},
     segment::{InitSegment, Segment},
-    segment_timeline::SegmentTimeline,
+    media_index::MediaIndex,
 };
 
 /// The initialization section and source media segments read from a CMAF index.
@@ -30,7 +30,7 @@ impl SegmentIndex {
     }
 }
 
-impl SegmentTimeline for SegmentIndex {
+impl MediaIndex for SegmentIndex {
     fn init_segment(&self) -> &InitSegment {
         &self.init_segment
     }

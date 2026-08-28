@@ -8,7 +8,7 @@ pub mod packager;
 pub mod role;
 pub mod segment;
 pub mod segment_index;
-pub mod segment_timeline;
+pub mod media_index;
 pub mod storage;
 pub mod text;
 pub mod track;

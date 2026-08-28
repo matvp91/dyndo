@@ -4,7 +4,7 @@ use super::{CmafTrack, TextTrack, Track, cmaf_metadata::CmafMetadata};
 use crate::{
     mp4_readable::{Mp4Readable, Mp4ReadableError},
     segment_index::SegmentIndex,
-    segment_timeline::SegmentTimeline,
+    media_index::MediaIndex,
 };
 
 pub struct AnyCmafTrack {

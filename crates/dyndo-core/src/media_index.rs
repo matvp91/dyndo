@@ -2,8 +2,8 @@ use std::ops::Range;
 
 use crate::segment::{InitSegment, Segment};
 
-/// An ordered timeline of addressable media segments.
-pub trait SegmentTimeline {
+/// An ordered index of addressable media segments.
+pub trait MediaIndex {
     /// Returns the initialization context shared by the media segments.
     fn init_segment(&self) -> &InitSegment;
 
