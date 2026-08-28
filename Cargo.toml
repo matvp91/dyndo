@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/dyndo-core", "crates/dyndo-dash", "crates/dyndo-hls", "crates/dyndo-cli", "crates/dyndo-server", "xtask"]
+members = ["crates/dyndo-cli", "crates/dyndo-core", "crates/dyndo-dash", "xtask"]
 
 [workspace.package]
 version = "0.5.7"

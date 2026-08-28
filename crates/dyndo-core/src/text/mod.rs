@@ -1,8 +1,7 @@
+//! Timed-text models and format-specific parsers.
+
 mod subtitle;
+mod web_vtt_parser;
 
-pub mod sampling;
-pub mod web_vtt;
-mod wvtt;
-
-pub use subtitle::{Cue, Subtitle};
-pub use web_vtt::WebVttParseError;
+pub use subtitle::{Cue, Subtitle, SubtitleReadError};
+pub use web_vtt_parser::{WebVttParseError, WebVttParser};

@@ -1,10 +1,14 @@
-//! Media models, source resolution, segmentation, and packaging for dyndo.
-
 pub mod asset;
-pub mod codec;
-pub mod image;
-pub mod packaging;
+pub mod codec_config;
+pub mod delivery_index;
+pub mod frame_rate;
+pub mod mp4_box_reader;
+pub mod mp4_readable;
+pub mod packager;
 pub mod role;
+pub mod segment;
+pub mod segment_index;
+pub mod media_index;
+pub mod storage;
 pub mod text;
-pub mod time;
 pub mod track;

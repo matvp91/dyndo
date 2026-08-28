@@ -1,7 +1,7 @@
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
-use dyndo_core::storage::Storage;
+use opendal::Operator;
 use opendal::services::Fs;
 
 mod commands;
@@ -21,20 +21,19 @@ enum Command {
 }
 
 impl Command {
-    async fn run(self) -> Result<(), Box<dyn std::error::Error>> {
+    async fn run(self, op: &Operator) -> Result<(), Box<dyn std::error::Error>> {
         match self {
-            Self::Index(args) => commands::index::run(args).await,
+            Self::Index(args) => commands::index::run(op, args).await,
         }
     }
 }
 
-fn init_storage() -> Result<(), Box<dyn std::error::Error>> {
-    let root = std::env::var("OPENDAL_FS_ROOT").unwrap_or_else(|_| ".".to_owned());
-    Storage::init(Fs::default().root(&root))?;
-
-    Ok(())
+fn operator() -> Result<Operator, Box<dyn std::error::Error>> {
+    let root = std::env::var("OPENDAL_FS_ROOT").unwrap_or_else(|_| ".".to_string());
+    Ok(Operator::new(Fs::default().root(&root))?)
 }
 
+// Print Display because Rust's default main error handling prints Debug.
 #[tokio::main]
 async fn main() -> ExitCode {
     if let Err(error) = run().await {
@@ -47,6 +46,6 @@ async fn main() -> ExitCode {
 
 async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
-    init_storage()?;
-    cli.command.run().await
+    let op = operator()?;
+    cli.command.run(&op).await
 }

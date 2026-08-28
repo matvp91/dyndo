@@ -1,93 +1,158 @@
+mod any_cmaf_track;
+mod cmaf_metadata;
+
+pub use any_cmaf_track::AnyCmafTrack;
+use language_tags::LanguageTag;
+use relative_path::RelativePathBuf;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use self::thumbnail::ThumbnailTrack;
+use crate::{codec_config::CodecConfig, frame_rate::FrameRate, role::Role};
 
-pub mod cmaf;
-pub mod metadata;
-mod resolved;
-mod source;
-pub mod thumbnail;
-pub mod timed_text;
-
-pub use resolved::{CmafRepresentationError, ResolvedTrack, TrackResolveError};
-pub use source::SourceTrack;
-
-/// The playback category of a resolved track.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TrackType {
-    Video,
-    Audio,
-    Text,
-    Thumbnail,
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
+pub struct VideoMetadata {
+    pub width: u32,
+    pub height: u32,
+    pub frame_rate: FrameRate,
 }
 
-impl TrackType {
-    /// Returns the filter value for this track type.
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Video => "video",
-            Self::Audio => "audio",
-            Self::Text => "text",
-            Self::Thumbnail => "thumbnail",
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
+pub struct AudioMetadata {
+    pub sample_rate: u32,
+    pub channels: u16,
+    #[serde(default = "language_und")]
+    #[schemars(with = "String")]
+    pub language: LanguageTag,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub role: Option<Role>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
+pub struct TextMetadata {
+    #[serde(default = "language_und")]
+    #[schemars(with = "String")]
+    pub language: LanguageTag,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub role: Option<Role>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
+pub struct ImageMetadata {
+    pub tile_size: u32,
+    pub width: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
+pub struct ThumbnailTrack {
+    pub id: String,
+    #[serde(flatten)]
+    pub metadata: ImageMetadata,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
+pub struct CmafTrack<M> {
+    #[schemars(with = "String")]
+    pub path: RelativePathBuf,
+    pub codec: CodecConfig,
+    pub bitrate: u64,
+    #[serde(flatten)]
+    pub metadata: M,
+}
+
+pub type VideoCmafTrack = CmafTrack<VideoMetadata>;
+pub type AudioCmafTrack = CmafTrack<AudioMetadata>;
+pub type TextCmafTrack = CmafTrack<TextMetadata>;
+
+impl CmafTrack<VideoMetadata> {
+    pub fn id(&self) -> String {
+        format!(
+            "{}_{}_{}",
+            self.codec.family(),
+            self.metadata.height,
+            self.bitrate
+        )
+    }
+}
+
+impl CmafTrack<AudioMetadata> {
+    pub fn id(&self) -> String {
+        let metadata = &self.metadata;
+
+        match metadata.role {
+            Some(role) => format!(
+                "{}_{}_{}_{}_{}_{}",
+                self.codec.family(),
+                metadata.sample_rate,
+                metadata.channels,
+                metadata.language,
+                role,
+                self.bitrate
+            ),
+            None => format!(
+                "{}_{}_{}_{}_{}",
+                self.codec.family(),
+                metadata.sample_rate,
+                metadata.channels,
+                metadata.language,
+                self.bitrate
+            ),
         }
     }
 }
 
-/// The stored or generated form of a resolved track.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TrackFormat {
-    Cmaf,
-    WebVtt,
-    Thumbnail,
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
+pub struct SidecarTextTrack {
+    #[schemars(with = "String")]
+    pub path: RelativePathBuf,
+    #[serde(flatten)]
+    pub metadata: TextMetadata,
 }
 
-impl TrackFormat {
-    /// Returns the filter value for this track format.
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Cmaf => "cmaf",
-            Self::WebVtt => "webvtt",
-            Self::Thumbnail => "thumbnail",
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
+#[serde(untagged)]
+pub enum TextTrack {
+    Cmaf(TextCmafTrack),
+    Sidecar(SidecarTextTrack),
+}
+
+impl TextTrack {
+    pub fn id(&self) -> String {
+        let metadata = match self {
+            Self::Cmaf(track) => &track.metadata,
+            Self::Sidecar(track) => &track.metadata,
+        };
+
+        match metadata.role {
+            Some(role) => format!("text_{}_{}", metadata.language, role),
+            None => format!("text_{}", metadata.language),
         }
     }
 }
 
-/// A track stored in an asset.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "type", rename_all = "lowercase")]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
+#[serde(tag = "type")]
 pub enum Track {
+    #[serde(rename = "video")]
+    Video(VideoCmafTrack),
+    #[serde(rename = "audio")]
+    Audio(AudioCmafTrack),
+    #[serde(rename = "text")]
+    Text(TextTrack),
+    #[serde(rename = "thumbnail")]
     Thumbnail(ThumbnailTrack),
-    #[serde(untagged)]
-    Source(SourceTrack),
 }
 
 impl Track {
-    pub fn id(&self) -> &str {
+    pub fn id(&self) -> String {
         match self {
-            Self::Source(track) => track.id(),
-            Self::Thumbnail(track) => &track.id,
+            Self::Video(track) => track.id(),
+            Self::Audio(track) => track.id(),
+            Self::Text(track) => track.id(),
+            Self::Thumbnail(track) => track.id.clone(),
         }
     }
+}
 
-    pub fn source(&self) -> Option<&SourceTrack> {
-        match self {
-            Self::Source(track) => Some(track),
-            Self::Thumbnail(_) => None,
-        }
-    }
-
-    pub fn source_mut(&mut self) -> Option<&mut SourceTrack> {
-        match self {
-            Self::Source(track) => Some(track),
-            Self::Thumbnail(_) => None,
-        }
-    }
-
-    pub fn thumbnail(&self) -> Option<&ThumbnailTrack> {
-        match self {
-            Self::Source(_) => None,
-            Self::Thumbnail(track) => Some(track),
-        }
-    }
+fn language_und() -> LanguageTag {
+    "und".parse().expect("und is a well-formed language tag")
 }

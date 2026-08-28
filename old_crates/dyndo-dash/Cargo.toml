@@ -11,6 +11,9 @@ workspace = true
 dash-mpd = { version = "0.20", default-features = false }
 dyndo-core = { path = "../dyndo-core" }
 quick-xml = { version = "0.40", features = ["serialize"] }
-relative-path = "2.0.1"
 serde = "1"
 thiserror = "2"
+
+[dev-dependencies]
+mp4-atom = "0.12"
+tokio = { version = "1", features = ["macros", "rt"] }
